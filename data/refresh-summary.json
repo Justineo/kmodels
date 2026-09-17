@@ -1,8 +1,8 @@
 {
-  "catalog_version": "1c83d21798eb369b0266f3482f53094474cc4cfbce8c5d3ac6c03e448db4a50c",
-  "generated_at": "2026-09-17T18:05:11.245Z",
+  "catalog_version": "bbddbd9be9853c28bd82add8b18d8e81d259a0eef1726d5f20beab7f7d9a11e1",
+  "generated_at": "2026-09-17T19:03:38.248Z",
   "outcome": "changed",
-  "previous_catalog_version": "2e65642eb4102751afc7363e76dc3bc3592305aeee5b57e38228795f81ba4d1e",
+  "previous_catalog_version": "1c83d21798eb369b0266f3482f53094474cc4cfbce8c5d3ac6c03e448db4a50c",
   "providers": [
     {
       "attempt": {
@@ -801,9 +801,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -861,20 +861,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -1115,7 +1108,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 146,
+            "consecutive_failures": 147,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1216,7 +1209,7 @@
             "source_id": "dashscope-text"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 11,
               "diagnostics": [
@@ -1289,7 +1282,7 @@
               "observed_items": 11
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 6,
             "source_id": "dashscope-vision"
           },
@@ -1322,7 +1315,7 @@
             "source_id": "dashscope-tts"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -1355,12 +1348,12 @@
               "observed_items": 3
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 30,
             "source_id": "dashscope-s2s"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -1393,7 +1386,7 @@
               "observed_items": 3
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 30,
             "source_id": "dashscope-omni"
           },
@@ -1533,2777 +1526,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 31,
-        "changed_fields": {
-          "availability": 1,
-          "capabilities": 1,
-          "delivery_mode_evidence": 16,
-          "description": 4,
-          "limits": 1,
-          "modalities": 4,
-          "raw_type": 1,
-          "source_refs": 1,
-          "task_evidence": 30
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen-audio-3.0-realtime-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen-audio-3.0-realtime-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo-2025-03-26"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo-latest"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo-realtime-2025-05-08"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen-omni-turbo-realtime-latest"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen2.5-omni-7b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Audio/video file translation",
-                "path": "description"
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  "text",
-                  "audio",
-                  "video",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": [
-                  "audio",
-                  "video",
-                  "image"
-                ]
-              }
-            ],
-            "fields": [
-              "description",
-              "task_evidence",
-              "modalities"
-            ],
-            "model_ref": "dashscope/qwen3-livetranslate-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-livetranslate-flash-2025-12-01"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-livetranslate-flash-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-livetranslate-flash-realtime-2025-09-22"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash-2025-09-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash-2025-12-01"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash-realtime-2025-09-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3-omni-flash-realtime-2025-12-01"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Realtime translation",
-                "path": "description"
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  "image",
-                  "audio",
-                  "text",
-                  "video"
-                ],
-                "path": "modalities.input",
-                "previous": [
-                  "audio",
-                  "image"
-                ]
-              }
-            ],
-            "fields": [
-              "description",
-              "task_evidence",
-              "delivery_mode_evidence",
-              "modalities"
-            ],
-            "model_ref": "dashscope/qwen3.5-livetranslate-flash-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "translation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-livetranslate-flash-realtime-2026-05-19"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-flash-2026-03-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-flash-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-flash-realtime-2026-03-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": 64000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "limits"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-plus-2026-03-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-plus-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni",
-                    "task": "speech_to_speech"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s",
-                    "task": "speech_to_speech"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "Realtime API (WebSocket)",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ],
-                "path": "delivery_mode_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-omni"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "mode": "realtime",
-                    "namespace": "dashscope.api",
-                    "raw_value": "WebSocket",
-                    "source_ref": "dashscope-s2s"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "delivery_mode_evidence"
-            ],
-            "model_ref": "dashscope/qwen3.5-omni-plus-realtime-2026-03-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Realtime translation",
-                "path": "description"
-              },
-              {
-                "current": [
-                  "text",
-                  "audio",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": [
-                  "image",
-                  "audio"
-                ]
-              }
-            ],
-            "fields": [
-              "description",
-              "modalities"
-            ],
-            "model_ref": "dashscope/qwen3.8-livetranslate-flash-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Audio/video understanding, text generation, thinking, function calling, web search",
-                "path": "description"
-              },
-              {
-                "current": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions / Responses",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "Chat Completions / Responses",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  }
-                ],
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "text_generation"
-                  },
-                  {
-                    "kind": "provider_type",
-                    "namespace": "dashscope.type",
-                    "raw_value": "HTTP",
-                    "source_ref": "dashscope-omni",
-                    "task": "transcription"
-                  }
-                ]
-              },
-              {
-                "current": "Chat Completions / Responses",
-                "path": "raw_type",
-                "previous": "HTTP"
-              },
-              {
-                "current": [
-                  "text",
-                  "audio"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.reasoning",
-                "previous": true
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.tool_call",
-                "previous": true
-              },
-              {
-                "current": [],
-                "path": "availability"
-              },
-              {
-                "current": [
-                  "dashscope-omni",
-                  "dashscope-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "dashscope-omni"
-                ]
-              }
-            ],
-            "fields": [
-              "description",
-              "task_evidence",
-              "raw_type",
-              "modalities",
-              "capabilities",
-              "availability",
-              "source_refs"
-            ],
-            "model_ref": "dashscope/qwen3.8-omni-flash"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 384,
         "previous": 384,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 353
+        "unchanged": 384
       },
       "pricing": {
         "commercial_hash": "73aade6d914b89912d5df138392f302ccc99d2a97bf3ba5d8c8096597cae74cb",
@@ -4356,14 +1586,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-omni"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -4375,25 +1599,13 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-releases"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-s2s"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-vision"
           }
         ],
         "current": 13,
         "previous": 13,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 8
+        "unchanged": 11
       },
       "status": "fresh",
       "warning_codes": {
@@ -4758,80 +1970,16 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "gemini/antigravity-preview-09-2026"
-        ],
-        "changed": 1,
-        "changed_fields": {
-          "api_endpoints": 1,
-          "replacement_model_ids": 1,
-          "retired_at": 1,
-          "status": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "name": "countTokens",
-                    "path": "/v1beta/models/antigravity-preview-05-2026:countTokens"
-                  },
-                  {
-                    "name": "generateContent",
-                    "path": "/v1beta/models/antigravity-preview-05-2026:generateContent"
-                  }
-                ],
-                "path": "api_endpoints",
-                "previous": [
-                  {
-                    "name": "interactions.create",
-                    "path": "/v1beta/interactions"
-                  },
-                  {
-                    "name": "countTokens",
-                    "path": "/v1beta/models/antigravity-preview-05-2026:countTokens"
-                  },
-                  {
-                    "name": "generateContent",
-                    "path": "/v1beta/models/antigravity-preview-05-2026:generateContent"
-                  }
-                ]
-              },
-              {
-                "current": "2026-10-05",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  "antigravity-preview-09-2026"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              }
-            ],
-            "fields": [
-              "api_endpoints",
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/antigravity-preview-05-2026",
-            "previous_status": "unknown",
-            "status": "deprecated"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 84,
-        "previous": 83,
+        "previous": 84,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 82
+        "unchanged": 84
       },
       "pricing": {
         "commercial_hash": "80ceb31bbfcab7a94dc5b6795aea2fc3ba873296baeb62ee66ba26658e89c657",
@@ -4842,7 +1990,7 @@
         "current_models": 52,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 1
+          "unknown_models": 0
         },
         "normalized_rate_models": 38,
         "not_applicable_models": 0,
@@ -4915,42 +2063,32 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1605,
+            "parsed_models": 1606,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1605,
+              "model_records": 1606,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1605
+              "unknown_models": 1606
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1853,
+              "diagnostic_count": 1863,
               "diagnostics": [
                 {
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
-                  "sample": "deepseek-ai/DeepSeek-V4-Pro:baseten:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "deepseek-ai/DeepSeek-V4-Pro:deepinfra:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "deepseek-ai/DeepSeek-V4-Pro:novita:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
                   "sample": "moonshotai/Kimi-K2.7-Code:baseten:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "moonshotai/Kimi-K2.7-Code:deepinfra:conversational"
                 },
                 {
                   "disposition": "unbound",
@@ -4970,25 +2108,35 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
-                  "sample": "moonshotai/Kimi-K3:baseten:conversational"
+                  "sample": "zai-org/GLM-4.7:baseten:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:deepinfra:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:featherless-ai:conversational"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6490,
+                "excluded": 6840,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1853,
+                "unbound": 1863,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8343,
+              "observed_items": 8703,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1462,
-                "partner_route_price_not_published": 391,
-                "single_partner_inventory_without_product_evidence": 6419
+                "hf_inference_compute_price_unbound": 1461,
+                "partner_route_price_not_published": 402,
+                "single_partner_inventory_without_product_evidence": 6769
               },
               "unit": "reviewed source pricing item"
             },
@@ -5003,22 +2151,27 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 143,
-              "normalized_facts": 432,
+              "normalized_facts": 430,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 115,
-              "raw_facts": 113,
-              "raw_models": 107,
+              "raw_facts": 123,
+              "raw_models": 111,
               "unknown_models": 28
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 114,
+              "diagnostic_count": 124,
               "diagnostics": [
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "deepseek-ai/DeepSeek-V4.1-Flash:fireworks-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "deepseek-ai/DeepSeek-V4.1-Flash:featherless-ai"
                 },
                 {
                   "disposition": "unbound",
@@ -5029,6 +2182,11 @@
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "zai-org/GLM-5.3-Flash:fireworks-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "zai-org/GLM-5.3-Flash:featherless-ai"
                 },
                 {
                   "disposition": "unbound",
@@ -5044,42 +2202,32 @@
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "Qwen/Qwen3-8B:featherless-ai"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "route_price_not_published",
-                  "sample": "moonshotai/Kimi-K2-Instruct:featherless-ai"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "route_price_not_published",
-                  "sample": "google/gemma-4-31B-it:featherless-ai"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 217,
+                "normalized": 216,
                 "raw": 0,
-                "unbound": 113,
+                "unbound": 123,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 332,
+              "observed_items": 341,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 216,
-                "route_price_not_published": 113
+                "route_price_normalized": 215,
+                "route_price_not_published": 123
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
           },
           {
-            "consecutive_failures": 38,
+            "consecutive_failures": 39,
             "last_success_at": "2026-09-15T20:04:08.974Z",
             "message": "Featherless request-pricing reference drifted",
             "outcome": "parse_failed",
@@ -5089,15 +2237,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 29,
+            "parsed_models": 30,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 29,
-              "normalized_facts": 62,
+              "model_records": 30,
+              "normalized_facts": 64,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 29,
+              "numeric_models": 30,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -5151,16 +2299,16 @@
                 "ambiguous": 1,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 31,
+                "normalized": 32,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 14,
                 "unsupported": 0
               },
-              "observed_items": 46,
+              "observed_items": 47,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
-                "native_route_price_normalized": 31,
+                "native_route_price_normalized": 32,
                 "native_route_price_not_exactly_joinable": 14
               },
               "unit": "reviewed source pricing item"
@@ -5168,128 +2316,37 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1462,
+            "outcome": "changed",
+            "parsed_models": 1461,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "count_decreases": [
         {
-          "current": 1652,
+          "current": 1650,
           "field": "models",
-          "previous": 1653
-        },
-        {
-          "current": 1853,
-          "field": "routes",
-          "previous": 1856
+          "previous": 1652
         }
       ],
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/HiDream-ai/HiDream-I1-Full",
-          "huggingface/stabilityai/stable-diffusion-3-medium"
-        ],
-        "changed": 22,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 16,
         "changed_fields": {
-          "capabilities": 13,
+          "capabilities": 2,
           "limits": 1,
-          "routes": 13,
-          "source_refs": 1,
-          "task_evidence": 1
+          "routes": 16,
+          "source_refs": 5,
+          "task_evidence": 5
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/CohereLabs/command-a-plus-05-2026-bf16"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "MiniMaxAI/MiniMax-M2.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "MiniMaxAI/MiniMax-M2.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "minimax/minimax-m2.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "MiniMaxAI/MiniMax-M2.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "minimax/minimax-m2.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "routes",
-              "capabilities"
-            ],
-            "model_ref": "huggingface/MiniMaxAI/MiniMax-M2.7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-4B-Thinking-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "task_evidence",
-                "previous": [
                   {
                     "kind": "provider_task",
                     "namespace": "huggingface.task",
@@ -5297,11 +2354,11 @@
                     "source_ref": "huggingface-hf-inference",
                     "task": "text_generation"
                   }
-                ]
+                ],
+                "path": "task_evidence"
               },
               {
-                "path": "routes",
-                "previous": [
+                "current": [
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
@@ -5316,21 +2373,22 @@
                     "status": "live",
                     "task": "conversational"
                   }
-                ]
+                ],
+                "path": "routes"
               },
               {
-                "current": 131072,
+                "current": 262144,
                 "path": "limits.context_tokens",
-                "previous": 262144
+                "previous": 131072
               },
               {
                 "current": [
-                  "huggingface-router"
+                  "huggingface-router",
+                  "huggingface-hf-inference"
                 ],
                 "path": "source_refs",
                 "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
+                  "huggingface-router"
                 ]
               }
             ],
@@ -5345,70 +2403,58 @@
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/XiaomiMiMo/MiMo-V2.5"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-kontext/dev",
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.8-27B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3.8-27b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-kontext-dev",
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Qwen3.8-27B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-kontext/dev",
+                    "provider": "cerebras",
+                    "provider_model_id": "qwen-3.8-27b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-kontext-dev",
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.8-27B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3.8-27b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Qwen3.8-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
                   }
                 ]
               }
@@ -5416,172 +2462,12 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.1-Kontext-dev"
+            "model_ref": "huggingface/Qwen/Qwen3.8-27B"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/krea",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-krea-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-krea-dev-lora",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/krea",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-krea-dev-lora",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.1-Krea-dev"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.1-dev"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-2-dev/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.2-dev"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-klein-4b-base",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
@@ -5603,6 +2489,23 @@
                     "status": "live",
                     "task": "image-to-image"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-4b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
                 ]
               }
             ],
@@ -5614,70 +2517,114 @@
           {
             "field_changes": [
               {
-                "current": true,
+                "current": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ],
+                "path": "task_evidence"
+              },
+              {
+                "current": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": false
+              },
+              {
+                "current": "unknown",
                 "path": "capabilities.tool_call",
                 "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "field_changes": [
+              },
               {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
+                "current": [
+                  "huggingface-router",
+                  "huggingface-hf-inference"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-router"
+                ]
               }
             ],
             "fields": [
-              "capabilities"
+              "task_evidence",
+              "routes",
+              "capabilities",
+              "source_refs"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
           },
           {
             "field_changes": [
               {
                 "current": [
                   {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
                     "provider": "deepinfra",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "google/gemma-4-26b-a4b-it",
+                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "scaleway",
-                    "provider_model_id": "gemma-4-26b-a4b-it",
+                    "provider_model_id": "deepseek-v4-flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5686,22 +2633,43 @@
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "google/gemma-4-26b-a4b-it",
+                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "scaleway",
-                    "provider_model_id": "gemma-4-26b-a4b-it",
+                    "provider_model_id": "deepseek-v4-flash-0731",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5712,42 +2680,36 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/google/gemma-4-26B-A4B-it"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/moonshotai/Kimi-K2-Instruct-0905"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731"
           },
           {
             "field_changes": [
               {
                 "current": [
                   {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
                     "provider": "deepinfra",
-                    "provider_model_id": "moonshotai/Kimi-K2.5",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K2.5",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "moonshotai/kimi-k2.5",
+                    "provider_model_id": "deepseek/deepseek-v4-pro",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5756,32 +2718,33 @@
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K2.5",
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "moonshotai/kimi-k2.5",
+                    "provider_model_id": "deepseek/deepseek-v4-pro",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
               }
             ],
             "fields": [
-              "routes",
-              "capabilities"
+              "routes"
             ],
-            "model_ref": "huggingface/moonshotai/Kimi-K2.5"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro"
           },
           {
             "field_changes": [
@@ -5789,6 +2752,155 @@
                 "current": [
                   {
                     "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "meta-models/Muse-Glimmer-30B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "meta-models/Muse-Glimmer-30B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/muse-glimmer-30b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "meta-models/Muse-Glimmer-30B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "meta-models/Muse-Glimmer-30B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/muse-glimmer-30b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "meta-models/Muse-Glimmer-30B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/meta-models/Muse-Glimmer-30B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
                     "provider_model_id": "moonshotai/Kimi-K2.7-Code",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
@@ -5820,13 +2932,6 @@
                 "previous": [
                   {
                     "provider": "baseten",
-                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
                     "provider_model_id": "moonshotai/Kimi-K2.7-Code",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
@@ -5864,107 +2969,73 @@
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "routes",
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.6"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
                     "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider": "cerebras",
+                    "provider_model_id": "gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "groq",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5974,35 +3045,77 @@
                 "previous": [
                   {
                     "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "cerebras",
+                    "provider_model_id": "gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "groq",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.7",
+                    "provider": "nscale",
+                    "provider_model_id": "openai/gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6013,7 +3126,171 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.7"
+            "model_ref": "huggingface/openai/gpt-oss-120b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ],
+                "path": "task_evidence"
+              },
+              {
+                "current": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "swiss-ai/Apertus-v1.5-70B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "publicai",
+                    "provider_model_id": "swiss-ai/apertus-v1.5-70b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.tool_call",
+                "previous": false
+              },
+              {
+                "current": [
+                  "huggingface-router",
+                  "huggingface-hf-inference"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-router"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "routes",
+              "capabilities",
+              "source_refs"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ],
+                "path": "task_evidence"
+              },
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "tencent/Hy3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "tencent/Hy3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes"
+              },
+              {
+                "current": [
+                  "huggingface-router",
+                  "huggingface-hf-inference"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-router"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "routes",
+              "source_refs"
+            ],
+            "model_ref": "huggingface/tencent/Hy3"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ]
+              },
+              {
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "thinkingmachines/inkling-small",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "thinkingmachines/Inkling-Small",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "huggingface-router"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-hf-inference",
+                  "huggingface-router"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "routes",
+              "source_refs"
+            ],
+            "model_ref": "huggingface/thinkingmachines/Inkling-Small"
           },
           {
             "field_changes": [
@@ -6026,23 +3303,6 @@
                     "status": "live",
                     "task": "conversational"
                   },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "zai-org/GLM-4.7-Flash",
@@ -6064,30 +3324,259 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
               }
             ],
             "fields": [
-              "routes",
-              "capabilities"
+              "routes"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.3-Flash"
           }
         ],
-        "current": 1652,
-        "previous": 1653,
-        "removed": 3,
+        "current": 1650,
+        "previous": 1652,
+        "removed": 2,
         "removed_model_refs": [
-          "huggingface/Tongyi-MAI/Z-Image",
-          "huggingface/ideogram-ai/ideogram-4-fp8",
-          "huggingface/stabilityai/stable-diffusion-3.5-medium"
+          "huggingface/Helsinki-NLP/opus-mt-en-ar",
+          "huggingface/hexgrad/Kokoro-82M"
         ],
-        "unchanged": 1628
+        "unchanged": 1634
       },
       "pricing": {
         "commercial_hash": "ca97a458a20e7d19eba9db0b36f25281dbe6072e53fef685aa51ccbc6990d8ea",
@@ -6095,10 +3584,10 @@
         "previous_commercial_hash": "ca97a458a20e7d19eba9db0b36f25281dbe6072e53fef685aa51ccbc6990d8ea"
       },
       "pricing_coverage": {
-        "current_models": 1652,
+        "current_models": 1650,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": -2
         },
         "normalized_rate_models": 134,
         "not_applicable_models": 0,
@@ -6126,8 +3615,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1486,
-        "unknown_models": 1506
+        "unknown_model_refs_omitted": 1484,
+        "unknown_models": 1504
       },
       "pricing_publication": "retained",
       "provider_id": "huggingface",
@@ -6140,13 +3629,19 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -6165,7 +3660,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -6487,14 +3982,14 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 146,
+            "consecutive_failures": 147,
             "last_success_at": "2026-09-11T05:50:05.136Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
             "source_id": "kimi-releases"
           },
           {
-            "consecutive_failures": 151,
+            "consecutive_failures": 152,
             "last_success_at": "2026-09-04T09:22:19.909Z",
             "message": "HTTP 401",
             "outcome": "fetch_failed",
@@ -7298,9 +4793,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -7391,8 +4886,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-accounting"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -7404,7 +4905,7 @@
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -7542,7 +5043,7 @@
               "custom_quote_models": 0,
               "free_models": 8,
               "model_records": 372,
-              "normalized_facts": 3704,
+              "normalized_facts": 3705,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 364,
@@ -7601,8 +5102,8 @@
         "unchanged": 372
       },
       "pricing": {
-        "commercial_hash": "0e959b6797e082a0e3f48643c10d21d7a94e10c3da61d6af6bc986644ac3fd93",
-        "outcome": "provenance_only",
+        "commercial_hash": "ed40d053350f27f69a0daa3871a49bb3e1976e4b853a961752a247130c89f77f",
+        "outcome": "commercial",
         "previous_commercial_hash": "0e959b6797e082a0e3f48643c10d21d7a94e10c3da61d6af6bc986644ac3fd93"
       },
       "pricing_coverage": {
@@ -7890,7 +5391,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 132,
+            "consecutive_failures": 133,
             "last_success_at": "2026-09-11T20:04:00.366Z",
             "message": "xAI language model differs across public clusters",
             "outcome": "parse_failed",
@@ -7957,18 +5458,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 3,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 54,
-    "changed_sources": 25,
-    "models": 3663,
+    "changed_models": 16,
+    "changed_sources": 23,
+    "models": 3661,
     "pricing_accepted": 14,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 5,
     "pricing_withheld": 0,
     "providers": 19,
-    "removed_models": 3,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
