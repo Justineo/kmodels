@@ -1,8 +1,8 @@
 {
-  "catalog_version": "64f8cc146f733e4d04c6a43dea3d6285428a82a0cf9ac37f2d0ee565c7ad2f50",
-  "generated_at": "2026-09-18T07:05:53.933Z",
-  "outcome": "evidence_only",
-  "previous_catalog_version": "23b6406968bd1268fc9dcae871cae4c7a0fcdd08aec0726117c3835378761feb",
+  "catalog_version": "afc141dc69db6d771d0e4ed1f80d9fd20a1669c26bf8ee8d6045ec70224df463",
+  "generated_at": "2026-09-18T08:05:32.594Z",
+  "outcome": "changed",
+  "previous_catalog_version": "64f8cc146f733e4d04c6a43dea3d6285428a82a0cf9ac37f2d0ee565c7ad2f50",
   "providers": [
     {
       "attempt": {
@@ -17,22 +17,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 124,
+            "parsed_models": 125,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 124,
+              "model_records": 125,
               "normalized_facts": 10629,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 120,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 4
+              "unknown_models": 5
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 6,
+              "diagnostic_count": 937,
               "diagnostics": [
                 {
                   "disposition": "unsupported",
@@ -41,8 +41,8 @@
                 },
                 {
                   "disposition": "unsupported",
-                  "reason_code": "model_card_api_unsupported",
-                  "sample": "Responses"
+                  "reason_code": "model_card_date_unsupported",
+                  "sample": "Kimi K3: 18th Sept 2026"
                 },
                 {
                   "disposition": "unsupported",
@@ -56,36 +56,48 @@
                 },
                 {
                   "disposition": "unsupported",
-                  "reason_code": "optional_pricing_source_drifted",
-                  "sample": "Bedrock public pricing page: contained no reviewed OpenAI model tables"
+                  "reason_code": "model_card_api_unsupported",
+                  "sample": "Responses"
                 },
                 {
                   "disposition": "unbound",
-                  "reason_code": "pricing_input_contract_partial",
-                  "sample": "31/32 Bedrock pricing inputs"
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.0165 per 1K token for moonshotai.kimi-k3-mantle-output-tokens-standard in Middle East (Bahrain)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.00721875 per 1K token for moonshotai.kimi-k3-mantle-cache-write-tokens-30m-priority in EU (Frankfurt)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.028875 per 1K token for moonshotai.kimi-k3-mantle-output-tokens-priority in US East (Ohio)"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 7698,
+                "excluded": 6768,
                 "explicit_non_numeric": 0,
                 "normalized": 10892,
                 "raw": 0,
-                "unbound": 1,
+                "unbound": 931,
                 "unresolved": 0,
-                "unsupported": 5
+                "unsupported": 6
               },
-              "observed_items": 18596,
+              "observed_items": 18597,
               "reason_counts": {
                 "commercial_dimension_bound": 218,
                 "marketplace_product_rate_bound": 46,
                 "model_card_api_unsupported": 3,
+                "model_card_date_unsupported": 1,
                 "model_card_unsupported": 14,
                 "optional_catalog_source_drifted": 1,
                 "optional_pricing_source_drifted": 1,
                 "price_dimension_bound": 10615,
                 "price_dimension_outside_invocation_scope": 1874,
-                "price_product_absent_from_current_catalog": 5810,
+                "price_dimension_target_unbound": 930,
+                "price_product_absent_from_current_catalog": 4880,
                 "pricing_input_contract_partial": 1,
                 "pricing_page_cell_bound": 13
               },
@@ -103,12 +115,14 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 1,
+        "added_model_refs": [
+          "amazon-bedrock/moonshotai.kimi-k3"
+        ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 124,
+        "current": 125,
         "previous": 124,
         "removed": 0,
         "removed_model_refs": [],
@@ -120,10 +134,10 @@
         "previous_commercial_hash": "8050e3b6ed7e5f49de5e6adff2677fe3ac7cca4b82a7f659d47547d2fb51075b"
       },
       "pricing_coverage": {
-        "current_models": 113,
+        "current_models": 114,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 0
+          "unknown_models": 1
         },
         "normalized_rate_models": 109,
         "not_applicable_models": 0,
@@ -131,12 +145,13 @@
         "raw_fact_models": 1,
         "unknown_model_refs": [
           "amazon-bedrock/amazon.titan-embed-g1-text-02",
+          "amazon-bedrock/moonshotai.kimi-k3",
           "amazon-bedrock/openai.gpt-5.5",
           "amazon-bedrock/openai.gpt-5.6-cyber",
           "amazon-bedrock/openai.gpt-daybreak-blue-5.6-sol"
         ],
         "unknown_model_refs_omitted": 0,
-        "unknown_models": 4
+        "unknown_models": 5
       },
       "pricing_publication": "retained",
       "provider_id": "amazon-bedrock",
@@ -807,9 +822,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -867,20 +882,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -1121,7 +1129,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 159,
+            "consecutive_failures": 160,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -2071,12 +2079,25 @@
           "message": "Retained pricing requires the previous catalog model: huggingface/CohereLabs/command-a-plus-05-2026-bf16"
         },
         "models": {
-          "added": 4,
+          "added": 17,
           "added_model_refs": [
+            "huggingface/DunnBC22/vit-base-patch16-224-in21k-Mango_leaf_Disease",
             "huggingface/Helsinki-NLP/opus-mt-en-ar",
             "huggingface/Qwen/Qwen3.8-Flash-Next",
             "huggingface/Tongyi-MAI/Z-Image",
-            "huggingface/ideogram-ai/ideogram-4-fp8"
+            "huggingface/buildborderless/CommunityForensics-DeepfakeDet-ViT",
+            "huggingface/cirimus/modernbert-base-go-emotions",
+            "huggingface/desklib/ai-text-detector-v1.01",
+            "huggingface/hantian/layoutreader",
+            "huggingface/ideogram-ai/ideogram-4-fp8",
+            "huggingface/klue/roberta-small",
+            "huggingface/laion/larger_clap_music",
+            "huggingface/llm-book/bert-base-japanese-v3-ner-wikipedia-dataset",
+            "huggingface/microsoft/beit-large-patch16-224-pt22k-ft22k",
+            "huggingface/segment-any-text/sat-12l-sm",
+            "huggingface/shi-labs/oneformer_ade20k_dinat_large",
+            "huggingface/sonoisa/sentence-bert-base-ja-mean-tokens",
+            "huggingface/tencent/Hy-MT2-1.8B"
           ],
           "changed": 16,
           "changed_fields": {
@@ -2753,20 +2774,85 @@
               "model_ref": "huggingface/zai-org/GLM-5.3-Flash"
             }
           ],
-          "current": 1648,
+          "current": 1596,
           "previous": 1652,
-          "removed": 8,
+          "removed": 73,
           "removed_model_refs": [
-            "huggingface/BAAI/bge-m3",
+            "huggingface/BAAI/bge-large-zh",
+            "huggingface/BSC-LT/MrBERT-es",
             "huggingface/CohereLabs/command-a-plus-05-2026-bf16",
             "huggingface/CohereLabs/command-a-plus-05-2026-fp8",
             "huggingface/CohereLabs/command-a-plus-05-2026-w4a4",
+            "huggingface/DTAI-KULeuven/robbert-2023-dutch-base",
+            "huggingface/DiTy/bi-encoder-russian-msmarco",
+            "huggingface/HIT-TMG/KaLM-embedding-multilingual-mini-v1",
+            "huggingface/Helsinki-NLP/opus-mt-bg-en",
+            "huggingface/Helsinki-NLP/opus-mt-en-da",
+            "huggingface/Helsinki-NLP/opus-mt-en-he",
+            "huggingface/Helsinki-NLP/opus-mt-en-hi",
+            "huggingface/Helsinki-NLP/opus-mt-fi-en",
+            "huggingface/Helsinki-NLP/opus-mt-tc-big-ar-en",
+            "huggingface/Helsinki-NLP/opus-mt-tc-big-el-en",
             "huggingface/HiDream-ai/HiDream-I1-Full",
+            "huggingface/IlyaGusev/rut5_base_headline_gen_telegram",
+            "huggingface/LibrAI/longformer-harmful-ro",
+            "huggingface/Metric-AI/armenian-text-embeddings-1",
+            "huggingface/NAMAA-Space/Ara-Prompt-Guard_V0",
             "huggingface/OBLITERATUS/Qwen3.8-27B-OBLITERATED",
+            "huggingface/Octen/Octen-Embedding-0.6B",
+            "huggingface/OpenAssistant/reward-model-deberta-v3-base",
+            "huggingface/OpenMed/OpenMed-PII-BioClinicalModern-Large-395M-v1",
+            "huggingface/Sachin21112004/distilbart-news-summarizer",
+            "huggingface/Seznam/retromae-small-cs",
+            "huggingface/VietAI/envit5-translation",
+            "huggingface/aubmindlab/bert-large-arabertv02",
+            "huggingface/cahya/t5-base-indonesian-summarization-cased",
+            "huggingface/cardiffnlp/tweet-topic-21-multi",
+            "huggingface/cardiffnlp/twitter-roberta-base-hate-latest",
+            "huggingface/castorini/afriberta_large",
+            "huggingface/chkla/parlbert-topic-german",
+            "huggingface/deepvk/kazRush-ru-kk",
+            "huggingface/dleemiller/ModernCE-base-sts",
+            "huggingface/embaas/sentence-transformers-e5-large-v2",
+            "huggingface/facebook/convnext-base-224",
+            "huggingface/giacomoarienti/nsfw-classifier",
+            "huggingface/google/pegasus-large",
+            "huggingface/gsarti/opus-mt-tc-en-pl",
+            "huggingface/iarfmoose/bert-base-cased-qa-evaluator",
+            "huggingface/j-hartmann/sentiment-roberta-large-english-3-classes",
+            "huggingface/jackhhao/jailbreak-classifier",
+            "huggingface/lewtun/my-awesome-setfit-model",
+            "huggingface/lightonai/LateOn",
+            "huggingface/livekit/turn-detector",
+            "huggingface/llm-book/bert-base-japanese-v3-jsts",
+            "huggingface/maidalun1020/bce-embedding-base_v1",
+            "huggingface/maidalun1020/bce-reranker-base_v1",
+            "huggingface/matei-dorian/segformer-b5-finetuned-human-parsing",
+            "huggingface/microsoft/Multilingual-MiniLM-L12-H384",
+            "huggingface/moussaKam/AraBART",
+            "huggingface/nlpaueb/bert-base-greek-uncased-v1",
+            "huggingface/nlpaueb/bert-base-uncased-contracts",
+            "huggingface/openai/privacy-filter",
+            "huggingface/patrickramos/bert-base-japanese-v2-wrime-fine-tune",
+            "huggingface/pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb",
+            "huggingface/pritamdeka/S-PubMedBert-MS-MARCO",
+            "huggingface/pythainlp/thainer-corpus-v2-base-model",
+            "huggingface/redis/langcache-embed-v2",
+            "huggingface/seara/rubert-base-cased-russian-sentiment",
+            "huggingface/seyonec/PubChem10M_SMILES_BPE_450k",
+            "huggingface/shi-labs/oneformer_coco_swin_large",
+            "huggingface/siebert/sentiment-roberta-large-english",
             "huggingface/stabilityai/stable-diffusion-3-medium",
+            "huggingface/tasksource/ModernBERT-large-nli",
+            "huggingface/uer/sbert-base-chinese-nli",
+            "huggingface/unitary/multilingual-toxic-xlm-roberta",
+            "huggingface/unitary/unbiased-toxic-roberta",
+            "huggingface/vinai/bartpho-syllable",
+            "huggingface/vinai/phobert-base-v2",
+            "huggingface/yjoonjang/splade-ko-v1",
             "huggingface/zai-org/GLM-4.7-FP8"
           ],
-          "unchanged": 1628
+          "unchanged": 1563
         },
         "outcome": "rejected",
         "pricing": {
@@ -2779,22 +2865,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1609,
+            "parsed_models": 1557,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1609,
+              "model_records": 1557,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1609
+              "unknown_models": 1557
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1871,
+              "diagnostic_count": 1819,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2839,20 +2925,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6830,
+                "excluded": 6834,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1871,
+                "unbound": 1819,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8701,
+              "observed_items": 8653,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1462,
+                "hf_inference_compute_price_unbound": 1410,
                 "partner_route_price_not_published": 409,
-                "single_partner_inventory_without_product_evidence": 6759
+                "single_partner_inventory_without_product_evidence": 6763
               },
               "unit": "reviewed source pricing item"
             },
@@ -2943,7 +3029,7 @@
             "source_id": "huggingface-router"
           },
           {
-            "consecutive_failures": 51,
+            "consecutive_failures": 52,
             "last_success_at": "2026-09-15T20:04:08.974Z",
             "message": "Featherless request-pricing reference drifted",
             "outcome": "parse_failed",
@@ -3035,7 +3121,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1462,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
@@ -3126,9 +3212,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3165,9 +3251,9 @@
             "source_id": "kimi-openapi"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3431,14 +3517,14 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 159,
+            "consecutive_failures": 160,
             "last_success_at": "2026-09-11T05:50:05.136Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
             "source_id": "kimi-releases"
           },
           {
-            "consecutive_failures": 164,
+            "consecutive_failures": 165,
             "last_success_at": "2026-09-04T09:22:19.909Z",
             "message": "HTTP 401",
             "outcome": "fetch_failed",
@@ -3492,26 +3578,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-china-openapi"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-openapi"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 9
       },
       "status": "fresh",
       "warning_codes": {
@@ -4840,7 +4913,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 145,
+            "consecutive_failures": 146,
             "last_success_at": "2026-09-11T20:04:00.366Z",
             "message": "xAI language model differs across public clusters",
             "outcome": "parse_failed",
@@ -4907,11 +4980,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
     "changed_models": 0,
-    "changed_sources": 21,
-    "models": 3665,
+    "changed_sources": 18,
+    "models": 3666,
     "pricing_accepted": 14,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
