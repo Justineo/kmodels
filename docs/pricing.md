@@ -589,6 +589,11 @@ recurrence kind and requires at least one window value and exactly one remainder
 rules such as Peak and Off-peak without selecting a value from collection time or the viewer's
 clock.
 
+Rules with holiday exceptions that cannot be expressed by this bounded schedule retain categorical
+choices, exact definitions and source evidence without schedule metadata. The caller supplies the
+applicable category. Publishing a price book does not require maintaining a holiday calendar or
+evaluating a request timestamp.
+
 Partial UI evaluation is three-valued:
 
 - a supplied condition is true or false;

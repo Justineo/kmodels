@@ -81,6 +81,11 @@ replacement.
 
 ## Grounding prices and allowances
 
+Grounding tables can contain either Feature / Pricing or Feature / Usage / Price (USD). The
+header-selected Usage cell owns allowance and billing-rule prose in the latter form; the last
+price cell alone cannot establish those rules. Column layout changes must not silently erase the
+accepted allowance topology.
+
 A combined Google Search / Web Grounding for Enterprise label applies to both services. Published
 Gemini 3 monthly web-query allowances share one pool across the matched models and web services;
 Maps has a separate monthly pool. Reviewed Gemini 2.0/2.5 Flash and Flash-Lite daily prompt

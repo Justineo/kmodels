@@ -7966,7 +7966,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v6",
+      extractorVersion: "vertex-pricing-v7",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -9060,110 +9060,119 @@ describe("Vertex AI adapters", () => {
     });
   });
 
-  it("shares Vertex grounding pools across models and services and retains unrecognized allowances", async () => {
-    const ids = [
-      "gemini-3-test",
-      "gemini-3-other",
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-2.5-pro",
-      "gemini-2.0-flash",
-    ];
-    const labels = [
-      "Gemini 3 Test",
-      "Gemini 3 Other",
-      "Gemini 2.5 Flash",
-      "Gemini 2.5 Flash-Lite",
-      "Gemini 2.5 Pro",
-      "Gemini 2.0 Flash",
-    ];
-    const card = `<main><div class="devsite-article-body">${ids.map((id, index) => `<h1>${labels[index]}</h1><table><tr><th>Model ID</th><td><code>${id}</code></td></tr><tr><th>Modalities</th><td>Inputs: Text Outputs: Text</td></tr></table>`).join("")}</div></main>`;
-    const supported = `<main><h2>Supported models</h2><ul>${labels.map((label) => `<li>${label}</li>`).join("")}</ul></main>`;
-    const pricing = await fixture("vertex/grounding-allowances.html");
-    const parse = (pricing: string) =>
-      vertexCatalog({
-        "model.html": card,
-        "pricing.html": pricing,
-        "grounding-search.html": supported,
-        "grounding-maps.html": supported,
-        "grounding-data.html": supported,
+  it.each([false, true])(
+    "shares Vertex grounding pools with a separate Usage column: %s",
+    async (separateUsage) => {
+      const ids = [
+        "gemini-3-test",
+        "gemini-3-other",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+      ];
+      const labels = [
+        "Gemini 3 Test",
+        "Gemini 3 Other",
+        "Gemini 2.5 Flash",
+        "Gemini 2.5 Flash-Lite",
+        "Gemini 2.5 Pro",
+        "Gemini 2.0 Flash",
+      ];
+      const card = `<main><div class="devsite-article-body">${ids.map((id, index) => `<h1>${labels[index]}</h1><table><tr><th>Model ID</th><td><code>${id}</code></td></tr><tr><th>Modalities</th><td>Inputs: Text Outputs: Text</td></tr></table>`).join("")}</div></main>`;
+      const supported = `<main><h2>Supported models</h2><ul>${labels.map((label) => `<li>${label}</li>`).join("")}</ul></main>`;
+      const original = await fixture("vertex/grounding-allowances.html");
+      const pricing = separateUsage
+        ? original
+            .replaceAll("<th>Pricing</th>", "<th>Usage</th><th>Price (USD)</th>")
+            .replaceAll("</td>\n      </tr>", "</td><td>See usage tiers</td>\n      </tr>")
+        : original;
+      const parse = (pricing: string) =>
+        vertexCatalog({
+          "model.html": card,
+          "pricing.html": pricing,
+          "grounding-search.html": supported,
+          "grounding-maps.html": supported,
+          "grounding-data.html": supported,
+        });
+      const models = await parse(pricing);
+      const value = manifest("vertex");
+      const source = value.sources.find(({ id }) => id === "vertex-pricing");
+      if (source === undefined) throw new Error("Missing Vertex model source");
+      const partition = assembleParsedProviderPricing(
+        "vertex",
+        observedAt,
+        [{ source, models }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      validateParsedPricing(value, source, models, partition);
+      const pools =
+        partition?.books.flatMap(({ offers }) =>
+          offers.filter(({ offer_key }) => offer_key.startsWith("allowance:")),
+        ) ?? [];
+      expect(pools).toHaveLength(5);
+      const pool = (key: string) =>
+        pools
+          .find(({ offer_key }) => offer_key === `allowance:${key}`)
+          ?.terms.flatMap((term) => (term.kind === "allowance" ? term.variants : []))[0];
+      expect(pool("gemini-3-web-monthly")).toMatchObject({
+        benefit: { kind: "quantity", quantity: { value: { numerator: "5000", denominator: "1" } } },
+        reset: { value: "monthly" },
       });
-    const models = await parse(pricing);
-    const value = manifest("vertex");
-    const source = value.sources.find(({ id }) => id === "vertex-pricing");
-    if (source === undefined) throw new Error("Missing Vertex model source");
-    const partition = assembleParsedProviderPricing(
-      "vertex",
-      observedAt,
-      [{ source, models }],
-      models,
-      value.pricingCategoricalLabels,
-    );
-    validateParsedPricing(value, source, models, partition);
-    const pools =
-      partition?.books.flatMap(({ offers }) =>
-        offers.filter(({ offer_key }) => offer_key.startsWith("allowance:")),
-      ) ?? [];
-    expect(pools).toHaveLength(5);
-    const pool = (key: string) =>
-      pools
-        .find(({ offer_key }) => offer_key === `allowance:${key}`)
-        ?.terms.flatMap((term) => (term.kind === "allowance" ? term.variants : []))[0];
-    expect(pool("gemini-3-web-monthly")).toMatchObject({
-      benefit: { kind: "quantity", quantity: { value: { numerator: "5000", denominator: "1" } } },
-      reset: { value: "monthly" },
-    });
-    expect(pool("gemini-3-web-monthly")?.target).toMatchObject({
-      kind: "rate_terms",
-      term_refs: expect.any(Array),
-    });
-    const web = pool("gemini-3-web-monthly")?.target;
-    expect(web?.kind === "rate_terms" ? web.term_refs.length : undefined).toBe(4);
-    expect(pool("google-search-flash-daily")).toMatchObject({
-      benefit: { quantity: { value: { numerator: "1500" } } },
-      reset: { value: "daily" },
-    });
-    expect(
-      pools.find(({ offer_key }) => offer_key === "allowance:google-search-flash-daily")
-        ?.model_refs,
-    ).toHaveLength(3);
-    expect(pool("google-search-pro-daily")).toMatchObject({
-      benefit: { quantity: { value: { numerator: "10000" } } },
-    });
-    expect(
-      pools.find(({ offer_key }) => offer_key === "allowance:google-maps-flash-daily")?.model_refs,
-    ).toEqual(["vertex/gemini-2.0-flash"]);
-    expect(pool("google-maps-pro-daily")).toBeUndefined();
-    expect(
-      models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .flatMap(({ raw_price_facts }) => raw_price_facts)
-        .some(({ term_key }) => term_key === "grounding_billing_rule"),
-    ).toBe(true);
-    const driftedModels = await parse(
-      pricing.replaceAll(
-        /aggregated across all Gemini 3\s+models/g,
-        "with a new unspecified sharing rule",
-      ),
-    );
-    const drifted = assembleParsedProviderPricing(
-      "vertex",
-      observedAt,
-      [{ source, models: driftedModels }],
-      driftedModels,
-      value.pricingCategoricalLabels,
-    );
-    validateParsedPricing(value, source, driftedModels, drifted);
-    expect(
-      drifted?.books
-        .flatMap(({ offers }) =>
-          offers.flatMap(({ terms }) =>
-            terms.flatMap((term) => (term.kind === "raw" ? term.variants : [])),
-          ),
-        )
-        .some(({ impact }) => impact === "allowance"),
-    ).toBe(true);
-  });
+      expect(pool("gemini-3-web-monthly")?.target).toMatchObject({
+        kind: "rate_terms",
+        term_refs: expect.any(Array),
+      });
+      const web = pool("gemini-3-web-monthly")?.target;
+      expect(web?.kind === "rate_terms" ? web.term_refs.length : undefined).toBe(4);
+      expect(pool("google-search-flash-daily")).toMatchObject({
+        benefit: { quantity: { value: { numerator: "1500" } } },
+        reset: { value: "daily" },
+      });
+      expect(
+        pools.find(({ offer_key }) => offer_key === "allowance:google-search-flash-daily")
+          ?.model_refs,
+      ).toHaveLength(3);
+      expect(pool("google-search-pro-daily")).toMatchObject({
+        benefit: { quantity: { value: { numerator: "10000" } } },
+      });
+      expect(
+        pools.find(({ offer_key }) => offer_key === "allowance:google-maps-flash-daily")
+          ?.model_refs,
+      ).toEqual(["vertex/gemini-2.0-flash"]);
+      expect(pool("google-maps-pro-daily")).toBeUndefined();
+      expect(
+        models
+          .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+          .flatMap(({ raw_price_facts }) => raw_price_facts)
+          .some(({ term_key }) => term_key === "grounding_billing_rule"),
+      ).toBe(true);
+      const driftedModels = await parse(
+        pricing.replaceAll(
+          /aggregated across all Gemini 3\s+models/g,
+          "with a new unspecified sharing rule",
+        ),
+      );
+      const drifted = assembleParsedProviderPricing(
+        "vertex",
+        observedAt,
+        [{ source, models: driftedModels }],
+        driftedModels,
+        value.pricingCategoricalLabels,
+      );
+      validateParsedPricing(value, source, driftedModels, drifted);
+      expect(
+        drifted?.books
+          .flatMap(({ offers }) =>
+            offers.flatMap(({ terms }) =>
+              terms.flatMap((term) => (term.kind === "raw" ? term.variants : [])),
+            ),
+          )
+          .some(({ impact }) => impact === "allowance"),
+      ).toBe(true);
+    },
+  );
 
   it("parses labeled lifecycle dates, quota limits, and endpoint replacements", async () => {
     const card = `
@@ -17116,7 +17125,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v16",
+      extractorVersion: "deepseek-catalog-v17",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
@@ -17490,6 +17499,55 @@ describe("DeepSeek adapters", () => {
         overrides: { "zh-cn/quick_start/pricing/": cny },
       }),
     ).resolves.toHaveLength(3);
+  });
+
+  it("preserves holiday peak applicability as a caller-selected category without a calendar", async () => {
+    const rule =
+      "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays. All other hours are off-peak, including weekends and Chinese public holidays in full.";
+    const catalog = (await fixture("deepseek/catalog.html")).replace(
+      /Off-peak rates are half of the peak rates\.[\s\S]*?on weekends \(Saturdays and Sundays, Beijing Time\)\./,
+      `Off-peak rates are half of the peak rates. ${rule}`,
+    );
+    const cny = (await fixture("deepseek/catalog-cny.html")).replace(
+      /空闲时段价格为高峰时段价格的一半。[\s\S]*?统一按照低谷时段价格收取调用费用。/,
+      "空闲时段价格为高峰时段价格的一半。北京时间周一至周五（不含中国法定节假日）9:00 - 12:00、14:00 - 18:00 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段。",
+    );
+    const date = "2026-09-20T00:00:00.000Z";
+    const models = await deepseekCatalog({
+      catalog,
+      observedAt: date,
+      overrides: { "zh-cn/quick_start/pricing/": cny },
+    });
+    expect(models).toHaveLength(3);
+    for (const model of models) {
+      expect(model.price_facts.filter(({ currency }) => currency === "USD")).toHaveLength(6);
+      expect(model.price_facts.filter(({ currency }) => currency === "CNY")).toHaveLength(6);
+    }
+    const configured = source("deepseek-catalog");
+    const partition = assembleParsedProviderPricing(
+      "deepseek",
+      date,
+      [{ source: configured, models }],
+      models,
+    );
+    validateParsedPricing(manifest("deepseek"), configured, models, partition);
+    const periods =
+      partition?.vocabulary.atoms.filter(
+        (atom) => atom.kind === "categorical_value" && atom.dimension.value === "billing_period",
+      ) ?? [];
+    expect(periods.map(({ key }) => key).sort()).toEqual(["off_peak", "peak"]);
+    for (const atom of periods) {
+      expect(atom).not.toHaveProperty("schedule");
+      expect(atom.definition).toContain(rule);
+      expect(atom.definition).toContain("caller supplies");
+    }
+    await expect(
+      deepseekCatalog({
+        catalog: catalog.replace("01:00 - 04:00", "02:00 - 04:00"),
+        observedAt: date,
+        overrides: { "zh-cn/quick_start/pricing/": cny },
+      }),
+    ).rejects.toThrow("peak-hour rule changed");
   });
 
   it("preserves exact validity across a separately published price transition", async () => {
@@ -19241,7 +19299,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v7",
+      extractorVersion: "kimi-pricing-v8",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -19361,6 +19419,129 @@ describe("Kimi adapters", () => {
       onPricingReconciliation,
     );
   }
+
+  it.each([
+    {
+      region: "cn",
+      sourceId: "kimi-pricing",
+      currency: "CNY",
+      writes: ["20.00", "40.00"],
+      search: "0.01",
+      pro: "0.015",
+      legacy: "0.03",
+    },
+    {
+      region: "global",
+      sourceId: "kimi-international-pricing",
+      currency: "USD",
+      writes: ["3.00", "6.00"],
+      search: "0.002",
+      pro: "0.003",
+      legacy: "0.005",
+    },
+  ])(
+    "parses combined Kimi $region tables, TTL writes and independent REST tools",
+    async ({ region, sourceId, currency, writes, search, pro, legacy }) => {
+      const body = await fixture(`kimi/pricing-${region}-combined.md`);
+      const tools = await fixture(`kimi/pricing-${region}-rest-tools.md`);
+      const reconciliation: PricingReconciliationItem[] = [];
+      const options = {
+        sourceId,
+        indexBody: body,
+        overrides: {
+          "pricing-k27": body,
+          "pricing-k26": body,
+          "pricing-overview": body,
+          "pricing-k25": "# Retired",
+          "pricing-v1": "# Retired",
+          "pricing-batch": "# No batch rates in this fixture",
+          tools,
+        },
+      };
+      const models = await pricing({
+        ...options,
+        onPricingReconciliation: (item) => reconciliation.push(item),
+      });
+      expect(models.map(({ model_id }) => model_id).sort()).toEqual([
+        "kimi-k2.6",
+        "kimi-k2.7-code",
+        "kimi-k2.7-code-highspeed",
+        "kimi-k3",
+      ]);
+      expect(
+        models
+          .find(({ model_id }) => model_id === "kimi-k3")
+          ?.price_facts.filter(({ meter }) => meter === "cache_write_text")
+          .map(({ price, currency, conditions }) => ({
+            price,
+            currency,
+            ttl: conditions.cache_ttl_seconds,
+          })),
+      ).toEqual([
+        { price: writes[0], currency, ttl: 300 },
+        { price: writes[1], currency, ttl: 3600 },
+      ]);
+      const configured = source(sourceId);
+      const partition = assembleParsedProviderPricing(
+        "kimi",
+        observedAt,
+        [{ source: configured, models }],
+        models,
+      );
+      validateParsedPricing(value, configured, models, partition);
+      const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+      for (const [key, amount] of [
+        ["web-search-basic", search],
+        ["web-search-pro", pro],
+        ["web-fetch", search],
+      ]) {
+        expect(commercial.find(({ resource_key }) => resource_key === key)).toMatchObject({
+          model_refs: [],
+          price_facts: [expect.objectContaining({ price: amount, currency, unit: "event" })],
+        });
+        const book = partition?.books.find(
+          ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === key,
+        );
+        expect(book?.offers[0]?.relations).toEqual([]);
+        expect(book?.offers[0]?.terms).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              kind: "rate",
+              variants: [
+                expect.objectContaining({
+                  charge_binding: expect.objectContaining({
+                    aggregation: "request",
+                    signal: expect.objectContaining({ namespace: "provider", provider_id: "kimi" }),
+                  }),
+                }),
+              ],
+            }),
+          ]),
+        );
+      }
+      expect(
+        commercial.find(({ resource_key }) => resource_key === "web-search")?.price_facts,
+      ).toEqual(expect.arrayContaining([expect.objectContaining({ price: legacy })]));
+      expect(commercial.some(({ resource_key }) => resource_key === "files")).toBe(true);
+      expect(
+        reconciliation.filter(({ reason_code }) =>
+          /pricing_row_rejected|billing_contract_drift|web_search_warning_drift/.test(reason_code),
+        ),
+      ).toEqual([]);
+      const drifted = await pricing({
+        ...options,
+        overrides: { ...options.overrides, tools: tools.replaceAll("HTTP 200", "HTTP 202") },
+      });
+      expect(drifted.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toEqual(
+        models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts,
+      );
+      expect(
+        drifted
+          .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+          .some(({ resource_key }) => resource_key === "web-search-basic"),
+      ).toBe(false);
+    },
+  );
 
   async function releases(): Promise<ProviderModel[]> {
     const configured = source("kimi-releases");
@@ -19710,6 +19891,32 @@ describe("Kimi adapters", () => {
         reason_code: "pricing_document_rejected",
       }),
     );
+  });
+
+  it("restores Batch accounting when the guide explicitly supports K2.7 Code", async () => {
+    const guide = (await fixture("kimi/batch-guide.md")).replaceAll("kimi-k2.5", "kimi-k2.7-code");
+    const models = await pricing({ overrides: { "batch-guide": guide } });
+    const configured = source("kimi-pricing");
+    const partition = assembleParsedProviderPricing(
+      "kimi",
+      observedAt,
+      [{ source: configured, models }],
+      models,
+    );
+    validateParsedPricing(value, configured, models, partition);
+    const batch = partition?.books
+      .find(({ book_key }) => book_key === "model:kimi/kimi-k2.7-code")
+      ?.offers.find(({ offer_key }) => offer_key === "batch");
+    const output = batch?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "output_text",
+    );
+    expect(output?.kind === "rate" ? output.variants[0]?.charge_binding : undefined).toMatchObject({
+      signal: { namespace: "kmodels", value: "output_tokens" },
+      aggregation: "result_item",
+      quantity_methods: expect.arrayContaining([
+        expect.objectContaining({ input_sources: expect.any(Array) }),
+      ]),
+    });
   });
 
   it("keeps independent prices when Batch accounting evidence drifts", async () => {
