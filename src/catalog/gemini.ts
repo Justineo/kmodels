@@ -1580,7 +1580,7 @@ function extractPricingInputs(
         sample: `${expectedInteractionPricingInputs - inputs.length} Interactions mappings unavailable`,
       });
   }
-  const video = optionalDocument(bundle, "/gemini-api/docs/video");
+  const video = optionalDocument(bundle, "/gemini-api/docs/veo");
   if (video !== undefined) {
     const inputs = videoPricingInputs(video, sourceId);
     facts.push(...inputs);
@@ -1652,7 +1652,7 @@ function availableSupportingDocuments(
 function documentedCodes(body: string): ReadonlySet<string> {
   const $ = load(body);
   return new Set(
-    $(".devsite-article-body code")
+    $(".devsite-article-body code, .devsite-article-body .signature > .field-name")
       .map((_index, element) => text($(element).text()))
       .get(),
   );

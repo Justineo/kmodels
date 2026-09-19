@@ -991,6 +991,7 @@ async function huggingFaceFeatherless(
   edit: (body: string) => string = (body) => body,
   catalogModels?: ProviderModel[],
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  pricingReference?: string,
 ): Promise<ProviderModel[]> {
   const value = manifest("huggingface");
   const source = huggingFaceFeatherlessSource(value);
@@ -1009,7 +1010,7 @@ async function huggingFaceFeatherless(
         },
         {
           url: "https://featherless.ai/docs/request-pricing-and-credits",
-          body: await fixture("huggingface/featherless-pricing.html"),
+          body: pricingReference ?? (await fixture("huggingface/featherless-pricing.html")),
         },
       ],
     }),
@@ -1250,7 +1251,7 @@ async function geminiCatalog(
         ? []
         : [
             {
-              url: "https://ai.google.dev/gemini-api/docs/video",
+              url: "https://ai.google.dev/gemini-api/docs/veo",
               body: overrides["video.html"] ?? (await fixture("gemini/video.html")),
             },
           ]),
@@ -1608,6 +1609,8 @@ async function cohereCatalog(
     omitDocument?: string;
     pricing?: string;
     pricingPolicy?: string;
+    parse?: string;
+    parseApi?: string;
     transcription?: string;
   } = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
@@ -1631,11 +1634,13 @@ async function cohereCatalog(
     linkedDocuments: {
       ...configured.linkedDocuments,
       minDocuments: 5,
-      maxDocuments: 6,
+      maxDocuments: 7,
     },
   };
   const documents = [
     ["https://docs.cohere.com/docs/models", "index.html"],
+    ["https://docs.cohere.com/docs/parse", "parse.html"],
+    ["https://docs.cohere.com/v2/reference/parse.md", "parse-api.md"],
     ["https://docs.cohere.com/docs/command-a-plus", "command-a-plus.html"],
     ["https://docs.cohere.com/docs/command-a", "command-a-broken.html"],
     ["https://docs.cohere.com/docs/transcribe", "transcribe.html"],
@@ -1659,6 +1664,8 @@ async function cohereCatalog(
   ] as const;
   const documentOverrides = new Map<string, string | undefined>([
     ["https://docs.cohere.com/reference/chat.md", overrides.chat],
+    ["https://docs.cohere.com/docs/parse", overrides.parse],
+    ["https://docs.cohere.com/v2/reference/parse.md", overrides.parseApi],
     ["https://docs.cohere.com/reference/chat-stream.md", overrides.chatStream],
     ["https://docs.cohere.com/docs/models", overrides.index],
     ["https://docs.cohere.com/docs/command-a-plus", overrides.commandAPlus],
@@ -1670,7 +1677,9 @@ async function cohereCatalog(
   const body = JSON.stringify({
     index: {
       url: source.url,
-      body: overrides.modelIndex ?? (await fixture("cohere/model-index.md")),
+      body:
+        overrides.modelIndex ??
+        `${await fixture("cohere/model-index.md")}\n- [Parse](https://docs.cohere.com/docs/parse.md)`,
     },
     documents: await Promise.all(
       documents
@@ -2166,6 +2175,72 @@ describe("source taxonomy", () => {
 });
 
 describe("Cohere adapters", () => {
+  it("binds the Parse overview identity and page rate to the API billed-page counter", async () => {
+    const product = {
+      modelName: "Parse 5",
+      per: "1M tokens",
+      pricings: [{ inputLabel: "Cost", inputPrice: 1.5, overridePer: "1K pages" }],
+    };
+    const pricing = `${await fixture("cohere/pricing.html")}<script>self.__next_f.push(${JSON.stringify([1, `6:${JSON.stringify(product)}`])})</script>`;
+    const models = await cohereCatalog({ pricing });
+    const model = models.find(({ model_id }) => model_id === "parse-v5.0");
+    expect(model).toMatchObject({
+      tasks: ["ocr"],
+      limits: { context_tokens: 8192 },
+      api_endpoints: [{ name: "Parse", path: "v2/parse" }],
+      price_facts: [
+        expect.objectContaining({ meter: "input_image", price: "1.5", unit: "thousand_pages" }),
+      ],
+    });
+    const source = manifest("cohere").sources[0];
+    if (source === undefined) throw new Error("Missing Cohere source");
+    const partition = assembleParsedProviderPricing(
+      "cohere",
+      observedAt,
+      [{ source, models }],
+      models,
+    );
+    const terms = partition?.books
+      .find(
+        ({ scope }) => scope.kind === "models" && scope.model_refs.includes("cohere/parse-v5.0"),
+      )
+      ?.offers.flatMap(({ terms }) => terms);
+    expect(
+      terms
+        ?.filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants.map((variant) => variant.charge_binding)),
+    ).toEqual([
+      expect.objectContaining({
+        signal: { namespace: "kmodels", value: "processed_pages" },
+        quantity_methods: [
+          expect.objectContaining({
+            input_sources: [
+              expect.objectContaining({
+                locator: { kind: "json_pointer", value: "/meta/billed_units/pages" },
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]);
+    const drifted = await cohereCatalog({
+      pricing,
+      parse: (await fixture("cohere/parse.html")).replace("Latest model", "Example model"),
+    });
+    expect(drifted.some(({ model_id }) => model_id === "parse-v5.0")).toBe(false);
+    const missingCounter = await cohereCatalog({
+      pricing,
+      parseApi: (await fixture("cohere/parse-api.md")).replace(/"pages":\s*1/, '"items":1'),
+    });
+    expect(missingCounter.find(({ model_id }) => model_id === "parse-v5.0")?.price_facts).toEqual(
+      model?.price_facts,
+    );
+    expect(
+      missingCounter
+        .flatMap((model) => model.pricing_inputs ?? [])
+        .some(({ key }) => key === "parse.v2.pages"),
+    ).toBe(false);
+  });
   it("combines callable IDs with model cards, lifecycle, releases, and native prices", async () => {
     const models = await cohereCatalog();
     const commandA = models.find((model) => model.model_id === "command-a-03-2025");
@@ -2225,7 +2300,7 @@ describe("Cohere adapters", () => {
         endpoints: north?.api_endpoints,
       },
     }).toEqual({
-      count: 43,
+      count: 44,
       command_a_name: "Command A",
       command_a_release: "2025-03-13",
       command_a_price_count: 2,
@@ -2300,7 +2375,7 @@ describe("Cohere adapters", () => {
       ],
     );
     const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
-    expect(pricingInputs).toHaveLength(11);
+    expect(pricingInputs).toHaveLength(12);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2584,7 +2659,7 @@ describe("Cohere adapters", () => {
     const chat = (await fixture("cohere/chat.md")).replace("/v2/chat", "/v2/renamed");
     const chatReconciliation: PricingReconciliationItem[] = [];
     const chatModels = await cohereCatalog({ chat }, (item) => chatReconciliation.push(item));
-    expect(chatModels).toHaveLength(43);
+    expect(chatModels).toHaveLength(44);
     expect(chatReconciliation).toContainEqual({
       disposition: "unbound",
       reason_code: "endpoint_reference_drift",
@@ -2652,7 +2727,7 @@ describe("Cohere adapters", () => {
       { pricing: pricing.replace("</main>", `${frame.replace("0.15", "0.16")}</main>`) },
       (item) => reconciliation.push(item),
     );
-    expect(models).toHaveLength(43);
+    expect(models).toHaveLength(44);
     expect(models.find(({ model_id }) => model_id === "command-r")?.price_facts).toHaveLength(0);
     expect(reconciliation).toContainEqual({
       disposition: "unresolved",
@@ -2744,11 +2819,11 @@ describe("Cohere adapters", () => {
       (item) => reconciliation.push(item),
       (finding) => findings.push(finding),
     );
-    expect(chatModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(10);
+    expect(chatModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(11);
     expect(reconciliation).toContainEqual({
       disposition: "unbound",
       reason_code: "pricing_input_contract_partial",
-      sample: "10/11 Cohere pricing inputs",
+      sample: "11/12 Cohere pricing inputs",
     });
     expect(findings).toContainEqual(
       expect.objectContaining({
@@ -2896,6 +2971,31 @@ describe("Cohere adapters", () => {
 });
 
 describe("Mistral adapters", () => {
+  it("recognizes paragraph pricing titles only through a unique exact active catalog name", async () => {
+    const pricing = (await fixture("mistral/pricing.html"))
+      .replaceAll("<h2>Mistral Medium 3.5</h2>", "<p>Mistral Medium 3.5</p>")
+      .replaceAll('data-text="mistral-medium-latest"', 'data-unused="mistral-medium-latest"');
+    const sourcePrices = (models: ProviderModel[]) =>
+      models
+        .find(({ model_id }) => model_id === "mistral-medium-3-5")
+        ?.price_facts.filter(({ source_ref }) => source_ref === "mistral-pricing");
+    expect(sourcePrices(await mistralCatalog({ pricing }))).toEqual(
+      sourcePrices(await mistralCatalog()),
+    );
+    expect(sourcePrices(await mistralCatalog({ pricing }))).not.toHaveLength(0);
+    expect(
+      sourcePrices(
+        await mistralCatalog({
+          pricing: pricing.replaceAll("<p>Mistral Medium 3.5</p>", "<p>Mistral Medium</p>"),
+        }),
+      ),
+    ).toEqual([]);
+    const large = (await fixture("mistral/mistral-large-3-25-12.ts")).replace(
+      'name: "Mistral Large 3"',
+      'name: "Mistral Medium 3.5"',
+    );
+    expect(sourcePrices(await mistralCatalog({ pricing, large }))).toEqual([]);
+  });
   it("parses exact API names, non-exclusive tasks, lifecycle, and native prices", async () => {
     const models = await mistralCatalog();
     const medium = models.find((model) => model.model_id === "mistral-medium-3-5");
@@ -4054,7 +4154,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://mistral.ai/pricing/api/",
         extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v2",
+        extractorVersion: "mistral-pricing-v3",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
@@ -7069,7 +7169,7 @@ describe("Gemini adapters", () => {
         }),
         expect.objectContaining({
           id: "video",
-          url: "https://ai.google.dev/gemini-api/docs/video",
+          url: "https://ai.google.dev/gemini-api/docs/veo",
           format: "html",
           optional: true,
           claimLocal: true,
@@ -7367,6 +7467,45 @@ describe("Gemini adapters", () => {
         .find(({ book_key }) => book_key === "service:google-search")
         ?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "allowance")).length,
     ).toBe(1);
+  });
+
+  it("reads Interactions signature fields without treating example prose as a field definition", async () => {
+    const body = await fixture("gemini/interactions-fields.html");
+    const inputs = (await geminiCatalog({ "interactions-api.html": body })).flatMap(
+      (model) => model.pricing_inputs ?? [],
+    );
+    expect(inputs.filter(({ key }) => key.startsWith("interaction."))).toHaveLength(21);
+    const drifted =
+      body.replace(
+        '<span class="field-name">total_input_tokens</span>',
+        '<span class="field-name">renamed_input_tokens</span>',
+      ) +
+      '<p>total_input_tokens</p><div class="signature"><span class="field-name">total_input_tokens</span></div>';
+    const changed = (await geminiCatalog({ "interactions-api.html": drifted })).flatMap(
+      (model) => model.pricing_inputs ?? [],
+    );
+    expect(changed.some(({ key }) => key === "interaction.prompt.total")).toBe(false);
+    expect(changed.some(({ key }) => key === "interaction.cache.total")).toBe(true);
+  });
+
+  it("keeps only selectors documented by the relocated Veo parameter guide", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const inputs = (
+      await geminiCatalog({ "video.html": await fixture("gemini/veo-parameters.html") }, (item) =>
+        reconciliation.push(item),
+      )
+    ).flatMap((model) => model.pricing_inputs ?? []);
+    expect(
+      inputs
+        .filter(({ key }) => key.startsWith("video.request."))
+        .map(({ key }) => key)
+        .sort(),
+    ).toEqual(["video.request.duration_seconds", "video.request.resolution"]);
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "pricing_input_contract_partial",
+      sample: "1 video mappings unavailable",
+    });
   });
 
   it("publishes localized GenerateContent, embedding, Batch, and Interactions inputs", async () => {
@@ -10789,6 +10928,69 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it("keeps region-specific language prices without weakening identity or same-region conflict checks", async () => {
+    const edit =
+      (mode: "region" | "same-region" | "identity") =>
+      (body: string): string => {
+        const match = body.match(/globalThis\.__XAI_PUBLIC_MODELS__=(.*?);<\/script>/s);
+        if (match?.[1] === undefined) throw new Error("Missing xAI fixture payload");
+        const payload = z
+          .object({
+            clusterConfigs: z.array(
+              z
+                .object({
+                  clusterName: z.string(),
+                  languageModels: z.array(z.record(z.string(), z.unknown())),
+                })
+                .passthrough(),
+            ),
+          })
+          .parse(JSON.parse(match[1]));
+        const cluster = payload.clusterConfigs[0];
+        const model = cluster?.languageModels[0];
+        if (cluster === undefined || model === undefined)
+          throw new Error("Missing xAI fixture language model");
+        payload.clusterConfigs.push({
+          ...cluster,
+          clusterName: mode === "same-region" ? cluster.clusterName : "us-central-1",
+          languageModels: [
+            {
+              ...model,
+              promptTextTokenPrice: "22000",
+              ...(mode === "identity" ? { maxPromptLength: 1000 } : {}),
+            },
+          ],
+        });
+        return body.replace(match[1], JSON.stringify(payload));
+      };
+    const models = await xaiCatalog("xai/models.txt", edit("region"));
+    const prices = models
+      .find(({ model_id }) => model_id === "grok-4.5")
+      ?.price_facts.filter(
+        (rate) =>
+          rate.meter === "input_text" &&
+          rate.conditions.service_tier === undefined &&
+          rate.conditions.context_min_tokens === undefined,
+      );
+    expect(prices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "2",
+          conditions: expect.objectContaining({ region: "us-east-1" }),
+        }),
+        expect.objectContaining({
+          price: "2.2",
+          conditions: expect.objectContaining({ region: "us-central-1" }),
+        }),
+      ]),
+    );
+    await expect(xaiCatalog("xai/models.txt", edit("same-region"))).rejects.toThrow(
+      "conflicts within region us-east-1",
+    );
+    await expect(xaiCatalog("xai/models.txt", edit("identity"))).rejects.toThrow(
+      "grok-4.5 differs across public clusters",
+    );
+  });
   it("validates voice service configuration without publishing internal service names", async () => {
     const models = await xaiCatalog("xai/models-voice-services.txt");
     expect(
@@ -11507,7 +11709,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v13");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v14");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -11628,7 +11830,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v20");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v21");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -11731,7 +11933,7 @@ describe("document adapter", () => {
       sample: "30/32 Bedrock pricing inputs",
     });
 
-    const mantle = bundle.documents.find(({ url }) => url.endsWith("bedrock-mantle.md"));
+    const mantle = bundle.documents.find(({ url }) => url.endsWith("inference-responses-api.md"));
     if (mantle === undefined) throw new Error("Missing Bedrock Mantle fixture");
     bundle.documents.push({ ...mantle });
     const findings: PricingReconciliationItem[] = [];
@@ -11909,7 +12111,7 @@ describe("document adapter", () => {
       document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
     );
     const mantle = fixtureBundle.documents.find((document) =>
-      document.url.endsWith("bedrock-mantle.md"),
+      document.url.endsWith("inference-responses-api.md"),
     );
     if (haiku === undefined || mantle === undefined)
       throw new Error("Missing Bedrock model card fixture");
@@ -12049,7 +12251,7 @@ describe("document adapter", () => {
       document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
     );
     const mantle = fixtureBundle.documents.find((document) =>
-      document.url.endsWith("bedrock-mantle.md"),
+      document.url.endsWith("inference-responses-api.md"),
     );
     if (haiku === undefined || mantle === undefined)
       throw new Error("Missing Bedrock model card fixture");
@@ -15431,7 +15633,7 @@ describe("Hugging Face adapter", () => {
       "responses-schema",
     ]);
     expect(sources[2]).toMatchObject({
-      extractorVersion: "huggingface-featherless-v1",
+      extractorVersion: "huggingface-featherless-v2",
       optional: true,
       retainOmittedFacts: true,
       transport: { kind: "featherless-models", pageSize: 1000 },
@@ -15478,6 +15680,24 @@ describe("Hugging Face adapter", () => {
       "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
       "https://huggingface.co/docs/inference-providers/en/tasks/feature-extraction.md",
     ]);
+  });
+
+  it("accepts the current Featherless per-model price wording while retaining unit and formula checks", async () => {
+    const body = (await fixture("huggingface/featherless-pricing.html")).replace(
+      "For the exact price of a specific model, see that model's page in the model catalog.",
+      "Every model&#39;s page shows its current prices — input, cached input where available, and output, per 1M tokens (per 1M characters for speech models).",
+    );
+    expect(await huggingFaceFeatherless(undefined, undefined, undefined, body)).toEqual(
+      await huggingFaceFeatherless(),
+    );
+    await expect(
+      huggingFaceFeatherless(
+        undefined,
+        undefined,
+        undefined,
+        body.replace("Prices are listed per 1M tokens.", "Prices are listed per 1K tokens."),
+      ),
+    ).rejects.toThrow("request-pricing reference drifted");
   });
 
   it("overlays only exact Featherless HF routes with native first-party prices", async () => {

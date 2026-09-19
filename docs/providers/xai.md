@@ -46,6 +46,11 @@ dynamic product documentation as a refresh dependency.
 - The dedicated pricing table owns a current public amount when its model and
   applicability match exactly. Conflicts with the embedded payload or Models summary
   are retained as warnings; they do not discard the model or unrelated rates.
+  Language models with different fixed-point prices across public clusters retain one identity
+  and distinct region-qualified amounts. For these models, the unscoped summary cannot override
+  the narrower regional prices. Batch and Priority multipliers apply to each region's own base
+  rates. Conflicting identity/capability fields across regions, or competing prices within the
+  same region, still reject rather than selecting an arbitrary row.
 - Optional authenticated model inventories are enabled by `XAI_API_KEY`. They are
   account-scoped observations and may enrich a matching public identity, but cannot
   create global presence or replace the public price book.

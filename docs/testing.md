@@ -16,6 +16,10 @@ Status: implemented
   the current existence, price, status, or variant count of an otherwise volatile provider record.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
+- Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source
+  judgments, deterministic gap routing without inference, parser replay, cache reuse, evidence
+  integrity, exact dismissals and failure isolation. The separate opt-in live evaluation measures
+  marker-preserving semantic drift; see [Source semantic audit](semantic-audit.md).
 
 The generated-data file list is defined once in `tests/generated-data-tests.ts` and consumed by Vite+
 configuration and the test-boundary guard. Adding a test that reads durable generated state

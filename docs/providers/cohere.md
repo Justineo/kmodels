@@ -55,6 +55,11 @@ or another exact non-numeric price state. Absence of a separate price is unknown
   corroboration and cannot create global models, prices, or accounting contracts. Enable it with
   `COHERE_API_KEY`.
 
+The indexed Parse overview exposes its exact ID in `Latest model`, rather than the normal `Model ID`
+card. This label is accepted only on `/docs/parse` with one `parse-v...` value. Its linked, separately
+reviewed Parse API reference establishes `POST /v2/parse`. The current API accepts document images;
+PDF/PPT statements in the broader model overview do not expand this endpoint's supported inputs.
+
 Callable IDs come only from labeled Cohere model fields or the exact documented Command A card
 correction. That correction requires agreement between card title and path, one exact SDK ID in an
 official release note, and a separate path-matching card for the incorrect ID. Price matching uses
@@ -68,6 +73,9 @@ rows use the stronger price-book evidence class.
 - Embed text and image amounts map to `embedding` per token with a modality applicability condition.
 - Rerank amounts map to `rerank` per Cohere search unit. One search unit is the source-native billed
   unit and is not rewritten as an ordinary HTTP request.
+- Parse's structured `Cost` row with `overridePer: "1K pages"` maps to image input per thousand
+  pages with operation `ocr`. Its ID is joined through the existing unique normalized identity
+  rule. Rendered Model Vault instance prices remain excluded.
 - Retired models receive an exact `not_applicable` disposition and retain no current hosted rate.
   Missing prices for current models remain unknown; absence never means free.
 - Responsive copies of the same structured pricing product must agree. A disagreement removes only
@@ -83,7 +91,10 @@ publishes the following exact acquisition contracts:
 - Chat V1 streaming: terminal `stream-end.response.meta.billed_units.input_tokens` and
   `output_tokens`;
 - Embed V2: `response.meta.billed_units.input_tokens` or `image_tokens`; and
-- Rerank V2: `response.meta.billed_units.search_units`.
+- Rerank V2: `response.meta.billed_units.search_units`; and
+- Parse V2: `response.meta.billed_units.pages`, supplying the `processed_pages` signal. A missing
+  Parse API or billed-page field removes this quantity method while preserving the independently
+  evidenced model and numeric page rate.
 
 Each price variant keeps a semantic charge signal even if no current response contract resolves
 it. When a matching contract exists, `quantity_methods.input_sources` gives the response or

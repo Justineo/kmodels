@@ -1282,7 +1282,20 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     throw new Error("Wrong Mistral pricing extractor");
   if (input.catalogModels === undefined) throw new Error("Mistral pricing requires the catalog");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const cards = parseMistralPricingCards(bundle.index.body, input.onPricingReconciliation);
+  const cards = parseMistralPricingCards(bundle.index.body, input.onPricingReconciliation).map(
+    (card) => {
+      if (card.id !== "") return card;
+      // The page no longer exposes clipboard IDs. Only a unique, exact active catalog title
+      // can replace that identity evidence; do not derive an API ID from a documentation slug.
+      const matches =
+        input.catalogModels?.filter(
+          (model) => model.status === "active" && model.name === card.title,
+        ) ?? [];
+      return matches.length === 1 && matches[0] !== undefined
+        ? { ...card, id: matches[0].model_id }
+        : card;
+    },
+  );
   assertItemCount(
     "Mistral pricing cards",
     cards.length,

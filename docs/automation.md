@@ -3,21 +3,38 @@
 Status: implemented
 
 - GitHub Actions checks every push and pull request.
-- A separate daily `Catalog repair` workflow first runs a deterministic, non-AI gate. The schedule
-  alone never starts Copilot: inference begins only when the latest committed refresh report contains
-  a parser failure, a changed source-contract finding, a rejected provider validation, or a failed
-  pricing validation. The gate excludes only operational states such as fetch failures and missing
+- A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
+  alone never starts Copilot: code-repair inference begins when the latest committed refresh report contains
+  a parser failure, a changed source-contract finding, known unrecognized public pricing-card
+  structure, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
+  pricing validation. The gate excludes operational states such as fetch failures and missing
   credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
   safe code repair exists. A provider simply not publishing a price is never a repair candidate.
+- Missing owned mappings and unrecognized pricing cards remain candidates on unchanged source bytes;
+  accepted publication or fallback does not resolve them. The gate includes their reason counts and
+  bounded diagnostic samples. Source candidates do not hide separate pricing validation failures
+  for the same provider. Unknown meters and unbound product names alone are not automatically
+  parser failures. When transport or required commercial evidence is unavailable and no code-repair
+  candidate exists, preparation reports incomplete instead of claiming a healthy no-op. Missing
+  optional credentials alone remains a normal configured scope.
+- Public 404/410 responses enter relocation review after two consecutive failures. Transient
+  transport/auth failures do not. A source URL changes only after independent first-party evidence
+  establishes its successor. The public evidence CLI reports omitted companions explicitly even
+  when the main bundle succeeds.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
   `gh workflow run catalog-repair.lock.yml`. Manual runs use the same issue gate and deduplication
   rules as scheduled runs.
+- Neither hourly refresh nor daily repair runs Jev. The [manual semantic experiment](semantic-audit.md)
+  remains available, but has not demonstrated incremental production defect discovery. Follow the
+  [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
+  repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
+  supplies no semantic-audit directory, key, or cache.
 - Repair runs are serialized. After an active run finishes, any queued run checks for an open pull
   request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
-  Repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
+  Code-repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
   cost-efficient while retaining deeper analysis for source-drift diagnosis.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
   direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
@@ -36,6 +53,12 @@ Status: implemented
   reviewing the diff, and reuses results unless a relevant change requires another check. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   pull request. A repair pull request requires every repository validation command to pass.
+- Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
+  (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
+  Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
+  that list synchronized when adding source hosts. An unavailable tool/source or an unreproduced
+  issue produces `report_incomplete`, not a no-op. Runtime sandbox connectivity must be verified in
+  CI; local fetch success alone does not establish remote access.
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.

@@ -42,8 +42,12 @@ a failure retains the last verified Gemini pricebook without rejecting fresh mod
 optional claim-local Discovery document verifies GenerateContent, embedding, and Batch result
 fields used by charge bindings. The first-party Interactions API reference independently supplies
 Interactions usage and grounding counters, the GenerateContent Batch and Embeddings API references
-establish the response-file JSONL item types, and the video-generation guide supplies Veo request
-duration, resolution, and audio selectors. A missing or incompatible field removes only that exact
+establish the response-file JSONL item types, and the Veo guide at `/gemini-api/docs/veo` supplies
+documented video request selectors. `/video` is now an overview linking to Veo and Omni; it is not
+the parameter reference. Interactions fields are recognized from both inline code and the API
+reference's `.signature > .field-name` definitions, never from arbitrary prose or navigation.
+The current Veo parameter table establishes duration and resolution; an absent `generateAudio`
+definition remains an explicitly reported missing mapping. A missing or incompatible field removes only that exact
 input mapping; rates, sibling mappings, and model identity still refresh.
 
 The authenticated `/v1beta/models` source is an optional account-scoped inventory overlay enabled

@@ -7,6 +7,8 @@
     "dev": "vp dev",
     "build": "vue-tsc --noEmit && vp build",
     "catalog-repair:check": "node scripts/catalog-repair.ts",
+    "catalog:audit": "node --env-file-if-exists=.env scripts/audit-catalog.ts",
+    "catalog:audit:eval": "node --env-file-if-exists=.env scripts/evaluate-jev.ts",
     "check": "vp check",
     "collect": "node --env-file-if-exists=.env scripts/collect.ts",
     "collect:fixtures": "vp test --run tests/adapters.test.ts",

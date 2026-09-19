@@ -51,6 +51,7 @@ const endpointSchema = z.enum([
   "rate",
   "generate",
   "transcriptions",
+  "parse",
 ]);
 const apiItemSchema = z.object({
   name: modelIdSchema,
@@ -116,6 +117,16 @@ interface ApiEndpointFact {
 }
 
 const endpointDefinitions: EndpointDefinition[] = [
+  {
+    documentPath: "/v2/reference/parse.md",
+    title: "Parse",
+    marker: "POST https://api.cohere.com/v2/parse",
+    operation: "ocr",
+    endpoint: { name: "Parse", path: "v2/parse" },
+    href: "/v2/reference/parse",
+    hrefAliases: ["/reference/parse"],
+    labels: ["Parse"],
+  },
   {
     documentPath: "/reference/chat.md",
     title: "Chat",
@@ -209,6 +220,7 @@ const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact
     { operation: "text_generation", endpoint: { name: "Generate", path: "v1/generate" } },
   ],
   ["transcriptions", { operation: "transcription" }],
+  ["parse", { operation: "ocr" }],
 ]);
 
 const operationsBySection = new Map<string, ModelTask[]>([
@@ -216,6 +228,7 @@ const operationsBySection = new Map<string, ModelTask[]>([
   ["Embed", ["embeddings"]],
   ["Rerank", ["reranking"]],
   ["Audio", ["transcription"]],
+  ["Parse", ["ocr"]],
   ["Aya", ["text_generation"]],
 ]);
 
@@ -869,6 +882,55 @@ function modelCard(
     });
 }
 
+function parsePage(
+  input: Input,
+  models: Map<string, ProviderModel>,
+  body: string,
+  references: EndpointReferences,
+): void {
+  const $ = load(body);
+  const label = $(".fern-prose li").filter(
+    (_index, element) => text($(element).children("strong").text()) === "Latest model",
+  );
+  const id = modelIdSchema.safeParse(text(label.children("code").text()));
+  if (label.length !== 1 || !id.success || !/^parse-v\d+(?:\.\d+)*$/.test(id.data)) {
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "model_card_identity_drift",
+      sample: "/docs/parse: Latest model",
+    });
+    return;
+  }
+  const link = $(".fern-prose li")
+    .filter((_index, element) => text($(element).children("strong").text()) === "API reference")
+    .find("a")
+    .attr("href");
+  const endpointUrl = link === undefined ? undefined : new URL(link, "https://docs.cohere.com");
+  const reference =
+    endpointUrl?.origin === "https://docs.cohere.com"
+      ? references.byHref.get(endpointUrl.pathname)
+      : undefined;
+  const context = $(".fern-prose li")
+    .filter((_index, element) => text($(element).children("strong").text()) === "Context Length")
+    .text();
+  const contextTokens = tokens(text(context).replace(/^Context Length:\s*/, ""));
+  model(models, input, id.data, ["ocr"]);
+  update(models, id.data, (current) =>
+    withEndpoints(
+      {
+        ...current,
+        name: "Parse",
+        tasks: ["ocr"],
+        modalities: { input: ["image"], output: ["text"] },
+        ...(contextTokens === undefined
+          ? {}
+          : { limits: { ...current.limits, context_tokens: contextTokens } }),
+      },
+      reference?.endpoint.name === "Parse" ? [reference.endpoint] : [],
+    ),
+  );
+}
+
 function transcribePage(
   input: Input,
   models: Map<string, ProviderModel>,
@@ -1265,6 +1327,15 @@ function applyPricing(
               input.source.id,
               unit,
             );
+          if (unit === "1K pages" && current.tasks.includes("ocr") && normalized === "cost")
+            return publishedRate(
+              "input_image",
+              String(price),
+              "thousand_pages",
+              input.source.id,
+              unit,
+              { operation: "ocr" },
+            );
           if (unit !== "1M tokens") return;
           if (current.tasks.includes("embeddings"))
             return publishedRate(
@@ -1540,6 +1611,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     modelCard(input, models, url, document.body, references, bundle.documents);
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
+    if (url.pathname === "/docs/parse") parsePage(input, models, document.body, references);
   }
   for (const document of bundle.documents) {
     const url = new URL(document.url);

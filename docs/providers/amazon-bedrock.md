@@ -60,8 +60,11 @@ informational Price List differs, so an exact page row may replace only the same
 If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
 reported for the panel while a recognized sibling panel can still contribute exact rates.
 
-The [Mantle guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) supplies
-service Regions. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
+The [Responses API guide](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html)
+supplies Mantle service Regions through its `Supported Regions and Endpoints` table. The former
+`bedrock-mantle.md` URL returns 404; the fixed companion retains its `bedrock-mantle` dependency key
+but fetches `inference-responses-api.md`. Region codes must still agree with the exact Mantle endpoint
+hostname. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
 public ID, but it cannot create global catalog presence or publish account data.
 It uses the standard AWS credential chain. Long-lived access keys require the access-key ID and
 secret; temporary credentials additionally require `AWS_SESSION_TOKEN`. Rejected or revoked

@@ -678,7 +678,7 @@ function cardAvailability(body: string): BedrockAvailability[] {
 }
 
 function mantleRegions(documents: z.infer<typeof linkedBundleSchema>["documents"]): Set<string> {
-  const document = exactDocument(documents, "/bedrock/latest/userguide/bedrock-mantle.md");
+  const document = exactDocument(documents, "/bedrock/latest/userguide/inference-responses-api.md");
   if (document === undefined) throw new Error("Bedrock catalog omitted Mantle regions");
   const content = section(document, "Supported Regions and Endpoints");
   if (content === undefined) throw new Error("Bedrock Mantle guide omitted supported regions");

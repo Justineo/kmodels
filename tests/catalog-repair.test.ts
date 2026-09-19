@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
+import {
+  catalogRepairCandidates,
+  catalogRepairEvidenceIncomplete,
+} from "../src/catalog/catalog-repair.ts";
 
 const provider = (overrides: Record<string, unknown>): Record<string, unknown> => ({
   provider_id: "openai",
@@ -14,6 +17,140 @@ const report = (providers: Record<string, unknown>[]): Record<string, unknown> =
 });
 
 describe("catalog repair candidate selection", () => {
+  it("reviews repeated public 404/410 failures for relocation without escalating transient transport", () => {
+    const input = (message: string, failures: number) =>
+      report([
+        provider({
+          attempt: {
+            outcome: "rejected",
+            sources: [
+              {
+                source_id: "openai-models",
+                outcome: "fetch_failed",
+                message,
+                consecutive_failures: failures,
+              },
+            ],
+          },
+        }),
+      ]);
+    expect(catalogRepairCandidates(input("HTTP 404", 1))).toEqual([]);
+    expect(catalogRepairCandidates(input("HTTP 404", 2))).toEqual([
+      expect.objectContaining({ trigger: "source_location_change" }),
+    ]);
+    expect(catalogRepairCandidates(input("HTTP 410", 3))).toHaveLength(1);
+    expect(catalogRepairCandidates(input("HTTP 503", 5))).toEqual([]);
+    expect(catalogRepairCandidates(input("TLS handshake timeout", 5))).toEqual([]);
+  });
+  it("keeps unavailable evidence incomplete without asking an agent to repair a transport failure", () => {
+    const input = report([
+      provider({
+        attempt: {
+          outcome: "accepted",
+          sources: [{ source_id: "openai-pricing", outcome: "fetch_failed", message: "HTTP 503" }],
+        },
+      }),
+    ]);
+    expect(catalogRepairCandidates(input)).toEqual([]);
+    expect(catalogRepairEvidenceIncomplete(input)).toBe(true);
+    expect(
+      catalogRepairEvidenceIncomplete(
+        report([
+          provider({
+            attempt: {
+              outcome: "accepted",
+              sources: [],
+              pricing: { outcome: "failed", failure_code: "source_unavailable" },
+            },
+          }),
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      catalogRepairEvidenceIncomplete(
+        report([
+          provider({
+            attempt: {
+              outcome: "accepted",
+              sources: [{ source_id: "openai-api", outcome: "skipped_not_configured" }],
+            },
+          }),
+        ]),
+      ),
+    ).toBe(false);
+  });
+  it("admits missing owned accounting contracts even when accepted source bytes are unchanged", () => {
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          provider_id: "gemini",
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "gemini-pricing",
+                outcome: "unchanged",
+                content_changed: false,
+                pricing_reconciliation: {
+                  reason_counts: { pricing_input_contract_partial: 2, pricing_unknown_meter: 7 },
+                  diagnostics: [
+                    {
+                      reason_code: "pricing_input_contract_partial",
+                      sample: "21 Interactions mappings unavailable",
+                    },
+                    {
+                      reason_code: "pricing_input_contract_partial",
+                      sample: "3 video mappings unavailable",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        source_id: "gemini-pricing",
+        trigger: "source_pricing_structure",
+        message: expect.stringContaining(
+          "21 Interactions mappings unavailable; 3 video mappings unavailable",
+        ),
+      }),
+    ]);
+    expect(candidates[0]?.message).not.toContain("pricing_unknown_meter");
+  });
+  it("admits known unrecognized pricing-card structure despite unchanged fallback coverage", () => {
+    const input = (reason: string, count: number, outcome = "unchanged") =>
+      report([
+        provider({
+          provider_id: "mistral",
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "mistral-pricing",
+                outcome,
+                content_changed: false,
+                pricing_reconciliation: { reason_counts: { [reason]: count } },
+              },
+            ],
+          },
+        }),
+      ]);
+    expect(catalogRepairCandidates(input("unknown_public_pricing_card", 20))).toEqual([
+      expect.objectContaining({
+        source_id: "mistral-pricing",
+        trigger: "source_pricing_structure",
+      }),
+    ]);
+    expect(catalogRepairCandidates(input("unreviewed_pricing_tier", 20))).toEqual([]);
+    expect(catalogRepairCandidates(input("unknown_public_pricing_card", 0))).toEqual([]);
+    expect(
+      catalogRepairCandidates(input("unknown_public_pricing_card", 20, "fetch_failed")),
+    ).toEqual([]);
+  });
   it("selects a parser contract failure from any reviewed source", () => {
     expect(
       catalogRepairCandidates(
@@ -181,6 +318,39 @@ describe("catalog repair candidate selection", () => {
         subject_id: "pricing_validation",
         trigger: "pricing_validation",
         message: "pricing topology validation failed",
+      }),
+    ]);
+  });
+
+  it("preserves pricing validation alongside a missing source contract", () => {
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "openai-pricing",
+                outcome: "unchanged",
+                pricing_reconciliation: {
+                  reason_counts: { pricing_input_contract_partial: 1 },
+                },
+              },
+            ],
+            pricing: {
+              outcome: "failed",
+              failure_code: "pricing_validation_failed",
+              message: "required allowance is missing",
+            },
+          },
+        }),
+      ]),
+    );
+    expect(candidates).toEqual([
+      expect.objectContaining({ trigger: "source_pricing_structure" }),
+      expect.objectContaining({
+        trigger: "pricing_validation",
+        message: "required allowance is missing",
       }),
     ]);
   });
