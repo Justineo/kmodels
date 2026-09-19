@@ -932,15 +932,22 @@ export function parseHuggingFaceFeatherless(input: Input): ProviderModel[] {
     ],
     "Featherless models API reference drifted",
   );
+  const pricingReference = load(companion(bundle, "/docs/request-pricing-and-credits"))("body")
+    .text()
+    .replace(/\s+/g, " ");
   requireClaims(
-    companion(bundle, "/docs/request-pricing-and-credits"),
+    pricingReference,
     [
       "Formula: input tokens x input price + output tokens x output price.",
       "Prices are listed per 1M tokens.",
-      "exact price of a specific model",
     ],
     "Featherless request-pricing reference drifted",
   );
+  if (
+    !pricingReference.includes("exact price of a specific model") &&
+    !pricingReference.includes("Every model's page shows its current prices")
+  )
+    throw new Error("Featherless per-model price authority changed");
   const items = featherlessIndexSchema.parse(JSON.parse(bundle.index.body)).data;
   const eligible =
     input.catalogModels === undefined

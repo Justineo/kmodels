@@ -39,6 +39,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   `PublicPreview` is active/preview, and `Deprecated` and `Retired` retain their meanings. Retired
   models publish `not_applicable` and no current hosted rate, regardless of downloadable weights.
 - USD and EUR are independent published list currencies. No exchange rate is inferred.
+- Public cards may use paragraph titles without clipboard IDs. When no explicit ID is present,
+  a title binds only if it exactly equals one active repository model's name. Ambiguous, partial,
+  differently named or inactive-only matches stay unbound. Documentation URL slugs are never
+  interpreted as API IDs. Explicit IDs and aliases retain their existing precedence.
 - Synchronous and Batch invocation are separate offers. Batch rates are derived at 50% only for
   models whose official feature definition supports batching. Their distinct offers already express
   selection; no synthetic `exclusive_with` relation is needed.

@@ -14,6 +14,13 @@ interface Contract {
 type Document = { url: string; body: string };
 
 const contracts: readonly Contract[] = [
+  {
+    document: "/v2/reference/parse.md",
+    key: "parse.v2.pages",
+    channel: "response",
+    locator: "/meta/billed_units/pages",
+    markers: [/POST https:\/\/api\.cohere\.com\/v2\/parse/, billedField("pages")],
+  },
   ...billedToken("/reference/chat.md", "chat.v2", "response", "/usage/billed_units"),
   ...billedToken(
     "/reference/chat-stream.md",

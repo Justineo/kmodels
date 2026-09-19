@@ -20,6 +20,15 @@ const sourceAttemptSchema = z.object({
   ]),
   content_changed: z.boolean().optional(),
   message: z.string().optional(),
+  consecutive_failures: z.number().int().nonnegative().optional(),
+  pricing_reconciliation: z
+    .object({
+      reason_counts: z.record(z.string(), z.number().int().nonnegative()).optional(),
+      diagnostics: z
+        .array(z.object({ reason_code: z.string(), sample: z.string().optional() }))
+        .optional(),
+    })
+    .optional(),
   contract_finding: z
     .object({
       disposition: z.enum(["reject", "accept_with_signal"]),
@@ -60,6 +69,16 @@ const refreshSummarySchema = z.object({
 
 type SourceAttempt = z.infer<typeof sourceAttemptSchema>;
 
+// These report missing contracts owned by an extractor, not ordinary unknown prices.
+const repairableReconciliationReasons = new Set([
+  "unknown_public_pricing_card",
+  "pricing_input_contract_partial",
+  "pricing_input_contract_drift",
+  "endpoint_reference_drift",
+  "endpoint_model_list_drift",
+  "model_card_identity_drift",
+]);
+
 export interface CatalogRepairCandidate {
   provider_id: string;
   scope: "source" | "provider";
@@ -70,9 +89,12 @@ export interface CatalogRepairCandidate {
   extractor?: string;
   trigger:
     | "source_parse_failure"
+    | "source_location_change"
     | "source_contract_change"
+    | "source_pricing_structure"
     | "provider_validation"
-    | "pricing_validation";
+    | "pricing_validation"
+    | "semantic_coverage_review";
   message: string;
   diagnostics: z.infer<typeof diagnosticSchema>[];
 }
@@ -140,6 +162,22 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
     for (const sourceAttempt of attempt.sources) {
       const source = reviewedSource(sources, provider.provider_id, sourceAttempt.source_id);
       if (source === undefined) continue;
+      if (
+        source.access === "public" &&
+        sourceAttempt.outcome === "fetch_failed" &&
+        (sourceAttempt.consecutive_failures ?? 0) >= 2 &&
+        /^HTTP (?:404|410)$/.test(sourceAttempt.message ?? "")
+      ) {
+        const value = sourceCandidate(
+          provider.provider_id,
+          source,
+          sourceAttempt,
+          "source_location_change",
+          "The reviewed public source is repeatedly absent; verify a first-party relocation before changing its manifest.",
+        );
+        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        continue;
+      }
       if (sourceAttempt.outcome === "parse_failed") {
         const value = sourceCandidate(
           provider.provider_id,
@@ -147,6 +185,25 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           sourceAttempt,
           "source_parse_failure",
           "The reviewed source no longer satisfies its parser contract.",
+        );
+        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        continue;
+      }
+      const reconciliation = sourceAttempt.pricing_reconciliation;
+      const missingContracts = Object.entries(reconciliation?.reason_counts ?? {}).filter(
+        ([reason, count]) => count > 0 && repairableReconciliationReasons.has(reason),
+      );
+      if (["changed", "unchanged"].includes(sourceAttempt.outcome) && missingContracts.length > 0) {
+        const details =
+          reconciliation?.diagnostics
+            ?.filter(({ reason_code }) => repairableReconciliationReasons.has(reason_code))
+            .flatMap(({ sample }) => (sample === undefined ? [] : [sample])) ?? [];
+        const value = sourceCandidate(
+          provider.provider_id,
+          source,
+          sourceAttempt,
+          "source_pricing_structure",
+          `Missing reviewed source contracts: ${missingContracts.map(([reason, count]) => `${reason}: ${count}`).join(", ")}.${details.length === 0 ? "" : ` ${details.join("; ")}`}`,
         );
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
@@ -202,18 +259,13 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       attempt.pricing?.outcome === "failed" &&
       attempt.pricing.failure_code !== "source_unavailable"
     ) {
-      const hasSourceCandidate = [...candidates.values()].some(
-        ({ provider_id, scope }) => provider_id === provider.provider_id && scope === "source",
+      const value = providerCandidate(
+        provider.provider_id,
+        "pricing_validation",
+        attempt.pricing.message ??
+          `${attempt.pricing.failure_code ?? "pricing_failed"}: pricing publication failed`,
       );
-      if (!hasSourceCandidate) {
-        const value = providerCandidate(
-          provider.provider_id,
-          "pricing_validation",
-          attempt.pricing.message ??
-            `${attempt.pricing.failure_code ?? "pricing_failed"}: pricing publication failed`,
-        );
-        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
-      }
+      candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
     }
   }
   return [...candidates.values()].sort((left, right) =>
@@ -221,4 +273,16 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       `${right.provider_id}\0${right.subject_id}`,
     ),
   );
+}
+
+/** Transport failure is not a parser repair, but also cannot establish a healthy no-op. */
+export function catalogRepairEvidenceIncomplete(input: unknown): boolean {
+  return refreshSummarySchema
+    .parse(input)
+    .providers.some(
+      ({ attempt }) =>
+        attempt?.sources.some(({ outcome }) => outcome === "fetch_failed") === true ||
+        (attempt?.pricing?.outcome === "failed" &&
+          attempt.pricing.failure_code === "source_unavailable"),
+    );
 }

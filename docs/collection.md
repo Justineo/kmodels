@@ -123,6 +123,11 @@ Status: implemented
   diagnostics still follow manifest order, so transport overlap neither raises a host's request
   concurrency nor changes deterministic provider semantics.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
+- Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
+  save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
+  public repair source or fixed companion, to temporary external artifacts for replay. This is not
+  collector snapshotting; authenticated responses remain prohibited. Snapshots never enter the
+  repository, generated `data/`, or static exports; only minimal reviewed fixtures may be committed.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
   repository does retain a bounded public-only parsed pricing compilation

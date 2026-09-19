@@ -68,7 +68,8 @@ export function parseMistralPricingCards(
     const reviewedTitle =
       serviceTitles.find((candidate) => labels.includes(candidate)) ??
       labels.find((candidate) => /^Classifier API model \((?:3B|8B)\)$/i.test(candidate));
-    const title = heading || reviewedTitle || (id.startsWith("Classifier API model") ? id : "");
+    const title =
+      heading || reviewedTitle || labels[0] || (id.startsWith("Classifier API model") ? id : "");
     const rows: MistralPricingRow[] = [];
     for (const priceElement of element.find("mistral-atom-text-price").toArray()) {
       const price = $(priceElement);

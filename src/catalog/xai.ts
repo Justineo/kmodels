@@ -84,6 +84,15 @@ const embeddingModelSchema = z.object({
   promptTextTokenPrice: integerString,
   promptImageTokenPrice: integerString,
 });
+const languageIdentitySchema = languageModelSchema.omit({
+  promptTextTokenPrice: true,
+  promptImageTokenPrice: true,
+  promptTextTokenPriceLongContext: true,
+  cachedPromptTokenPrice: true,
+  cachedPromptTokenPriceLongContext: true,
+  completionTextTokenPrice: true,
+  completionTokenPriceLongContext: true,
+});
 const imageModelSchema = z.object({
   ...commonModelShape,
   imagePrice: integerString.optional(),
@@ -622,12 +631,19 @@ function embeddedModels(input: ParseInput, body: string): PublicModels {
   };
 }
 
-function distinct<T extends { name: string }>(values: T[], category: string): T[] {
+function distinct<T extends { name: string }>(
+  values: T[],
+  category: string,
+  identity: (value: T) => unknown = (value) => value,
+): T[] {
   const models = new Map<string, T>();
   for (const value of values) {
     const current = models.get(value.name);
-    if (current !== undefined && JSON.stringify(current) !== JSON.stringify(value))
-      throw new Error(`xAI ${category} model differs across public clusters`);
+    if (
+      current !== undefined &&
+      JSON.stringify(identity(current)) !== JSON.stringify(identity(value))
+    )
+      throw new Error(`xAI ${category} model ${value.name} differs across public clusters`);
     models.set(value.name, value);
   }
   return [...models.values()];
@@ -1592,6 +1608,26 @@ function currentModels(
   const language = distinct(
     catalog.clusterConfigs.flatMap(({ languageModels }) => languageModels),
     "language",
+    (value) => languageIdentitySchema.parse(value),
+  );
+  const languageRegions = new Map<string, Map<string, z.infer<typeof languageModelSchema>>>();
+  for (const cluster of catalog.clusterConfigs) {
+    for (const value of cluster.languageModels) {
+      const entries =
+        languageRegions.get(value.name) ?? new Map<string, z.infer<typeof languageModelSchema>>();
+      const previous = entries.get(cluster.clusterName);
+      if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(value))
+        throw new Error(
+          `xAI language model ${value.name} conflicts within region ${cluster.clusterName}`,
+        );
+      entries.set(cluster.clusterName, value);
+      languageRegions.set(value.name, entries);
+    }
+  }
+  const regionalPrices = new Set(
+    [...languageRegions].flatMap(([id, entries]) =>
+      new Set([...entries.values()].map((value) => JSON.stringify(value))).size > 1 ? [id] : [],
+    ),
   );
   const embeddings = distinct(
     catalog.clusterConfigs.flatMap(({ embeddingModels }) => embeddingModels),
@@ -1642,7 +1678,14 @@ function currentModels(
           warnings: new Map<string, SourceRawPricingFact[]>(),
         }
       : (reviewClaim(input, "public_pricing_contract_drift", () =>
-          publicPricingReview(input, pricing, modelsPage, language, images, videos),
+          publicPricingReview(
+            input,
+            pricing,
+            modelsPage,
+            language.filter((value) => !regionalPrices.has(value.name)),
+            images,
+            videos,
+          ),
         ) ?? {
           text: new Map<string, TextPrice[]>(),
           warnings: new Map<string, SourceRawPricingFact[]>(),
@@ -1721,17 +1764,20 @@ function currentModels(
       status: "active",
       release_stage: releaseStage,
       pricing_state: "numeric",
-      price_facts: ratesFor(
-        value.name,
-        textRates(
-          value,
-          input.source.id,
-          publicPrices.text.get(value.name),
-          batchMultipliers !== undefined &&
-            excludedFromBatch !== undefined &&
-            !excludedFromBatch.has(value.name),
-          batchMultipliers?.get(value.name),
-          priorityMultiplier,
+      price_facts: [...(languageRegions.get(value.name) ?? [])].flatMap(([region, regional]) =>
+        regionalRates(
+          textRates(
+            regional,
+            input.source.id,
+            // An unscoped public summary cannot override a narrower regional amount.
+            regionalPrices.has(value.name) ? undefined : publicPrices.text.get(value.name),
+            batchMultipliers !== undefined &&
+              excludedFromBatch !== undefined &&
+              !excludedFromBatch.has(value.name),
+            batchMultipliers?.get(value.name),
+            priorityMultiplier,
+          ),
+          [region],
         ),
       ),
       raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
