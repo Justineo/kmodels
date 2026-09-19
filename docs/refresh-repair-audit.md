@@ -46,7 +46,7 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
 
 Provider guides and reviewed fixtures define each repaired boundary. No model inference is involved.
 
-The complete local refresh at 2026-09-19T16:57:58.973Z published 3,643 models with 19/19 accepted
+The complete local refresh at 2026-09-19T17:09:02.841Z published 3,645 models with 19/19 accepted
 catalog partitions and 18/19 accepted pricing partitions. DeepSeek, Kimi and Vertex pricing are
 accepted: DeepSeek has 48 regional/period rate facts, Kimi has 20 model rate facts per region plus
 independent services, and Vertex retains four shared allowance pools. Azure retains its previous
@@ -115,5 +115,5 @@ tests establish the repair.
 - [DeepSeek price rule](https://api-docs.deepseek.com/quick_start/pricing/).
 - Baseline local artifacts: `/tmp/kmodels-live-refresh.d9Q9X7/`; follow-up public artifacts:
   `/tmp/gh-aw/agent/catalog-evidence/`. Temporary artifacts are not repository fixtures.
-- Final local refresh log: `/tmp/kmodels-pricing-repair-collect.log`; the resulting sanitized
+- Final local refresh log: `/tmp/kmodels-pricing-push-collect.log`; the resulting sanitized
   report is stored in `data/refresh-summary.json` with the refreshed publication.
