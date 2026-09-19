@@ -2045,6 +2045,8 @@ function googleGroundingTables(
     const table = $(tableElement);
     const generation = geminiPricingGeneration($, table);
     if (generation === undefined) return;
+    const headers = tableHeaders($, table);
+    const usageColumn = headers.indexOf("Usage");
     table
       .find("tr")
       .slice(1)
@@ -2053,7 +2055,7 @@ function googleGroundingTables(
         const label = text(cells.eq(0).text());
         const operations = groundingOperations(label);
         if (operations.length === 0) return;
-        const fragment = cellText(cells.last());
+        const fragment = cellText(usageColumn < 0 ? cells.last() : cells.eq(usageColumn));
         const rowText = cellText($(row));
         const match = rowText.match(
           /\$(\d+(?:\.\d+)?)\s+per\s+(?:1,?000|1000)\s+(search queries|queries|grounded prompts|prompts|requests)/i,

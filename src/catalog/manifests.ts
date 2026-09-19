@@ -487,7 +487,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v7",
+  extractorVersion: "kimi-pricing-v8",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -2212,7 +2212,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v6",
+        extractorVersion: "vertex-pricing-v7",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
@@ -3989,7 +3989,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v16",
+        extractorVersion: "deepseek-catalog-v17",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

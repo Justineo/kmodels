@@ -1,6 +1,6 @@
 # Refresh and repair evidence audit
 
-Status: six source repairs verified by a full local refresh; unresolved failures remain explicit
+Status: deterministic source repairs; publication acceptance and remaining evidence gaps are tracked separately
 
 ## Decision
 
@@ -34,13 +34,24 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
   agreement remain mandatory; same-region conflicting prices still reject. Unscoped summary prices
   cannot overwrite differing regional amounts. Live source replay preserves Grok 4.6 input at
   2 USD/M tokens in us-east-1/us-west-2 and 2.2 USD/M tokens in us-central-1.
+- DeepSeek: the peak-hour rule now excludes Chinese public holidays. Published categories retain
+  the exact definition and source evidence, with no incomplete weekly schedule. The consumer
+  supplies `billing_period`; collecting a price book does not require a holiday calendar.
+- Vertex: grounding allowances moved from the last cell to a labeled Usage column. Header-based
+  extraction restores shared pools while retaining the topology guard and raw unknown clauses.
+- Kimi: formerly separate model pages now share a combined overview with two tables. Extraction
+  deduplicates identical documents and preserves the new 5-minute/1-hour cache-write rates. The
+  revised tools page contributes independent Search, Search Pro and Fetch fees while retaining the
+  separately documented legacy built-in fee. Batch scope bindings follow source evidence.
 
 Provider guides and reviewed fixtures define each repaired boundary. No model inference is involved.
 
-The complete local refresh at 2026-09-19T12:57:06.096Z published 3,640 models. Accepted catalog
-partitions increased from 16/19 to 18/19, and accepted pricing partitions from 13/19 to 16/19.
-DeepSeek still retains its catalog; Azure, DeepSeek and Vertex retain pricing. These totals describe
-publication acceptance, not complete source or accounting coverage.
+The complete local refresh at 2026-09-19T16:57:58.973Z published 3,643 models with 19/19 accepted
+catalog partitions and 18/19 accepted pricing partitions. DeepSeek, Kimi and Vertex pricing are
+accepted: DeepSeek has 48 regional/period rate facts, Kimi has 20 model rate facts per region plus
+independent services, and Vertex retains four shared allowance pools. Azure retains its previous
+prices after a Retail Prices transport failure; a separate public-source retry also failed.
+These totals describe publication acceptance, not complete source or accounting coverage.
 
 ## Repair admission and execution
 
@@ -64,15 +75,10 @@ The generated workflow compiles locally; actual remote sandbox execution remains
 
 ## Remaining boundaries
 
-- DeepSeek's live peak-hour sentence now excludes Chinese public holidays. The reviewed weekly
-  rule has no holiday calendar. Retaining the previous partition is safer than accepting a regex
-  change that would publish the wrong applicability.
 - Mistral's remaining differently named/new products require exact identity evidence; they are
   still repair candidates. They must not be joined by family resemblance.
 - Missing owned accounting fields remain visible, including Gemini's audio selector and Cohere's
   image-token mapping. Restoring neighboring mappings does not prove those fields exist.
-- Vertex's missing allowance topology and Azure's unavailable transport require separate source
-  investigation. Current failures continue to retain previously verified pricing.
 - The final refresh also reports the DashScope recommended-model count guard, a Kimi API 401,
   and transient Azure/Databricks transport failures. Accepted provider publication does not erase
   these individual source failures.
@@ -109,5 +115,5 @@ tests establish the repair.
 - [DeepSeek price rule](https://api-docs.deepseek.com/quick_start/pricing/).
 - Baseline local artifacts: `/tmp/kmodels-live-refresh.d9Q9X7/`; follow-up public artifacts:
   `/tmp/gh-aw/agent/catalog-evidence/`. Temporary artifacts are not repository fixtures.
-- Final local refresh log: `/tmp/kmodels-repair-final-collect.log`; the resulting sanitized
+- Final local refresh log: `/tmp/kmodels-pricing-repair-collect.log`; the resulting sanitized
   report is stored in `data/refresh-summary.json` with the refreshed publication.

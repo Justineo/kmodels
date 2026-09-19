@@ -667,7 +667,20 @@ function scheduledPricing(
   return;
 }
 
+export const deepseekHolidayBillingRule =
+  "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays. All other hours are off-peak, including weekends and Chinese public holidays in full.";
+
+function holidayBillingRule(body: string, currency: DeepseekCurrency): boolean {
+  const prose = htmlText(load(body)("article").text());
+  return currency === "USD"
+    ? prose.includes(deepseekHolidayBillingRule)
+    : /北京时间周一至周五（不含中国法定节假日）9:00\s*[-–]\s*12:00、14:00\s*[-–]\s*18:00 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段。/.test(
+        prose,
+      );
+}
+
 function validateScheduledRule(input: Input, body: string, currency: DeepseekCurrency): void {
+  if (holidayBillingRule(body, currency)) return;
   const prose = htmlText(load(body)("article").text());
   const recurringRule =
     currency === "USD"
@@ -1126,6 +1139,16 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined,
   );
   attachLegacyRedirects(input, bundle.index.body, models);
+  if (scheduled !== undefined && holidayBillingRule(bundle.index.body, "USD"))
+    for (const model of models)
+      model.raw_price_facts.push({
+        term_key: "billing_period_rule",
+        impact: "informational",
+        reason: "unsupported_structure",
+        conditions: {},
+        source_ref: input.source.id,
+        raw: { label: "Peak / Off-peak applicability", fragment: deepseekHolidayBillingRule },
+      });
   const pricingInputs = extractDeepseekPricingInputs(
     bundle.documents,
     input.source.id,

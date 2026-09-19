@@ -50,14 +50,14 @@ conflict because their denominations differ. Kmodels does not infer which curren
 credential; a consumer selects the applicable currency from its own account configuration.
 
 The current price tables publish Peak and Off-peak rows directly inside the model table. They are
-`billing_period` variants. Since `2026-08-22T16:00:00Z`, Peak covers the half-open UTC windows
-`01:00–04:00` and `06:00–10:00` on Monday through Friday, while Off-peak is the weekly remainder;
-Saturday and Sunday in Beijing time are therefore entirely Off-peak. The Chinese table is accepted
-only when its Beijing-time rule maps to the same UTC schedule. Kmodels records the published weekly
-rule and exposes Peak/Off-peak as categorical choices; collection never decides a period from its
-own clock. The recurring weekday sentence and the dated weekend-transition notice establish the
-same schedule once the transition is effective. Observations before the exact rule-change instant
-retain the preceding daily schedule.
+`billing_period=peak|off_peak` variants. The current rule defines Peak as UTC `01:00–04:00` and
+`06:00–10:00`, Monday through Friday excluding Chinese public holidays. All other hours, weekends
+and Chinese public holidays are Off-peak. The Chinese table independently establishes the matching
+Beijing-time windows. Both categories preserve the exact source definition and informational
+evidence; callers supply the applicable category. Kmodels neither maintains annual holiday dates
+nor evaluates make-up workdays or the current clock. A plain weekly schedule would misrepresent
+the holiday exception, so the current categories deliberately omit executable schedule metadata.
+Historical fixtures retain their independently reviewed daily or weekly rules.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
@@ -148,8 +148,9 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 
 ## Presentation
 
-Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors, the compact UTC
-weekly rule, the three applicable published rates, and their verified pricing-input methods. They do not
+Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors,
+the three applicable published rates, and their verified pricing-input methods. The categorical
+definitions preserve the holiday rule. They do not
 show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
 web-search price. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by

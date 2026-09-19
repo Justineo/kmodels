@@ -13,7 +13,11 @@ import {
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceCommercialPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -105,8 +109,16 @@ const typedArraySchema = z.object({ type: z.literal("array"), items: z.unknown()
 const typedStringSchema = z.object({ type: z.literal("string") });
 const typedIntegerSchema = z.object({ type: z.literal("integer") });
 const typedBooleanSchema = z.object({ type: z.literal("boolean") });
-const priceRowSchema = z.array(z.string()).min(5).max(6);
-type PriceColumn = "model" | "unit" | "cache" | "input" | "output" | "context";
+const priceRowSchema = z.array(z.string()).min(5).max(8);
+type PriceColumn =
+  | "model"
+  | "unit"
+  | "cache"
+  | "input"
+  | "output"
+  | "context"
+  | "write5m"
+  | "write1h";
 const priceColumns = new Map<string, PriceColumn>([
   ["模型", "model"],
   ["Model", "model"],
@@ -114,6 +126,11 @@ const priceColumns = new Map<string, PriceColumn>([
   ["Unit", "unit"],
   ["输入价格（缓存命中）", "cache"],
   ["Input Price (Cache Hit)", "cache"],
+  ["Cached Input Price", "cache"],
+  ["缓存写入（TTL 5min）", "write5m"],
+  ["缓存写入（TTL 1h）", "write1h"],
+  ["Cache Write Price (TTL 5min)", "write5m"],
+  ["Cache Write Price (TTL 1h)", "write1h"],
   ["输入价格（缓存未命中）", "input"],
   ["Input Price (Cache Miss)", "input"],
   ["输入价格", "input"],
@@ -642,7 +659,7 @@ function jsonArrayAfter(body: string, marker: string): unknown {
               JSON.stringify(`${before}${code}${after}`),
           )
           .replace(
-            /<>\{"([^"]+)"\}((?:0|[1-9]\d*)(?:\.\d+)?)<\/>/g,
+            /<>\{"([^"]+)"\}((?:0|[1-9]\d*)(?:\.\d+)?(?: \/ call)?)<\/>/g,
             (_match, symbol: string, amount: string) => JSON.stringify(`${symbol}${amount}`),
           );
         return JSON.parse(withoutTrailingCommas(json));
@@ -676,18 +693,24 @@ function withoutTrailingCommas(value: string): string {
   return result;
 }
 
-function hasCachePrices(body: string): boolean {
+function pricingColumns(body: string): PriceColumn[] {
   const rows = body.indexOf("rows={");
   const start = body.lastIndexOf("<DocTable", rows);
   if (start < 0 || rows < 0) throw new Error("Kimi pricing table is missing");
-  const columns = [...body.slice(start, rows).matchAll(/\{\s*title:\s*"([^"]+)"/g)].map((match) =>
-    priceColumns.get(match[1] ?? ""),
-  );
-  if (columns.some((column) => column === undefined))
-    throw new Error("Kimi pricing table has an unknown column");
+  const columns = [...body.slice(start, rows).matchAll(/\{\s*title:\s*"([^"]+)"/g)].map((match) => {
+    const column = priceColumns.get(match[1] ?? "");
+    if (column === undefined) throw new Error("Kimi pricing table has an unknown column");
+    return column;
+  });
   const signature = columns.join(",");
-  if (signature === "model,unit,cache,input,output,context") return true;
-  if (signature === "model,unit,input,output,context") return false;
+  if (
+    [
+      "model,unit,cache,input,output,context",
+      "model,unit,input,output,context",
+      "model,unit,write5m,write1h,cache,input,output,context",
+    ].includes(signature)
+  )
+    return columns;
   throw new Error(`Kimi pricing table has unsupported columns: ${signature}`);
 }
 
@@ -748,7 +771,7 @@ function pricingModel(
   body: string,
   row: string[],
   batch: boolean,
-  cached: boolean,
+  columns: PriceColumn[],
 ): ProviderModel {
   const rawId = row[0];
   const rawUnit = row[1];
@@ -757,7 +780,7 @@ function pricingModel(
   const suffix = rawId.match(/\s*[（(]Batch[）)]$/)?.[0];
   if (batch !== (suffix !== undefined)) throw new Error("Kimi Batch label disagrees with its page");
   const id = modelIdSchema.parse(suffix === undefined ? rawId : rawId.slice(0, -suffix.length));
-  if (row.length !== (cached ? 6 : 5))
+  if (row.length !== columns.length)
     throw new Error(`Kimi pricing columns disagree with the row for ${id}`);
   const context = row.at(-1);
   const contextTokens = context === undefined ? undefined : tokenCount(context);
@@ -766,16 +789,36 @@ function pricingModel(
     region: extractor.region,
     ...(batch ? { service_tier: "batch" } : {}),
   };
-  const prices = cached
-    ? [
-        priceRate("cache_read_text", row[2] ?? "", input.source.id, conditions, extractor),
-        priceRate("input_text", row[3] ?? "", input.source.id, conditions, extractor),
-        priceRate("output_text", row[4] ?? "", input.source.id, conditions, extractor),
-      ]
-    : [
-        priceRate("input_text", row[2] ?? "", input.source.id, conditions, extractor),
-        priceRate("output_text", row[3] ?? "", input.source.id, conditions, extractor),
-      ];
+  const prices = columns.flatMap((column, index) => {
+    const meter =
+      column === "cache"
+        ? "cache_read_text"
+        : column === "input"
+          ? "input_text"
+          : column === "output"
+            ? "output_text"
+            : column === "write5m" || column === "write1h"
+              ? "cache_write_text"
+              : undefined;
+    return meter === undefined
+      ? []
+      : [
+          priceRate(
+            meter,
+            row[index] ?? "",
+            input.source.id,
+            {
+              ...conditions,
+              ...(column === "write5m"
+                ? { cache_ttl_seconds: 300 }
+                : column === "write1h"
+                  ? { cache_ttl_seconds: 3600 }
+                  : {}),
+            },
+            extractor,
+          ),
+        ];
+  });
   const names = displayNames(body).filter((name) => identity(name) === identity(id));
   if (names.length > 1) throw new Error(`Kimi pricing display name for ${id} is ambiguous`);
   const multimedia = /支持文本、图片与视频输入|supports text, image, and video input/i.test(body);
@@ -928,6 +971,25 @@ function batchGuideModels(body: string): string[] {
 }
 
 function webSearchRate(input: Input, extractor: PricingExtractor, body: string): SourcePriceFact {
+  const legacy = body
+    .replaceAll("\\$", "$")
+    .match(
+      extractor.region === "China"
+        ? /finish_reason = tool_calls[^\n]*tool_call\.function\.name = \$web_search[^\n]*调用费用 (\d+(?:\.\d+)?) 元/
+        : /finish_reason = tool_calls[^\n]*tool_call\.function\.name = \$web_search[^\n]*charge a fee of \$(\d+(?:\.\d+)?)/,
+    )?.[1];
+  if (legacy !== undefined && /POST \/v1\/tools\/search/.test(body))
+    return {
+      meter: "web_search",
+      price: legacy,
+      currency: extractor.currency,
+      unit: "event",
+      conditions: { region: extractor.region, operation: "web_search" },
+      source_ref: input.source.id,
+      derived: false,
+      raw_price: `${extractor.symbol}${legacy}`,
+      raw_unit: "Per emitted $web_search call",
+    };
   const rows = z
     .array(z.array(z.string()).min(3).max(4))
     .length(1)
@@ -955,6 +1017,68 @@ function webSearchRate(input: Input, extractor: PricingExtractor, body: string):
     raw_price: rawPrice,
     raw_unit: unit,
   };
+}
+
+function restToolPrices(
+  input: Input,
+  extractor: PricingExtractor,
+  body: string,
+): SourceCommercialPricingFact[] {
+  if (!body.includes("POST /v1/tools/")) return [];
+  const rows = z.array(z.array(z.string()).length(4)).min(1).parse(jsonArrayAfter(body, "rows={"));
+  const definitions = new Map([
+    ["POST /v1/tools/search", { key: "web-search-basic", field: "search_results" }],
+    ["POST /v1/tools/search_pro", { key: "web-search-pro", field: "search_results" }],
+    ["POST /v1/tools/fetch", { key: "web-fetch", field: "markdown" }],
+  ]);
+  const seen = new Set<string>();
+  return rows.map((row) => {
+    const [name, endpoint, amount, trigger] = row;
+    const definition = endpoint === undefined ? undefined : definitions.get(endpoint);
+    if (
+      definition === undefined ||
+      name === undefined ||
+      amount === undefined ||
+      trigger === undefined ||
+      seen.has(definition.key)
+    )
+      throw new Error("Kimi REST tool identity changed");
+    seen.add(definition.key);
+    const expected =
+      definition.field === "search_results"
+        ? /^(?:请求成功（HTTP 200）且 search_results 非空|Request succeeds \(HTTP 200\) and search_results is non-empty)$/
+        : /^(?:请求成功（HTTP 200）且返回的 markdown 非空白|Request succeeds \(HTTP 200\) and the returned markdown is non-blank)$/;
+    if (!expected.test(trigger))
+      throw new Error(`Kimi REST billing condition changed: ${endpoint}`);
+    if (!/ \/ (?:次|call)$/.test(amount)) throw new Error("Kimi REST tool unit changed");
+    const rawPrice = amount.replace(/ \/ (?:次|call)$/, "").replace("￥", "¥");
+    return {
+      source_ref: input.source.id,
+      book_key: `service:${definition.key}`,
+      book_name: name,
+      resource_kind: "service",
+      resource_key: definition.key,
+      model_refs: [],
+      offer_key: "rest",
+      offer_name: endpoint ?? definition.key,
+      billing_mode: "usage",
+      pricing_state: "numeric",
+      price_facts: [
+        {
+          meter: definition.field === "markdown" ? "retrieval" : "web_search",
+          price: decimalPrice(rawPrice, extractor.symbol),
+          currency: extractor.currency,
+          unit: "event",
+          conditions: { region: extractor.region },
+          source_ref: input.source.id,
+          derived: false,
+          raw_price: amount,
+          raw_unit: "Per successful call with non-empty content",
+        },
+      ],
+      raw_price_facts: [],
+    };
+  });
 }
 
 function batchModelIds(models: Map<string, ProviderModel>): string[] {
@@ -1022,22 +1146,30 @@ function commercialEvidence(
   const reconciliation: PricingReconciliationItem[] = [
     { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
     { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
-    { disposition: "unbound", reason_code: "web_search_documentation_outdated" },
   ];
   reviewClaim(reconciliation, "commercial_index_drift", () =>
     validateCommercialIndex(bundle, new URL(input.source.url).origin),
   );
-  const webSearchWarning =
-    reviewClaim(reconciliation, "web_search_warning_drift", () => {
-      requireClaims(
-        bundle.index.body,
-        china
-          ? [/联网搜索/, /更新升级中/, /文档已经过时/]
-          : [/web search/i, /currently being updated/i, /documentation is outdated/i],
-        "Kimi K3 web-search warning drifted",
-      );
-      return true;
-    }) ?? false;
+  const combinedPricing = /Cache Write Price \(TTL 5min\)|缓存写入（TTL 5min）/.test(
+    bundle.index.body,
+  );
+  const webSearchWarning = combinedPricing
+    ? false
+    : (reviewClaim(reconciliation, "web_search_warning_drift", () => {
+        requireClaims(
+          bundle.index.body,
+          china
+            ? [/联网搜索/, /更新升级中/, /文档已经过时/]
+            : [/web search/i, /currently being updated/i, /documentation is outdated/i],
+          "Kimi K3 web-search warning drifted",
+        );
+        return true;
+      }) ?? false);
+  if (!combinedPricing)
+    reconciliation.push({
+      disposition: "unbound",
+      reason_code: "web_search_documentation_outdated",
+    });
 
   const review = (
     reasonCode: string,
@@ -1056,7 +1188,7 @@ function commercialEvidence(
     china
       ? [/对 Input 和 Output 均实行按量计费/, /计算 Token API/, /限时免费/]
       : [
-          /bill both the Input and Output based on usage/i,
+          /bill both (?:the )?Input and Output based on usage/i,
           /Token Calculation API/,
           /temporarily free/i,
         ],
@@ -1089,7 +1221,12 @@ function commercialEvidence(
     "/docs/guide/use-official-tools",
     "official tools",
     china
-      ? [/官方工具(?:执行)?限时免费/, /moonshot\/web-search:latest/, /资源用量/, /计费/]
+      ? [
+          /官方工具(?:执行)?限时免费|其余官方工具目前限时免费/,
+          /moonshot\/web-search:latest/,
+          /资源用量/,
+          /计费/,
+        ]
       : [
           /official tools are currently free for a limited time/i,
           /moonshot\/web-search:latest/,
@@ -1104,8 +1241,20 @@ function commercialEvidence(
       "/docs/api/files",
       "Files index",
       china
-        ? [/上传文件/, /列出文件/, /获取文件信息/, /删除文件/, /获取文件内容/]
-        : [/Upload File/, /List Files/, /Get File Information/, /Delete File/, /Get File Content/],
+        ? [
+            /上传文件/,
+            /列出文件|POST \/v1\/files/,
+            /获取文件信息|file-extract/,
+            /删除文件|purpose/,
+            /获取文件内容|文件解析服务限时免费/,
+          ]
+        : [
+            /Upload File/,
+            /List Files|POST \/v1\/files/,
+            /Get File Information|file-extract/,
+            /Delete File|purpose/,
+            /Get File Content|file parsing service is currently free/,
+          ],
       "Kimi Files index drifted",
     ),
     review(
@@ -1222,8 +1371,10 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   });
   const models = new Map<string, ProviderModel>();
   const rowReconciliation: PricingReconciliationItem[] = [];
+  const seenDocuments = new Set<string>();
   const modelPricingPaths = new Set([
     "/docs/pricing/chat-k3",
+    "/docs/pricing/chat",
     "/docs/pricing/chat-k27-code",
     "/docs/pricing/chat-k26",
     "/docs/pricing/chat-k25",
@@ -1233,48 +1384,56 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   for (const document of documents) {
     const path = new URL(document.url).pathname;
     if (!modelPricingPaths.has(path)) continue;
-    try {
-      const rows = z.array(z.unknown()).min(1).parse(jsonArrayAfter(document.body, "rows={"));
-      const batch = path === "/docs/pricing/batch";
-      const cached = hasCachePrices(document.body);
-      for (const [index, value] of rows.entries()) {
-        const parsed = priceRowSchema.safeParse(value);
-        if (!parsed.success) {
-          rowReconciliation.push({
-            disposition: "unsupported",
-            reason_code: "pricing_row_rejected",
-            sample: `${path} row ${index + 1}`,
-          });
-          continue;
+    if (seenDocuments.has(document.body)) continue;
+    seenDocuments.add(document.body);
+    const tables = document.body
+      .split(/(?=<DocTable\b)/)
+      .filter((part) => part.startsWith("<DocTable"));
+    if (path === "/docs/pricing/chat" && tables.length === 0) continue;
+    for (const table of tables.length === 0 ? [document.body] : tables) {
+      try {
+        const rows = z.array(z.unknown()).min(1).parse(jsonArrayAfter(table, "rows={"));
+        const batch = path === "/docs/pricing/batch";
+        const columns = pricingColumns(table);
+        for (const [index, value] of rows.entries()) {
+          const parsed = priceRowSchema.safeParse(value);
+          if (!parsed.success) {
+            rowReconciliation.push({
+              disposition: "unsupported",
+              reason_code: "pricing_row_rejected",
+              sample: `${path} row ${index + 1}`,
+            });
+            continue;
+          }
+          try {
+            const incoming = pricingModel(
+              input,
+              extractor,
+              document.body,
+              parsed.data,
+              batch,
+              columns,
+            );
+            const current = models.get(incoming.model_id);
+            models.set(
+              incoming.model_id,
+              current === undefined ? incoming : mergePricing(current, incoming),
+            );
+          } catch (error) {
+            rowReconciliation.push({
+              disposition: "unsupported",
+              reason_code: "pricing_row_rejected",
+              sample: `${path} row ${index + 1}: ${(error instanceof Error ? error.message : String(error)).slice(0, 180)}`,
+            });
+          }
         }
-        try {
-          const incoming = pricingModel(
-            input,
-            extractor,
-            document.body,
-            parsed.data,
-            batch,
-            cached,
-          );
-          const current = models.get(incoming.model_id);
-          models.set(
-            incoming.model_id,
-            current === undefined ? incoming : mergePricing(current, incoming),
-          );
-        } catch (error) {
-          rowReconciliation.push({
-            disposition: "unsupported",
-            reason_code: "pricing_row_rejected",
-            sample: `${path} row ${index + 1}: ${(error instanceof Error ? error.message : String(error)).slice(0, 180)}`,
-          });
-        }
+      } catch (error) {
+        rowReconciliation.push({
+          disposition: "unbound",
+          reason_code: "pricing_document_rejected",
+          sample: `${path}: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
+        });
       }
-    } catch (error) {
-      rowReconciliation.push({
-        disposition: "unbound",
-        reason_code: "pricing_document_rejected",
-        sample: `${path}: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
-      });
     }
   }
   const evidence = commercialEvidence(input, extractor, bundle, models);
@@ -1287,6 +1446,24 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
     });
   }
   extractKimiCommercialFacts(models, input.source.id, evidence);
+  const toolsBody = bundle.documents.find(
+    ({ url }) => new URL(url).pathname === "/docs/pricing/tools",
+  )?.body;
+  const serviceCarrier = [...models.values()][0];
+  if (toolsBody !== undefined && serviceCarrier !== undefined) {
+    const rest = reviewClaim(rowReconciliation, "rest_tool_pricing_drift", () =>
+      restToolPrices(input, extractor, toolsBody),
+    );
+    if (rest !== undefined && rest.length > 0) {
+      serviceCarrier.commercial_facts = [...(serviceCarrier.commercial_facts ?? []), ...rest];
+      for (const fact of rest)
+        rowReconciliation.push({
+          disposition: "normalized",
+          reason_code: "rest_tool_service_normalized",
+          sample: `${extractor.region}:${fact.resource_key}`,
+        });
+    }
+  }
   const result = [...models.values()].map((model): ProviderModel => ({
     ...model,
     capabilities: { ...model.capabilities, prompt_cache: true },
