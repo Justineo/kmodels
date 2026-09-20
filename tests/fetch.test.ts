@@ -3,7 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 
-afterEach(() => vi.unstubAllEnvs());
+const transport = vi.hoisted(() => {
+  const failures = new Map<string, { code: number | string; stderr: string }>();
+  const calls: string[] = [];
+  return { failures, calls };
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  transport.failures.clear();
+  transport.calls.length = 0;
+});
 
 vi.mock("node:child_process", () => ({
   execFile: (...arguments_: unknown[]) => {
@@ -13,6 +24,14 @@ vi.mock("node:child_process", () => ({
       throw new Error("Unexpected curl invocation");
     const url = requestArguments.at(-1);
     if (typeof url !== "string") throw new Error("Curl invocation omitted its URL");
+    transport.calls.push(url);
+    const failure = transport.failures.get(new URL(url).hostname);
+    if (failure !== undefined) {
+      callback(
+        Object.assign(new Error("Command failed: Authorization: Bearer private-token"), failure),
+      );
+      return;
+    }
     const bodies = new Map([
       [
         "https://example.test/index.md",
@@ -87,6 +106,35 @@ describe("linked source fetch", () => {
 });
 
 describe("authenticated cloud fetch", () => {
+  it.each([
+    { code: 28, stderr: "curl: (28) SSL connection timeout", reason: "TLS handshake timed out" },
+    { code: 28, stderr: "curl: (28) Operation timed out", reason: "request timed out" },
+    { code: 6, stderr: "curl: (6) Could not resolve host", reason: "DNS resolution failed" },
+    {
+      code: 60,
+      stderr: "curl: (60) SSL certificate problem",
+      reason: "TLS certificate validation failed",
+    },
+  ])(
+    "retains bounded cloud transport diagnostics for $reason across three attempts",
+    async ({ code, stderr, reason }) => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      transport.failures.set("prices.azure.com", {
+        code,
+        stderr: `${stderr}\nprivate-token https://private.example/account`,
+      });
+      const source = manifests
+        .find(({ provider }) => provider.id === "azure")
+        ?.sources.find(({ id }) => id === "azure-retail-prices");
+      if (source === undefined) throw new Error("Missing Azure retail source");
+      const failure: unknown = await fetchSource(source).catch((error: unknown) => error);
+      expect(failure).toMatchObject({
+        message: `Azure Retail Prices transport failure (curl ${code}: ${reason})`,
+      });
+      expect(transport.calls).toHaveLength(3);
+    },
+  );
+
   it("reports a bounded Google OAuth error code", async () => {
     const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     vi.stubEnv(

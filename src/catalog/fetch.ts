@@ -353,9 +353,39 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
     }
     return curlResponse(result.stdout);
   } catch (error) {
-    const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
-    throw new TransientFetchError(`Transient transport failure (${code})`);
+    throw new TransientFetchError(`Transient ${curlTransportFailure(error)}`);
   }
+}
+
+function curlTransportFailure(error: unknown): string {
+  const rawCode = error instanceof Error && "code" in error ? String(error.code) : "";
+  const code = /^(?:[1-9]\d{0,2}|ERR_CHILD_PROCESS_STDIO_MAXBUFFER)$/.test(rawCode)
+    ? rawCode
+    : "unknown";
+  const stderr =
+    error instanceof Error && "stderr" in error && typeof error.stderr === "string"
+      ? error.stderr
+      : "";
+  const reasons = new Map([
+    ["5", "proxy DNS resolution failed"],
+    ["6", "DNS resolution failed"],
+    ["7", "connection failed"],
+    [
+      "28",
+      /SSL connection timeout/i.test(stderr)
+        ? "TLS handshake timed out"
+        : /Resolving timed out/i.test(stderr)
+          ? "DNS resolution timed out"
+          : "request timed out",
+    ],
+    ["35", "TLS handshake failed"],
+    ["56", "response receive failed"],
+    ["60", "TLS certificate validation failed"],
+    ["92", "HTTP/2 stream failed"],
+    ["ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "response exceeded byte limit"],
+  ]);
+  const reason = reasons.get(code);
+  return `transport failure (curl ${code}${reason === undefined ? "" : `: ${reason}`})`;
 }
 
 function environment(name: string): string {
@@ -398,8 +428,8 @@ async function cloudJson(
         maxBuffer: maxResponseBytes + 64 * 1024,
       });
       response = curlResponse(result.stdout);
-    } catch {
-      throw new TransientFetchError(`${label} transport failure`);
+    } catch (error) {
+      throw new TransientFetchError(`${label} ${curlTransportFailure(error)}`);
     }
     const body = await response.text();
     if (Buffer.byteLength(body) > maxResponseBytes)

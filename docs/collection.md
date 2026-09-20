@@ -110,6 +110,10 @@ Status: implemented
   failures and reviewed cloud throttling responses, including rate-limit bodies returned with a
   successful status. It makes at most three attempts, honors bounded `Retry-After`, and otherwise
   uses exponential backoff with full jitter. Transports do not add an independent retry loop.
+- Transport diagnostics retain a bounded curl exit code and reviewed failure category, including
+  TLS-handshake timeouts, for both ordinary and cloud requests. Never publish the raw command,
+  stderr, headers, URLs or credential-bearing error message. Local proxy routing is an operator
+  setting, not a provider parser rule; diagnose it separately from an upstream HTTP failure.
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Bounded multi-document fetches assign the next item to the first free slot while preserving
   deterministic result order.

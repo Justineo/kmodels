@@ -43,14 +43,20 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
   deduplicates identical documents and preserves the new 5-minute/1-hour cache-write rates. The
   revised tools page contributes independent Search, Search Pro and Fetch fees while retaining the
   separately documented legacy built-in fee. Batch scope bindings follow source evidence.
+- Azure local transport: Retail Prices requests through the local HTTP proxy timed out during
+  TLS before receiving an HTTP response. The identical public request succeeded directly, followed
+  by complete pagination. A local `NO_PROXY=prices.azure.com` setting restores that route without
+  changing collector proxy policy. Cloud and ordinary transport errors now retain bounded curl
+  codes and failure categories instead of erasing the distinction between TLS, DNS and HTTP errors.
 
 Provider guides and reviewed fixtures define each repaired boundary. No model inference is involved.
 
-The complete local refresh at 2026-09-19T17:09:02.841Z published 3,645 models with 19/19 accepted
-catalog partitions and 18/19 accepted pricing partitions. DeepSeek, Kimi and Vertex pricing are
+The complete local refresh at 2026-09-19T23:45:35.368Z published 3,640 models with 19/19 accepted
+catalog partitions and 19/19 accepted pricing partitions. DeepSeek, Kimi and Vertex pricing are
 accepted: DeepSeek has 48 regional/period rate facts, Kimi has 20 model rate facts per region plus
-independent services, and Vertex retains four shared allowance pools. Azure retains its previous
-prices after a Retail Prices transport failure; a separate public-source retry also failed.
+independent services, and Vertex retains four shared allowance pools. Azure Retail Prices now
+contributes 21,303 normalized facts across 123 model records and its pricing partition is accepted
+after correcting the local proxy route.
 These totals describe publication acceptance, not complete source or accounting coverage.
 
 ## Repair admission and execution
@@ -115,5 +121,5 @@ tests establish the repair.
 - [DeepSeek price rule](https://api-docs.deepseek.com/quick_start/pricing/).
 - Baseline local artifacts: `/tmp/kmodels-live-refresh.d9Q9X7/`; follow-up public artifacts:
   `/tmp/gh-aw/agent/catalog-evidence/`. Temporary artifacts are not repository fixtures.
-- Final local refresh log: `/tmp/kmodels-pricing-push-collect.log`; the resulting sanitized
+- Final local refresh log: `/tmp/kmodels-azure-transport-collect.log`; the resulting sanitized
   report is stored in `data/refresh-summary.json` with the refreshed publication.
