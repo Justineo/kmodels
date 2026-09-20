@@ -167,6 +167,12 @@ sibling rates survive.
 
 ## Resilient refresh
 
+- A local Retail Prices failure can occur before any HTTP response: the observed local proxy
+  path timed out during TLS, while the same public request completed directly. Diagnose curl exit
+  code and phase before changing an extractor. Where direct access is verified and intended, add
+  `prices.azure.com` to the local `NO_PROXY` configuration; the collector does not silently bypass
+  configured proxies. This endpoint is public and does not depend on Azure credentials.
+
 - The primary MicrosoftDocs index is required. Its fixed catalog, lifecycle, and deployment
   companions are independently optional and retain last verified facts when omitted.
 - The portal, Retail Prices, public price pages, Claude price book, and authenticated inventory are
