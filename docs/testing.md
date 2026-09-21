@@ -47,6 +47,10 @@ after each test, including failures.
 - Keep explicit upper bounds on payload size, chunk size, offer count, and preview length: those
   protect consumer resource contracts. Test their behavior with synthetic inputs and verify the
   current published assets stay within the same bounds.
+  Distinguish hard resource ceilings from performance targets: the website's core chunks retain
+  a 2 MiB decoded-size ceiling, while smaller decoded/gzip targets emit diagnostic sizes and
+  warnings. Normal model-inventory growth must not fail refresh merely for exceeding an advisory
+  first-render target.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
   This includes table-cell amounts and statuses and model-specific selector examples: a current
