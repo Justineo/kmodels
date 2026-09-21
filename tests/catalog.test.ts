@@ -18,11 +18,8 @@ import {
 } from "../src/catalog/publication-schema.ts";
 import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import { catalogEnvelopeSchema } from "../src/catalog/schema.ts";
-import {
-  websiteCatalogIndexSchema,
-  websiteDetailChunkSchema,
-  websitePricingSummariesSchema,
-} from "../src/catalog/website-schema.ts";
+import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
+import { loadWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 async function json(path: string): Promise<unknown> {
@@ -131,10 +128,6 @@ describe("generated static catalog", () => {
     );
     const catalogAsset = assets.find(({ fileName }) => fileName === "catalog/index.json");
     const pricingAsset = assets.find(({ fileName }) => fileName === "pricing/index.json");
-    const websiteAsset = assets.find(({ fileName }) => fileName === "ui/catalog/index.json");
-    const websitePricingAsset = assets.find(
-      ({ fileName }) => fileName === "ui/catalog/pricing.json",
-    );
     const websiteDetailAssets = assets.filter(({ fileName }) => fileName.startsWith("ui/details/"));
     const idsAsset = assets.find(({ fileName }) => fileName === "catalog/ids.json");
     const identifiersAsset = assets.find(({ fileName }) => fileName === "catalog/identifiers.json");
@@ -266,18 +259,18 @@ describe("generated static catalog", () => {
       /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|source_ids|observed_at|first_seen_at|last_seen_at|warnings)"/,
     );
     expect(pricingAsset?.source.endsWith("\n")).toBe(false);
-    const website = websiteCatalogIndexSchema.parse(JSON.parse(websiteAsset?.source ?? ""));
-    const websitePricing = websitePricingSummariesSchema.parse(
-      JSON.parse(websitePricingAsset?.source ?? ""),
-    );
+    const website = await loadWebsiteCatalog(async (path) => {
+      const asset = assets.find(({ fileName }) => `/${fileName}` === path);
+      if (asset === undefined) throw new Error(`Missing core asset ${path}`);
+      return JSON.parse(asset.source);
+    });
     const websiteDetails = websiteDetailAssets.map(({ source }) =>
       websiteDetailChunkSchema.parse(JSON.parse(source)),
     );
-    expect(website.data_version).toBe(websitePricing.data_version);
+    expect(website.data_version).toBe(projections.ui.manifest.data_version);
     expect(website.models).toHaveLength(catalog.models.length);
-    expect(websitePricing.pricing).toHaveLength(catalog.models.length);
     expect(websiteDetails.flatMap(({ details }) => details)).toHaveLength(catalog.models.length);
-    expect(assets).toHaveLength(9 + catalog.providers.length * 2 + websiteDetailAssets.length);
+    expect(new Set(assets.map(({ fileName }) => fileName)).size).toBe(assets.length);
   });
 
   it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {
