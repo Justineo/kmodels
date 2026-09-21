@@ -305,22 +305,25 @@ services → pricing notes`. The first mechanism in
 - Replace the current history entry on state changes; `popstate` restores visited state.
 - Theme is local preference. Version-group expansion, popover visibility, and
   scroll positions are transient.
-- The browser's first-render data dependencies are `/ui/catalog/index.json` and
-  `/ui/catalog/pricing.json`. Request both concurrently and await both before
-  mounting the application; preload both from the HTML shell so their transfers
-  start in parallel with the core module graph. Core table data never has a
+- Preload `/ui/catalog/index.json` from the HTML shell. This lightweight manifest
+  contains provider labels, the data version, and ordered chunk row counts.
+  Load `/ui/catalog/chunks/<data_version>/<chunk>.json` with at most four concurrent
+  requests and await all chunks before mounting. Core table data never has a
   deferred loading state.
-  Each core chunk has a hard 2 MiB decoded-size ceiling. The catalog's 320 KiB
-  decoded / 48 KiB gzip and pricing summary's 112 KiB decoded / 10 KiB gzip
-  performance targets are advisory: generated-data validation reports sizes and
-  warns when targets are exceeded, without blocking normal catalog growth.
-  Integrity checks and hard resource ceilings still gate publication.
-  The catalog chunk contains provider labels and only the model fields needed
-  for rows, grouping, search, filters, and sorting. The pricing chunk contains
-  build-time representative pricing in matching model order. Browser-only UIDs
+  Split deterministically at model-row boundaries using the serialized UTF-8
+  size, capped at 128 KiB per chunk (including its envelope and dictionaries).
+  Each chunk keeps model rows and their representative prices together, with
+  local status and price-cell dictionaries. Inventory growth creates more chunks;
+  there is no fixed aggregate-size target or growth warning. An indivisible row
+  or manifest exceeding the chunk ceiling is a publication error.
+  Verify each chunk's version, ordinal and row count, the complete pricing/model
+  correspondence, and model uniqueness before mounting. Completion order cannot
+  change row order. Versioned chunk URLs prevent mixing cached snapshots.
+  Model rows contain only the fields needed for grouping, search, filters, and
+  sorting. Browser-only UIDs
   are derived from the exact tuple; `updated_date`, inspector facts, audit
   fields, and random per-model references do not inflate either payload.
-  Both chunks use versioned compact row tuples instead of repeating field names.
+  Both kinds of rows use versioned compact tuples instead of repeating field names.
   Catalog rows index providers and fixed vocabularies; pricing rows index shared
   status and cell dictionaries. A display name identical to its model ID and a
   zero detail-chunk index use compact sentinel values and are restored at the
@@ -358,16 +361,16 @@ services → pricing notes`. The first mechanism in
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.
-- Use one `data_version` derived from the accepted catalog/pricing pair on the
-  catalog, pricing-summary, model-detail, shared-offer, and provider-detail
-  projections. Reject mismatched core
-  chunks before mounting and mismatched deferred details before rendering them.
+- Use one `data_version` derived from the accepted catalog/pricing pair and core
+  transport version on the manifest, core chunks, model-detail, shared-offer,
+  and provider-detail projections. Reject mismatched core chunks before mounting
+  and mismatched deferred details before rendering them.
   Scope deferred-source, parsed-chunk, and model-detail caches to that version;
   evict rejected requests so a transient fetch or validation failure cannot
   poison later attempts.
 - Keep the initial catalog parser small and dependency-free. Provider/UI icons
   and table scrollbars belong to the first rendered state: start the icon
-  sprite, applicable OverlayScrollbars runtime/CSS, and two core data requests
+  sprite, applicable OverlayScrollbars runtime/CSS, and core manifest request
   concurrently; await them before mounting and initialize scrollbars during
   mount. These may be separate cacheable async chunks, but are not post-paint
   work. The first Vapor root renders only visible workspace chrome and the
