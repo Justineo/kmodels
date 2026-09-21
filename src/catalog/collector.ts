@@ -283,6 +283,15 @@ function applyFields(
     description: fields.has("description")
       ? optional(current.description, incoming.description, fillOnly)
       : current.description,
+    model_card:
+      fields.has("model_card") && incoming.model_card !== undefined
+        ? fillOnly
+          ? { ...incoming.model_card, ...current.model_card }
+          : { ...current.model_card, ...incoming.model_card }
+        : current.model_card,
+    deployment: fields.has("deployment")
+      ? optional(current.deployment, incoming.deployment, fillOnly)
+      : current.deployment,
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,

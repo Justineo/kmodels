@@ -20,6 +20,8 @@ const semanticModelFields = [
   "id_kind",
   "name",
   "description",
+  "model_card",
+  "deployment",
   "aliases",
   "tasks",
   "task_evidence",

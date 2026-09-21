@@ -11,6 +11,7 @@ import type { WebsiteModel, WebsiteModelDetail } from "../catalog/website-schema
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
+import ModelMetadata from "./ModelMetadata.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
@@ -324,6 +325,8 @@ onUnmounted(() => {
                 </div>
               </dl>
             </section>
+
+            <ModelMetadata v-if="detail" :detail="detail" />
 
             <details v-if="deploymentAvailability.length" class="detail-section detail-disclosure">
               <summary>

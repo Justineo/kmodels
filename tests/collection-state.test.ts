@@ -10,6 +10,32 @@ const previousAt = "2026-07-23T00:00:00.000Z";
 const currentAt = "2026-07-24T00:00:00.000Z";
 const noPricing = emptyPricingCatalog();
 
+it("reports metadata-only model changes even when identity and capabilities are unchanged", () => {
+  const model = baseModel({
+    providerId: "test",
+    id: "model",
+    name: "Model",
+    sourceId: "test-catalog",
+    observedAt: previousAt,
+  });
+  const next = {
+    ...model,
+    model_card: { license: "MIT" },
+    deployment: { package_version: "2.0", region: "west", profiles: [] },
+  };
+  const summary = summarizeRefresh(
+    catalog("1", previousAt, [model], "a"),
+    catalog("2", currentAt, [next], "b"),
+    noPricing,
+    noPricing,
+  );
+  expect(summary.providers[0]?.models.changed).toBe(1);
+  expect(summary.providers[0]?.models.changed_fields).toMatchObject({
+    model_card: 1,
+    deployment: 1,
+  });
+});
+
 function contractFinding(
   disposition: SourceContractEvidence["disposition"],
   path: string,

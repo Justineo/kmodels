@@ -8,7 +8,7 @@ Status: implemented; source research and access verification 2026-09-21
 identities are JumpStart model IDs, not endpoint names, Marketplace listing IDs, model-package
 ARNs, or upstream Hugging Face repository names.
 
-Admission comes only from the **Open-weight models** and **Proprietary models** sections of
+Admission starts with the **Open-weight models** and **Proprietary models** sections of
 AWS's [foundation-model catalog](https://docs.aws.amazon.com/sagemaker/latest/dg/jumpstart-foundation-models-latest.html).
 Built-in pretrained models and classic ML algorithms are excluded before metadata or pricing
 joins. The source is global and non-exhaustive: its tables are a dated publication rather than
@@ -17,11 +17,63 @@ contained 436 and 121 entries; these counts are observations, not permanent asse
 The parser checks each live section's own advertised row count, required headers, and identity
 uniqueness. Section/header drift and partial tables fail the source.
 
+The required `sagemaker-sdk` supplement joins the current
+[open-model manifest](https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/models_manifest.json)
+and proprietary SDK manifest by exact JumpStart ID. It keeps the table's admitted IDs and also
+admits current non-deprecated open specs explicitly tagged `Foundation Models`. New proprietary
+IDs require the same foundation marker or the explicit `Text` + `Generation` category pair in
+their latest manifest record. `Open Weights` alone is not admission evidence: the Hub also uses
+that classification for classic ML. Version selection uses the SDK's PEP 440/lexical resolver,
+before applying admission, so an older eligible version cannot bypass a latest-version exclusion.
+Paths and fetched model/version identities are checked before projection. A public manifest is
+global product evidence; the optional regional API still cannot introduce global catalog IDs.
+
 The catalog supplies exact IDs, display names, tasks, and explicit fine-tuning flags. Tasks use
 reviewed source labels, not name-based guesses. Forecasting, scientific modelling and ambiguous
 task labels retain their source type without inventing a canonical task. Public table rows are
 unversioned; package revisions are not upstream model releases. No default context window,
 streaming, token accounting, GA status, release date, or account access is inferred.
+
+Six exact task conflicts are reviewed against publisher product descriptions: the three Bria
+2.2HD/2.3/2.3Fast IDs carry erroneous `ReRank` labels, and Cohere Rerank v3.5/v4.0 Fast/v4.0 Pro
+carry erroneous `Text Embedding` labels. Correct only those exact ID/label pairs to image
+generation and reranking respectively, preserving the original label under a reviewed evidence
+namespace. Evidence: [Bria 2.2HD](https://aws.amazon.com/marketplace/pp/prodview-2pbgsqtuvobbq),
+[Bria 2.3](https://aws.amazon.com/marketplace/pp/prodview-man54dmpkarki),
+[Bria 2.3Fast](https://aws.amazon.com/marketplace/pp/prodview-qwwlgkbtm2bsq),
+[Cohere model catalog](https://docs.cohere.com/docs/models), and
+[Cohere SageMaker setup](https://docs.cohere.com/v1/docs/amazon-sagemaker-setup-guide).
+No prefix or model-name guessing applies to other IDs.
+
+## Model information and deployment configurations
+
+Public specs supply modalities (including `Embeddings` → `embedding`), explicit fine-tuning,
+publisher, license, model-size and context-window labels, languages, upstream Hugging Face ID,
+access and framework. Package deployment data retains default and named components, supported
+instances, serving framework versions and configuration/component associations. A context-setting
+allowlist retains only numeric context controls and their profile/instance selectors; model paths,
+tokens, arbitrary environment values, image URIs and resource ARNs are discarded. Empty/null
+defaults and absent variant maps mean no published fact. Defaults and overrides are not collapsed.
+An SDK version can itself be a resource ARN. It may participate in the in-memory exact spec join,
+but is omitted from the public package-version label; it is never published in model details or
+refresh diagnostics. Its dependency key remains a hash.
+Benchmarks and config rankings are not capability guarantees and are not currently normalized.
+
+The source bucket is `us-west-2`, which labels the published configuration, not global or account
+availability. Package revisions do not populate model `version` or release dates. Ranges such as
+`<4K` remain labels instead of becoming exact `limits.context_tokens`. Metadata and deployment
+profiles appear in the inspector's deferred, byte-bounded detail chunks, not the homepage core.
+
+The 2026-09-21 complete SDK probe admitted 623 models (66 beyond the static tables), with
+451 modality records, 501 publisher labels, 366 licenses, 317 size labels, 175 context ranges,
+347 language lists, 413 upstream IDs, and 2,362 deployment profiles. 255 models had scoped
+context controls. These are dated observations, not exhaustiveness claims or test thresholds.
+The accepted refresh also completed all 603 admitted Hub detail reads, supplied 603 descriptions,
+and established 482 positive `us-west-2` deployment tuples. API enrichment increased license
+coverage to 381. Twenty globally admitted IDs were absent from this Region's Hub, which does not
+retire them. All four SageMaker sources succeeded; the API source's consecutive-failure count
+returned to zero. The shared endpoint-data book now references all 623 models; the snapshot still
+has five request-cost books, including three Marketplace per-inference books.
 
 ## Optional regional API
 
@@ -30,13 +82,15 @@ gate requires `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; temporary credent
 provide `AWS_SESSION_TOKEN`. The transport uses the AWS SDK credential chain and SigV4 signing;
 a profile alone does not satisfy the collector's current environment gate. No separate API key
 is needed. `ListHubContents` paginates `SageMakerPublicHub` / `Model`; `DescribeHubContent`
-reads the exact returned version, only for models already admitted by the public catalog.
+reads the exact returned version, only for models already admitted by the public tables or SDK
+manifest rules.
 The configured enrichment Region is `us-west-2`. A read-only access probe succeeded for
 `ListHubContents`, `DescribeHubContent`, and `ListHubContentVersions` in both `us-west-2` and
 `us-east-1` after the user's IAM update. Historical-version permission is available but is not
 needed by routine collection.
 
-The API enriches modalities and explicit fine-tuning support. A positive
+The API fills display names, descriptions, missing model-card facts, modalities and explicit
+fine-tuning support. A positive
 `(region, jumpstart-endpoint)` pair requires `Available`, `Supported`, and a nonempty supported
 inference-instance list in the same model response. This is regional route evidence, not a
 guarantee of account entitlement, subscription, quota, or capacity. Restricted/deprecated hub
@@ -46,7 +100,11 @@ Absence from one Region does not delete a global model.
 Only a bounded metadata projection leaves the API transport. Account/resource ARNs, package
 locations, dependencies, training data, container paths, payload samples, and raw authenticated
 documents are discarded. Requests have deadlines, bounded concurrency, page limits, repeated-token
-checks and SDK retries. API failure does not prevent independent public catalog/pricing collection.
+checks and adaptive SDK retries. Calls start at least one second apart, use at most two concurrent
+detail requests, and allow 90 seconds for each request including SDK retry waits. A full successful
+source requires every selected detail; a throttled/aborted source is never published as complete.
+Public S3 spec reads reuse native HTTP connections with the same host, redirect, response-size and
+retry boundaries as other sources. API failure does not prevent independent public catalog/pricing collection.
 
 Official API references:
 [ListHubContents](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ListHubContents.html),
@@ -73,8 +131,8 @@ AWS publishes its bucket configuration in the
 Spec discovery mirrors the SDK's
 [`get_latest_version` resolver](https://github.com/aws/sagemaker-python-sdk/blob/800d3423f3869c0770ff292ef9cb98cc0ee4b8b1/sagemaker-core/src/sagemaker/core/jumpstart/utils.py):
 PEP 440 comparison when every version is valid, otherwise lexical maximum. Package versions are
-not uniformly SemVer. This selection discovers a listing link only; it does not publish a
-globally preferred model version or copy package capabilities into the unversioned model.
+not uniformly SemVer. This selection discovers the current package metadata and listing link;
+it does not publish a globally preferred model release version. Deployment facts remain package-scoped.
 Duplicate exact manifest records are deduplicated, paths must match their exact model/version,
 and fetched specs must repeat both identities. URL components are encoded; provenance uses a
 version hash rather than copying arbitrary package labels into dependency keys.
@@ -108,6 +166,8 @@ Endpoint data processing is a shared service book linked to admitted models. Ser
 is a standalone service book with no blanket model references: AWS excludes GPU and Marketplace
 model-package deployments from Serverless. Its presence must not assert support for all JumpStart
 models. Marketplace books link only the exact model IDs whose specs identify that listing.
+The pricing bundle uses the same open/proprietary manifest admission rules as the model supplement,
+so new SDK-only models also join the shared service book and their exact Marketplace listing.
 
 Rates have exact rational prices and semantic usage bindings. The caller supplies **AWS-billed
 GB**, **AWS-billed execution seconds**, or **publisher-metered billable inferences**. The catalog

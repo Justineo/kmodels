@@ -9,6 +9,7 @@ import {
   modelTasks,
 } from "./catalog-vocabulary.ts";
 import { sourcePricingEvidenceSchema } from "./source-pricing-policy.ts";
+import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -68,6 +69,8 @@ export const providerModelSchema = z.object({
   id_kind: z.enum(["api_id", "alias", "sku", "display_name", "source_generated"]),
   name: z.string().min(1),
   description: z.string().optional(),
+  model_card: modelCardSchema.optional(),
+  deployment: deploymentSpecSchema.optional(),
   aliases: z.array(z.string().min(1)),
   tasks: z.array(modelTaskSchema).transform((tasks) => [...new Set(tasks)]),
   task_evidence: z.array(taskEvidenceSchema).optional(),

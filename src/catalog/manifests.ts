@@ -37,6 +37,7 @@ export type Extractor =
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
   | { kind: "sagemaker-catalog" }
+  | { kind: "sagemaker-sdk" }
   | { kind: "sagemaker-pricing" }
   | { kind: "sagemaker-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
@@ -149,6 +150,8 @@ export type SourceField =
   | "version"
   | "name"
   | "description"
+  | "model_card"
+  | "deployment"
   | "aliases"
   | "tasks"
   | "delivery_modes"
@@ -201,6 +204,7 @@ export interface SourceManifest {
   headers?: { name: string; value: string }[];
   transport?:
     | { kind: "sagemaker-pricing" }
+    | { kind: "sagemaker-sdk" }
     | { kind: "aws-sagemaker"; region: string }
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
@@ -940,13 +944,42 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-catalog" },
-        extractorVersion: "sagemaker-catalog-v1",
+        extractorVersion: "sagemaker-catalog-v2",
         fields: ["model_id", "name", "tasks", "capabilities", "service_families", "status"],
         allowedHosts: ["docs.aws.amazon.com"],
         maxResponseBytes: mebibytes(4),
         scope: "global",
         exhaustive: false,
         role: "catalog",
+      },
+      {
+        id: "sagemaker-sdk",
+        url: sagemakerCatalogUrl,
+        type: "repository",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-sdk" },
+        extractorVersion: "sagemaker-sdk-v1",
+        fields: [
+          "model_id",
+          "tasks",
+          "modalities",
+          "capabilities",
+          "service_families",
+          "model_card",
+          "deployment",
+        ],
+        allowedHosts: [
+          "docs.aws.amazon.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+        ],
+        maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: false,
+        role: "supplement",
+        fillOnly: true,
+        transport: { kind: "sagemaker-sdk" },
       },
       {
         id: "sagemaker-pricing",
@@ -957,7 +990,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-pricing" },
-        extractorVersion: "sagemaker-pricing-v1",
+        extractorVersion: "sagemaker-pricing-v2",
         fields: ["pricing"],
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
@@ -986,9 +1019,13 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "sagemaker-api" },
-        extractorVersion: "sagemaker-api-v1",
-        fields: ["modalities", "capabilities", "availability"],
-        allowedHosts: ["api.sagemaker.us-west-2.amazonaws.com", "docs.aws.amazon.com"],
+        extractorVersion: "sagemaker-api-v2",
+        fields: ["name", "description", "model_card", "modalities", "capabilities", "availability"],
+        allowedHosts: [
+          "api.sagemaker.us-west-2.amazonaws.com",
+          "docs.aws.amazon.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+        ],
         maxResponseBytes: mebibytes(4),
         scope: "region",
         exhaustive: false,
