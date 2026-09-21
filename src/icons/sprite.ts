@@ -1,7 +1,6 @@
 import alibabaCloud from "@lobehub/icons-static-svg/icons/alibabacloud-color.svg?raw";
 import anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg?raw";
 import bedrock from "@lobehub/icons-static-svg/icons/bedrock-color.svg?raw";
-import aws from "@lobehub/icons-static-svg/icons/aws-color.svg?raw";
 import cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg?raw";
 import cohere from "@lobehub/icons-static-svg/icons/cohere-color.svg?raw";
 import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
@@ -32,6 +31,7 @@ import search from "lucide-static/icons/search.svg?raw";
 import sun from "lucide-static/icons/sun.svg?raw";
 import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
+import sagemaker from "../assets/provider-icons/amazon-sagemaker.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
 import type { DarkProviderIconId, ProviderIconId, UiIconName } from "./manifest.ts";
 import { svgSymbol } from "./svg.ts";
@@ -56,7 +56,7 @@ const uiSources = {
 
 const providerSources = {
   "amazon-bedrock": bedrock,
-  "amazon-sagemaker": aws,
+  "amazon-sagemaker": sagemaker,
   anthropic,
   azure: microsoftFoundry,
   cerebras,
