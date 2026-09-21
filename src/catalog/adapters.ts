@@ -50,7 +50,6 @@ import {
 } from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog, parseMistralPricing } from "./mistral.ts";
 import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
-import { parsePerplexityCatalog } from "./perplexity.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
@@ -2556,8 +2555,6 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseDeepseekUpdates(input);
     case "deepseek-api":
       return parseDeepseekApi(input);
-    case "perplexity-catalog":
-      return parsePerplexityCatalog(input);
     case "kimi-openapi":
       return parseKimiOpenApi(input);
     case "kimi-catalog":

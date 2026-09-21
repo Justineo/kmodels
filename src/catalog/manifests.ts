@@ -106,7 +106,6 @@ export type Extractor =
   | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
   | { kind: "deepseek-updates"; minModels: number; maxModels: number }
   | { kind: "deepseek-api"; minModels: number; maxModels: number }
-  | { kind: "perplexity-catalog"; minModels: number; maxModels: number }
   | { kind: "kimi-openapi"; baseUrl: string; minModels: number; maxModels: number }
   | { kind: "kimi-catalog"; minModels: number; maxModels: number }
   | {
@@ -4371,43 +4370,5 @@ export const manifests = [
       fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
       statuses: ["active", "legacy", "deprecated", "unknown"],
     },
-  },
-  {
-    provider: {
-      id: "perplexity",
-      name: "Perplexity",
-      kind: "hosted",
-      homepage: "https://www.perplexity.ai/",
-      docs_url: "https://docs.perplexity.ai/docs/getting-started/pricing",
-      catalog_scope: "global",
-    },
-    sources: [
-      {
-        id: "perplexity-pricing",
-        url: "https://docs.perplexity.ai/docs/getting-started/pricing.md",
-        type: "website",
-        access: "public",
-        format: "markdown",
-        stability: "semi_structured",
-        extractor: { kind: "perplexity-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "perplexity-pricing-v1",
-        pricingEvidence: firstPartyPricing("price_book", "exact_id"),
-        fields: ["model_id", "name", "tasks", "modalities", "pricing"],
-        allowedHosts: ["docs.perplexity.ai"],
-        maxResponseBytes: mebibytes(2),
-        scope: "global",
-        exhaustive: false,
-        role: "catalog",
-        linkedDocuments: {
-          path: /$a/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 2,
-          documents: fixedDocuments([
-            ["sonar-models", "https://docs.perplexity.ai/docs/sonar/models.md", 1, "markdown"],
-          ]),
-        },
-      },
-    ],
   },
 ] satisfies ProviderManifest[];

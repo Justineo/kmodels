@@ -21,8 +21,6 @@ export const sourcePriceMeters = [
   "inference",
   "input_text",
   "output_text",
-  "citation_tokens",
-  "reasoning_tokens",
   "cache_read_text",
   "cache_write_text",
   "cache_read_audio",

@@ -57,6 +57,5 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Alibaba Cloud Model Studio](docs/providers/dashscope.md)
 - [DeepSeek](docs/providers/deepseek.md)
 - [Kimi](docs/providers/kimi.md)
-- [Perplexity](docs/providers/perplexity.md)
 - [Cerebras](docs/providers/cerebras.md)
 - [Ollama](docs/providers/ollama.md)

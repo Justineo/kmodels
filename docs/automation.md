@@ -76,9 +76,15 @@ Status: implemented
   derived UI/export asset indexes and packs, fetch state, quarantine, and
   refresh summary using a `chore(data): ...` commit. Its commit records the
   producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
-  out full history so the website generation-time link can resolve the latest
-  catalog-producing commit and prefer that run, while manually produced catalog
-  commits fall back to their GitHub commit page. After a refresh commits and
+  out full commit/tree history with `filter: blob:none` so the website generation-time
+  link can resolve the latest catalog-producing commit without downloading historical
+  file contents, and prefer that run, while manually produced catalog commits fall
+  back to their GitHub commit page. A non-cone sparse checkout includes root files,
+  `src/`, `scripts/`, test source files, `public/`, and only the website/export projection
+  manifests and packs from `data/`. Scripts and test sources preserve the production
+  build's full TypeScript check scope; fixtures, guides, collector state, and canonical
+  data files are unnecessary for that build. The catalog history query uses Git trees
+  even though `data/catalog.json` is absent from the working tree. After a refresh commits and
   pushes changed data, it explicitly dispatches the dedicated deployment
   workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
   not emit another `push` workflow run. Void accepts the dispatch workflow's
