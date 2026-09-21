@@ -16,6 +16,9 @@ const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 const resolutionPolicySchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 
 export const sourcePriceMeters = [
+  "input_data",
+  "output_data",
+  "inference",
   "input_text",
   "output_text",
   "citation_tokens",
@@ -150,6 +153,7 @@ export const sourcePriceFactSchema = z
       "gigabyte_day",
       "gibibyte_day",
       "gigabyte",
+      "sagemaker_data_gb",
       "gibibyte",
       "container_session",
       "session",

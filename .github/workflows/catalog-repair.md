@@ -55,6 +55,7 @@ network:
     - help.aliyun.com
     - huggingface.co
     - inference-docs.cerebras.ai
+    - jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com
     - learn.microsoft.com
     - mistral.ai
     - ollama.com

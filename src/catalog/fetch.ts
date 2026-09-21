@@ -5,6 +5,9 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { fetchSagemakerPricing } from "./sagemaker-fetch.ts";
+import { fetchSagemakerInventory } from "./sagemaker-api.ts";
+import { sagemakerCatalogUrl } from "./sagemaker.ts";
 import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
 import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
@@ -175,7 +178,7 @@ export const fetchStateSchema = z.object({
 export type FetchState = z.infer<typeof fetchStateSchema>;
 export type SourceState = z.infer<typeof sourceStateSchema>;
 
-interface FetchPayload {
+export interface FetchPayload {
   body: string;
   contentHash: string;
   etag: string | undefined;
@@ -2411,6 +2414,27 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
 }
 
 export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
+  if (source.transport?.kind === "aws-sagemaker") {
+    const { auth: _auth, ...publicSource } = source;
+    const catalog = await fetchPayload({
+      ...publicSource,
+      url: sagemakerCatalogUrl,
+      access: "public",
+      format: "html",
+      maxResponseBytes: 4 * 1024 * 1024,
+    });
+    const body = await fetchSagemakerInventory(
+      source.transport.region,
+      catalog.body,
+      source.maxResponseBytes,
+    );
+    return {
+      ...generatedFetchResult(body),
+      dependencies: [observation(`${source.id}/catalog`, catalog)],
+    };
+  }
+  if (source.transport?.kind === "sagemaker-pricing")
+    return fetchSagemakerPricing(source, fetchPayload);
   if (source.transport?.kind === "aws-bedrock") {
     const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
     return generatedFetchResult(body);

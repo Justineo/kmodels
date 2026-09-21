@@ -41,6 +41,7 @@ import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
 import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
 import { applyDashscopeCommercialTopology } from "./dashscope-commercial.ts";
 import { applyPerplexityCommercialTopology } from "./perplexity-commercial.ts";
+import { applySagemakerCommercialTopology } from "./sagemaker-commercial.ts";
 import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
 import { applyHuggingFaceCommercialTopology } from "./huggingface-commercial.ts";
@@ -266,6 +267,8 @@ function applyCommercialTopology(
       return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
     case "perplexity":
       return applyPerplexityCommercialTopology(input);
+    case "amazon-sagemaker":
+      return applySagemakerCommercialTopology(input);
     case "vercel":
       return applyVercelCommercialTopology(input, pricingInputs);
     case "vertex":
@@ -979,6 +982,17 @@ function normalizedUnit(
       ]);
     case "gigabyte":
       return one("byte", "gigabyte");
+    case "sagemaker_data_gb":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "data_processing_gb",
+            "One GB of endpoint data processing as metered by AWS; no byte conversion is asserted",
+          ),
+          power: 1,
+        },
+      ]);
     case "gibibyte":
       return one("byte", "gibibyte");
     case "container_session":
@@ -1340,6 +1354,16 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
     value,
   });
   switch (rate.meter) {
+    case "input_data":
+    case "output_data":
+    case "inference":
+      return providerMeter(
+        context,
+        rate.meter,
+        rate.meter === "inference"
+          ? "Provider-metered billable inference units, which may differ from HTTP invocation count"
+          : `Endpoint ${rate.meter === "input_data" ? "input" : "output"} data processing`,
+      );
     case "cache_storage":
       return standard("storage");
     case "rerank_request":

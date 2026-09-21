@@ -12,6 +12,7 @@ type TopologyFeature =
 
 export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["amazon-bedrock", ["resource", "binding"]],
+  ["amazon-sagemaker", ["resource", "binding"]],
   ["anthropic", ["resource", "binding", "allowance"]],
   ["azure", ["resource", "binding"]],
   ["cerebras", ["resource", "binding"]],

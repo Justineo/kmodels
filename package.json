@@ -11,7 +11,7 @@
     "catalog:audit:eval": "node --env-file-if-exists=.env scripts/evaluate-jev.ts",
     "check": "vp check",
     "collect": "node --env-file-if-exists=.env scripts/collect.ts",
-    "collect:fixtures": "vp test --run tests/adapters.test.ts",
+    "collect:fixtures": "vp test --run tests/adapters.test.ts tests/sagemaker.test.ts",
     "compile:pricing": "node scripts/compile-pricing.ts",
     "prepare:assets": "node scripts/prepare-assets.ts",
     "deploy": "void deploy --dir dist --skip-build",
@@ -22,7 +22,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1118.0",
+    "@aws-sdk/client-sagemaker": "^3.1136.0",
     "@lobehub/icons-static-svg": "1.94.0",
+    "@renovatebot/pep440": "^5.0.1",
     "cheerio": "^1.2.0",
     "jsonc-parser": "3.3.1",
     "lucide-static": "1.34.0",
