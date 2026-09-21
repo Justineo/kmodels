@@ -1,8 +1,8 @@
 {
-  "catalog_version": "1f4a5e7a0b03eb076d397275376fe05c5cafa0f5e1dbaa1f964282d1e11d7e97",
-  "generated_at": "2026-09-21T05:04:43.318Z",
+  "catalog_version": "db72b6cc8476242824b1666f3d4596d40a7d5b62b0b2ce38af3f8ccbf7ec988f",
+  "generated_at": "2026-09-21T07:06:39.967Z",
   "outcome": "changed",
-  "previous_catalog_version": "5f5859f1a09070c5c04b7577da05137ba9b91bb801c0ffc99d66df79c050cea4",
+  "previous_catalog_version": "1f4a5e7a0b03eb076d397275376fe05c5cafa0f5e1dbaa1f964282d1e11d7e97",
   "providers": [
     {
       "attempt": {
@@ -185,6 +185,737 @@
         },
         "sources": [
           {
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 557,
+            "source_id": "sagemaker-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 557,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 557,
+              "normalized_facts": 0,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 557
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 20,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 41414,
+                "explicit_non_numeric": 0,
+                "normalized": 327,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 20,
+                "unsupported": 0
+              },
+              "observed_items": 41761,
+              "reason_counts": {
+                "sagemaker_marketplace_billable_inference": 3,
+                "sagemaker_marketplace_capacity_or_training": 911,
+                "sagemaker_marketplace_non_usage_term": 252,
+                "sagemaker_marketplace_public_pricing_unavailable": 20,
+                "sagemaker_outside_request_pricing": 40251,
+                "sagemaker_public_invocation_meter": 324
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "sagemaker-pricing"
+          },
+          {
+            "consecutive_failures": 1,
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
+            "source_id": "sagemaker-api-us-west-2"
+          }
+        ]
+      },
+      "models": {
+        "added": 557,
+        "added_model_refs": [
+          "amazon-sagemaker/ai21-contextual-answers",
+          "amazon-sagemaker/ai21-jurassic-2-grande-instruct",
+          "amazon-sagemaker/ai21-jurassic-2-jumbo-instruct",
+          "amazon-sagemaker/ai21-jurassic-2-light",
+          "amazon-sagemaker/ai21-paraphrase",
+          "amazon-sagemaker/ai21-summarization",
+          "amazon-sagemaker/arcee-lite",
+          "amazon-sagemaker/arcee-llama-3-1-supernova-lite",
+          "amazon-sagemaker/arcee-llama-spark",
+          "amazon-sagemaker/arcee-supernova",
+          "amazon-sagemaker/arcee-virtuoso-small",
+          "amazon-sagemaker/autogluon-forecasting-chronos-bolt-base",
+          "amazon-sagemaker/autogluon-forecasting-chronos-bolt-small",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-base",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-large",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-small",
+          "amazon-sagemaker/bioptimus-h-optimus-0",
+          "amazon-sagemaker/bria-ai-2-2-hd-commercial",
+          "amazon-sagemaker/bria-ai-2-3-commercial",
+          "amazon-sagemaker/bria-ai-2-3-fast-commercial",
+          "amazon-sagemaker/cambai-mars6",
+          "amazon-sagemaker/cartesia-sonic-3-sagemaker",
+          "amazon-sagemaker/cohere-command-a-a100",
+          "amazon-sagemaker/cohere-command-a-h100",
+          "amazon-sagemaker/cohere-command-r-08-2024-h100",
+          "amazon-sagemaker/cohere-command-r-a100",
+          "amazon-sagemaker/cohere-command-r-h100",
+          "amazon-sagemaker/cohere-command-r-plus-08-2024-h100",
+          "amazon-sagemaker/cohere-command-r-plus-a100",
+          "amazon-sagemaker/cohere-command-r-plus-h100",
+          "amazon-sagemaker/cohere-embed-english",
+          "amazon-sagemaker/cohere-embed-light-english",
+          "amazon-sagemaker/cohere-embed-light-multilingual",
+          "amazon-sagemaker/cohere-embed-multilingual",
+          "amazon-sagemaker/cohere-embed-v4-0",
+          "amazon-sagemaker/cohere-rerank-english-v2",
+          "amazon-sagemaker/cohere-rerank-multilingual-v2",
+          "amazon-sagemaker/cohere-rerank-nimble-english",
+          "amazon-sagemaker/cohere-rerank-nimble-multi",
+          "amazon-sagemaker/cohere-rerank-v3-5",
+          "amazon-sagemaker/cohere-rerank-v3-english",
+          "amazon-sagemaker/cohere-rerank-v3-multilingual",
+          "amazon-sagemaker/cohere-rerank-v4-0-fast",
+          "amazon-sagemaker/cohere-rerank-v4-0-pro",
+          "amazon-sagemaker/deepseek-llm-deepseek-v3-1",
+          "amazon-sagemaker/deepseek-llm-deepseek-v3-2",
+          "amazon-sagemaker/deepseek-llm-r1",
+          "amazon-sagemaker/deepseek-llm-r1-0528",
+          "amazon-sagemaker/deepseek-llm-r1-distill-llama-70b",
+          "amazon-sagemaker/deepseek-llm-r1-distill-llama-8b",
+          "amazon-sagemaker/deepseek-llm-r1-distill-qwen-1-5b",
+          "amazon-sagemaker/deepseek-llm-r1-distill-qwen-14b",
+          "amazon-sagemaker/deepseek-llm-r1-distill-qwen-32b",
+          "amazon-sagemaker/deepseek-llm-r1-distill-qwen-7b",
+          "amazon-sagemaker/deepseek-vlm-deepseek-ocr",
+          "amazon-sagemaker/evolutionary-scale-esm3",
+          "amazon-sagemaker/fundamental-technologies-nexus",
+          "amazon-sagemaker/granite-3-0-2b-instruct",
+          "amazon-sagemaker/granite-3-0-8b-instruct",
+          "amazon-sagemaker/gretel-navigator-tabular",
+          "amazon-sagemaker/huggingface-asr-qwen3-asr-1-7b",
+          "amazon-sagemaker/huggingface-asr-voxtral-mini-4b-realtime-2602",
+          "amazon-sagemaker/huggingface-asr-whisper-base",
+          "amazon-sagemaker/huggingface-asr-whisper-large",
+          "amazon-sagemaker/huggingface-asr-whisper-large-v2",
+          "amazon-sagemaker/huggingface-asr-whisper-large-v3",
+          "amazon-sagemaker/huggingface-asr-whisper-large-v3-turbo",
+          "amazon-sagemaker/huggingface-asr-whisper-medium",
+          "amazon-sagemaker/huggingface-asr-whisper-small",
+          "amazon-sagemaker/huggingface-asr-whisper-tiny",
+          "amazon-sagemaker/huggingface-eqa-bert-base-cased",
+          "amazon-sagemaker/huggingface-eqa-bert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-eqa-bert-base-multilingual-uncased",
+          "amazon-sagemaker/huggingface-eqa-bert-base-uncased",
+          "amazon-sagemaker/huggingface-eqa-bert-large-cased",
+          "amazon-sagemaker/huggingface-eqa-bert-large-cased-whole-word-masking",
+          "amazon-sagemaker/huggingface-eqa-distilbert-base-cased",
+          "amazon-sagemaker/huggingface-eqa-distilbert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-eqa-distilbert-base-uncased",
+          "amazon-sagemaker/huggingface-eqa-distilroberta-base",
+          "amazon-sagemaker/huggingface-eqa-roberta-base",
+          "amazon-sagemaker/huggingface-eqa-roberta-base-openai-detector",
+          "amazon-sagemaker/huggingface-eqa-roberta-large",
+          "amazon-sagemaker/huggingface-fillmask-bert-base-uncased",
+          "amazon-sagemaker/huggingface-img2img-flux-2-klein-base-4b",
+          "amazon-sagemaker/huggingface-llm-ahxt-litellama-460m-1t",
+          "amazon-sagemaker/huggingface-llm-ai-forever-mgpt",
+          "amazon-sagemaker/huggingface-llm-amazon-falconlite",
+          "amazon-sagemaker/huggingface-llm-amazon-falconlite2",
+          "amazon-sagemaker/huggingface-llm-amazon-mistrallite",
+          "amazon-sagemaker/huggingface-llm-apertus-70b-2509",
+          "amazon-sagemaker/huggingface-llm-apertus-70b-instruct-2509",
+          "amazon-sagemaker/huggingface-llm-apertus-8b-instruct-2509",
+          "amazon-sagemaker/huggingface-llm-aya-101",
+          "amazon-sagemaker/huggingface-llm-berkeley-nest-starling-lm-7b-alpha",
+          "amazon-sagemaker/huggingface-llm-bielik-11b-v3-0-instruct",
+          "amazon-sagemaker/huggingface-llm-calm2-7b-chat-bf16",
+          "amazon-sagemaker/huggingface-llm-cognitive-dolphin-29-llama3-8b",
+          "amazon-sagemaker/huggingface-llm-dbrx-base",
+          "amazon-sagemaker/huggingface-llm-dbrx-instruct",
+          "amazon-sagemaker/huggingface-llm-dolphin-2-2-1-mistral-7b",
+          "amazon-sagemaker/huggingface-llm-dolphin-2-5-mixtral-8x7b",
+          "amazon-sagemaker/huggingface-llm-dolphin-2-7-mixtral-8x7b",
+          "amazon-sagemaker/huggingface-llm-eleutherai-pythia-160m-deduped",
+          "amazon-sagemaker/huggingface-llm-eleutherai-pythia-70m-deduped",
+          "amazon-sagemaker/huggingface-llm-elyza-japanese-llama-2-13b-chat",
+          "amazon-sagemaker/huggingface-llm-elyza-japanese-llama-2-13b-fast-chat",
+          "amazon-sagemaker/huggingface-llm-elyza-japanese-llama-2-7b-chat-bf16",
+          "amazon-sagemaker/huggingface-llm-elyza-japanese-llama-2-7b-fast-chat-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-180b-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-180b-chat-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-3-10B-Instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-3-10B-base",
+          "amazon-sagemaker/huggingface-llm-falcon-3-1B-Instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-3-3B-Instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-3-3B-base",
+          "amazon-sagemaker/huggingface-llm-falcon-3-7B-Instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-3-7B-base",
+          "amazon-sagemaker/huggingface-llm-falcon-40b-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-40b-instruct-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-7b-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-7b-instruct-bf16",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-0-5b-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-1-5b-deep-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-1-5b-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-34b-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-3b-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon-h1-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-falcon2-11b",
+          "amazon-sagemaker/huggingface-llm-gemma-2-27b",
+          "amazon-sagemaker/huggingface-llm-gemma-2-27b-instruct",
+          "amazon-sagemaker/huggingface-llm-gemma-2-2b",
+          "amazon-sagemaker/huggingface-llm-gemma-2-2b-instruct",
+          "amazon-sagemaker/huggingface-llm-gemma-2-9b",
+          "amazon-sagemaker/huggingface-llm-gemma-2-9b-instruct",
+          "amazon-sagemaker/huggingface-llm-gemma-2b",
+          "amazon-sagemaker/huggingface-llm-gemma-2b-instruct",
+          "amazon-sagemaker/huggingface-llm-gemma-3-1b-instruct",
+          "amazon-sagemaker/huggingface-llm-gemma-7b",
+          "amazon-sagemaker/huggingface-llm-gemma-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-glm-5-1-fp8",
+          "amazon-sagemaker/huggingface-llm-gradientai-llama-3-8B-instruct-262k",
+          "amazon-sagemaker/huggingface-llm-huggingfaceh4-starchat-alpha",
+          "amazon-sagemaker/huggingface-llm-huggingfaceh4-starchat-beta",
+          "amazon-sagemaker/huggingface-llm-huggingfaceh4-zephyr-7b-beta",
+          "amazon-sagemaker/huggingface-llm-huggingfaceh4-zephyr-orpo-141b-a35b-v01",
+          "amazon-sagemaker/huggingface-llm-kimi-k2-5",
+          "amazon-sagemaker/huggingface-llm-llama-3-8b-instruct-gradient",
+          "amazon-sagemaker/huggingface-llm-llama3-8b-sealionv21-instruct",
+          "amazon-sagemaker/huggingface-llm-minimax-m2",
+          "amazon-sagemaker/huggingface-llm-minimax-m2-1",
+          "amazon-sagemaker/huggingface-llm-minimax-m2-5",
+          "amazon-sagemaker/huggingface-llm-minimax-m2-7",
+          "amazon-sagemaker/huggingface-llm-ministral-3-14b-instruct-2512",
+          "amazon-sagemaker/huggingface-llm-mistral-7b",
+          "amazon-sagemaker/huggingface-llm-mistral-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-mistral-7b-instruct-v3",
+          "amazon-sagemaker/huggingface-llm-mistral-7b-openorca-gptq",
+          "amazon-sagemaker/huggingface-llm-mistral-7b-v3",
+          "amazon-sagemaker/huggingface-llm-mistral-nemo-base-2407",
+          "amazon-sagemaker/huggingface-llm-mistral-nemo-instruct-2407",
+          "amazon-sagemaker/huggingface-llm-mistral-small-24B-Instruct-2501",
+          "amazon-sagemaker/huggingface-llm-mistralai-mixtral-8x22B-instruct-v0-1",
+          "amazon-sagemaker/huggingface-llm-mixtral-8x22B",
+          "amazon-sagemaker/huggingface-llm-mixtral-8x7b",
+          "amazon-sagemaker/huggingface-llm-mixtral-8x7b-instruct",
+          "amazon-sagemaker/huggingface-llm-mixtral-8x7b-instruct-gptq",
+          "amazon-sagemaker/huggingface-llm-nexaaidev-octopus-v2",
+          "amazon-sagemaker/huggingface-llm-nexusflow-starling-lm-7b-beta",
+          "amazon-sagemaker/huggingface-llm-nousresearch-hermes-2-pro-llama-3-8B",
+          "amazon-sagemaker/huggingface-llm-nousresearch-nous-hermes-2-solar-10-7b",
+          "amazon-sagemaker/huggingface-llm-nvidia-llama3-chatqa-1-5-8B",
+          "amazon-sagemaker/huggingface-llm-nvidia-nemotron-3-super-120b-a12b-bf16",
+          "amazon-sagemaker/huggingface-llm-openlm-research-open-llama-7b-v2",
+          "amazon-sagemaker/huggingface-llm-param2-17b-a2-4b-thinking",
+          "amazon-sagemaker/huggingface-llm-phi-2",
+          "amazon-sagemaker/huggingface-llm-phi-3-5-mini-instruct",
+          "amazon-sagemaker/huggingface-llm-phi-3-mini-128k-instruct",
+          "amazon-sagemaker/huggingface-llm-phi-3-mini-4k-instruct",
+          "amazon-sagemaker/huggingface-llm-phi-4-mini-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-0-5b",
+          "amazon-sagemaker/huggingface-llm-qwen2-0-5b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-1-5b",
+          "amazon-sagemaker/huggingface-llm-qwen2-1-5b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-14b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-32b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-72b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-coder-32b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-5-coder-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwen2-7b",
+          "amazon-sagemaker/huggingface-llm-qwen2-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-qwq-32b",
+          "amazon-sagemaker/huggingface-llm-rinna-3-6b-instruction-ppo-bf16",
+          "amazon-sagemaker/huggingface-llm-sealion-3b",
+          "amazon-sagemaker/huggingface-llm-sealion-7b",
+          "amazon-sagemaker/huggingface-llm-sealion-7b-instruct",
+          "amazon-sagemaker/huggingface-llm-shenzhi-wang-llama3-8B-chinese-chat",
+          "amazon-sagemaker/huggingface-llm-snowflake-arctic-instruct-vllm",
+          "amazon-sagemaker/huggingface-llm-starcoder",
+          "amazon-sagemaker/huggingface-llm-starcoderbase",
+          "amazon-sagemaker/huggingface-llm-swallow-7b-instruct-hf",
+          "amazon-sagemaker/huggingface-llm-thebloke-mistral-7b-openorca-awq",
+          "amazon-sagemaker/huggingface-llm-tiiuae-falcon-rw-1b",
+          "amazon-sagemaker/huggingface-llm-tinyllama-1-1b-intermediate-step-1431k-3",
+          "amazon-sagemaker/huggingface-llm-tinyllama-tinyllama-1-1b-chat-v0-6",
+          "amazon-sagemaker/huggingface-llm-tinyllama-tinyllama-1-1b-chat-v1-0",
+          "amazon-sagemaker/huggingface-llm-writer-palmyra-small",
+          "amazon-sagemaker/huggingface-llm-yi-1-5-34b",
+          "amazon-sagemaker/huggingface-llm-yi-1-5-9b",
+          "amazon-sagemaker/huggingface-llmneuron-mistral-7b",
+          "amazon-sagemaker/huggingface-llmneuron-mistral-7b-instruct",
+          "amazon-sagemaker/huggingface-ner-distilbert-base-cased-finetuned-conll03-eng",
+          "amazon-sagemaker/huggingface-ner-distilbert-base-cased-finetuned-conll03-english",
+          "amazon-sagemaker/huggingface-ner-distilbert-base-uncased-finetuned-conll03-eng",
+          "amazon-sagemaker/huggingface-od-microsoft-table-transformer-detection",
+          "amazon-sagemaker/huggingface-reasoning-nvidia-nemotron-3-nano-30b-a3b-bf16",
+          "amazon-sagemaker/huggingface-reasoning-nvidia-nemotron-3-super-120b-a12b-fp8",
+          "amazon-sagemaker/huggingface-reasoning-nvidia-nemotron-3-ultra-550b-a55b-nvfp4",
+          "amazon-sagemaker/huggingface-reasoning-nvidia-nemotron-nano-12b-v2",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-06b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-1-7b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-14b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-30b-a3b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-30b-a3b-instruct-2507",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-30b-a3b-thinking-2507",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-32b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-4b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-4b-instruct-2507",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-8b",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-coder-30b-a3b-instruct",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-coder-next",
+          "amazon-sagemaker/huggingface-reasoning-qwen3-next-80b-a3b-instruct",
+          "amazon-sagemaker/huggingface-sentencesimilarity-all-MiniLM-L6-v2",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-base-en",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-base-en-v1-5",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-large-en",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-large-en-v1-5",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-m3",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-small-en",
+          "amazon-sagemaker/huggingface-sentencesimilarity-bge-small-en-v1-5",
+          "amazon-sagemaker/huggingface-sentencesimilarity-e5-base",
+          "amazon-sagemaker/huggingface-sentencesimilarity-e5-base-v2",
+          "amazon-sagemaker/huggingface-sentencesimilarity-e5-large-v2",
+          "amazon-sagemaker/huggingface-sentencesimilarity-gte-large",
+          "amazon-sagemaker/huggingface-sentencesimilarity-gte-small",
+          "amazon-sagemaker/huggingface-sentencesimilarity-multilingual-e5-base",
+          "amazon-sagemaker/huggingface-sentencesimilarity-multilingual-e5-large",
+          "amazon-sagemaker/huggingface-spc-bert-base-cased",
+          "amazon-sagemaker/huggingface-spc-bert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-spc-bert-base-multilingual-uncased",
+          "amazon-sagemaker/huggingface-spc-bert-base-uncased",
+          "amazon-sagemaker/huggingface-spc-bert-large-cased",
+          "amazon-sagemaker/huggingface-spc-bert-large-cased-whole-word-masking",
+          "amazon-sagemaker/huggingface-spc-bert-large-uncased",
+          "amazon-sagemaker/huggingface-spc-bert-large-uncased-whole-word-masking",
+          "amazon-sagemaker/huggingface-spc-distilbert-base-cased",
+          "amazon-sagemaker/huggingface-spc-distilbert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-spc-distilbert-base-uncased",
+          "amazon-sagemaker/huggingface-spc-roberta-base",
+          "amazon-sagemaker/huggingface-spc-roberta-base-openai-detector",
+          "amazon-sagemaker/huggingface-spc-roberta-large",
+          "amazon-sagemaker/huggingface-spc-roberta-large-openai-detector",
+          "amazon-sagemaker/huggingface-spc-xlm-clm-ende-1024",
+          "amazon-sagemaker/huggingface-spc-xlm-mlm-ende-1024",
+          "amazon-sagemaker/huggingface-spc-xlm-mlm-enro-1024",
+          "amazon-sagemaker/huggingface-spc-xlm-mlm-tlm-xnli15-1024",
+          "amazon-sagemaker/huggingface-spc-xlm-mlm-xnli15-1024",
+          "amazon-sagemaker/huggingface-summarization-bart-large-cnn-samsum",
+          "amazon-sagemaker/huggingface-summarization-bert-small2bert-cnn-dailymail-summ",
+          "amazon-sagemaker/huggingface-summarization-bigbird-pegasus-large-arxiv",
+          "amazon-sagemaker/huggingface-summarization-bigbird-pegasus-large-pubmed",
+          "amazon-sagemaker/huggingface-summarization-distilbart-cnn-12-6",
+          "amazon-sagemaker/huggingface-summarization-distilbart-cnn-6-6",
+          "amazon-sagemaker/huggingface-summarization-distilbart-xsum-1-1",
+          "amazon-sagemaker/huggingface-tc-bert-base-cased",
+          "amazon-sagemaker/huggingface-tc-bert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-tc-bert-base-multilingual-uncased",
+          "amazon-sagemaker/huggingface-tc-bert-base-uncased",
+          "amazon-sagemaker/huggingface-tc-bert-large-cased",
+          "amazon-sagemaker/huggingface-tc-bert-large-uncased",
+          "amazon-sagemaker/huggingface-tc-distilbert-base-cased",
+          "amazon-sagemaker/huggingface-tc-distilbert-base-multilingual-cased",
+          "amazon-sagemaker/huggingface-tc-distilbert-base-uncased",
+          "amazon-sagemaker/huggingface-tc-distilroberta-base",
+          "amazon-sagemaker/huggingface-tc-roberta-base",
+          "amazon-sagemaker/huggingface-tc-roberta-base-openai-detector",
+          "amazon-sagemaker/huggingface-tc-roberta-large",
+          "amazon-sagemaker/huggingface-tc-roberta-large-openai-detector",
+          "amazon-sagemaker/huggingface-tc-xlm-clm-ende-1024",
+          "amazon-sagemaker/huggingface-tc-xlm-mlm-ende-1024",
+          "amazon-sagemaker/huggingface-tc-xlm-mlm-enro-1024",
+          "amazon-sagemaker/huggingface-tc-xlm-mlm-tlm-xnli15-1024",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-base",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-base-samsum",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-large",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-small",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-xl",
+          "amazon-sagemaker/huggingface-text2text-flan-t5-xxl",
+          "amazon-sagemaker/huggingface-text2text-qcpg-sentences",
+          "amazon-sagemaker/huggingface-textembedding-all-MiniLM-L12-v2",
+          "amazon-sagemaker/huggingface-textembedding-all-MiniLM-L6-v2",
+          "amazon-sagemaker/huggingface-textembedding-bge-base-en-v1-5",
+          "amazon-sagemaker/huggingface-textembedding-gte-qwen2-7b-instruct",
+          "amazon-sagemaker/huggingface-textembedding-paraphrase-multilingual-MiniLM-L12-v2",
+          "amazon-sagemaker/huggingface-textembedding-qwen3-embedding-0-6b",
+          "amazon-sagemaker/huggingface-textembedding-qwen3-reranker-4b",
+          "amazon-sagemaker/huggingface-textembedding-qwen3-vl-embedding-2b",
+          "amazon-sagemaker/huggingface-textembedding-sfr-embedding-2-r",
+          "amazon-sagemaker/huggingface-textembedding-sfr-embedding-mistral",
+          "amazon-sagemaker/huggingface-textgeneration-bloom-1b1",
+          "amazon-sagemaker/huggingface-textgeneration-bloomz-1b7",
+          "amazon-sagemaker/huggingface-textgeneration-distilgpt2",
+          "amazon-sagemaker/huggingface-textgeneration-dolly-v2-12b-bf16",
+          "amazon-sagemaker/huggingface-textgeneration-dolly-v2-3b-bf16",
+          "amazon-sagemaker/huggingface-textgeneration-gpt2",
+          "amazon-sagemaker/huggingface-textgeneration-olmo-3-7b-instruct",
+          "amazon-sagemaker/huggingface-textgeneration1-bloom-3b",
+          "amazon-sagemaker/huggingface-textgeneration1-bloom-7b1",
+          "amazon-sagemaker/huggingface-textgeneration1-bloomz-7b1-fp16",
+          "amazon-sagemaker/huggingface-textgeneration1-gpt-2-xl",
+          "amazon-sagemaker/huggingface-textgeneration1-gpt-j-6b",
+          "amazon-sagemaker/huggingface-textgeneration1-gpt-neo-125m",
+          "amazon-sagemaker/huggingface-textgeneration1-mpt-7b-bf16",
+          "amazon-sagemaker/huggingface-textgeneration1-mpt-7b-instruct-bf16",
+          "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-chat-3B-v1-fp16",
+          "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-chat-7B-v1-fp16",
+          "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-instruct-3Bv1fp16",
+          "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-instruct-7B1fp16",
+          "amazon-sagemaker/huggingface-textgeneration2-gpt-neox-20b-fp16",
+          "amazon-sagemaker/huggingface-translation-opus-mt-en-es",
+          "amazon-sagemaker/huggingface-translation-opus-mt-en-vi",
+          "amazon-sagemaker/huggingface-translation-opus-mt-mul-en",
+          "amazon-sagemaker/huggingface-translation-t5-base",
+          "amazon-sagemaker/huggingface-translation-t5-large",
+          "amazon-sagemaker/huggingface-translation-t5-small",
+          "amazon-sagemaker/huggingface-tts-qwen3-tts-customvoice",
+          "amazon-sagemaker/huggingface-ttsvoiceclone-qwen3-tts-12hz-1-7b-base",
+          "amazon-sagemaker/huggingface-txt2img-bingsu-my-korean-stable-diffusion-v1-5",
+          "amazon-sagemaker/huggingface-txt2img-black-forest-labs-flux-1-schnell",
+          "amazon-sagemaker/huggingface-txt2img-fictiverse-stable-diffusion-balloonart",
+          "amazon-sagemaker/huggingface-txt2img-fictiverse-stable-diffusion-micro-model",
+          "amazon-sagemaker/huggingface-txt2img-fictiverse-stable-diffusion-papercut-model",
+          "amazon-sagemaker/huggingface-txt2img-fictiverse-stable-diffusion-voxelart-model",
+          "amazon-sagemaker/huggingface-txt2img-idea-ccnl-taiyi-1b-chinese-en-v01",
+          "amazon-sagemaker/huggingface-txt2img-idea-ccnl-taiyi-1b-chinese-v0-1",
+          "amazon-sagemaker/huggingface-txt2img-langboat-guohua-diffusion",
+          "amazon-sagemaker/huggingface-txt2img-naclbit-trinart-stable-diffusion-v2",
+          "amazon-sagemaker/huggingface-txt2img-volrath50-fantasy-card-diffusion",
+          "amazon-sagemaker/huggingface-txt2imgneuron-stabilityai-stable-diffusion-v2-1",
+          "amazon-sagemaker/huggingface-txt2imgneuron-stabilityai-stable-diffusion-xlbase1",
+          "amazon-sagemaker/huggingface-vlm-gemma-3-27b-instruct",
+          "amazon-sagemaker/huggingface-vlm-gemma-3-4b-instruct",
+          "amazon-sagemaker/huggingface-vlm-gemma-4-26b-a4b-it",
+          "amazon-sagemaker/huggingface-vlm-gemma-4-31b-it",
+          "amazon-sagemaker/huggingface-vlm-gemma-4-e2b-instruct",
+          "amazon-sagemaker/huggingface-vlm-gemma-4-e4b-it",
+          "amazon-sagemaker/huggingface-vlm-lightonai-lightonocr-2-1b",
+          "amazon-sagemaker/huggingface-vlm-mistral-pixtral-12b-2409",
+          "amazon-sagemaker/huggingface-vlm-mistral-small-3-1-24b-base-2503",
+          "amazon-sagemaker/huggingface-vlm-mistral-small-3-2-24b-instruct-2506",
+          "amazon-sagemaker/huggingface-vlm-nvidia-nemotron3-nano-omni-30ba3b-reasoning-fp8",
+          "amazon-sagemaker/huggingface-vlm-qvq-72b-preview",
+          "amazon-sagemaker/huggingface-vlm-qwen2-vl-7b-instruct",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-0-8b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-27b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-27b-fp8",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-2b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-4b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-5-9b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-6-27b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-6-35b-a3b",
+          "amazon-sagemaker/huggingface-vlm-qwen3-vl-8b-instruct",
+          "amazon-sagemaker/huggingface-zstc-cross-encoder-nli-deberta-base",
+          "amazon-sagemaker/huggingface-zstc-cross-encoder-nli-distilroberta-base",
+          "amazon-sagemaker/huggingface-zstc-cross-encoder-nli-minilm2-l6-h768",
+          "amazon-sagemaker/huggingface-zstc-cross-encoder-nli-roberta-base",
+          "amazon-sagemaker/huggingface-zstc-emrecan-bert-base-turkish-cased-allnli-tr",
+          "amazon-sagemaker/huggingface-zstc-facebook-bart-large-mnli",
+          "amazon-sagemaker/huggingface-zstc-lighteternal-nli-xlm-r-greek",
+          "amazon-sagemaker/huggingface-zstc-moritzlaurer-mdeberta3base-xnli-mling-nli-2m7",
+          "amazon-sagemaker/huggingface-zstc-narsil-deberta-large-mnli-zero-cls",
+          "amazon-sagemaker/huggingface-zstc-recognai-bert-base-spanish-wwm-cased-xnli",
+          "amazon-sagemaker/huggingface-zstc-recognai-zeroshot-selectra-medium",
+          "amazon-sagemaker/ibm-granite-20b-code-instruct-8k",
+          "amazon-sagemaker/ibm-granite-3-2-2b-instruct",
+          "amazon-sagemaker/ibm-granite-3-2-8b-instruct",
+          "amazon-sagemaker/ibm-granite-34b-code-instruct-8k",
+          "amazon-sagemaker/ibm-granite-3b-code-instruct-128k",
+          "amazon-sagemaker/ibm-granite-4-0-h-micro",
+          "amazon-sagemaker/ibm-granite-4-0-h-small",
+          "amazon-sagemaker/ibm-granite-4-0-h-tiny",
+          "amazon-sagemaker/ibm-granite-8b-code-instruct-128k",
+          "amazon-sagemaker/inception-mercury",
+          "amazon-sagemaker/inception-mercury-coder",
+          "amazon-sagemaker/jbai-mellum-all",
+          "amazon-sagemaker/jbai-mellum-kotlin",
+          "amazon-sagemaker/jbai-mellum-python",
+          "amazon-sagemaker/jinaai-embeddings-v2-base-en",
+          "amazon-sagemaker/john-snow-labs-medical-summarization-qa-8b",
+          "amazon-sagemaker/john-snow-labs-medical-translation-en-es",
+          "amazon-sagemaker/john-snow-labs-summarization-qa",
+          "amazon-sagemaker/karakuri-lm-8x7b-instruct",
+          "amazon-sagemaker/lg-ixi-gen",
+          "amazon-sagemaker/lgresearch-exaone",
+          "amazon-sagemaker/lighton-lyra-fr",
+          "amazon-sagemaker/lighton-mini-instruct40b",
+          "amazon-sagemaker/liquid-lfm-40b-a100",
+          "amazon-sagemaker/liquid-lfm-40b-h100",
+          "amazon-sagemaker/liquid-lfm-40b-l40s",
+          "amazon-sagemaker/liquid-lfm-7b-l40s",
+          "amazon-sagemaker/meta-tc-llama-prompt-guard-86m",
+          "amazon-sagemaker/meta-textgeneration-llama-2-13b",
+          "amazon-sagemaker/meta-textgeneration-llama-2-13b-f",
+          "amazon-sagemaker/meta-textgeneration-llama-2-70b",
+          "amazon-sagemaker/meta-textgeneration-llama-2-70b-f",
+          "amazon-sagemaker/meta-textgeneration-llama-2-7b",
+          "amazon-sagemaker/meta-textgeneration-llama-2-7b-f",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-405b-fp8",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-405b-instruct-fp8",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-70b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-70b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-8b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-1-8b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-2-1b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-2-1b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-2-3b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-2-3b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-3-70b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-70b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-70b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-3-8b",
+          "amazon-sagemaker/meta-textgeneration-llama-3-8b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-13b",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-13b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-13b-python",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-34b",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-34b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-34b-python",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-70b",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-70b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-70b-python",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-7b",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-7b-instruct",
+          "amazon-sagemaker/meta-textgeneration-llama-codellama-7b-python",
+          "amazon-sagemaker/meta-textgeneration-llama-guard-3-1b",
+          "amazon-sagemaker/meta-textgeneration-llama-guard-3-8b",
+          "amazon-sagemaker/meta-textgeneration-llama-guard-7b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-13b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-13b-f",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-70b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-70b-f",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-7b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-2-7b-f",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-1-70b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-1-70b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-1-8b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-1-8b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-2-1b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-2-1b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-2-3b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-2-3b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-70b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-70b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-8b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-3-8b-instruct",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-codellama-70b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-codellama-7b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-codellama-7b-python",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-guard-3-1b",
+          "amazon-sagemaker/meta-textgenerationneuron-llama-guard-3-8b",
+          "amazon-sagemaker/meta-vlm-llama-3-2-11b-vision",
+          "amazon-sagemaker/meta-vlm-llama-3-2-11b-vision-instruct",
+          "amazon-sagemaker/meta-vlm-llama-3-2-90b-vision",
+          "amazon-sagemaker/meta-vlm-llama-3-2-90b-vision-instruct",
+          "amazon-sagemaker/meta-vlm-llama-4-maverick-17b-128e-instruct",
+          "amazon-sagemaker/meta-vlm-llama-4-maverick-17b-128e-instruct-fp8",
+          "amazon-sagemaker/meta-vlm-llama-4-scout-17b-16e-instruct",
+          "amazon-sagemaker/meta-vlm-llama-guard-3-11b-vision",
+          "amazon-sagemaker/meta-vs-sam-2-1-hiera-base-plus",
+          "amazon-sagemaker/meta-vs-sam-2-1-hiera-large",
+          "amazon-sagemaker/meta-vs-sam-2-1-hiera-small",
+          "amazon-sagemaker/meta-vs-sam-2-1-hiera-tiny",
+          "amazon-sagemaker/model-depth2img-stable-diffusion-2-depth-fp16",
+          "amazon-sagemaker/model-imagegeneration-stabilityai-stable-diffusion-xl-base-1-0",
+          "amazon-sagemaker/model-inpainting-stabilityai-stable-diffusion-2-inpainting",
+          "amazon-sagemaker/model-inpainting-stabilityai-stable-diffusion-2-inpainting-fp16",
+          "amazon-sagemaker/model-inpainting-stabilityai-stable-diffusion2-inpainting-fp16",
+          "amazon-sagemaker/model-textgenerationjp-japanese-stablelm-instruct-alpha-7b-v2",
+          "amazon-sagemaker/model-txt2img-stabilityai-stable-diffusion-v2",
+          "amazon-sagemaker/model-txt2img-stabilityai-stable-diffusion-v2-1-base",
+          "amazon-sagemaker/model-txt2img-stabilityai-stable-diffusion-v2-fp16",
+          "amazon-sagemaker/model-upscaling-stabilityai-stable-diffusion-x4-upscaler-fp16",
+          "amazon-sagemaker/mxnet-tcembedding-robertafin-base-uncased",
+          "amazon-sagemaker/mxnet-tcembedding-robertafin-base-wiki-uncased",
+          "amazon-sagemaker/mxnet-tcembedding-robertafin-large-uncased",
+          "amazon-sagemaker/mxnet-tcembedding-robertafin-large-wiki-uncased",
+          "amazon-sagemaker/ncsoft-ko-1-3b-ist",
+          "amazon-sagemaker/ncsoft-ko-13b-ist",
+          "amazon-sagemaker/ncsoft-ko-6-4b-ist",
+          "amazon-sagemaker/ncsoft-llama-3-varco-offsetbias-8b",
+          "amazon-sagemaker/nomic-embed-image",
+          "amazon-sagemaker/nomic-embed-text",
+          "amazon-sagemaker/nova-textgeneration-lite",
+          "amazon-sagemaker/nova-textgeneration-lite-v2",
+          "amazon-sagemaker/nova-textgeneration-micro",
+          "amazon-sagemaker/nova-textgeneration-micro-v2",
+          "amazon-sagemaker/nova-textgeneration-pro",
+          "amazon-sagemaker/nvidia-evo2-nim",
+          "amazon-sagemaker/nvidia-llama3-2-nv-embedqa-1b-v2-nim",
+          "amazon-sagemaker/nvidia-llama3-2-nv-rerankqa-1b-v2-nim",
+          "amazon-sagemaker/nvidia-nemotron-4-15b-nim",
+          "amazon-sagemaker/nvidia-nemotron-nano-8b-nim",
+          "amazon-sagemaker/nvidia-nemotron-nano-9b-v2",
+          "amazon-sagemaker/nvidia-nemotron-parse",
+          "amazon-sagemaker/nvidia-nemotron-super-49b-nim",
+          "amazon-sagemaker/nvidia-nemotron-super-49b-nim-1-5",
+          "amazon-sagemaker/nvidia-nim-cosmos-reason1-7b",
+          "amazon-sagemaker/nvidia-nim-msa-search-v2-1",
+          "amazon-sagemaker/nvidia-nim-proteinmpnn-v1-0-2",
+          "amazon-sagemaker/nvidia-parakeet-1-1b-ctc-en-us-asr",
+          "amazon-sagemaker/nvidia-parakeetvtdt-0-6b-v2",
+          "amazon-sagemaker/openai-reasoning-gpt-oss-120b",
+          "amazon-sagemaker/openai-reasoning-gpt-oss-20b",
+          "amazon-sagemaker/openai-tokenclassification-privacy-filter",
+          "amazon-sagemaker/orbital-materials-orb",
+          "amazon-sagemaker/preferred-networks-plamo-api",
+          "amazon-sagemaker/protopia-llama-3-1-8b-instruct",
+          "amazon-sagemaker/pytorch-forecasting-chronos-2",
+          "amazon-sagemaker/pytorch-textgeneration1-alexa20b",
+          "amazon-sagemaker/sk-telecom-ax4-light",
+          "amazon-sagemaker/stabilityai-sdxl-1-0",
+          "amazon-sagemaker/stabilityai-sdxl-beta-0-8",
+          "amazon-sagemaker/stabilityai-stable-diffusion-3-5-large",
+          "amazon-sagemaker/stockmark-llm-13b",
+          "amazon-sagemaker/upstage-document-layout-analysis",
+          "amazon-sagemaker/upstage-document-ocr",
+          "amazon-sagemaker/upstage-solar-embedding-large",
+          "amazon-sagemaker/upstage-solar-mini-chat-quant",
+          "amazon-sagemaker/upstage-solar-pro",
+          "amazon-sagemaker/upstage-solar-pro-quantized",
+          "amazon-sagemaker/voyage-2-embedding",
+          "amazon-sagemaker/voyage-3-5-embedding",
+          "amazon-sagemaker/voyage-3-5-lite-embedding",
+          "amazon-sagemaker/voyage-3-embedding",
+          "amazon-sagemaker/voyage-3-large-embedding",
+          "amazon-sagemaker/voyage-code-2-embedding",
+          "amazon-sagemaker/voyage-code-3-embedding",
+          "amazon-sagemaker/voyage-large-2-embedding",
+          "amazon-sagemaker/voyage-rerank-lite-1-reranker",
+          "amazon-sagemaker/widn-llama3-tower-vesuvius",
+          "amazon-sagemaker/widn-tower-anthill",
+          "amazon-sagemaker/widn-tower-sugarloaf",
+          "amazon-sagemaker/wovenbytoyota-woven-city-ai-vision-engine",
+          "amazon-sagemaker/writer-palmyra-fin-70b-32k",
+          "amazon-sagemaker/writer-palmyra-med-70b-32k",
+          "amazon-sagemaker/writer-palmyra-x-004"
+        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 557,
+        "previous": 0,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 0
+      },
+      "pricing": {
+        "commercial_hash": "4a1605363f445ff7175610ebab1a52b6e6ddaad17b3bab3ea5cfe1af1a59917d",
+        "outcome": "added"
+      },
+      "pricing_coverage": {
+        "current_models": 557,
+        "delta": {
+          "resolved_models": 0,
+          "unknown_models": 557
+        },
+        "normalized_rate_models": 0,
+        "not_applicable_models": 0,
+        "offer_models": 0,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "amazon-sagemaker/ai21-contextual-answers",
+          "amazon-sagemaker/ai21-jurassic-2-grande-instruct",
+          "amazon-sagemaker/ai21-jurassic-2-jumbo-instruct",
+          "amazon-sagemaker/ai21-jurassic-2-light",
+          "amazon-sagemaker/ai21-paraphrase",
+          "amazon-sagemaker/ai21-summarization",
+          "amazon-sagemaker/arcee-lite",
+          "amazon-sagemaker/arcee-llama-3-1-supernova-lite",
+          "amazon-sagemaker/arcee-llama-spark",
+          "amazon-sagemaker/arcee-supernova",
+          "amazon-sagemaker/arcee-virtuoso-small",
+          "amazon-sagemaker/autogluon-forecasting-chronos-bolt-base",
+          "amazon-sagemaker/autogluon-forecasting-chronos-bolt-small",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-base",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-large",
+          "amazon-sagemaker/autogluon-forecasting-chronos-t5-small",
+          "amazon-sagemaker/bioptimus-h-optimus-0",
+          "amazon-sagemaker/bria-ai-2-2-hd-commercial",
+          "amazon-sagemaker/bria-ai-2-3-commercial",
+          "amazon-sagemaker/bria-ai-2-3-fast-commercial"
+        ],
+        "unknown_model_refs_omitted": 537,
+        "unknown_models": 557
+      },
+      "pricing_publication": "accepted",
+      "provider_id": "amazon-sagemaker",
+      "publication": "accepted",
+      "signals": [],
+      "sources": {
+        "added": 2,
+        "added_source_ids": [
+          "sagemaker-models",
+          "sagemaker-pricing"
+        ],
+        "changed": 0,
+        "changed_sources": [],
+        "current": 2,
+        "previous": 0,
+        "removed": 0,
+        "removed_source_ids": [],
+        "unchanged": 0
+      },
+      "status": "fresh",
+      "warning_codes": {
+        "source_fetch_failed": 1
+      }
+    },
+    {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
@@ -346,32 +1077,32 @@
             "source_id": "azure-models"
           },
           {
-            "content_changed": true,
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 91,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-09-21T05:04:43.318Z",
+            "message": "Transient transport failure (curl 28: TLS handshake timed out)",
+            "outcome": "fetch_failed",
             "source_id": "azure-portal-models"
           },
           {
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 115,
+            "parsed_models": 123,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 115,
-              "normalized_facts": 20651,
+              "model_records": 123,
+              "normalized_facts": 21303,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 115,
+              "numeric_models": 123,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 8425,
+              "diagnostic_count": 7773,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -394,11 +1125,6 @@
                   "sample": "Azure Kimi / K2 Thinking Inp DZ / K2 Thinking Inp DZ Tokens"
                 },
                 {
-                  "disposition": "ambiguous",
-                  "reason_code": "retail_version_not_unique",
-                  "sample": "Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit"
-                },
-                {
                   "disposition": "unbound",
                   "reason_code": "retail_identity_not_unique",
                   "sample": "MAI Models / Code 1.1 Flash Cd Input glbl / Code 1.1 Flash Cd Input glbl 1M Tokens"
@@ -412,13 +1138,18 @@
                   "disposition": "ambiguous",
                   "reason_code": "retail_version_not_unique",
                   "sample": "Azure OpenAI / gpt-4-8K-Inp-glbl / gpt-4-8K-Inp-glbl Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / 4.3 Outp DZ L / 4.3 Outp DZ L Tokens"
                 }
               ],
               "disposition_counts": {
-                "ambiguous": 2284,
+                "ambiguous": 1632,
                 "excluded": 5024,
                 "explicit_non_numeric": 0,
-                "normalized": 20827,
+                "normalized": 21479,
                 "raw": 0,
                 "unbound": 6127,
                 "unresolved": 0,
@@ -429,8 +1160,8 @@
                 "non_base_consumption_row": 5024,
                 "retail_identity_not_unique": 6127,
                 "retail_meter_or_unit_unsupported": 14,
-                "retail_row_bound": 20827,
-                "retail_version_not_unique": 2284
+                "retail_row_bound": 21479,
+                "retail_version_not_unique": 1632
               },
               "unit": "reviewed source pricing item"
             },
@@ -602,10 +1333,10 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 173,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-09-21T05:04:43.318Z",
+            "message": "Azure subscription locations transport failure (curl 28: request timed out)",
+            "outcome": "fetch_failed",
             "source_id": "azure-api"
           }
         ]
@@ -623,19 +1354,19 @@
         "unchanged": 276
       },
       "pricing": {
-        "commercial_hash": "0e5d0ff38fe5727f1da25ba3dc18aa91826edec8f757a23db8da1d202f4b736d",
-        "outcome": "provenance_only",
+        "commercial_hash": "25d5cddfeb13c3ee9ccde0119e3574f5dd738e09f4c27b557eeb1a5198568dd5",
+        "outcome": "commercial",
         "previous_commercial_hash": "0e5d0ff38fe5727f1da25ba3dc18aa91826edec8f757a23db8da1d202f4b736d"
       },
       "pricing_coverage": {
         "current_models": 227,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": -1,
+          "unknown_models": 1
         },
-        "normalized_rate_models": 159,
+        "normalized_rate_models": 158,
         "not_applicable_models": 0,
-        "offer_models": 159,
+        "offer_models": 158,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "azure/Cohere-embed-v3-english@1",
@@ -659,8 +1390,8 @@
           "azure/claude-haiku-4-5@1",
           "azure/claude-haiku-4-5@2"
         ],
-        "unknown_model_refs_omitted": 48,
-        "unknown_models": 68
+        "unknown_model_refs_omitted": 49,
+        "unknown_models": 69
       },
       "pricing_publication": "accepted",
       "provider_id": "azure",
@@ -669,14 +1400,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-portal-models"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -688,13 +1413,13 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 3,
-        "scope_limited": 1,
+        "source_fetch_failed": 2,
         "source_partial_retention": 1
       }
     },
@@ -1606,10 +2331,10 @@
             "source_id": "databricks-models"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 52,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-09-21T05:04:43.318Z",
+            "message": "Transient transport failure (curl 28: TLS handshake timed out)",
+            "outcome": "fetch_failed",
             "source_id": "databricks-api"
           }
         ]
@@ -1671,9 +2396,9 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 3,
-        "scope_limited": 1
+        "source_fetch_failed": 1
       }
     },
     {
@@ -1968,22 +2693,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1604,
+            "parsed_models": 1608,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1604,
+              "model_records": 1608,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1604
+              "unknown_models": 1608
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1859,
+              "diagnostic_count": 1866,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2028,20 +2753,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6833,
+                "excluded": 6832,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1859,
+                "unbound": 1866,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8692,
+              "observed_items": 8698,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1461,
-                "partner_route_price_not_published": 398,
-                "single_partner_inventory_without_product_evidence": 6762
+                "hf_inference_compute_price_unbound": 1465,
+                "partner_route_price_not_published": 401,
+                "single_partner_inventory_without_product_evidence": 6761
               },
               "unit": "reviewed source pricing item"
             },
@@ -2056,17 +2781,17 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 139,
-              "normalized_facts": 434,
+              "normalized_facts": 436,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 115,
-              "raw_facts": 115,
+              "raw_facts": 116,
               "raw_models": 105,
               "unknown_models": 24
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 116,
+              "diagnostic_count": 117,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2113,19 +2838,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 218,
+                "normalized": 219,
                 "raw": 0,
-                "unbound": 115,
+                "unbound": 116,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 335,
+              "observed_items": 337,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 217,
-                "route_price_not_published": 115
+                "route_price_normalized": 218,
+                "route_price_not_published": 116
               },
               "unit": "reviewed source pricing item"
             },
@@ -2193,15 +2918,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 27,
+            "parsed_models": 28,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 27,
-              "normalized_facts": 58,
+              "model_records": 28,
+              "normalized_facts": 60,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 27,
+              "numeric_models": 28,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -2255,16 +2980,16 @@
                 "ambiguous": 1,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 29,
+                "normalized": 30,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 11,
                 "unsupported": 0
               },
-              "observed_items": 41,
+              "observed_items": 42,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
-                "native_route_price_normalized": 29,
+                "native_route_price_normalized": 30,
                 "native_route_price_not_exactly_joinable": 11
               },
               "unit": "reviewed source pricing item"
@@ -2275,110 +3000,29 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1461,
+            "parsed_models": 1465,
             "source_id": "huggingface-hub"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1644,
-          "field": "models",
-          "previous": 1648
-        },
-        {
-          "current": 278,
-          "field": "api_endpoints",
-          "previous": 280
-        },
-        {
-          "current": 1859,
-          "field": "routes",
-          "previous": 1863
-        }
-      ],
       "models": {
-        "added": 1,
+        "added": 4,
         "added_model_refs": [
-          "huggingface/Helsinki-NLP/opus-mt-en-ar"
+          "huggingface/Wvolf/ViT_Deepfake_Detection",
+          "huggingface/mrm8488/bert-medium-finetuned-squadv2",
+          "huggingface/textattack/bert-base-uncased-ag-news",
+          "huggingface/yiyanghkust/finbert-esg-9-categories"
         ],
-        "changed": 5,
+        "changed": 6,
         "changed_fields": {
           "capabilities": 2,
-          "routes": 3
+          "routes": 5
         },
         "changed_models": [
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.6-35B-A3B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.6-35B-A3B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3.6-35b-a3b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.6-35B-A3B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3.6-35b-a3b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.6-35B-A3B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-kontext/dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux-kontext/dev",
@@ -2400,6 +3044,23 @@
                     "status": "live",
                     "task": "image-to-image"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-kontext/dev",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
                 ]
               }
             ],
@@ -2412,27 +3073,14 @@
             "field_changes": [
               {
                 "current": "unknown",
-                "path": "capabilities.tool_call",
+                "path": "capabilities.structured_output",
                 "previous": true
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/tencent/Hy4-preview"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
           },
           {
             "field_changes": [
@@ -2440,6 +3088,147 @@
                 "current": [
                   {
                     "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/moonshotai/Kimi-K3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "routes",
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-4.7",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
                     "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
@@ -2464,13 +3253,6 @@
                 "previous": [
                   {
                     "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
                     "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
@@ -2497,30 +3279,88 @@
               "routes"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-4.7-flashx",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
           }
         ],
-        "current": 1644,
-        "previous": 1648,
-        "removed": 5,
-        "removed_model_refs": [
-          "huggingface/Wvolf/ViT_Deepfake_Detection",
-          "huggingface/mrm8488/bert-medium-finetuned-squadv2",
-          "huggingface/textattack/bert-base-uncased-ag-news",
-          "huggingface/yiyanghkust/finbert-esg-9-categories",
-          "huggingface/zai-org/GLM-4.6-FP8"
-        ],
+        "current": 1648,
+        "previous": 1644,
+        "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 1638
       },
       "pricing": {
-        "commercial_hash": "576990452b9dffa47a4cc73e438722c4bae6d471055b325dbfb466d6fa2243ae",
+        "commercial_hash": "f19cd7d84c279704d1b48df03bae9e030f096bdd567daac5c442d5a1df3d330e",
         "outcome": "commercial",
-        "previous_commercial_hash": "deb3c7f78561d9bc642bc18e77e87fdd5cba9b82d42436098232b2b528e20267"
+        "previous_commercial_hash": "576990452b9dffa47a4cc73e438722c4bae6d471055b325dbfb466d6fa2243ae"
       },
       "pricing_coverage": {
-        "current_models": 1644,
+        "current_models": 1648,
         "delta": {
-          "resolved_models": -1,
-          "unknown_models": -3
+          "resolved_models": 0,
+          "unknown_models": 4
         },
         "normalized_rate_models": 134,
         "not_applicable_models": 0,
@@ -2548,15 +3388,13 @@
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh"
         ],
-        "unknown_model_refs_omitted": 1481,
-        "unknown_models": 1501
+        "unknown_model_refs_omitted": 1485,
+        "unknown_models": 1505
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -2877,9 +3715,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -3019,7 +3857,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
@@ -3032,13 +3870,19 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-china-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-releases"
           }
         ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -4529,18 +5373,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 1,
-    "added_sources": 0,
-    "changed_models": 5,
+    "added_models": 561,
+    "added_sources": 2,
+    "changed_models": 6,
     "changed_sources": 26,
-    "models": 3643,
+    "models": 4196,
     "pricing_accepted": 19,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 0,
     "pricing_withheld": 0,
     "providers": 19,
-    "removed_models": 5,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
