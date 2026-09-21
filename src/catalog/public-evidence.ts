@@ -1,4 +1,36 @@
 import { manifests, type SourceManifest } from "./manifests.ts";
+import type { FetchState } from "./fetch.ts";
+
+/** The accepted refresh report and fetch state must describe the same collection attempt. */
+export function publicEvidenceBaseline(
+  sourceId: string,
+  sourceHash: string,
+  state: FetchState,
+  generatedAt: string,
+  attemptOutcome: string | undefined,
+) {
+  const previous = state.sources[sourceId];
+  const comparison =
+    previous?.contentHash === undefined ||
+    previous.checkedAt !== generatedAt ||
+    !["changed", "unchanged", "parse_failed"].includes(attemptOutcome ?? "")
+      ? "unavailable"
+      : previous.contentHash === sourceHash
+        ? "matching_refresh"
+        : "changed_since_refresh";
+  return {
+    source_id: sourceId,
+    generated_at: generatedAt,
+    comparison,
+    ...(previous === undefined
+      ? {}
+      : {
+          checked_at: previous.checkedAt,
+          source_hash: previous.contentHash,
+          last_success_at: previous.lastSuccessAt,
+        }),
+  };
+}
 
 /** Reuse reviewed transport/host budgets; never turn agent-supplied URLs into crawl authority. */
 export function reviewedPublicSource(sourceId: string, documentUrl?: string): SourceManifest {

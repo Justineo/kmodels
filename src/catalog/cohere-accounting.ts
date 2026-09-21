@@ -69,7 +69,13 @@ export function extractCoherePricingInputs(
   const bodies = documentsByPath(documents);
   const facts = contracts.flatMap((contract) => {
     const body = bodies.get(contract.document);
-    if (body !== undefined && contract.markers.every((marker) => marker.test(body)))
+    if (
+      body !== undefined &&
+      (contract.markers.every((marker) => marker.test(body)) ||
+        (contract.document === "/reference/embed.md" &&
+          /POST https:\/\/api\.cohere\.com\/v2\/embed\b/.test(body) &&
+          embedResponseField(body, contract.locator)))
+    )
       return [
         {
           key: contract.key,
@@ -113,4 +119,21 @@ function billedToken(
 
 function billedField(field: string): RegExp {
   return new RegExp(`\\bbilled_units\\b[^\\n{(]*[{(][^})]*\\b${field}\\b`);
+}
+
+/** The published response schema uses indentation to distinguish billed from generic tokens. */
+function embedResponseField(body: string, locator: string): boolean {
+  const response = body.split(/^## Response[ \t]*\r?$/m)[1]?.split(/^## /m)[0];
+  if (response === undefined) return false;
+  const parents: string[] = [];
+  for (const line of response.split(/\r?\n/)) {
+    const field = line.match(/^( *)- `([a-z_]+)` \(([^)]+)\)/);
+    if (field?.[1] === undefined || field[2] === undefined) continue;
+    const depth = field[1].length / 2;
+    if (!Number.isInteger(depth) || depth > parents.length) continue;
+    parents.length = depth;
+    parents.push(field[2]);
+    if (`/${parents.join("/")}` === locator && /^double(?:,|$)/.test(field[3] ?? "")) return true;
+  }
+  return false;
 }

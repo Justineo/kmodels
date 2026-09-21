@@ -1590,12 +1590,12 @@ export function parseKimiReleases(input: Input): ProviderModel[] {
     const url = new URL(document.url);
     if (document === catalog) continue;
     const $ = load(document.body);
-    if (url.hostname === "www.kimi.com" && url.pathname === "/blog/") {
+    if (["www.kimi.com", "www.kimi.ai"].includes(url.hostname) && url.pathname === "/blog/") {
       $(".menu-card").each((_index, card) => {
         const name = htmlText($(card).find("h4").first().text());
         const id = displayId(name);
         const date = htmlText($(card).text())
-          .match(/(\d{4})\/(\d{2})\/(\d{2})/)
+          .match(/(\d{4})[/-](\d{2})[/-](\d{2})/)
           ?.slice(1);
         if (
           id !== undefined &&

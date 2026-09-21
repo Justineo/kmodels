@@ -1,0 +1,141 @@
+<article>
+  <p>
+    If set to <code>true</code>, the response is streamed as semantic server-sent events. The final
+    event is <code>response.completed</code> / <code>response.incomplete</code> /
+    <code>response.failed</code> (there is no <code>data: [DONE]</code> message). Please refer to
+    the <a href="/guides/responses_api#streaming">Responses API Guide</a> for the full event list.
+  </p>
+  <p>
+    OK, returns a streamed sequence of semantic server-sent events. Each event has an
+    <code>event</code> field for the event type and an incrementing <code>sequence_number</code>.
+    The final event is <code>response.completed</code> / <code>response.incomplete</code> /
+    <code>response.failed</code> (there is no <code>data: [DONE]</code> message). Please refer to
+    the <a href="/guides/responses_api#streaming">Responses API Guide</a> for the full event list.
+  </p>
+  <div class="openapi-schema__list-item">
+    <details
+      class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+      data-collapsed="true"
+    >
+      <summary>
+        <span class="openapi-schema__container"
+          ><strong class="openapi-schema__property"><p>usage</p></strong
+          ><span class="openapi-schema__name"><p>object</p></span></span
+        >
+      </summary>
+      <div>
+        <div class="collapsibleContent_gaFD">
+          <div style="margin-left: 1rem">
+            <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+              <p>Token usage statistics for the response.</p>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">input_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Number of input tokens.</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <details
+                class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+                data-collapsed="true"
+              >
+                <summary>
+                  <span class="openapi-schema__container"
+                    ><strong class="openapi-schema__property"><p>input_tokens_details</p></strong
+                    ><span class="openapi-schema__name"><p>object</p></span></span
+                  >
+                </summary>
+                <div>
+                  <div class="collapsibleContent_gaFD">
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>Breakdown of the input tokens.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">cached_tokens</strong
+                            ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                          >
+                          <div>
+                            <p>
+                              Number of input tokens that hit the context cache. See
+                              <a href="/guides/kv_cache">Context Caching</a>.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">output_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Number of output tokens.</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <details
+                class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+                data-collapsed="true"
+              >
+                <summary>
+                  <span class="openapi-schema__container"
+                    ><strong class="openapi-schema__property"><p>output_tokens_details</p></strong
+                    ><span class="openapi-schema__name"><p>object</p></span></span
+                  >
+                </summary>
+                <div>
+                  <div class="collapsibleContent_gaFD">
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>Breakdown of the output tokens.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">reasoning_tokens</strong
+                            ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                          >
+                          <div>
+                            <p>
+                              Number of reasoning (chain-of-thought) tokens generated by the model.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">total_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Total number of tokens used in the request (input + output).</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+</article>

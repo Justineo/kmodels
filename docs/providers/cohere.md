@@ -103,6 +103,12 @@ the standard `input_tokens` signal. Image embedding and reranking retain provide
 `billed_image_tokens` and `billed_search_units` signals because collapsing them into generic token
 or request counters would lose Cohere's billing semantics.
 
+The Embed V2 reference also publishes its response schema as an indented Markdown field list.
+Recognize numeric counters under the exact `meta → billed_units` hierarchy in the Response
+section, with the independent `POST /v2/embed` signature. A field under generic `tokens`, another
+parent, or the Request section does not establish a billed-unit locator. JSON examples need not
+contain every optional field; their omission does not override the response schema.
+
 The standard OpenTelemetry GenAI token attributes are not an exact alternative for Cohere. They do
 not identify Cohere's `billed_units` partition, and the current convention has no portable Cohere
 rerank search-unit or image-token field. A runtime may emit the provider JSON values through its
