@@ -1,6 +1,6 @@
 # Price-book completeness assessment
 
-Status: current accepted snapshot, 2026-09-11
+Status: assessment of the retained provider scope from the 2026-09-11 snapshot
 
 ## Evaluation boundary
 
@@ -16,19 +16,18 @@ to USD. Private discounts, taxes, account settlement, capacity procurement, reta
 local model deployment remain outside the request-rate boundary in
 [Commercial topology](commercial-topology.md).
 
-The shared working tree includes the pricing normalization and catalog/resilience changes,
-including native Perplexity. This assessment uses a new `vp run collect`, not a compilation of old
-parsed inputs. The current snapshot includes the session, geography, search, and grounding parser corrections
+This assessment covers the providers retained from the 2026-09-11 live collection. Counts below
+are scoped to those providers; later additions and refreshes are outside this dated assessment.
+The assessed snapshot includes the session, geography, search, and grounding parser corrections
 documented in the [pricing research](pricing-research.md).
 
 ## Accepted result
 
 - Snapshot: `2026-09-11T05:50:05.136Z`.
-- Catalog version: `4186a13c9b50ea665b6c9075063cee2e6205d255bc2d9b7a5c0b36a024ba5b24`.
-- All 19 catalog and pricing partitions were accepted; none retained old pricing or withheld pricing.
-- 3,633 catalog models, including 3,441 non-retired models.
-- 1,600 books: 1,536 model books and 64 provider-resource books; 2,111 offers.
-- 13,996 normalized rate variants, 12 allowance variants, and two quantity contributions.
+- All 18 in-scope catalog and pricing partitions were accepted; none retained old pricing or withheld pricing.
+- 3,625 catalog models, including 3,433 non-retired models.
+- 1,585 books: 1,528 model books and 57 provider-resource books.
+- 12 allowance variants and two quantity contributions.
 - 39 raw variants affect base prices or allowances; 144 more are informational.
 
 The refresh report's `publication: complete` means every provider publication succeeded. It does
@@ -59,14 +58,13 @@ and can overlap Numeric. “Unknown” excludes explicit `not_applicable` dispos
 | mistral        |             39 |        39 |        38 |         0 |                   0 |
 | ollama         |            248 |        14 |        14 |       234 |                   0 |
 | openai         |             92 |        85 |        84 |         5 |                   0 |
-| perplexity     |              8 |         8 |         8 |         0 |                   0 |
 | vercel         |            369 |       369 |       361 |         0 |                   0 |
 | vertex         |             74 |        70 |        70 |         4 |                   1 |
 | xai            |             22 |        22 |        22 |         0 |                   0 |
-| **Total**      |      **3,441** | **1,513** | **1,484** | **1,926** |              **15** |
+| **Total**      |      **3,433** | **1,505** | **1,476** | **1,926** |              **15** |
 
-OpenAI has two additional `not_applicable` models. The 1,513 models with books partition into
-1,484 with numeric rates, 17 free-only models, four unpublished-only models, and eight raw-only
+OpenAI has two additional `not_applicable` models. The 1,505 models with books partition into
+1,476 with numeric rates, 17 free-only models, four unpublished-only models, and eight raw-only
 models. A numeric model can still contain an incomplete sibling route.
 
 The unknown denominator needs product context:
@@ -88,7 +86,7 @@ omissions apply independently; support does not imply every model has an offer.
 
 | Dimension or component             | Accepted support                                                                                               | Remaining limitation                                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Input / output tokens              | Present across 18 providers with numeric token books                                                           | Exact model gaps in the coverage table                                                                   |
+| Input / output tokens              | Present across 17 providers with numeric token books                                                           | Exact model gaps in the coverage table                                                                   |
 | Cache read                         | Present across 14 providers                                                                                    | HF routed cache prices are not published in this book; some source scopes remain unresolved              |
 | Cache write and retention          | Seven providers; explicit Anthropic 300/3,600-second TTLs and Databricks default/1h alternatives               | Do not infer a default TTL from a named option                                                           |
 | Long context                       | Numeric bands in OpenAI, Gemini, Vertex and others; Databricks named short/long bands                          | Current Claude 4.6+ uses the same rate across its full context window; absence of a premium is not a gap |
@@ -97,13 +95,12 @@ omissions apply independently; support does not imply every model has an offer.
 | Regional prices                    | Anthropic geography; OpenAI regional-processing uplift; Vertex global/non-global; Azure and Bedrock regions    | Explicit Fast × EU `not_supported`; other provider/model availability remains scoped                     |
 | Text / image / audio / video       | Separate rates and units where published; Gemini image-output tokens present                                   | Databricks image conflicts; unpriced media IDs and routes                                                |
 | Document input / OCR               | Image-input billing or page rates where published; Vertex Mistral OCR equivalence resolved                     | Vertex DeepSeek-OCR page alternative remains raw                                                         |
-| Thinking / reasoning               | Ordinary output rates include reasoning where specified; Perplexity has separate reasoning and citation rates  | No duplicate surcharge is invented for reasoning already included in output                              |
+| Thinking / reasoning               | Ordinary output rates include reasoning where specified                                                        | No duplicate surcharge is invented for reasoning already included in output                              |
 | Web search                         | Native provider services plus Vercel Perplexity, Exa, Tako and Parallel                                        | Tako export depends on the result card’s variable price                                                  |
 | File search / retrieval            | OpenAI and Azure File Search, xAI collection/attachment search, Mistral retrieval                              | Retained storage is outside request-rate scope                                                           |
 | Code execution                     | Anthropic standalone/included modes, minimum and allowance; OpenAI containers; Azure, Mistral and xAI services | No general claim for unpriced orchestration products                                                     |
 | Grounding                          | Gemini and Vertex Search/Maps with shared allowances; Vertex enterprise, data and Claude search                | Respect query versus grounded-prompt units and shared consumption                                        |
 | Reranking                          | Cohere, Bedrock, Azure and Vercel rates                                                                        | Exact Cohere model coverage is partial                                                                   |
-| Perplexity                         | Eight native model books, seven service books; all five Deep Research price components                         | Third-party Agent/Router prices are outside the native model partition                                   |
 | Audio duration / TTS characters    | Second-based rates across nine providers; character rates across six                                           | GPT-Live active time is priced separately from backend model/tool usage                                  |
 | Images / searches / container time | Image, pixel, request, search-unit, event, second and session prices                                           | No universal image or search unit is assumed                                                             |
 | Shared allowances / minimums       | Gemini and Vertex grounding pools; Anthropic container allowance; OpenAI and Anthropic minimum rules           | Unrecognized sharing rules remain raw; shared pools are not per-model grants                             |
@@ -209,7 +206,7 @@ exact native overlays are not counted twice.
 
 ## Accepted provider-resource inventory
 
-These 64 books supplement model rates; their presence does not establish universal model/tool
+These 57 books supplement model rates; their presence does not establish universal model/tool
 compatibility. Fine-tuned inference is distinct from excluded training jobs.
 
 | Provider       | Books | Components                                                                                                         |
@@ -223,7 +220,6 @@ compatibility. Fine-tuned inference is distinct from excluded training jobs.
 | Kimi           |     3 | Web search, files, Formula                                                                                         |
 | Mistral        |     5 | Web search, premium news, code execution, image generation, library retrieval                                      |
 | OpenAI         |    14 | Nine fine-tuned inference books, search, File Search, containers, two fixed search-content contributions           |
-| Perplexity     |     7 | Search API, four Agent tools, sandbox session and sandbox search                                                   |
 | Vercel         |     6 | Native web/Maps search, Perplexity Search, Exa Search, Tako Search, Parallel Search                                |
 | Vertex         |     5 | Google Search, Maps, Enterprise grounding, grounded generation, Claude search; four current shared allowance pools |
 | xAI            |     8 | Web/X/collection/attachment search, code execution, STT, TTS, response-policy charge                               |
@@ -236,8 +232,6 @@ Cerebras' unpublished provider-level Batch service.
 
 These examples use rates read from the refreshed canonical file, independent of acquisition paths:
 
-- Perplexity Deep Research: 10,000 input, 2,000 answer-output, 1,000 citation and 3,000 reasoning
-  tokens plus four search queries cost $0.020 + $0.016 + $0.002 + $0.009 + $0.020 = **$0.067**.
 - OpenAI eligible 1-GiB container: two billed minutes invoke the five-minute minimum, producing
   **$0.0075**; eight billed minutes produce **$0.012**.
 - Vercel Exa: one search requesting 15 results costs $0.007 + 5 × $0.001 = **$0.012** for search,
@@ -259,15 +253,15 @@ These positive cases do not imply omitted services or unpriced models are zero-c
 
 ## Validation and reproduction
 
-Evidence is the accepted [catalog](../data/catalog.json),
+Current equivalents of the assessed artifacts are the accepted [catalog](../data/catalog.json),
 [canonical pricing envelope](../data/pricing.json.gz),
 [parsed pricing compilation inputs](../data/pricing-inputs.json.gz) and
-[refresh report](../data/refresh-summary.json). Model counts filter `status != retired`; raw counts
+[refresh report](../data/refresh-summary.json). These files advance with later refreshes; the counts
+above describe the dated assessment. Model counts filter `status != retired`; raw counts
 sum raw-term variants and raw variants attached to normalized terms, rather than counting
 observations or source-extraction diagnostics. Source reconciliation and provider-resource scopes
 are inspected separately because omissions may never reach canonical raw.
 
-`vp install --frozen-lockfile`, `vp check`, `vp test --run` (762 tests),
-`vp run collect:fixtures` (357 tests), and `vp run build` passed. Data and static asset packs were
-regenerated; deployment was not performed. Passing structural tests does not establish pricing
+Reproduce structural validation with `vp install --frozen-lockfile`, `vp check`, `vp test --run`,
+`vp run collect:fixtures`, and `vp run build`. Passing structural tests does not establish pricing
 completeness.

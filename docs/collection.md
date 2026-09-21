@@ -5,6 +5,9 @@ Status: implemented
 ## Source trust
 
 - `src/catalog/manifests.ts` is the reviewed provider registry and source allowlist. Requests never choose root URLs.
+- Adding a provider requires an explicit product-scope decision. Pricing completeness work stays
+  within the registered providers. Upstream model brands and third-party tools offered by an
+  existing provider do not authorize registering those vendors as independent providers.
 - Every source that can establish pricing declares a first-party pricing-evidence policy. The policy
   records whether the source is a model catalog, price book, billing catalog, commercial-terms
   surface, or scoped meter inventory; how identities may bind; and whether the source is an explicit

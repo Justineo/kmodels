@@ -40,7 +40,6 @@ import { applyCerebrasCommercialTopology } from "./cerebras-commercial.ts";
 import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
 import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
 import { applyDashscopeCommercialTopology } from "./dashscope-commercial.ts";
-import { applyPerplexityCommercialTopology } from "./perplexity-commercial.ts";
 import { applySagemakerCommercialTopology } from "./sagemaker-commercial.ts";
 import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
@@ -265,8 +264,6 @@ function applyCommercialTopology(
       return applyOllamaCommercialTopology(input, publishedModels, pricingInputs);
     case "openai":
       return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
-    case "perplexity":
-      return applyPerplexityCommercialTopology(input);
     case "amazon-sagemaker":
       return applySagemakerCommercialTopology(input);
     case "vercel":
@@ -1393,12 +1390,6 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
         "One Vercel AI Gateway trace delivered to one configured drain",
       );
     case "tool_call":
-      if (context.providerId === "perplexity" && context.bookKey.startsWith("service:agent-"))
-        return providerMeter(
-          context,
-          "tool_call",
-          "One invocation of the independently priced Perplexity Agent API tool",
-        );
       // A source operation name does not establish service ownership or a shared meter.
       // Provider migrations move exact operations into provider-resource books.
       return;
@@ -1411,8 +1402,6 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
         "One provider-published realtime client message",
       );
     case "cache_read_audio":
-    case "citation_tokens":
-    case "reasoning_tokens":
     case "cache_write_audio":
     case "cache_read_image":
     case "cache_write_image":

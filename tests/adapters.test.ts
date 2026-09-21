@@ -12,7 +12,6 @@ import {
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
-import { addRationals } from "../src/catalog/pricing-rational.ts";
 import { decimalsEqual, publishedRate } from "../src/catalog/pricing.ts";
 import {
   curlResponse,
@@ -13500,121 +13499,6 @@ describe("OpenAI fixed search content", () => {
         .flatMap(({ commercial_facts }) => commercial_facts ?? [])
         .some(({ resource_key }) => resource_key.startsWith("web-search-content:")),
     ).toBe(false);
-  });
-});
-
-describe("Perplexity adapter", () => {
-  async function catalog(edit: (text: string) => string = (text) => text) {
-    const value = manifest("perplexity");
-    const source = value.sources[0];
-    if (source === undefined) throw new Error("Missing Perplexity source");
-    const models = parseSource({
-      provider: provider(value),
-      source,
-      observedAt,
-      body: JSON.stringify({
-        index: { url: source.url, body: edit(await fixture("perplexity/pricing.md")) },
-        documents: [
-          {
-            url: "https://docs.perplexity.ai/docs/sonar/models.md",
-            body: await fixture("perplexity/models.md"),
-          },
-        ],
-      }),
-    });
-    const partition = assembleParsedProviderPricing(
-      "perplexity",
-      observedAt,
-      [{ source, models }],
-      models,
-      value.pricingCategoricalLabels,
-    );
-    if (partition === undefined) throw new Error("Missing Perplexity pricing");
-    validateParsedPricing(value, source, models, partition);
-    return { models, partition };
-  }
-
-  it("calculates every Deep Research component and retains all Pro Search context prices", async () => {
-    const { models, partition } = await catalog();
-    expect(models).toHaveLength(8);
-    const deep = partition.books.find(
-      ({ book_key }) => book_key === "model:perplexity/sonar-deep-research",
-    );
-    if (deep === undefined) throw new Error("Missing Deep Research book");
-    const counts: Record<string, string> = {
-      input_text: "1000",
-      output_text: "2000",
-      citation_tokens: "500",
-      reasoning_tokens: "300",
-      web_search: "4",
-    };
-    let total = { numerator: "0", denominator: "1" };
-    for (const term of deep.offers.flatMap(({ terms }) => terms)) {
-      if (term.kind !== "rate") throw new Error("Unnormalized Deep Research rate");
-      const variant = term.variants[0];
-      const count = counts[term.meter.value];
-      if (variant?.charge_binding === undefined || count === undefined)
-        throw new Error("Missing component usage binding");
-      const result = evaluateRateCost(variant, [
-        { signal: variant.charge_binding.signal, value: { numerator: count, denominator: "1" } },
-      ]);
-      if (result.kind !== "resolved") throw new Error("Unresolved Deep Research rate");
-      total = addRationals(total, result.amount);
-    }
-    expect(total).toEqual({ numerator: "399", denominator: "10000" });
-    const pro = models.find(({ model_id }) => model_id === "sonar-pro");
-    expect(
-      pro?.price_facts
-        .filter(
-          ({ meter, conditions }) => meter === "web_search" && conditions.search_effort === "pro",
-        )
-        .map(({ price, conditions }) => [conditions.context_tier, price]),
-    ).toEqual([
-      ["low", "14"],
-      ["medium", "18"],
-      ["high", "22"],
-    ]);
-    expect(partition.books.some(({ book_key }) => book_key === "service:search")).toBe(true);
-    expect(partition.books.some(({ book_key }) => book_key === "service:agent-sandbox")).toBe(true);
-    for (const term of partition.books.flatMap(({ offers }) =>
-      offers.flatMap(({ terms }) => terms),
-    )) {
-      expect(term.kind).toBe("rate");
-      if (term.kind === "rate") expect(term.raw_variants).toEqual([]);
-    }
-  });
-
-  it("preserves an unresolved price cell without losing sibling rates or model identity", async () => {
-    const { models, partition } = await catalog((text) =>
-      text.replace("\\$0.004", "Contact sales"),
-    );
-    const model = models.find(({ model_id }) => model_id === "pplx-embed-v1-0.6b");
-    expect(model?.raw_price_facts).toContainEqual(
-      expect.objectContaining({ impact: "base_price", reason: "unknown_amount" }),
-    );
-    expect(
-      partition.books.find(({ book_key }) => book_key === "model:perplexity/sonar-deep-research"),
-    ).toBeDefined();
-    expect(models).toHaveLength(8);
-  });
-
-  it("preserves independently priced services when their amount cells drift", async () => {
-    const { partition } = await catalog((text) =>
-      text.replace("\\$0.0005 per invocation", "Contact sales").replace("\\$5.00", "Contact sales"),
-    );
-    for (const key of ["service:search", "service:agent-fetch-url"]) {
-      const book = partition.books.find(({ book_key }) => book_key === key);
-      expect(book?.offers.flatMap(({ terms }) => terms)).toContainEqual(
-        expect.objectContaining({
-          kind: "raw",
-          variants: [expect.objectContaining({ impact: "base_price", reason: "unknown_amount" })],
-        }),
-      );
-    }
-    expect(
-      partition.books.find(({ book_key }) => book_key === "service:agent-web-search")?.offers[0]
-        ?.terms[0]?.kind,
-    ).toBe("rate");
   });
 });
 
