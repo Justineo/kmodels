@@ -1,5 +1,6 @@
 import type { PriceDimension } from "./pricing-schema.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
+import { sagemakerCatalogUrl } from "./sagemaker.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
@@ -35,6 +36,9 @@ export type Extractor =
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
+  | { kind: "sagemaker-catalog" }
+  | { kind: "sagemaker-pricing" }
+  | { kind: "sagemaker-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
@@ -197,6 +201,8 @@ export interface SourceManifest {
     | { scheme: "google-service-account"; env: string };
   headers?: { name: string; value: string }[];
   transport?:
+    | { kind: "sagemaker-pricing" }
+    | { kind: "aws-sagemaker"; region: string }
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
     | { kind: "azure-retail-prices" }
@@ -901,6 +907,98 @@ export const manifests = [
       fields: ["limits.context_tokens", "pricing"],
       statuses: ["active", "deprecated"],
     },
+  },
+  {
+    provider: {
+      id: "amazon-sagemaker",
+      name: "Amazon SageMaker AI",
+      kind: "cloud_platform",
+      homepage: "https://aws.amazon.com/sagemaker/ai/",
+      docs_url: sagemakerCatalogUrl,
+      catalog_scope: "regional",
+    },
+    pricingCategoricalLabels: [
+      ...pricingLabels("endpoint", {
+        InvokeEndpoint: "InvokeEndpoint",
+      }),
+      ...pricingLabels("service_tier", {
+        on_demand: "On-demand",
+        provisioned_execution: "Provisioned concurrency execution",
+      }),
+      ...pricingLabels(
+        "operation",
+        Object.fromEntries(
+          [1, 2, 3, 4, 5, 6].map((memory) => [`memory-${memory}gb`, `${memory} GB memory`]),
+        ),
+      ),
+    ],
+    sources: [
+      {
+        id: "sagemaker-models",
+        url: sagemakerCatalogUrl,
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-catalog" },
+        extractorVersion: "sagemaker-catalog-v1",
+        fields: ["model_id", "name", "tasks", "capabilities", "service_families", "status"],
+        allowedHosts: ["docs.aws.amazon.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "sagemaker-pricing",
+        url: sagemakerCatalogUrl,
+        type: "website",
+        source: ["website", "api"],
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-pricing" },
+        extractorVersion: "sagemaker-pricing-v1",
+        fields: ["pricing"],
+        pricingEvidence: firstPartyPricing(
+          "billing_catalog",
+          "reviewed_unique_join",
+          "current_snapshot",
+        ),
+        allowedHosts: [
+          "docs.aws.amazon.com",
+          "pricing.us-east-1.amazonaws.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+          "aws.amazon.com",
+        ],
+        maxResponseBytes: mebibytes(192),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        pricingRequired: true,
+        transport: { kind: "sagemaker-pricing" },
+      },
+      {
+        id: "sagemaker-api-us-west-2",
+        url: "https://api.sagemaker.us-west-2.amazonaws.com/",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "sagemaker-api" },
+        extractorVersion: "sagemaker-api-v1",
+        fields: ["modalities", "capabilities", "availability"],
+        allowedHosts: ["api.sagemaker.us-west-2.amazonaws.com", "docs.aws.amazon.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "aws", envs: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] },
+        transport: { kind: "aws-sagemaker", region: "us-west-2" },
+      },
+    ],
   },
   {
     provider: {

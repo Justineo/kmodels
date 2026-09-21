@@ -1,6 +1,7 @@
 import alibabaCloud from "@lobehub/icons-static-svg/icons/alibabacloud-color.svg?raw";
 import anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg?raw";
 import bedrock from "@lobehub/icons-static-svg/icons/bedrock-color.svg?raw";
+import aws from "@lobehub/icons-static-svg/icons/aws-color.svg?raw";
 import cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg?raw";
 import cohere from "@lobehub/icons-static-svg/icons/cohere-color.svg?raw";
 import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
@@ -55,6 +56,7 @@ const uiSources = {
 
 const providerSources = {
   "amazon-bedrock": bedrock,
+  "amazon-sagemaker": aws,
   anthropic,
   azure: microsoftFoundry,
   cerebras,

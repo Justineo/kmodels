@@ -11,6 +11,9 @@ import {
 } from "./azure.ts";
 import { parseAzureAccounting } from "./azure-accounting.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
+import { parseSagemakerCatalog } from "./sagemaker.ts";
+import { parseSagemakerPricing } from "./sagemaker-pricing.ts";
+import { parseSagemakerInventory } from "./sagemaker-api.ts";
 import {
   parseCerebrasApi,
   parseCerebrasCatalog,
@@ -2477,6 +2480,12 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseOllamaCloud(input);
     case "bedrock-catalog":
       return parseBedrockCatalog(input);
+    case "sagemaker-catalog":
+      return parseSagemakerCatalog(input);
+    case "sagemaker-pricing":
+      return parseSagemakerPricing(input);
+    case "sagemaker-api":
+      return parseSagemakerInventory(input);
     case "bedrock-api":
       return parseBedrockApi(input);
     case "databricks-catalog":

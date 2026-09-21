@@ -4,7 +4,7 @@ Status: implemented
 
 ## Product boundary
 
-Kmodels is a best-effort catalog of model offerings from 18 providers.
+Kmodels is a best-effort catalog of model offerings from the registered providers.
 `Provider` and `ProviderModel` describe the model catalog. Pricing is a separate
 content-bound resource containing provider vocabularies, snapshots, books,
 offers, terms, and explicit model dispositions. Equal names or IDs from

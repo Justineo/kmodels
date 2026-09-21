@@ -43,6 +43,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [OpenAI](docs/providers/openai.md)
 - [Anthropic](docs/providers/anthropic.md)
 - [Amazon Bedrock](docs/providers/amazon-bedrock.md)
+- [Amazon SageMaker AI](docs/providers/amazon-sagemaker.md)
 - [Databricks](docs/providers/databricks.md)
 - [Vercel AI Gateway](docs/providers/vercel.md)
 - [Microsoft Foundry](docs/providers/azure.md)
