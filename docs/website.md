@@ -310,6 +310,11 @@ services → pricing notes`. The first mechanism in
   mounting the application; preload both from the HTML shell so their transfers
   start in parallel with the core module graph. Core table data never has a
   deferred loading state.
+  Each core chunk has a hard 2 MiB decoded-size ceiling. The catalog's 320 KiB
+  decoded / 48 KiB gzip and pricing summary's 112 KiB decoded / 10 KiB gzip
+  performance targets are advisory: generated-data validation reports sizes and
+  warns when targets are exceeded, without blocking normal catalog growth.
+  Integrity checks and hard resource ceilings still gate publication.
   The catalog chunk contains provider labels and only the model fields needed
   for rows, grouping, search, filters, and sorting. The pricing chunk contains
   build-time representative pricing in matching model order. Browser-only UIDs
