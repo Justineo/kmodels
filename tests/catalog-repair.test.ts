@@ -1,8 +1,38 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  assertCatalogRepairOutcome,
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
 } from "../src/catalog/catalog-repair.ts";
+
+it("fails incomplete repair outputs even when the agent exits successfully", () => {
+  for (const type of ["missing_data", "missing_tool", "report_incomplete"])
+    expect(() =>
+      assertCatalogRepairOutcome(JSON.stringify({ type, reason: "Missing evidence" })),
+    ).toThrow("Catalog repair incomplete");
+  for (const output of [
+    "",
+    "{}",
+    JSON.stringify({ type: "noop" }),
+    JSON.stringify({ type: "create_pull_request", title: "Repair" }),
+  ])
+    expect(() => assertCatalogRepairOutcome(output)).toThrow();
+  const noop = JSON.stringify({ type: "noop", message: "All candidates independently resolved" });
+  expect(() => assertCatalogRepairOutcome(noop)).not.toThrow();
+  expect(() =>
+    assertCatalogRepairOutcome(
+      JSON.stringify({
+        type: "create_pull_request",
+        title: "Repair",
+        body: "Reproduced and validated",
+      }),
+    ),
+  ).not.toThrow();
+  expect(() => assertCatalogRepairOutcome(`${noop}\n${noop}`)).toThrow("exactly one");
+  expect(() =>
+    assertCatalogRepairOutcome(`${noop}\n${JSON.stringify({ type: "missing_data" })}`),
+  ).toThrow("incomplete");
+});
 
 const provider = (overrides: Record<string, unknown>): Record<string, unknown> => ({
   provider_id: "openai",

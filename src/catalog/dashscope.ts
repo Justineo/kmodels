@@ -811,7 +811,8 @@ function recommendedMarkdownRoute(raw: string): { endpoint?: ApiEndpoint; region
 
 function recommendedListingTarget(raw: string): { id: string; region: string } {
   const url = new URL(raw);
-  const regionKey = url.pathname.match(/^\/([a-z0-9-]+)\/?$/)?.[1];
+  const pathDetail = url.pathname.match(/^\/([a-z0-9-]+)\/model\/market\/detail\/([^/]+)$/);
+  const regionKey = pathDetail?.[1] ?? url.pathname.match(/^\/([a-z0-9-]+)\/?$/)?.[1];
   const region = regionKey === undefined ? undefined : recommendedWorkspaceRegions.get(regionKey);
   if (
     url.protocol !== "https:" ||
@@ -826,7 +827,11 @@ function recommendedListingTarget(raw: string): { id: string; region: string } {
   const query =
     queryOffset < 0 ? new URLSearchParams() : new URLSearchParams(url.hash.slice(queryOffset + 1));
   const detail = url.hash.match(/\/model-market\/detail\/([^?]+)/)?.[1];
-  const id = exactId(query.get("modelId") ?? decodeURIComponent(detail ?? ""));
+  const id = exactId(
+    pathDetail === null
+      ? (query.get("modelId") ?? decodeURIComponent(detail ?? ""))
+      : decodeURIComponent(pathDetail[2] ?? ""),
+  );
   if (id === undefined)
     throw new Error(`DashScope recommended-model listing omitted an exact ID: ${raw}`);
   return { id, region };

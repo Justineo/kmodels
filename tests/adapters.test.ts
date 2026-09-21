@@ -17125,7 +17125,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v17",
+      extractorVersion: "deepseek-catalog-v18",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
@@ -19138,7 +19138,7 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v6",
+      extractorVersion: "dashscope-recommended-v7",
       retainOmittedFacts: true,
     });
     expect(value.sources.find(({ id }) => id === "dashscope-text")?.extractor).toMatchObject({
@@ -19543,14 +19543,17 @@ describe("Kimi adapters", () => {
     },
   );
 
-  async function releases(): Promise<ProviderModel[]> {
+  async function releases(currentResearch = false): Promise<ProviderModel[]> {
     const configured = source("kimi-releases");
     return parse(
       configured,
       JSON.stringify({
         index: { url: configured.url, body: await fixture("kimi/changelog.html") },
         documents: [
-          { url: "https://www.kimi.com/blog/", body: await fixture("kimi/blog.html") },
+          {
+            url: currentResearch ? "https://www.kimi.ai/blog/" : "https://www.kimi.com/blog/",
+            body: await fixture(currentResearch ? "kimi/blog-current.html" : "kimi/blog.html"),
+          },
           {
             url: "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
             body: await fixture("kimi/code.html"),
@@ -20357,6 +20360,27 @@ describe("Kimi adapters", () => {
       "2025-11-06",
     );
     expect(models.some(({ model_id }) => model_id === "perceptionbench")).toBe(false);
+  });
+
+  it("keeps release dates after the independently verified research-domain and date-format migration", async () => {
+    const models = await releases(true);
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")).toMatchObject({
+      release_date: "2026-07-16",
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.6")).toMatchObject({
+      release_date: "2026-04-20",
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2-thinking")).toMatchObject({
+      release_date: "2025-11-06",
+    });
+    expect(models.some(({ model_id }) => model_id.toLowerCase().includes("perception"))).toBe(
+      false,
+    );
+    expect(source("kimi-releases").linkedDocuments?.documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "research", url: "https://www.kimi.ai/blog/" }),
+      ]),
+    );
   });
 
   it("retains every successful source that finds the same model", async () => {

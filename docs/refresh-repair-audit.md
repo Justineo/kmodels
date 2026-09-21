@@ -22,6 +22,8 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
   reads that exact label and independently verifies the Parse API endpoint. Structured page prices
   bind to the model; `meta.billed_units.pages` supplies the processed-page quantity. Model Vault
   instance rates remain excluded.
+  Embed V2's indented Response field list also establishes billed image tokens; JSON examples
+  need not include this optional field.
 - Mistral: paragraph card titles can bind to one exact active repository model name when clipboard
   IDs are absent. The first full post-repair refresh restored 40 USD/EUR price facts and reduced
   unrecognized cards from 20 to 7. Partial, ambiguous or differently named products remain unbound.
@@ -37,12 +39,20 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
 - DeepSeek: the peak-hour rule now excludes Chinese public holidays. Published categories retain
   the exact definition and source evidence, with no incomplete weekly schedule. The consumer
   supplies `billing_period`; collecting a price book does not require a holiday calendar.
+  Accounting extraction reads rendered terminal-chunk prose and nested Responses cache fields,
+  preserving the exact usage parent and stream-event requirements.
 - Vertex: grounding allowances moved from the last cell to a labeled Usage column. Header-based
   extraction restores shared pools while retaining the topology guard and raw unknown clauses.
 - Kimi: formerly separate model pages now share a combined overview with two tables. Extraction
   deduplicates identical documents and preserves the new 5-minute/1-hour cache-write rates. The
   revised tools page contributes independent Search, Search Pro and Fetch fees while retaining the
   separately documented legacy built-in fee. Batch scope bindings follow source evidence.
+- DashScope: recommendations now use `/<region>/model/market/detail/<encoded-id>` alongside the
+  existing hash routes. Exact path parsing restores 28 models from the historical body that the
+  previous parser reduced to two; the 15–60 count guard remains unchanged.
+- Kimi releases: the Moonshot company homepage independently links the research companion's
+  successor `https://www.kimi.ai/blog/`. Transport and parsing admit this exact host/path and the
+  card's hyphenated dates. The optional China inventory has its own injected credential.
 - Azure local transport: Retail Prices requests through the local HTTP proxy timed out during
   TLS before receiving an HTTP response. The identical public request succeeded directly, followed
   by complete pagination. A local `NO_PROXY=prices.azure.com` setting restores that route without
@@ -73,21 +83,28 @@ transport/auth failures are not parser repairs. When source evidence is unavaila
 deterministic candidate exists, preparation reports incomplete rather than a healthy no-op.
 Missing optional credentials alone remains normal configured scope.
 
-A historical repair run (35174713625) attempted seven denied `curl` calls and then reported no
-repairable issue. The workflow now explicitly permits the manifest-backed `vp` evidence CLI and
-reviewed source hosts. The CLI exposes omitted companions even when its main bundle succeeds.
-Blocked tools, missing evidence and unverified conclusions must produce an incomplete outcome.
-The generated workflow compiles locally; actual remote sandbox execution remains a CI verification.
+The manifest-backed evidence CLI and reviewed source hosts are reachable in the remote sandbox:
+run 35484173155 fetched all 13 public candidates with no firewall denial. Its premature missing-data
+outcome was an investigation failure: it searched only the summary for historical hashes although
+`data/fetch-state.json` contained them. Six refetched bundle hashes matched that checkout exactly.
+The CLI now reports this comparison automatically, including fixed companion hashes and attempt
+timestamps. Hash mismatch limits historical attribution, not independently reproducible current
+repairs. A parser replay, rather than a text-link count, establishes each candidate's outcome.
+The workflow completes independent validated fixes and lists unresolved candidates separately.
+A deterministic post-execution check rejects incomplete, missing-data, missing-tool, or absent
+final outcomes even if the agent process exits successfully. Remote execution of this new outcome
+check remains a CI verification.
 
 ## Remaining boundaries
 
 - Mistral's remaining differently named/new products require exact identity evidence; they are
   still repair candidates. They must not be joined by family resemblance.
-- Missing owned accounting fields remain visible, including Gemini's audio selector and Cohere's
-  image-token mapping. Restoring neighboring mappings does not prove those fields exist.
-- The final refresh also reports the DashScope recommended-model count guard, a Kimi API 401,
-  and transient Azure/Databricks transport failures. Accepted provider publication does not erase
-  these individual source failures.
+- Missing owned accounting fields remain visible, including Gemini's audio selector and xAI's
+  partial input contracts. Restoring neighboring mappings does not prove those fields exist.
+- The latest committed refresh still predates these parser repairs. Historical-body replay restores
+  DashScope recommendations and Cohere/DeepSeek mappings without rewriting generated data. Kimi
+  authentication recovery requires a new run with the updated regional credentials. Accepted
+  provider publication does not erase these individual source failures.
 - `linkedUrls` checks selected hosts, paths, suffixes and counts but does not inventory excluded
   links. This is an observability limitation, not proof of a missed commercial page. Cohere
   demonstrates why fetched-page coverage and parser coverage must be examined separately.
@@ -110,6 +127,15 @@ code alone and existing repair. Typed probabilities guide review; source evidenc
 tests establish the repair.
 
 ## Evidence
+
+- [Repair run 35484173155](https://github.com/Justineo/kmodels/actions/runs/35484173155): its public
+  evidence artifact supplies the reviewed DashScope link, Cohere field-list, and DeepSeek HTML
+  fixtures. Source body hashes match that run's checkout: DashScope `1ac1c1294a26ee66…`,
+  Cohere `20bad54ea66366db…`, DeepSeek `c6065126be55ea3a…`. Fixtures contain only relevant public
+  excerpts; no authenticated responses were retained.
+- [Moonshot company homepage](https://www.moonshot.ai/) links the successor
+  [research index](https://www.kimi.ai/blog/), observed 2026-09-21. The current-card fixture
+  preserves public title/date structure and an unrelated research product as a negative case.
 
 - [Cohere model index](https://docs.cohere.com/docs/models/llms.txt),
   [Parse](https://docs.cohere.com/docs/parse.md),

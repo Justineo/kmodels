@@ -105,6 +105,12 @@ same usage object immediately before `data: [DONE]`. Responses non-streaming pat
 the full response under `/response`, so their streaming paths are rooted at `/response/usage`.
 Every stream input is marked `terminal_only`.
 
+Accounting prose is matched as rendered HTML text, so inline `<code>` around `data: [DONE]`
+does not break the terminal-chunk contract. Responses may publish cache usage as a nested
+OpenAPI schema instead of a dotted field name. Require the integer `cached_tokens` field under
+`usage → input_tokens_details`; an output-token or unrelated usage subtree cannot establish
+the cache-input locator. The terminal-event markers remain mandatory for stream mappings.
+
 Chat and FIM cache-miss quantities are direct observations. Responses cache-miss input uses a
 closed, unit-preserving calculation graph: total input tokens minus cached input tokens, floored at
 zero. Kmodels publishes both response and terminal-stream locators as alternative acquisition

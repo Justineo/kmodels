@@ -36,6 +36,14 @@ Status: implemented
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
   Code-repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
   cost-efficient while retaining deeper analysis for source-drift diagnosis.
+  Public refetches automatically compare body hashes with the matching attempt in
+  `data/fetch-state.json`; failed transport attempts cannot establish identity using a retained
+  older hash. The refresh summary does not duplicate those hashes. Review runs the
+  actual parser before comparing output counts. Historical-byte identity establishes historical
+  reproduction, while independently reproduced current-source defects remain repairable. One
+  unresolved candidate does not prevent a validated independent repair PR; unresolved candidates
+  are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
+  empty, or contradictory final outputs even when the model process exits successfully.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
   direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
   fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the

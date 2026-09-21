@@ -146,6 +146,17 @@ The release-date overlay is optional and retains its last verified dates if its 
 fails. A research or changelog link failure cannot freeze the independent current model catalogs
 or regional price books. Its old observation time and failure remain visible in source diagnostics.
 
+The research companion is `https://www.kimi.ai/blog/`. The [Moonshot company homepage](https://www.moonshot.ai/)
+Research link independently establishes this successor to the redirecting `www.kimi.com/blog/` URL.
+The reviewed transport admits `www.kimi.ai`; research cards retain exact catalog/display-ID joins
+and accept slash- or hyphen-separated calendar dates. A research product without an exact API
+catalog identity cannot create a release fact.
+
+The optional regional inventories use separate credentials: `MOONSHOT_API_KEY` for the
+international endpoint and `MOONSHOT_CN_API_KEY` for China. The refresh workflow injects both
+secrets independently. Missing keys skip only their inventories; an HTTP 401 remains an
+authentication failure rather than a parser-repair candidate.
+
 Regional OpenAPI, catalogs, model-price pages, Batch, web search, Formula, Files, lifecycle sources,
 and `llms.txt` discovery are independent claim groups. A missing page, changed field, malformed row,
 new Formula URI, or one-region drift suppresses only the dependent fact and cannot erase sibling

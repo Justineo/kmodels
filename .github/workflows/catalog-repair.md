@@ -70,6 +70,7 @@ network:
     - www.cerebras.ai
     - www.databricks.com
     - www.kimi.com
+    - www.kimi.ai
 
 tools:
   edit:
@@ -101,6 +102,7 @@ steps:
     id: repair_dedupe
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: |
       if [ "$(gh pr list --state open --label catalog-repair --json number --jq length)" -gt 0 ]; then
         echo '{"type":"noop","message":"An open catalog-repair pull request already exists"}' >> "$GH_AW_SAFE_OUTPUTS"
@@ -129,13 +131,21 @@ steps:
     if: steps.repair_dedupe.outputs.blocked != 'true'
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/catalog-repair.ts
+
+post-steps:
+  - name: Verify the repair completed
+    if: always() && steps.repair_dedupe.outputs.blocked != 'true'
+    env:
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
+    run: vp node scripts/check-catalog-repair-outcome.ts
 ---
 
 # Review and repair a catalog collection problem
 
 Read `design.md`, `AGENTS.md`, `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
-`data/refresh-summary.json`, and only the provider guides relevant to the listed candidates.
+`data/refresh-summary.json`, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.
 
 The preparation steps installed the pinned Vite+ and Node.js in the shared `VP_HOME`, and installed
 the frozen project dependencies. Start with `vp env doctor` and `vp node --version`. Use `vp node`
@@ -148,6 +158,21 @@ a semantic check; see `docs/refresh-repair-audit.md`. Record source URL, observa
 relevant evidence, current parser result and the unresolved question. A newly fetched document
 proves its current state; only a matching refresh dependency hash establishes that it is the same
 evidence as the reported failure.
+
+The fetch-evidence CLI compares its body hash with `data/fetch-state.json` at the report's
+`generated_at` and returns `refresh.comparison`. `matching_refresh` establishes identical bytes;
+`changed_since_refresh` is a current observation; `unavailable` means the stored attempt is missing,
+belongs to another refresh, or failed before producing a new body. A transport failure can retain
+an older hash and must not establish historical identity. The summary does not duplicate these hashes. Never conclude that
+historical hashes are absent merely because they are absent from the summary.
+
+Identical historical bytes are needed only to claim historical reproduction, not to repair a defect
+independently reproduced against current first-party evidence. A changed or unavailable historical
+hash must not block other candidates. Run the actual source parser with the reviewed manifest and
+its required catalog context before comparing outputs: links found by a text search are not parsed
+models. For each candidate record the hash comparison, parser result, and either a tested repair,
+an evidence-backed no-repair decision, or a specific unresolved question. Do not stop the whole review
+because one candidate remains unresolved; complete independent reproducible fixes.
 
 When explicitly supplied for a manual experiment, the context may include `semantic_coverage_review` candidates even when the collector parsed every
 source successfully. Read `docs/semantic-audit.md` and the exact `snapshot.json`, `parsed-records.json`
@@ -210,8 +235,12 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    `report_incomplete` and stop. All required checks must pass before creating a pull request.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
-unpublished price, report the unresolved evidence with `report_incomplete` and do not create a pull
+unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not create a pull
 request. A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
 `noop`. Only use `noop` after adequate evidence positively establishes that no repair is needed.
 Otherwise create one small draft
 pull request describing the source change, repair, and validation results.
+List unresolved candidates separately in that PR rather than claiming complete coverage. Use
+`report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
+it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing
+completed outcome, even if the model process exits successfully.
