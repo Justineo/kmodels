@@ -395,6 +395,43 @@ describe("SageMaker price books", () => {
 });
 
 describe("SageMaker public-hub projection", () => {
+  it("links SDK-only foundation models to service pricing without admitting classic ML", () => {
+    const openManifest = JSON.stringify([
+      ...sagemakerRows(catalog)
+        .filter((row) => !row.proprietary)
+        .map((row) => ({
+          model_id: row.id,
+          version: "1.0",
+          spec_key: `community_models/${row.id}/specs_v1.0.json`,
+        })),
+      ...["new-video", "excluded-classic"].map((id) => ({
+        model_id: id,
+        version: "1.0",
+        spec_key: `community_models/${id}/specs_v1.0.json`,
+        deprecated: false,
+        search_keywords:
+          id === "new-video" ? ["Foundation Models", "Text-to-Video"] : ["Classification"],
+      })),
+    ]);
+    const models = parsePricing(bundle({ openManifest }));
+    expect(models.some((model) => model.model_id === "excluded-classic")).toBe(false);
+    expect(models.some((model) => model.model_id === "new-video")).toBe(true);
+    const partition = assembleParsedProviderPricing(
+      provider.id,
+      observedAt,
+      [{ source: source("sagemaker-pricing"), models }],
+      models,
+      labels,
+    );
+    const book = partition?.books.find(
+      (book) =>
+        book.scope.kind === "provider_resource" &&
+        book.scope.resource_key === "endpoint-data-processing",
+    );
+    expect(book).toBeDefined();
+    expect(book?.scope.model_refs).toContain("amazon-sagemaker/new-video");
+  });
+
   it("paginates and projects only admitted model metadata without account resource fields", async () => {
     aws.send.mockReset();
     aws.destroy.mockClear();
@@ -410,6 +447,7 @@ describe("SageMaker public-hub projection", () => {
         HubContentName: "fixture-speech",
         HubContentVersion: "2.0",
         HubContentDisplayName: "Speech",
+        HubContentDescription: "Published speech model",
         HubContentStatus: "Available",
         SupportStatus: "Supported",
         HubContentArn: "PRIVATE_FIXTURE",
@@ -417,11 +455,18 @@ describe("SageMaker public-hub projection", () => {
           InputModalities: ["Text"],
           OutputModalities: ["Audio"],
           FineTuningSupported: false,
+          Provider: "Publisher",
+          License: "MIT",
+          ContextWindow: "<4K",
           SupportedInferenceInstanceTypes: ["ml.g5.2xlarge"],
           ModelPackageArn: "PRIVATE_FIXTURE",
         }),
       });
-    const body = await fetchSagemakerInventory("us-west-2", catalog, 4096);
+    const body = await fetchSagemakerInventory(
+      "us-west-2",
+      new Set(sagemakerRows(catalog).map((row) => row.id)),
+      4096,
+    );
     expect(body).not.toContain("PRIVATE_FIXTURE");
     expect(aws.send).toHaveBeenCalledTimes(3);
     expect(aws.destroy).toHaveBeenCalledOnce();
@@ -438,6 +483,8 @@ describe("SageMaker public-hub projection", () => {
       modalities: { input: ["text"], output: ["audio"] },
       availability: [{ region: "us-west-2", deployment_type: "jumpstart-endpoint" }],
       account_availability: "unknown",
+      description: "Published speech model",
+      model_card: { publisher: "Publisher", license: "MIT", context_window: "<4K" },
     });
     expect(() =>
       parseSource({
@@ -453,9 +500,13 @@ describe("SageMaker public-hub projection", () => {
     aws.send.mockReset();
     aws.destroy.mockClear();
     aws.send.mockResolvedValue({ HubContentSummaries: [], NextToken: "cycle" });
-    await expect(fetchSagemakerInventory("us-west-2", catalog, 4096)).rejects.toThrow(
-      "repeated a token",
-    );
+    await expect(
+      fetchSagemakerInventory(
+        "us-west-2",
+        new Set(sagemakerRows(catalog).map((row) => row.id)),
+        4096,
+      ),
+    ).rejects.toThrow("repeated a token");
     expect(aws.destroy).toHaveBeenCalledOnce();
   });
 });

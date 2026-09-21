@@ -4,11 +4,13 @@ import {
   SageMakerClient,
 } from "@aws-sdk/client-sagemaker";
 import { z } from "zod";
+import { setTimeout as sleep } from "node:timers/promises";
 import { mapConcurrent } from "./concurrency.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { modalitySchema, type Provider } from "./schema.ts";
-import { sagemakerRows } from "./sagemaker.ts";
+import { sagemakerModalities } from "./sagemaker-sdk.ts";
+import { modelCardSchema } from "./model-metadata.ts";
 import { modelIdSchema } from "./identity.ts";
 
 const documentSchema = z.object({
@@ -16,31 +18,40 @@ const documentSchema = z.object({
   OutputModalities: z.array(z.string()).optional(),
   FineTuningSupported: z.boolean().optional(),
   SupportedInferenceInstanceTypes: z.array(z.string()).optional(),
+  Provider: z.string().optional(),
+  License: z.string().optional(),
+  ModelSize: z.string().optional(),
+  ContextWindow: z.string().optional(),
+  Languages: z.array(z.string()).optional(),
+  HuggingfaceId: z.string().optional(),
+  ModelAccess: z.string().optional(),
+  MlFramework: z.string().optional(),
 });
 const modelSchema = z.object({
   id: modelIdSchema,
   name: z.string().min(1),
+  description: z.string().max(1023).optional(),
   input: z.array(modalitySchema),
   output: z.array(modalitySchema),
   fineTuning: z.boolean().optional(),
   available: z.boolean(),
+  model_card: modelCardSchema.optional(),
 });
 const inventorySchema = z.object({ region: z.string(), models: z.array(modelSchema).max(3000) });
 
-function modalities(values: string[] | undefined) {
-  return (values ?? []).flatMap((value) => {
-    const parsed = modalitySchema.safeParse(value.toLowerCase());
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
 export async function fetchSagemakerInventory(
   region: string,
-  catalog: string,
+  admitted: ReadonlySet<string>,
   maxBytes: number,
 ): Promise<string> {
-  const admitted = new Set(sagemakerRows(catalog).map((row) => row.id));
-  const client = new SageMakerClient({ region, maxAttempts: 3 });
+  const client = new SageMakerClient({ region, maxAttempts: 3, retryMode: "adaptive" });
+  let nextRequestAt = 0;
+  async function waitForRequestSlot(): Promise<void> {
+    const now = Date.now();
+    const delay = Math.max(0, nextRequestAt - now);
+    nextRequestAt = Math.max(now, nextRequestAt) + 1000;
+    if (delay > 0) await sleep(delay);
+  }
   const common = { HubName: "SageMakerPublicHub", HubContentType: "Model" as const };
   try {
     const selected = new Map<string, { id: string; version: string }>();
@@ -48,13 +59,14 @@ export async function fetchSagemakerInventory(
     let next: string | undefined;
     let finished = false;
     for (let page = 0; page < 100; page += 1) {
+      await waitForRequestSlot();
       const result = await client.send(
         new ListHubContentsCommand({
           ...common,
           MaxResults: 100,
           ...(next === undefined ? {} : { NextToken: next }),
         }),
-        { abortSignal: AbortSignal.timeout(20_000) },
+        { abortSignal: AbortSignal.timeout(90_000) },
       );
       for (const row of result.HubContentSummaries ?? []) {
         if (row.HubContentName === undefined || !admitted.has(row.HubContentName)) continue;
@@ -75,14 +87,15 @@ export async function fetchSagemakerInventory(
     }
     if (!finished || selected.size === 0)
       throw new Error("SageMaker public hub inventory was incomplete");
-    const models = await mapConcurrent([...selected.values()], 4, async ({ id, version }) => {
+    const models = await mapConcurrent([...selected.values()], 2, async ({ id, version }) => {
+      await waitForRequestSlot();
       const result = await client.send(
         new DescribeHubContentCommand({
           ...common,
           HubContentName: id,
           HubContentVersion: version,
         }),
-        { abortSignal: AbortSignal.timeout(20_000) },
+        { abortSignal: AbortSignal.timeout(90_000) },
       );
       if (
         result.HubContentName !== id ||
@@ -94,8 +107,23 @@ export async function fetchSagemakerInventory(
       return modelSchema.parse({
         id,
         name: result.HubContentDisplayName ?? id,
-        input: modalities(document.InputModalities),
-        output: modalities(document.OutputModalities),
+        ...(result.HubContentDescription === undefined
+          ? {}
+          : { description: result.HubContentDescription }),
+        input: sagemakerModalities(document.InputModalities),
+        output: sagemakerModalities(document.OutputModalities),
+        model_card: Object.fromEntries(
+          [
+            ["publisher", document.Provider],
+            ["license", document.License],
+            ["size", document.ModelSize],
+            ["context_window", document.ContextWindow],
+            ["languages", document.Languages],
+            ["upstream_id", document.HuggingfaceId],
+            ["access", document.ModelAccess],
+            ["framework", document.MlFramework],
+          ].filter(([, value]) => value !== undefined && value !== ""),
+        ),
         ...(document.FineTuningSupported === undefined
           ? {}
           : { fineTuning: document.FineTuningSupported }),
@@ -135,6 +163,8 @@ export function parseSagemakerInventory(input: {
       observedAt: input.observedAt,
     });
     model.scope = "regional_catalog";
+    if (row.description !== undefined) model.description = row.description;
+    if (row.model_card !== undefined) model.model_card = row.model_card;
     model.modalities = { input: row.input, output: row.output };
     model.capabilities.fine_tuning = row.fineTuning ?? "unknown";
     if (row.available)

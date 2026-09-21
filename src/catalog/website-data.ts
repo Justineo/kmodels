@@ -623,6 +623,8 @@ function websiteModelDetailFromView(
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
     ...(model.description === undefined ? {} : { description: model.description }),
+    ...(model.model_card === undefined ? {} : { model_card: model.model_card }),
+    ...(model.deployment === undefined ? {} : { deployment: model.deployment }),
     ...(model.delivery_modes === undefined ? {} : { delivery_modes: model.delivery_modes }),
     ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
     modalities: model.modalities,

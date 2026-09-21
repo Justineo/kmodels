@@ -10,11 +10,20 @@ import {
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourceCommercialPricingFact } from "./pricing-source.ts";
 import type { Provider } from "./schema.ts";
-import { parseSagemakerCatalog, sagemakerRows, sagemakerSpecSchema } from "./sagemaker.ts";
+import {
+  parseSagemakerCatalog,
+  sagemakerRows,
+  sagemakerSpecSchema,
+  sagemakerPricingSpecs,
+} from "./sagemaker.ts";
+import { sagemakerOpenSpecs } from "./sagemaker-sdk.ts";
+import { baseModel } from "./model.ts";
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 const listingId = z.string().regex(/^prodview-[a-z0-9]+$/);
 const bundleSchema = z.object({
+  openManifest: z.string().optional(),
+  proprietaryManifest: z.string().optional(),
   catalog: z.string().min(1),
   prices: z.string().min(1),
   specs: z.array(sagemakerSpecSchema),
@@ -120,13 +129,47 @@ interface Input {
 export function parseSagemakerPricing(input: Input) {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
   const models = parseSagemakerCatalog({ ...input, body: bundle.catalog });
-  const modelRefs = models.map((model) => model.uid);
-  const facts = infrastructureFacts(input, bundle.prices, modelRefs);
+  if (bundle.openManifest !== undefined) {
+    const seen = new Set(models.map((model) => model.model_id));
+    for (const header of sagemakerOpenSpecs(bundle.openManifest, sagemakerRows(bundle.catalog))) {
+      if (seen.has(header.model_id)) continue;
+      models.push(
+        baseModel({
+          providerId: input.provider.id,
+          id: header.model_id,
+          name: header.model_id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+      );
+    }
+  }
   const admitted = new Set(
     sagemakerRows(bundle.catalog)
       .filter((row) => row.proprietary)
       .map((row) => row.id),
   );
+  if (bundle.proprietaryManifest !== undefined) {
+    for (const header of sagemakerPricingSpecs(
+      bundle.proprietaryManifest,
+      sagemakerRows(bundle.catalog),
+      true,
+    )) {
+      if (admitted.has(header.model_id)) continue;
+      admitted.add(header.model_id);
+      models.push(
+        baseModel({
+          providerId: input.provider.id,
+          id: header.model_id,
+          name: header.model_id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+      );
+    }
+  }
+  const modelRefs = models.map((model) => model.uid);
+  const facts = infrastructureFacts(input, bundle.prices, modelRefs);
   const seenSpecs = new Map<string, string>();
   const versions = new Set<string>();
   const refs = new Map<string, string[]>();

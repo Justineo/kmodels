@@ -14,6 +14,7 @@ import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseSagemakerCatalog } from "./sagemaker.ts";
 import { parseSagemakerPricing } from "./sagemaker-pricing.ts";
 import { parseSagemakerInventory } from "./sagemaker-api.ts";
+import { parseSagemakerSdk } from "./sagemaker-sdk.ts";
 import {
   parseCerebrasApi,
   parseCerebrasCatalog,
@@ -2481,6 +2482,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseBedrockCatalog(input);
     case "sagemaker-catalog":
       return parseSagemakerCatalog(input);
+    case "sagemaker-sdk":
+      return parseSagemakerSdk(input);
     case "sagemaker-pricing":
       return parseSagemakerPricing(input);
     case "sagemaker-api":

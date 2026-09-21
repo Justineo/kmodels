@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import {
   deliveryModes,
   modalities,
@@ -450,6 +451,8 @@ const websiteModelDetailShape = {
   model_ref: nonEmpty,
   updated_date: modelDate.optional(),
   description: z.string().optional(),
+  model_card: modelCardSchema.optional(),
+  deployment: deploymentSpecSchema.optional(),
   delivery_modes: z.array(z.enum(deliveryModes)).optional(),
   api_endpoints: z
     .array(

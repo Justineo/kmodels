@@ -14,6 +14,7 @@ export const sagemakerCatalogUrl =
 export const sagemakerCacheUrl =
   "https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/";
 export const sagemakerManifestUrl = `${sagemakerCacheUrl}proprietary-sdk-manifest.json`;
+export const sagemakerOpenManifestUrl = `${sagemakerCacheUrl}models_manifest.json`;
 export const sagemakerPricesUrl =
   "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSageMaker/current/index.json";
 
@@ -66,7 +67,7 @@ export function sagemakerRows(body: string): SageMakerRow[] {
 }
 
 // These are source task labels, not model-name or publisher allowlists.
-const taskMap = new Map<string, ModelTask[]>([
+export const sagemakerTaskMap = new Map<string, ModelTask[]>([
   ["text generation", ["text_generation"]],
   ["reasoning", ["text_generation"]],
   ["text summarization", ["text_generation"]],
@@ -74,12 +75,16 @@ const taskMap = new Map<string, ModelTask[]>([
   ["image-text-to-text", ["text_generation"]],
   ["image2text generation", ["text_generation"]],
   ["text embedding", ["embeddings"]],
+  ["sentence similarity", ["embeddings"]],
   ["rerank", ["reranking"]],
   ["optical character recognition", ["ocr"]],
   ["text-to-image", ["image_generation"]],
   ["text to image", ["image_generation"]],
   ["image-to-image", ["image_generation"]],
   ["image-text-to-image", ["image_generation"]],
+  ["image generation", ["image_generation"]],
+  ["image editing", ["image_generation"]],
+  ["text-to-video", ["video_generation"]],
   ["text-to-speech", ["speech_synthesis"]],
   ["text to audio", ["audio_generation"]],
   ["automatic speech recognition", ["transcription"]],
@@ -91,6 +96,25 @@ const taskMap = new Map<string, ModelTask[]>([
   ["image segmentation", ["segmentation"]],
   ["object detection", ["object_detection"]],
 ]);
+
+// Exact, reviewed conflicts with publisher documentation and Marketplace listings.
+// Keep the original label as evidence and apply only while that erroneous label remains.
+// Evidence and exact listing links: docs/providers/amazon-sagemaker.md.
+const reviewedTaskCorrections = new Map<string, { raw: string; task: ModelTask }>([
+  ["bria-ai-2-2-hd-commercial", { raw: "ReRank", task: "image_generation" }],
+  ["bria-ai-2-3-commercial", { raw: "ReRank", task: "image_generation" }],
+  ["bria-ai-2-3-fast-commercial", { raw: "ReRank", task: "image_generation" }],
+  ["cohere-rerank-v3-5", { raw: "Text Embedding", task: "reranking" }],
+  ["cohere-rerank-v4-0-fast", { raw: "Text Embedding", task: "reranking" }],
+  ["cohere-rerank-v4-0-pro", { raw: "Text Embedding", task: "reranking" }],
+]);
+
+export function sagemakerTasks(id: string, label: string): ModelTask[] {
+  const correction = reviewedTaskCorrections.get(id);
+  return correction?.raw === label
+    ? [correction.task]
+    : [...(sagemakerTaskMap.get(label.toLowerCase()) ?? [])];
+}
 
 export function parseSagemakerCatalog(input: {
   provider: Provider;
@@ -107,11 +131,13 @@ export function parseSagemakerCatalog(input: {
       observedAt: input.observedAt,
     });
     model.raw_type = row.task;
-    model.tasks = [...(taskMap.get(row.task.toLowerCase()) ?? [])];
+    const correction = reviewedTaskCorrections.get(row.id);
+    const corrected = correction?.raw === row.task;
+    model.tasks = sagemakerTasks(row.id, row.task);
     model.task_evidence = model.tasks.map((task) => ({
       task,
       source_ref: input.source.id,
-      namespace: "sagemaker.jumpstart.task",
+      namespace: corrected ? "sagemaker.jumpstart.task.reviewed" : "sagemaker.jumpstart.task",
       raw_value: row.task,
       kind: "provider_task",
     }));
@@ -124,7 +150,7 @@ export function parseSagemakerCatalog(input: {
   });
 }
 
-const packageVersion = z
+export const packageVersion = z
   .string()
   .min(1)
   .max(256)
@@ -133,6 +159,7 @@ const manifestHeaderSchema = z.object({
   model_id: modelIdSchema,
   version: packageVersion,
   spec_key: z.string().max(512),
+  search_keywords: z.array(z.string()).optional(),
 });
 
 export const sagemakerSpecSchema = z.object({
@@ -141,12 +168,16 @@ export const sagemakerSpecSchema = z.object({
   listing_id: z.string().regex(/^prodview-[a-z0-9]+$/),
 });
 
-export function sagemakerPricingSpecs(body: string, rows: readonly SageMakerRow[]) {
+export function sagemakerPricingSpecs(
+  body: string,
+  rows: readonly SageMakerRow[],
+  discover = false,
+) {
   const admitted = new Set(rows.filter((row) => row.proprietary).map((row) => row.id));
   const headers = z.array(manifestHeaderSchema).max(10_000).parse(JSON.parse(body));
   const byModel = new Map<string, Map<string, z.infer<typeof manifestHeaderSchema>>>();
   for (const header of headers) {
-    if (!admitted.has(header.model_id)) continue;
+    if (!admitted.has(header.model_id) && !discover) continue;
     if (
       header.spec_key !==
       `proprietary-models/${header.model_id}/proprietary_specs_${header.version}.json`
@@ -157,7 +188,7 @@ export function sagemakerPricingSpecs(body: string, rows: readonly SageMakerRow[
     versions.set(header.version, header);
     byModel.set(header.model_id, versions);
   }
-  if (byModel.size !== admitted.size)
+  if ([...admitted].some((id) => !byModel.has(id)))
     throw new Error("SageMaker proprietary pricing manifest omitted an admitted model");
   return [...byModel]
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
@@ -173,5 +204,11 @@ export function sagemakerPricingSpecs(body: string, rows: readonly SageMakerRow[
           : header.version > current.version;
         return newer ? header : current;
       });
-    });
+    })
+    .filter(
+      (header) =>
+        admitted.has(header.model_id) ||
+        header.search_keywords?.includes("Foundation Models") ||
+        (header.search_keywords?.includes("Text") && header.search_keywords.includes("Generation")),
+    );
 }

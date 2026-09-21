@@ -5,9 +5,16 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
-import { fetchSagemakerPricing } from "./sagemaker-fetch.ts";
+import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
 import { fetchSagemakerInventory } from "./sagemaker-api.ts";
-import { sagemakerCatalogUrl } from "./sagemaker.ts";
+import {
+  sagemakerCatalogUrl,
+  sagemakerOpenManifestUrl,
+  sagemakerManifestUrl,
+  sagemakerPricingSpecs,
+  sagemakerRows,
+} from "./sagemaker.ts";
+import { sagemakerOpenSpecs } from "./sagemaker-sdk.ts";
 import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
 import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
@@ -909,7 +916,20 @@ function unique<T>(values: T[]): T[] {
 async function request(source: SourceManifest, json?: string): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
-    const response = await curlRequest(url, source, json);
+    // JumpStart has hundreds of small public specs on one reviewed S3 origin.
+    // Native fetch reuses connections instead of starting a curl/TLS connection per spec.
+    const pooledSageMaker =
+      source.auth === undefined &&
+      json === undefined &&
+      url.hostname === "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com" &&
+      ["sagemaker-sdk", "sagemaker-pricing", "aws-sagemaker"].includes(
+        source.transport?.kind ?? "",
+      );
+    const response = pooledSageMaker
+      ? await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(60_000) }).catch(() => {
+          throw new TransientFetchError("SageMaker public cache request failed");
+        })
+      : await curlRequest(url, source, json);
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (location === null) throw new Error("Redirect response omitted Location");
@@ -2414,6 +2434,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
 }
 
 export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
+  if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, fetchPayload);
   if (source.transport?.kind === "aws-sagemaker") {
     const { auth: _auth, ...publicSource } = source;
     const catalog = await fetchPayload({
@@ -2423,14 +2444,38 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       format: "html",
       maxResponseBytes: 4 * 1024 * 1024,
     });
+    const openManifest = await fetchPayload({
+      ...publicSource,
+      url: sagemakerOpenManifestUrl,
+      access: "public",
+      format: "json",
+      maxResponseBytes: 32 * 1024 * 1024,
+    });
+    const rows = sagemakerRows(catalog.body);
+    const proprietary = await fetchPayload({
+      ...publicSource,
+      url: sagemakerManifestUrl,
+      access: "public",
+      format: "json",
+      maxResponseBytes: 4 * 1024 * 1024,
+    });
+    const ids = new Set([
+      ...rows.map((row) => row.id),
+      ...sagemakerOpenSpecs(openManifest.body, rows).map((header) => header.model_id),
+      ...sagemakerPricingSpecs(proprietary.body, rows, true).map((header) => header.model_id),
+    ]);
     const body = await fetchSagemakerInventory(
       source.transport.region,
-      catalog.body,
+      ids,
       source.maxResponseBytes,
     );
     return {
       ...generatedFetchResult(body),
-      dependencies: [observation(`${source.id}/catalog`, catalog)],
+      dependencies: [
+        observation(`${source.id}/catalog`, catalog),
+        observation(`${source.id}/open-manifest`, openManifest),
+        observation(`${source.id}/proprietary-manifest`, proprietary),
+      ],
     };
   }
   if (source.transport?.kind === "sagemaker-pricing")

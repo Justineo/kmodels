@@ -57,6 +57,31 @@ vi.mock("node:child_process", () => ({
 }));
 
 describe("linked source fetch", () => {
+  it("keeps pooled public SageMaker requests inside the reviewed host boundary", async () => {
+    const configured = manifests
+      .find((manifest) => manifest.provider.id === "amazon-sagemaker")
+      ?.sources.find((source) => source.id === "sagemaker-sdk");
+    if (configured === undefined) throw new Error("Missing SageMaker source");
+    const host = "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com";
+    const source = { ...configured, url: `https://${host}/catalog.html`, allowedHosts: [host] };
+    const calls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      calls.push(url);
+      expect(init?.redirect).toBe("manual");
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return url === source.url
+        ? new Response(null, {
+            status: 302,
+            headers: { Location: "https://unreviewed.test/models" },
+          })
+        : new Response("[]");
+    });
+    await expect(fetchSource(source)).rejects.toThrow("reviewed host allowlist");
+    expect(calls.every((url) => new URL(url).hostname === host)).toBe(true);
+    expect(transport.calls).toEqual([]);
+  });
+
   it("separates missing discovered documents from missing fixed dependencies", async () => {
     const source: SourceManifest = {
       id: "test",

@@ -361,6 +361,13 @@ services → pricing notes`. The first mechanism in
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.
+- The model inspector shows published publisher, license, model-size/context-range labels,
+  languages, upstream ID, access and framework under Model information. Deployment configurations
+  are a separate disclosure with a profile selector, package/Region identity, default and supported
+  instances, serving framework and conditional context controls. Never promote these controls to
+  the table's model-wide context limit. These facts live only in the existing byte-bounded detail
+  chunks; inventory growth and richer details do not inflate the core rows or create aggregate-size
+  warnings. Provider strings are rendered as text.
 - Use one `data_version` derived from the accepted catalog/pricing pair and core
   transport version on the manifest, core chunks, model-detail, shared-offer,
   and provider-detail projections. Reject mismatched core chunks before mounting
