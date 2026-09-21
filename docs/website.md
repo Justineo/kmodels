@@ -453,6 +453,7 @@ services → pricing notes`. The first mechanism in
 - Scope definition IDs per symbol so gradients remain stable.
 - Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry; Amazon SageMaker AI uses the supplied AWS Architecture Service Icons (2025-07-31) mark, preserving its green background and white artwork.
 - Provider marks keep reviewed brand colors. Monochrome marks have explicit light/dark variants; Cerebras remains orange. Kimi uses its complete black mark on light surfaces and color mark on dark surfaces.
+- Provider icon containers have no border radius, preserving the artwork's original corners.
 
 ## Virtualization and scrollbars
 
