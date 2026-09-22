@@ -1,8 +1,8 @@
 {
-  "catalog_version": "6bfdef88745e66fde04188fae0770de54be9388c89ffa2a3b695a2280067ffda",
-  "generated_at": "2026-09-22T16:04:36.542Z",
+  "catalog_version": "f0aa5d38ae597f9e49bba598a52b0302b2820174c9e0f462bf5006e74e4a9ce7",
+  "generated_at": "2026-09-22T17:03:44.138Z",
   "outcome": "changed",
-  "previous_catalog_version": "4548a515dc858f8f26fbcd99f6885b1b9026b62efb50d0131153a47df44490db",
+  "previous_catalog_version": "6bfdef88745e66fde04188fae0770de54be9388c89ffa2a3b695a2280067ffda",
   "providers": [
     {
       "attempt": {
@@ -75,7 +75,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6778,
+                "excluded": 7043,
                 "explicit_non_numeric": 0,
                 "normalized": 10882,
                 "raw": 0,
@@ -83,7 +83,7 @@
                 "unresolved": 0,
                 "unsupported": 5
               },
-              "observed_items": 18596,
+              "observed_items": 18861,
               "reason_counts": {
                 "commercial_dimension_bound": 218,
                 "marketplace_product_rate_bound": 46,
@@ -94,7 +94,7 @@
                 "price_dimension_bound": 10605,
                 "price_dimension_outside_invocation_scope": 1874,
                 "price_dimension_target_unbound": 930,
-                "price_product_absent_from_current_catalog": 4890,
+                "price_product_absent_from_current_catalog": 5155,
                 "pricing_input_contract_partial": 1,
                 "pricing_page_cell_bound": 13
               },
@@ -103,10 +103,10 @@
             "source_id": "bedrock-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 115,
+            "outcome": "changed",
+            "parsed_models": 116,
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -155,8 +155,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "bedrock-api-us-east-1"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -168,7 +174,7 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -370,22 +376,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 33,
+            "parsed_models": 34,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 33,
-              "normalized_facts": 290,
+              "model_records": 34,
+              "normalized_facts": 320,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 17,
+              "numeric_models": 18,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 16
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 11,
+              "diagnostic_count": 14,
               "diagnostics": [
                 {
                   "disposition": "unresolved",
@@ -404,6 +410,21 @@
                 },
                 {
                   "disposition": "unresolved",
+                  "reason_code": "cache_price_conflict",
+                  "sample": "claude-opus-5-5"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "fast_compatibility_conflict",
+                  "sample": "claude-opus-5-5"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "fast_compatibility_conflict",
+                  "sample": "claude-opus-5, claude-opus-4-8"
+                },
+                {
+                  "disposition": "unresolved",
                   "reason_code": "capability_contract_drift",
                   "sample": "structured-output"
                 },
@@ -411,40 +432,25 @@
                   "disposition": "unresolved",
                   "reason_code": "capability_contract_drift",
                   "sample": "code execution"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "capability_contract_drift",
-                  "sample": "computer-use"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "capability_contract_drift",
-                  "sample": "effort"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "capability_contract_drift",
-                  "sample": "thinking"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 13,
+                "excluded": 14,
                 "explicit_non_numeric": 0,
-                "normalized": 47,
+                "normalized": 50,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 11,
+                "unresolved": 14,
                 "unsupported": 0
               },
-              "observed_items": 71,
+              "observed_items": 78,
               "reason_counts": {
                 "advisor_usage_ledger_bound": 1,
-                "base_model_price_row": 17,
-                "batch_model_price_row": 17,
+                "base_model_price_row": 18,
+                "batch_model_price_row": 18,
                 "cache_multiplier_applied": 3,
-                "cache_price_conflict": 2,
+                "cache_price_conflict": 3,
                 "capability_contract_drift": 6,
                 "code_execution_allowance_bound": 1,
                 "code_execution_minimum_bound": 1,
@@ -453,10 +459,11 @@
                 "code_execution_web_assisted_bound": 1,
                 "compaction_usage_bound": 1,
                 "fallback_usage_outcome_bound": 1,
-                "fast_model_price_row": 1,
+                "fast_compatibility_conflict": 2,
+                "fast_model_price_row": 2,
                 "inference_geo_multiplier_applied": 1,
                 "lifecycle_date_invalid": 1,
-                "token_overhead_included_in_usage": 13,
+                "token_overhead_included_in_usage": 14,
                 "web_search_service_bound": 1,
                 "web_search_usage_bound": 1
               },
@@ -465,25 +472,57 @@
             "source_id": "anthropic-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 11,
+            "outcome": "changed",
+            "parsed_models": 12,
             "source_id": "anthropic-api"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 33,
+        "added": 1,
+        "added_model_refs": [
+          "anthropic/claude-opus-5-5"
+        ],
+        "changed": 1,
+        "changed_fields": {
+          "description": 1,
+          "modalities": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "path": "description",
+                "previous": "For complex agentic coding and enterprise work"
+              },
+              {
+                "current": [
+                  "pdf",
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "pdf"
+                ]
+              }
+            ],
+            "fields": [
+              "description",
+              "modalities"
+            ],
+            "model_ref": "anthropic/claude-opus-5"
+          }
+        ],
+        "current": 34,
         "previous": 33,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 33
+        "unchanged": 32
       },
       "pricing": {
         "commercial_hash": "80ba381b37d2326d8e701f24c940bb33bf1ca4a37b7201eaa568b3de421b15ea",
@@ -491,20 +530,21 @@
         "previous_commercial_hash": "80ba381b37d2326d8e701f24c940bb33bf1ca4a37b7201eaa568b3de421b15ea"
       },
       "pricing_coverage": {
-        "current_models": 14,
+        "current_models": 15,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 0
+          "unknown_models": 1
         },
         "normalized_rate_models": 13,
         "not_applicable_models": 0,
         "offer_models": 13,
         "raw_fact_models": 0,
         "unknown_model_refs": [
-          "anthropic/claude-mythos-preview"
+          "anthropic/claude-mythos-preview",
+          "anthropic/claude-opus-5-5"
         ],
         "unknown_model_refs_omitted": 0,
-        "unknown_models": 1
+        "unknown_models": 2
       },
       "pricing_publication": "retained",
       "provider_id": "anthropic",
@@ -513,8 +553,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "anthropic-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -526,7 +572,7 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -645,15 +691,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 117,
+            "parsed_models": 120,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 117,
-              "normalized_facts": 13565,
+              "model_records": 120,
+              "normalized_facts": 14186,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 117,
+              "numeric_models": 120,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -707,17 +753,17 @@
                 "ambiguous": 0,
                 "excluded": 87,
                 "explicit_non_numeric": 5,
-                "normalized": 626,
+                "normalized": 648,
                 "raw": 0,
                 "unbound": 213,
                 "unresolved": 0,
                 "unsupported": 4
               },
-              "observed_items": 935,
+              "observed_items": 957,
               "reason_counts": {
                 "commercial_fact_outside_gateway_boundary": 1,
                 "non_base_public_price": 86,
-                "public_price_bound": 622,
+                "public_price_bound": 644,
                 "public_price_identity_not_unique": 213,
                 "public_price_meter_or_unit_unsupported": 4,
                 "public_price_unavailable": 5,
@@ -728,9 +774,9 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 5,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -750,7 +796,7 @@
               "diagnostics": [],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 12,
+                "excluded": 13,
                 "explicit_non_numeric": 0,
                 "normalized": 5,
                 "raw": 0,
@@ -758,9 +804,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 17,
+              "observed_items": 18,
               "reason_counts": {
-                "claude_price_model_not_offered": 12,
+                "claude_price_model_not_offered": 13,
                 "claude_public_rate_row": 5
               },
               "unit": "reviewed source pricing item"
@@ -807,1480 +853,89 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 173,
+            "outcome": "changed",
+            "parsed_models": 175,
             "source_id": "azure-api"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 11506,
-          "field": "availability",
-          "previous": 11507
-        }
-      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
         "changed": 3,
         "changed_fields": {
-          "availability": 1,
-          "deprecated_at": 2
+          "source_refs": 3
         },
         "changed_models": [
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Regional Provisioned Managed",
-                    "region": "eastus"
-                  }
+                  "azure-models",
+                  "azure-api",
+                  "azure-retail-prices",
+                  "azure-public-pricing"
                 ],
-                "path": "availability",
+                "path": "source_refs",
                 "previous": [
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Provisioned Managed",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "DataZoneProvisionedManaged",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Global Provisioned Managed",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "Global Standard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "GlobalProvisionedManaged",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "brazilsouth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "canadacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "canadaeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "centralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "eastus2"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "francecentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "germanywestcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "italynorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "northcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "northeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "polandcentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southafricanorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southcentralus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "spaincentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "swedencentral"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "switzerlandwest"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "uaenorth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "uksouth"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westeurope"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westus"
-                  },
-                  {
-                    "deployment_type": "GlobalStandard",
-                    "region": "westus3"
-                  },
-                  {
-                    "deployment_type": "ProvisionedManaged",
-                    "region": "eastus"
-                  },
-                  {
-                    "deployment_type": "Regional Provisioned Managed",
-                    "region": "eastus"
-                  }
+                  "azure-models",
+                  "azure-api",
+                  "azure-retail-prices"
                 ]
               }
             ],
             "fields": [
-              "availability"
+              "source_refs"
             ],
-            "model_ref": "azure/gpt-5.5@2026-04-24"
+            "model_ref": "azure/DeepSeek-V4-Flash-0731@2026-07-31"
           },
           {
             "field_changes": [
               {
-                "current": "2027-09-08",
-                "path": "deprecated_at"
+                "current": [
+                  "azure-models",
+                  "azure-portal-models",
+                  "azure-api",
+                  "azure-retail-prices",
+                  "azure-public-pricing"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "azure-models",
+                  "azure-portal-models",
+                  "azure-api",
+                  "azure-retail-prices"
+                ]
               }
             ],
             "fields": [
-              "deprecated_at"
+              "source_refs"
             ],
-            "model_ref": "azure/gpt-image-2.5-flare@2026-09-08"
+            "model_ref": "azure/gpt-6-astra@2026-09-03"
           },
           {
             "field_changes": [
               {
-                "current": "2027-09-08",
-                "path": "deprecated_at"
+                "current": [
+                  "azure-models",
+                  "azure-api",
+                  "azure-retail-prices",
+                  "azure-public-pricing"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "azure-models",
+                  "azure-api",
+                  "azure-retail-prices"
+                ]
               }
             ],
             "fields": [
-              "deprecated_at"
+              "source_refs"
             ],
-            "model_ref": "azure/gpt-image-2.5-sunburst@2026-09-08"
+            "model_ref": "azure/grok-4.6@1"
           }
         ],
         "current": 276,
@@ -2290,19 +945,19 @@
         "unchanged": 273
       },
       "pricing": {
-        "commercial_hash": "0e5d0ff38fe5727f1da25ba3dc18aa91826edec8f757a23db8da1d202f4b736d",
-        "outcome": "provenance_only",
+        "commercial_hash": "60bbd0743900b7c1dcdf91911090e5302d190c77c8d89745f79f4126718b74bb",
+        "outcome": "commercial",
         "previous_commercial_hash": "0e5d0ff38fe5727f1da25ba3dc18aa91826edec8f757a23db8da1d202f4b736d"
       },
       "pricing_coverage": {
         "current_models": 227,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": 1,
+          "unknown_models": -1
         },
-        "normalized_rate_models": 159,
+        "normalized_rate_models": 160,
         "not_applicable_models": 0,
-        "offer_models": 159,
+        "offer_models": 160,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "azure/Cohere-embed-v3-english@1",
@@ -2326,20 +981,30 @@
           "azure/claude-haiku-4-5@1",
           "azure/claude-haiku-4-5@2"
         ],
-        "unknown_model_refs_omitted": 48,
-        "unknown_models": 68
+        "unknown_model_refs_omitted": 47,
+        "unknown_models": 67
       },
       "pricing_publication": "accepted",
       "provider_id": "azure",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 4,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-claude-pricing"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2357,7 +1022,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -2375,9 +1040,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2456,16 +1121,16 @@
             "source_id": "cerebras-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 13,
             "source_id": "cerebras-lifecycle"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 12,
             "source_id": "cerebras-releases"
           },
@@ -2530,13 +1195,32 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-catalog"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-lifecycle"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-releases"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3553,9 +2237,9 @@
             "source_id": "gemini-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 61,
             "source_id": "gemini-api"
           }
@@ -3614,14 +2298,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "gemini-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3639,7 +2317,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3674,7 +2352,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1872,
+              "diagnostic_count": 1871,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -3719,20 +2397,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6824,
+                "excluded": 6823,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1872,
+                "unbound": 1871,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8696,
+              "observed_items": 8694,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1466,
-                "partner_route_price_not_published": 406,
-                "single_partner_inventory_without_product_evidence": 6753
+                "partner_route_price_not_published": 405,
+                "single_partner_inventory_without_product_evidence": 6752
               },
               "unit": "reviewed source pricing item"
             },
@@ -3742,22 +2420,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 138,
+            "parsed_models": 136,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 138,
+              "model_records": 136,
               "normalized_facts": 428,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 116,
-              "raw_facts": 118,
-              "raw_models": 105,
-              "unknown_models": 22
+              "numeric_models": 115,
+              "raw_facts": 115,
+              "raw_models": 104,
+              "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 119,
+              "diagnostic_count": 116,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -3782,11 +2460,6 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
-                  "sample": "zai-org/GLM-5.3-Flash:zai-org"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "route_price_not_published",
                   "sample": "meta-llama/Llama-3.1-8B-Instruct:featherless-ai"
                 },
                 {
@@ -3798,6 +2471,11 @@
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "zai-org/GLM-5.3:fireworks-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "zai-org/GLM-5.3:featherless-ai"
                 }
               ],
               "disposition_counts": {
@@ -3806,17 +2484,17 @@
                 "explicit_non_numeric": 0,
                 "normalized": 215,
                 "raw": 0,
-                "unbound": 118,
+                "unbound": 115,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 335,
+              "observed_items": 332,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
                 "route_price_normalized": 214,
-                "route_price_not_published": 118
+                "route_price_not_published": 115
               },
               "unit": "reviewed source pricing item"
             },
@@ -3884,15 +2562,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 28,
+            "parsed_models": 26,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 28,
-              "normalized_facts": 60,
+              "model_records": 26,
+              "normalized_facts": 54,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 28,
+              "numeric_models": 26,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -3946,16 +2624,16 @@
                 "ambiguous": 1,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 30,
+                "normalized": 27,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 11,
                 "unsupported": 0
               },
-              "observed_items": 42,
+              "observed_items": 39,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
-                "native_route_price_normalized": 30,
+                "native_route_price_normalized": 27,
                 "native_route_price_not_exactly_joinable": 11
               },
               "unit": "reviewed source pricing item"
@@ -3963,361 +2641,80 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1466,
             "source_id": "huggingface-hub"
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 1650,
+          "field": "models",
+          "previous": 1652
+        },
+        {
+          "current": 272,
+          "field": "api_endpoints",
+          "previous": 276
+        },
+        {
+          "current": 1871,
+          "field": "routes",
+          "previous": 1872
+        }
+      ],
       "models": {
-        "added": 4,
+        "added": 1,
         "added_model_refs": [
-          "huggingface/stabilityai/stable-diffusion-3-medium-diffusers",
-          "huggingface/stabilityai/stable-diffusion-3.5-large",
-          "huggingface/stabilityai/stable-diffusion-3.5-large-turbo",
-          "huggingface/stabilityai/stable-diffusion-3.5-medium"
+          "huggingface/HiDream-ai/HiDream-I1-Dev"
         ],
-        "changed": 15,
+        "changed": 6,
         "changed_fields": {
-          "capabilities": 2,
-          "routes": 7,
-          "updated_date": 7
+          "capabilities": 3,
+          "routes": 3
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": true,
+                "current": "unknown",
                 "path": "capabilities.structured_output",
-                "previous": "unknown"
+                "previous": true
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/MiniMaxAI/MiniMax-M3"
+            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B-Thinking-2507"
           },
           {
             "field_changes": [
               {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/qwen-image-edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/qwen-image-edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "qwen/qwen-image-edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ]
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
               }
             ],
             "fields": [
-              "routes"
+              "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen-Image-Edit"
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
           },
           {
             "field_changes": [
               {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "qwen-3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
               }
             ],
             "fields": [
-              "routes"
+              "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3.8-27B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-9B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro-0813"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash"
+            "model_ref": "huggingface/inclusionAI/Ling-3.0-flash-Fin"
           },
           {
             "field_changes": [
@@ -4333,6 +2730,13 @@
                   {
                     "provider": "cerebras",
                     "provider_model_id": "gpt-oss-120b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -4406,13 +2810,6 @@
                   {
                     "provider": "cerebras",
                     "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "openai/gpt-oss-120b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -4484,122 +2881,24 @@
           {
             "field_changes": [
               {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-02-12"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/mmlw-retrieval-roberta-large"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-02-12"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/mmlw-roberta-base"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-01-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/polish-roberta-base-v2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-01-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/polish-roberta-large-v2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-01-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/polish-splade"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-01-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/st-polish-paraphrase-from-distilroberta"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "updated_date",
-                "previous": "2026-01-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/sdadas/st-polish-paraphrase-from-mpnet"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "provider_model_id": "zai-org/GLM-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "provider_model_id": "zai-org/GLM-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.7-flashx",
+                    "provider_model_id": "zai-org/glm-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -4608,61 +2907,172 @@
                 "path": "routes",
                 "previous": [
                   {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "provider_model_id": "zai-org/GLM-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "provider_model_id": "zai-org/glm-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "zai-org",
-                    "provider_model_id": "glm-4.7-flashx",
+                    "provider_model_id": "glm-4.6",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
               }
             ],
             "fields": [
-              "routes",
-              "capabilities"
+              "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
+            "model_ref": "huggingface/zai-org/GLM-4.6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.3-Flash"
           }
         ],
-        "current": 1652,
-        "previous": 1648,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1633
+        "current": 1650,
+        "previous": 1652,
+        "removed": 3,
+        "removed_model_refs": [
+          "huggingface/Qwen/Qwen-Image-Edit",
+          "huggingface/ibm-granite/granite-4.2-30b",
+          "huggingface/zai-org/GLM-4.6-FP8"
+        ],
+        "unchanged": 1643
       },
       "pricing": {
-        "commercial_hash": "5f17da320b423a61064d0e865a7f6ae1c601660035220a91c0388c32e183153b",
+        "commercial_hash": "45db11d3a79e1d60e334df17d10c8650989b9e6a0eccf261a07408f5d1c0d4b6",
         "outcome": "commercial",
-        "previous_commercial_hash": "6143b92661f7abe3699a6af27027eed40b7effd93001acf9ef9ab97871a850d9"
+        "previous_commercial_hash": "5f17da320b423a61064d0e865a7f6ae1c601660035220a91c0388c32e183153b"
       },
       "pricing_coverage": {
-        "current_models": 1652,
+        "current_models": 1650,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 4
+          "resolved_models": -2,
+          "unknown_models": 0
         },
-        "normalized_rate_models": 133,
+        "normalized_rate_models": 131,
         "not_applicable_models": 0,
-        "offer_models": 142,
+        "offer_models": 140,
         "raw_fact_models": 15,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -4692,11 +3102,13 @@
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
@@ -4709,12 +3121,6 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -4733,7 +3139,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -5013,9 +3419,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -5067,7 +3473,7 @@
             "source_id": "kimi-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -5109,7 +3515,7 @@
               "observed_items": 2
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "kimi-china-api"
           }
@@ -5167,7 +3573,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "kimi-releases"
+            "source_id": "kimi-china-api"
           }
         ],
         "current": 9,
@@ -5807,7 +4213,7 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5824,7 +4230,7 @@
               "observed_items": 1
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 98,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -6024,20 +4430,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 8
       },
       "status": "fresh",
       "warning_codes": {
@@ -6171,15 +4570,15 @@
             },
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 378,
+            "parsed_models": 380,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 378,
-              "normalized_facts": 3789,
+              "model_records": 380,
+              "normalized_facts": 3839,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 378,
+              "numeric_models": 380,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -6198,21 +4597,21 @@
                 "ambiguous": 0,
                 "excluded": 34,
                 "explicit_non_numeric": 13,
-                "normalized": 1066,
+                "normalized": 1072,
                 "raw": 0,
                 "unbound": 1,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 1114,
+              "observed_items": 1120,
               "reason_counts": {
                 "catalog_price_empty": 13,
-                "catalog_price_object": 365,
+                "catalog_price_object": 367,
                 "generic_search_services": 1,
                 "model_page_price": 33,
                 "pricing_input_contract_partial": 1,
                 "route_amount_not_published": 34,
-                "route_price_object": 667
+                "route_price_object": 671
               },
               "unit": "reviewed source pricing item"
             },
@@ -6221,106 +4620,34 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "routes": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "xiaomi/mimo-v2.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "xiaomi",
-                    "provider_model_id": "xiaomi/mimo-v2.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "xiaomi",
-                    "provider_model_id": "xiaomi/mimo-v2.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/xiaomi/mimo-v2.6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "xiaomi/mimo-v2.6-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "xiaomi",
-                    "provider_model_id": "xiaomi/mimo-v2.6-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "xiaomi",
-                    "provider_model_id": "xiaomi/mimo-v2.6-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/xiaomi/mimo-v2.6-pro"
-          }
+        "added": 2,
+        "added_model_refs": [
+          "vercel/anthropic/claude-opus-5.5",
+          "vercel/anthropic/claude-opus-5.5-fast"
         ],
-        "current": 378,
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 380,
         "previous": 378,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 376
+        "unchanged": 378
       },
       "pricing": {
-        "commercial_hash": "9d97daf4f6a71ac55f7693d0df62922d4d88d4930324817cc8b0917b9b1a491d",
+        "commercial_hash": "8c28797d9cfea438530c5b8cb1f0d9a9b1e346af4edc14e217afc3985e6b46cf",
         "outcome": "commercial",
-        "previous_commercial_hash": "6acc8f349af8fc8b39224e17fd2ad8ba04ada9e65a7327ff4d03d34ed79127e2"
+        "previous_commercial_hash": "9d97daf4f6a71ac55f7693d0df62922d4d88d4930324817cc8b0917b9b1a491d"
       },
       "pricing_coverage": {
-        "current_models": 378,
+        "current_models": 380,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 2,
           "unknown_models": 0
         },
-        "normalized_rate_models": 378,
+        "normalized_rate_models": 380,
         "not_applicable_models": 0,
-        "offer_models": 378,
+        "offer_models": 380,
         "raw_fact_models": 0,
         "unknown_model_refs": [],
         "unknown_model_refs_omitted": 0,
@@ -6373,7 +4700,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 35,
+            "parsed_models": 36,
             "source_id": "vertex-partner-models"
           },
           {
@@ -6402,15 +4729,15 @@
             },
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 101,
+            "parsed_models": 102,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 101,
-              "normalized_facts": 1209,
+              "model_records": 102,
+              "normalized_facts": 1227,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 48,
+              "numeric_models": 49,
               "raw_facts": 3,
               "raw_models": 3,
               "unknown_models": 53
@@ -6464,13 +4791,13 @@
                 "ambiguous": 0,
                 "excluded": 9,
                 "explicit_non_numeric": 264,
-                "normalized": 1279,
+                "normalized": 1298,
                 "raw": 67,
                 "unbound": 23,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 1642,
+              "observed_items": 1661,
               "reason_counts": {
                 "duplicate_pricing_binding": 2,
                 "grounding_allowance": 34,
@@ -6479,7 +4806,7 @@
                 "pricing_cell_not_available": 264,
                 "pricing_input_contract_partial": 1,
                 "pricing_model_unbound": 22,
-                "pricing_rate_bound": 1279,
+                "pricing_rate_bound": 1298,
                 "unparsed_base_rate": 3
               },
               "unit": "reviewed source pricing item"
@@ -6487,40 +4814,58 @@
             "source_id": "vertex-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 46,
+            "outcome": "changed",
+            "parsed_models": 47,
             "source_id": "vertex-model-garden-api"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 101,
+        "added": 1,
+        "added_model_refs": [
+          "vertex/claude-opus-5-5"
+        ],
+        "changed": 1,
+        "changed_fields": {
+          "description": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Claude Opus 5 on Google Cloud is a high-intelligence model from Anthropic, built for coding, agents, and professional work.",
+                "path": "description",
+                "previous": "Claude Opus 5 on Google Cloud is Anthropic's most advanced Opus model, powering long-running agents while delivering improvements in coding and professional work."
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-5"
+          }
+        ],
+        "current": 102,
         "previous": 101,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 101
+        "unchanged": 100
       },
       "pricing": {
-        "commercial_hash": "3b66610f9e430441bcd27ebfb8f4c45629c8b6ba3c643928cbc220ff6cad3529",
-        "outcome": "provenance_only",
+        "commercial_hash": "da287d18b2a08672c5e072ac3d34921dbf0328cda709a886d44034dbc94366cd",
+        "outcome": "commercial",
         "previous_commercial_hash": "3b66610f9e430441bcd27ebfb8f4c45629c8b6ba3c643928cbc220ff6cad3529"
       },
       "pricing_coverage": {
-        "current_models": 75,
+        "current_models": 76,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 37,
+        "normalized_rate_models": 38,
         "not_applicable_models": 0,
-        "offer_models": 40,
+        "offer_models": 41,
         "raw_fact_models": 3,
         "unknown_model_refs": [
           "vertex/claude-opus-4",
@@ -6556,13 +4901,19 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "vertex-google-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-model-garden-api"
           },
           {
             "content_changed": true,
@@ -6587,7 +4938,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -6638,7 +4989,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 7,
+              "diagnostic_count": 8,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -6672,6 +5023,11 @@
                 },
                 {
                   "disposition": "unbound",
+                  "reason_code": "tool_x_search_price_drift",
+                  "sample": "xAI X Search pricing row changed"
+                },
+                {
+                  "disposition": "unbound",
                   "reason_code": "pricing_input_contract_partial",
                   "sample": "22/54 xAI pricing inputs"
                 }
@@ -6682,11 +5038,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 22,
                 "raw": 0,
-                "unbound": 6,
+                "unbound": 7,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 29,
+              "observed_items": 30,
               "reason_counts": {
                 "batch_contract_drift": 1,
                 "image_generation_tool_contract_drift": 1,
@@ -6695,6 +5051,7 @@
                 "pricing_input_contract_partial": 1,
                 "public_price_set_bound": 14,
                 "redirect_price_set_bound": 8,
+                "tool_x_search_price_drift": 1,
                 "voice_model_contract_drift": 1,
                 "voice_service_price_conflict": 1
               },
@@ -6783,8 +5140,8 @@
         "unchanged": 22
       },
       "pricing": {
-        "commercial_hash": "420bb955047601363fdcf2341fb3f683162ca66c537f08d9dff7e35c532ba1c9",
-        "outcome": "provenance_only",
+        "commercial_hash": "e722a8a1291feaa9741d6a90f3757df0be103205bf5b6fdd828a8a25ddc96256",
+        "outcome": "commercial",
         "previous_commercial_hash": "420bb955047601363fdcf2341fb3f683162ca66c537f08d9dff7e35c532ba1c9"
       },
       "pricing_coverage": {
@@ -6838,18 +5195,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 20,
-    "added_models": 4,
+    "added_models": 5,
     "added_sources": 0,
-    "changed_models": 20,
-    "changed_sources": 29,
-    "models": 4280,
+    "changed_models": 11,
+    "changed_sources": 34,
+    "models": 4282,
     "pricing_accepted": 19,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 0,
+    "removed_models": 3,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
