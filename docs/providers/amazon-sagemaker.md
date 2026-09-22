@@ -145,8 +145,8 @@ pricing source. Known sibling rates survive unfamiliar supported-family price ce
 raw facts. The shared collector retains an accepted provider pricing snapshot on source failure.
 
 The 2026-09-21 public-data probe fetched 245 dependencies and validated a 557-model partition
-with five service books: endpoint data processing, Serverless execution, and three Marketplace
-per-inference listings. It recognized 324 infrastructure invocation SKUs and three per-inference
+with five request-cost books: two service books for endpoint data processing and Serverless
+execution, and three model books for Marketplace per-inference software. It recognized 324 infrastructure invocation SKUs and three per-inference
 cards; 20 listing pages had no public pricing. These are dated coverage observations, not tests
 against volatile upstream counts or proof that every model has a complete inference bill.
 
@@ -157,7 +157,7 @@ against volatile upstream counts or proof that every model has a complete infere
 | Hosting input/output data processing                                                                   | Separate `input_data` and `output_data` meters; exact Region and AWS SKU evidence. They are request data processing, not general network transfer. |
 | Serverless on-demand execution                                                                         | Per-second rate, selected by Region and 1–6 GB memory configuration.                                                                               |
 | Provisioned-concurrency execution duration                                                             | Separate execution tier; does not include reserved concurrency capacity.                                                                           |
-| Marketplace real-time per-inference software                                                           | Exact model-to-listing association and public request-denominated rate; software charge remains separate from AWS hosting/data processing.         |
+| Marketplace real-time per-inference software                                                           | Model book with a real-time inference offer, joined by exact model-to-listing association; explicitly labeled as software only.                    |
 | Instance hosting, GPU/HyperPod capacity, reserved concurrency capacity, Batch Transform instance hours | Excluded; no amortization into token/request prices.                                                                                               |
 | Training, fine-tuning, evaluation, notebook, storage and other ML services                             | Excluded, including misleadingly token-denominated evaluation/training SKUs.                                                                       |
 | Subscription, upfront contracts, free trials and negotiated discounts                                  | Outside the request-cost catalog.                                                                                                                  |
@@ -165,9 +165,15 @@ against volatile upstream counts or proof that every model has a complete infere
 Endpoint data processing is a shared service book linked to admitted models. Serverless execution
 is a standalone service book with no blanket model references: AWS excludes GPU and Marketplace
 model-package deployments from Serverless. Its presence must not assert support for all JumpStart
-models. Marketplace books link only the exact model IDs whose specs identify that listing.
+models. Marketplace software belongs to each exactly linked model's book, with a real-time
+inference offer. It appears under model rates, while request-level infrastructure remains in
+service books. A listing shared by multiple model IDs produces a separate book for each model;
+unsupported inference rates retain their raw facts in that same model book. The shared
+provider snapshot → book → offer → term → variant hierarchy is unchanged.
 The pricing bundle uses the same open/proprietary manifest admission rules as the model supplement,
 so new SDK-only models also join the shared service book and their exact Marketplace listing.
+The assembly layer resolves this ownership from normalized source facts, so `vp run compile:pricing`
+can rebuild it offline without refetching AWS or advancing the source verification time.
 
 Rates have exact rational prices and semantic usage bindings. The caller supplies **AWS-billed
 GB**, **AWS-billed execution seconds**, or **publisher-metered billable inferences**. The catalog

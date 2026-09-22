@@ -214,7 +214,7 @@ async function loadMoreResources(): Promise<void> {
         <div>
           <p class="eyebrow">
             <ProviderIcon :provider-id="provider.id" :provider-name="provider.name" />
-            Provider pricing
+            Service pricing
           </p>
           <h2 id="provider-pricing-title">{{ provider.name }}</h2>
           <code>{{ provider.pricing_coverage.standalone_resources }} standalone resources</code>
@@ -222,7 +222,7 @@ async function loadMoreResources(): Promise<void> {
         <button
           class="icon-button"
           type="button"
-          aria-label="Close provider pricing"
+          aria-label="Close service pricing"
           @click="requestClose"
         >
           <UiIcon name="x" />
@@ -232,7 +232,7 @@ async function loadMoreResources(): Promise<void> {
       <div ref="scrollHost" class="details-scroll-host" data-overlayscrollbars-initialize>
         <div ref="scrollViewport" class="details-scroll">
           <div class="details-content provider-pricing-content">
-            <p v-if="loading" class="provider-pricing-status">Loading provider pricing…</p>
+            <p v-if="loading" class="provider-pricing-status">Loading service pricing…</p>
             <p v-else-if="error" class="unknown-note" role="alert">{{ error }}</p>
             <template v-else-if="detail">
               <p v-if="detail.snapshot" class="provider-pricing-status">

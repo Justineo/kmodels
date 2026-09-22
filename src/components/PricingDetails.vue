@@ -88,8 +88,8 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
       <span>
         {{
           model.pricing.outcome === "unknown"
-            ? "No pricing was present in the provider snapshot"
-            : "Showing provider pricing"
+            ? "No pricing was available in the snapshot"
+            : "Showing prices"
         }}
         verified
         <RelativeTime class="pricing-time" :value="detail.snapshot.observed_at" />.

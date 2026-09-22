@@ -174,7 +174,9 @@ services → pricing notes`. The first mechanism in
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
-- The provider-level pricing inspector uses the same rate, driver, contribution, raw-fact, and
+- The provider-level pricing inspector is labeled `Service pricing`: it shows standalone
+  request services, not the provider's full pricing snapshot or model rate books.
+  It uses the same rate, driver, contribution, raw-fact, and
   retained-snapshot semantics. Known raw facts may expose only concise source-native parameters
   that affect cost; observations, locators, and audit evidence remain excluded.
   It renders conditional or validity-qualified offer states before rates while
