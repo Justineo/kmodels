@@ -1,4 +1,4 @@
-import type { AtomicProviderPricing } from "./pricing-assembly.ts";
+import type { AtomicPricingBook, AtomicProviderPricing } from "./pricing-assembly.ts";
 import { addAtom, bindRateTerm, rawEvidence } from "./pricing-commercial-assembly.ts";
 
 const signals = new Map([
@@ -36,12 +36,43 @@ const signals = new Map([
   ],
 ]);
 
+function marketplaceModelBooks(book: AtomicPricingBook): AtomicPricingBook[] {
+  if (
+    book.scope.kind !== "provider_resource" ||
+    !book.scope.resource_key.startsWith("marketplace-prodview-")
+  ) {
+    return [book];
+  }
+  if (book.scope.model_refs.length === 0) {
+    throw new Error("SageMaker Marketplace pricing requires an exact model association");
+  }
+  return book.scope.model_refs.map((modelRef) => {
+    const scope = { kind: "models" as const, model_refs: [modelRef] };
+    return {
+      ...book,
+      book_key: `model:${modelRef}`,
+      name: `Pricing for ${modelRef}`,
+      scope,
+      scope_observations: book.scope_observations.map((observation) => ({
+        ...observation,
+        establishes: scope,
+      })),
+      offers: book.offers.map((offer) => ({
+        ...offer,
+        offer_key: "realtime-inference",
+        name: "Real-time inference · Marketplace software",
+        model_refs: [modelRef],
+      })),
+    };
+  });
+}
+
 export function applySagemakerCommercialTopology(
   input: AtomicProviderPricing,
 ): AtomicProviderPricing {
   return {
     ...input,
-    books: input.books.map((book) => ({
+    books: input.books.flatMap(marketplaceModelBooks).map((book) => ({
       ...book,
       offers: book.offers.map((offer) => ({
         ...offer,

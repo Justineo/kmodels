@@ -457,7 +457,7 @@ async function openProviderPricing(): Promise<void> {
   } catch (error) {
     console.error("Failed to load provider pricing", error);
     if (providerPricingRequest === provider.id)
-      detailsState.error = "Provider pricing is temporarily unavailable.";
+      detailsState.error = "Service pricing is temporarily unavailable.";
   } finally {
     if (providerPricingRequest === provider.id) detailsState.loading = false;
   }
