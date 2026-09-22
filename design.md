@@ -40,6 +40,7 @@ This index points to the repository's current decisions. Detailed documents are 
 
 ## Providers
 
+- [TypeSafe AI](docs/providers/typesafe.md)
 - [OpenAI](docs/providers/openai.md)
 - [Anthropic](docs/providers/anthropic.md)
 - [Amazon Bedrock](docs/providers/amazon-bedrock.md)

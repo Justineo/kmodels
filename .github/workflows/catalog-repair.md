@@ -46,6 +46,7 @@ network:
     - docs.databricks.com
     - docs.mistral.ai
     - docs.ollama.com
+    - docs.typesafe.ai
     - docs.x.ai
     - docs.z.ai
     - featherless.ai

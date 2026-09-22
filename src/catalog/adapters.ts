@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { parseTypesafeCatalog } from "./typesafe.ts";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import {
@@ -2454,6 +2455,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseAnthropicApi(input);
     case "vercel-catalog":
       return parseVercelCatalog(input);
+    case "typesafe-catalog":
+      return parseTypesafeCatalog(input);
     case "cerebras-public":
       return parseCerebrasPublic(input);
     case "cerebras-catalog":
