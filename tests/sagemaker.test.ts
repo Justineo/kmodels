@@ -10,7 +10,8 @@ import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
-import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { websiteModelDetail, websitePublication } from "../src/catalog/website-data.ts";
+import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
 import PricingDetails from "../src/components/PricingDetails.vue";
@@ -93,6 +94,18 @@ function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) 
     observedAt,
     onPricingReconciliation: (item) => items.push(item),
   });
+}
+
+function assemblePricing(models: ReturnType<typeof parsePricing>) {
+  const partition = assembleParsedProviderPricing(
+    provider.id,
+    observedAt,
+    [{ source: source("sagemaker-pricing"), models }],
+    models,
+    labels,
+  );
+  if (partition === undefined) throw new Error("Missing SageMaker pricing partition");
+  return partition;
 }
 
 describe("SageMaker foundation catalog", () => {
@@ -230,44 +243,59 @@ describe("SageMaker price books", () => {
     const items: PricingReconciliationItem[] = [];
     const models = parsePricing(bundle(), items);
     const s = source("sagemaker-pricing");
-    const partition = assembleParsedProviderPricing(
-      provider.id,
-      observedAt,
-      [{ source: s, models }],
-      models,
-      labels,
-    );
-    if (partition === undefined) throw new Error("Missing SageMaker pricing partition");
+    const partition = assemblePricing(models);
     validateAdoptedTopology(partition);
-    validatePricingCatalog(
+    const pricing = {
+      provider_vocabularies: [partition.vocabulary],
+      provider_snapshots: [partition.snapshot],
+      model_dispositions: partition.model_dispositions,
+      books: partition.books,
+    };
+    const publication = websitePublication(
       {
-        provider_vocabularies: [partition.vocabulary],
-        provider_snapshots: [partition.snapshot],
-        model_dispositions: partition.model_dispositions,
-        books: partition.books,
-      },
-      {
+        catalog_version: "a".repeat(64),
+        generated_at: observedAt,
         providers: [provider],
-        models,
-        sources: [
-          {
-            id: s.id,
-            provider_id: provider.id,
-            url: s.url,
-            source: s.source ?? [s.type],
-            stability: s.stability,
-            scope: "global",
-            exhaustive: false,
-            role: "overlay",
-            field_paths: s.fields,
-            ...(s.pricingEvidence === undefined ? {} : { pricing_evidence: s.pricingEvidence }),
-            observed_at: observedAt,
-            content_hash: "1".repeat(64),
-            extractor_version: s.extractorVersion,
-          },
-        ],
+        models: models.map((model) => providerModelSchema.parse(model)),
+        sources: [],
+        coverage: [],
+        warnings: [],
       },
+      pricing,
+      "b".repeat(64),
     );
+    const rows = parseWebsiteCatalog(publication.catalog, publication.pricing).models;
+    expect(publication.catalog.providers[0]?.pricing_coverage.representative_models).toBe(2);
+    expect(
+      rows.find(({ model_id }) => model_id === "fixture-speech")?.pricing.status,
+    ).toMatchObject({
+      label: "$6 / request",
+      description: expect.stringContaining("Marketplace software"),
+    });
+    expect(
+      rows.find(({ model_id }) => model_id === "fixture-embedding")?.pricing.status?.label,
+    ).toBe("$0 / request");
+    validatePricingCatalog(pricing, {
+      providers: [provider],
+      models,
+      sources: [
+        {
+          id: s.id,
+          provider_id: provider.id,
+          url: s.url,
+          source: s.source ?? [s.type],
+          stability: s.stability,
+          scope: "global",
+          exhaustive: false,
+          role: "overlay",
+          field_paths: s.fields,
+          ...(s.pricingEvidence === undefined ? {} : { pricing_evidence: s.pricingEvidence }),
+          observed_at: observedAt,
+          content_hash: "1".repeat(64),
+          extractor_version: s.extractorVersion,
+        },
+      ],
+    });
     expect(partition.books).toHaveLength(4);
     const serverless = partition.books.find(
       (book) =>
@@ -295,15 +323,7 @@ describe("SageMaker price books", () => {
     expect(models.every(({ pricing_state }) => pricing_state === "unknown")).toBe(true);
     for (const modelId of ["fixture-speech", "fixture-embedding"]) {
       const model = providerModelSchema.parse(models.find((model) => model.model_id === modelId));
-      const detail = websiteModelDetail(
-        {
-          provider_vocabularies: [partition.vocabulary],
-          provider_snapshots: [partition.snapshot],
-          model_dispositions: partition.model_dispositions,
-          books: partition.books,
-        },
-        model,
-      ).pricing;
+      const detail = websiteModelDetail(pricing, model).pricing;
       expect(detail?.offers.map(({ group, title }) => ({ group, title }))).toEqual(
         expect.arrayContaining([
           {
@@ -330,20 +350,14 @@ describe("SageMaker price books", () => {
         listings: [page("prodview-speech", [term([card("6")])])],
       }),
     );
-    const partition = assembleParsedProviderPricing(
-      provider.id,
-      observedAt,
-      [{ source: source("sagemaker-pricing"), models }],
-      models,
-      labels,
-    );
-    const books = partition?.books.filter((book) => book.scope.kind === "models");
+    const partition = assemblePricing(models);
+    const books = partition.books.filter((book) => book.scope.kind === "models");
     expect(books).toHaveLength(2);
-    expect(books?.flatMap((book) => book.scope.model_refs).sort()).toEqual([
+    expect(books.flatMap((book) => book.scope.model_refs).sort()).toEqual([
       "amazon-sagemaker/fixture-embedding",
       "amazon-sagemaker/fixture-speech",
     ]);
-    for (const book of books ?? []) {
+    for (const book of books) {
       expect(book.scope.model_refs).toHaveLength(1);
       expect(book.offers).toHaveLength(1);
       expect(book.offers[0]?.model_refs ?? book.scope.model_refs).toEqual(book.scope.model_refs);
@@ -377,17 +391,11 @@ describe("SageMaker price books", () => {
     expect(
       facts.flatMap((fact) => fact.price_facts).some(({ meter }) => meter === "inference"),
     ).toBe(false);
-    const partition = assembleParsedProviderPricing(
-      provider.id,
-      observedAt,
-      [{ source: source("sagemaker-pricing"), models }],
-      models,
-      labels,
-    );
-    const modelBooks = partition?.books.filter((book) => book.scope.kind === "models");
+    const partition = assemblePricing(models);
+    const modelBooks = partition.books.filter((book) => book.scope.kind === "models");
     expect(modelBooks).toHaveLength(1);
-    expect(modelBooks?.[0]?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-embedding"]);
-    expect(modelBooks?.[0]?.offers.flatMap(({ terms }) => terms)).toMatchObject([{ kind: "raw" }]);
+    expect(modelBooks[0]?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-embedding"]);
+    expect(modelBooks[0]?.offers.flatMap(({ terms }) => terms)).toMatchObject([{ kind: "raw" }]);
   });
 
   it("rejects version-dependent listing joins, incomplete bundles, and truncated rate cards", () => {

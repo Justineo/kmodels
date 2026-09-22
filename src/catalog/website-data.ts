@@ -227,7 +227,7 @@ function pricingOutcomeCode(outcome: WebsitePricingSummary["outcome"]): 0 | 1 | 
 function providerPricingCoverage(
   catalog: Catalog,
   pricing: PricingCatalog,
-  summaries: readonly WebsitePricingSummary[],
+  summaries: readonly ReturnType<typeof pricingSummary>[],
   providerId: string,
   detailChunks: number,
 ) {
@@ -235,10 +235,7 @@ function providerPricingCoverage(
     model.provider_id === providerId && summaries[index] !== undefined ? [summaries[index]] : [],
   );
   return {
-    representative_models: providerModels.filter(
-      (summary) =>
-        summary.input !== undefined || summary.cache !== undefined || summary.output !== undefined,
-    ).length,
+    representative_models: providerModels.filter((summary) => summary.representative).length,
     offer_models: providerModels.filter(({ outcome }) => outcome === "offers").length,
     unknown_models: providerModels.filter(({ outcome }) => outcome === "unknown").length,
     not_applicable_models: providerModels.filter(({ outcome }) => outcome === "not_applicable")
@@ -485,10 +482,14 @@ function pricingSummary(
   const input = websitePricingCell(view, model, "input");
   const cache = websitePricingCell(view, model, "cache");
   const output = websitePricingCell(view, model, "output");
-  const hasRepresentativeRate = input !== undefined || cache !== undefined || output !== undefined;
+  const hasColumnRate = input !== undefined || cache !== undefined || output !== undefined;
+  const singleRate = hasColumnRate
+    ? undefined
+    : projectPricingTableCellFromView(view, model, "single");
   return {
+    representative: hasColumnRate || singleRate !== undefined,
     outcome: view.outcome,
-    ...(hasRepresentativeRate ? {} : { status: pricingStatus(view, model.uid, labels) }),
+    ...(hasColumnRate ? {} : { status: pricingStatus(view, model.uid, labels, singleRate) }),
     ...(input === undefined ? {} : { input }),
     ...(cache === undefined ? {} : { cache }),
     ...(output === undefined ? {} : { output }),
@@ -509,7 +510,12 @@ function websitePricingCell(
   };
 }
 
-function pricingStatus(view: ModelPricingView, modelRef: string, labels: CategoricalMetadataIndex) {
+function pricingStatus(
+  view: ModelPricingView,
+  modelRef: string,
+  labels: CategoricalMetadataIndex,
+  singleRate: ReturnType<typeof projectPricingTableCellFromView>,
+) {
   if (view.outcome === "not_applicable")
     return {
       label: "No offer",
@@ -554,6 +560,11 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
     };
 
   const offer = view.modelMechanisms[0]!;
+  if (singleRate !== undefined)
+    return {
+      label: `${singleRate.amount} / ${singleRate.displayUnit}`,
+      description: `${offer.name ?? "Model rate"}: ${singleRate.accessibleText}. Open model details for applicable services and pricing notes.`,
+    };
   const summary = offerStateSummary(offer, modelRef);
   if (summary === "Free")
     return {
@@ -585,7 +596,7 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
     return {
       label: "1 rate",
       description:
-        "This model has one exact base rate that does not map to Input, Cache, or Output. Open model details to see it.",
+        "This model has one base rate with conditions that require model details to interpret.",
     };
   if (rateCount > 1)
     return {

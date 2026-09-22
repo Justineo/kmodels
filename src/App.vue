@@ -11,11 +11,7 @@ import {
   type Component,
 } from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
-import {
-  loadWebsiteModelDetail,
-  loadWebsiteProviderPricing,
-  preloadWebsiteSchemas,
-} from "./catalog/website-loader.ts";
+import { loadWebsiteModelDetail, preloadWebsiteSchemas } from "./catalog/website-loader.ts";
 import {
   groupModels,
   modelGroupKey,
@@ -80,7 +76,6 @@ const tableViewportSize = ref(0);
 let tableResizeObserver: ResizeObserver | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
-let providerPricingRequest = "";
 let applyingRoute = false;
 let detailPreloadingEnabled = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
@@ -435,34 +430,6 @@ function selectModelPricing(model: WebsiteModel): void {
   selectedModelUid.value = model.uid;
 }
 
-function closeProviderPricing(): void {
-  providerPricingRequest = "";
-  detailsState.provider = undefined;
-  detailsState.providerPricing = undefined;
-}
-
-async function openProviderPricing(): Promise<void> {
-  const provider = selectedProviderRecord.value;
-  if (provider === undefined || provider.pricing_coverage.standalone_resources === 0) return;
-  selectedModelUid.value = undefined;
-  detailRequest = "";
-  await nextTick();
-  detailsState.provider = provider;
-  detailsState.error = undefined;
-  providerPricingRequest = provider.id;
-  detailsState.loading = true;
-  try {
-    const detail = await loadWebsiteProviderPricing(props.catalog.data_version, provider);
-    if (providerPricingRequest === provider.id) detailsState.providerPricing = detail;
-  } catch (error) {
-    console.error("Failed to load provider pricing", error);
-    if (providerPricingRequest === provider.id)
-      detailsState.error = "Service pricing is temporarily unavailable.";
-  } finally {
-    if (providerPricingRequest === provider.id) detailsState.loading = false;
-  }
-}
-
 async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
   detailRequest = model?.uid ?? "";
   detailsState.detail = undefined;
@@ -506,7 +473,6 @@ function preloadLikelyModelDetails(): void {
 }
 
 detailsState.close = () => {
-  closeProviderPricing();
   selectedModelUid.value = undefined;
 };
 detailsState.navigate = selectRelativeModel;
@@ -519,9 +485,6 @@ detailsState.retryModel = () => {
 watch(
   selectedModel,
   (model) => {
-    if (model !== undefined) {
-      closeProviderPricing();
-    }
     if (detailsState.pricingTarget !== model?.uid) detailsState.pricingTarget = undefined;
     detailsState.model = model;
     detailsState.providerName = model === undefined ? "" : providerName(model.provider_id);
@@ -529,11 +492,6 @@ watch(
   },
   { immediate: true },
 );
-watch(selectedProvider, (providerId) => {
-  if (detailsState.provider?.id !== undefined && detailsState.provider.id !== providerId) {
-    closeProviderPricing();
-  }
-});
 watch(
   [selectedModel, filteredModelGroups],
   ([model]) => {
@@ -665,14 +623,6 @@ onUnmounted(() => {
 
         <div v-if="selectedProviderRecord" class="provider-coverage-bar">
           <span> Pricing coverage: {{ providerCoverageLabel }} </span>
-          <button
-            v-if="selectedProviderRecord.pricing_coverage.standalone_resources > 0"
-            type="button"
-            @click="void openProviderPricing()"
-          >
-            Pricing &amp; services
-            <strong>{{ selectedProviderRecord.pricing_coverage.standalone_resources }}</strong>
-          </button>
         </div>
 
         <component

@@ -342,7 +342,7 @@ function offerIncludesModel(offer: PricingOffer, modelRef: string): boolean {
 export function projectPricingTableCell(
   data: PricingCatalog,
   model: PricingModel,
-  slot: "input" | "cache" | "output",
+  slot: "input" | "cache" | "output" | "single",
 ): PricingTableCell | undefined {
   return projectPricingTableCellFromView(modelPricingView(data, model), model, slot);
 }
@@ -350,10 +350,11 @@ export function projectPricingTableCell(
 export function projectPricingTableCellFromView(
   view: ModelPricingView,
   model: PricingModel,
-  slot: "input" | "cache" | "output",
+  slot: "input" | "cache" | "output" | "single",
 ): PricingTableCell | undefined {
   if (view.outcome !== "offers" || view.modelMechanisms.length !== 1) return undefined;
   const offer = view.modelMechanisms[0]!;
+  if (slot === "single" && applicableRateCount(offer, model.uid) !== 1) return undefined;
   const context = withModelSelection(fixedOfferStateSelections(offer, model.uid), model.uid);
   const states = offer.states.filter(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
@@ -376,14 +377,16 @@ export function projectPricingTableCellFromView(
   )
     return undefined;
 
-  const meters = slotMeters(model, slot);
   const rateTerms = offer.terms.filter(isRateTerm);
+  const meters: PriceMeter[] =
+    slot === "single"
+      ? rateTerms.map(({ meter }) => meter)
+      : slotMeters(model, slot).map((value) => ({ namespace: "kmodels", value }));
   for (const meter of meters) {
     const selectedTerms = rateTerms
       .filter(
         (term) =>
-          term.meter.namespace === "kmodels" &&
-          term.meter.value === meter &&
+          canonicalJsonKey(term.meter) === canonicalJsonKey(meter) &&
           term.variants.some(
             ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
           ),
@@ -413,7 +416,7 @@ export function projectPricingTableCellFromView(
       return undefined;
     }
     return tableCell(
-      { namespace: "kmodels", value: meter },
+      meter,
       [...prices.values()][0]!,
       selected.flatMap(({ observations }) => observations),
     );

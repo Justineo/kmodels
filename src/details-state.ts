@@ -1,17 +1,10 @@
 import { reactive } from "vue";
-import type {
-  WebsiteModel,
-  WebsiteModelDetail,
-  WebsiteProvider,
-  WebsiteProviderPricingDetail,
-} from "./catalog/website-schema.ts";
+import type { WebsiteModel, WebsiteModelDetail } from "./catalog/website-schema.ts";
 
 interface DetailsState {
   model: WebsiteModel | undefined;
-  provider: WebsiteProvider | undefined;
   providerName: string;
   detail: WebsiteModelDetail | undefined;
-  providerPricing: WebsiteProviderPricingDetail | undefined;
   loading: boolean;
   error: string | undefined;
   pricingTarget: string | undefined;
@@ -22,10 +15,8 @@ interface DetailsState {
 
 export const detailsState = reactive<DetailsState>({
   model: undefined,
-  provider: undefined,
   providerName: "",
   detail: undefined,
-  providerPricing: undefined,
   loading: false,
   error: undefined,
   pricingTarget: undefined,
