@@ -735,7 +735,11 @@ function tieredPrices(
     const qualifier = headers[1] === "";
     const headingIndex = qualifier ? 2 : 1;
     const heading = headers[headingIndex] ?? "";
-    if (/^(?:Provisioned Throughput|Batch Inference) \(DBU Per Hour\)$/.test(heading)) {
+    if (
+      /^(?:Provisioned Throughput \(DBU Per Hour(?: Per \d+ Model Units)?\)|Batch Inference \(DBU Per Hour\))$/.test(
+        heading,
+      )
+    ) {
       onPricingReconciliation?.({
         disposition: "excluded",
         reason_code: "account_compute_pricing",

@@ -46,7 +46,9 @@ Production collection uses only Alibaba Cloud first-party sources:
 - the official [recommended-model page](https://www.alibabacloud.com/help/en/model-studio/models.md)
   and nine task catalogs discover public model identities and capabilities;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
-  current public invocation prices;
+  current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
+  scoped by the table's region and deployment column. The same price parser accepts explicit
+  `USD/million tokens` suffixes and currency-bearing headers for audio token rates;
 - the [context-cache guide](https://www.alibabacloud.com/help/en/model-studio/context-cache.md) owns
   cache eligibility and multipliers;
 - the [web-search guide](https://www.alibabacloud.com/help/en/model-studio/web-search.md) owns its

@@ -183,7 +183,8 @@ sibling rates survive.
   cannot erase another model or tool rate.
 - Delegated Claude pricing validates the semantic Foundry conversion and Data Zone contract, then
   locates rate columns by header. Prose/link changes and unrelated new columns do not invalidate
-  readable model rows.
+  readable model rows. A trailing numeric superscript on an exact `MTok` cell is a first-party
+  footnote marker, not part of the amount; its presence does not discard the Claude Opus 5.5 row.
 - Dynamic pricing-family discovery has no minimum page-count dependency. A new family page may add
   exact prices but cannot widen identity matching.
 - If an optional pricing dependency is missing, or the assembled Azure partition fails topology

@@ -110,6 +110,8 @@ const repairableReconciliationReasons = new Set([
   "endpoint_reference_drift",
   "endpoint_model_list_drift",
   "model_card_identity_drift",
+  "open_model_pricing_rejected",
+  "partner_model_pricing_rejected",
 ]);
 
 export interface CatalogRepairCandidate {

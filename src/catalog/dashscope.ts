@@ -1046,6 +1046,12 @@ function meter(
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
   const direction = /output/.test(header.toLowerCase()) ? "output" : "input";
   const modality = conditions.modality;
+  if (/^Cache-hit input price \(per million tokens\)$/i.test(header)) return "cache_read_text";
+  if (
+    /^(?:Input|Output) price \(per million tokens\)$/i.test(header) &&
+    tasks.includes("text_generation")
+  )
+    return direction === "output" ? "output_text" : "input_text";
   if (tasks.includes("embeddings")) return "embedding";
   if (tasks.includes("reranking") || /\b(?:input|output)\b/i.test(header)) {
     if (modality === "text") return direction === "output" ? "output_text" : "input_text";
@@ -1060,7 +1066,8 @@ function meter(
   if (/voice clone/.test(evidence)) return "speech_generation";
   if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
     return direction === "output" ? "output_audio" : "input_text";
-  if (tasks.includes("transcription")) return "input_audio";
+  if (tasks.includes("transcription"))
+    return direction === "output" ? "output_text" : "input_audio";
   if (/output/.test(header.toLowerCase())) {
     if (/audio/.test(header.toLowerCase())) return "output_audio";
     if (/image/.test(header.toLowerCase())) return "output_image";
@@ -1136,7 +1143,7 @@ interface PriceSegment {
   accountEligibility?: string;
 }
 
-function priceSegments(cell: Cell): PriceSegment[] {
+function priceSegments(cell: Cell, header: string): PriceSegment[] {
   const hourly = cell.text.match(/^Busy hours:\s*\$?([\d,.]+)\s*Idle hours:\s*\$?([\d,.]+)$/i);
   if (hourly !== null) {
     const busy = decimal(hourly[1] ?? "");
@@ -1147,9 +1154,17 @@ function priceSegments(cell: Cell): PriceSegment[] {
         { price: idle, label: "Idle hours" },
       ];
   }
-  const parts = cell.parts.length === 0 ? [cell.text] : cell.parts;
+  const parts = (cell.parts.length === 0 ? [cell.text] : cell.parts).map((part) => {
+    const trimmed = part.trim();
+    if (/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(trimmed) && /USD\s*\/\s*million tokens/i.test(header))
+      return `$${trimmed}`;
+    return part.replace(
+      /((?:0|[1-9]\d*)(?:\.\d+)?)\s+USD\s*\/\s*million tokens\b/gi,
+      (_match, amount: string) => `$${amount}`,
+    );
+  });
   const pricedParts = parts.filter((part) =>
-    /\$[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),
+    /(?:\$|USD\s+)[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),
   );
   return pricedParts.flatMap((raw): PriceSegment[] => {
     const free = raw.trim().match(/^(Free|Free trial|Limited-time free)$/i)?.[1];
@@ -1161,7 +1176,7 @@ function priceSegments(cell: Cell): PriceSegment[] {
           ...(/^Free trial$/i.test(free) ? { accountEligibility: "free_trial" } : {}),
         },
       ];
-    const matches = [...raw.matchAll(/\$([\d,.]+)/g)];
+    const matches = [...raw.matchAll(/(?:\$|USD\s+)([\d,.]+)/gi)];
     return matches.flatMap((match, index) => {
       const price = match[1] === undefined ? undefined : decimal(match[1]);
       if (price === undefined) return [];
@@ -1248,7 +1263,7 @@ function rates(
     const raw = cell.text;
     const rateUnit =
       unit(effectiveHeader, raw) ?? (sharedRateUnits.length === 1 ? sharedRateUnits[0] : undefined);
-    const segments = priceSegments(cell);
+    const segments = priceSegments(cell, effectiveHeader);
     if (segments.length === 0) {
       if (raw === "" || /^(?:--|-)$/.test(raw) || /\bDiscontinued\b/i.test(raw)) continue;
       input.onPricingReconciliation?.({

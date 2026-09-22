@@ -176,6 +176,10 @@ describe("catalog repair candidate selection", () => {
       }),
     ]);
     expect(catalogRepairCandidates(input("unreviewed_pricing_tier", 20))).toEqual([]);
+    for (const reason of ["open_model_pricing_rejected", "partner_model_pricing_rejected"])
+      expect(catalogRepairCandidates(input(reason, 1))).toEqual([
+        expect.objectContaining({ trigger: "source_pricing_structure" }),
+      ]);
     expect(catalogRepairCandidates(input("unknown_public_pricing_card", 0))).toEqual([]);
     expect(
       catalogRepairCandidates(input("unknown_public_pricing_card", 20, "fetch_failed")),

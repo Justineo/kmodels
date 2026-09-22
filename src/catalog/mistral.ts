@@ -1,4 +1,5 @@
 import * as ts from "typescript";
+import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -1285,6 +1286,40 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
   const cards = parseMistralPricingCards(bundle.index.body, input.onPricingReconciliation).map(
     (card) => {
       if (card.id !== "") return card;
+      const linkedIds = new Set(
+        card.modelUrls.flatMap((url) => {
+          const documents = bundle.documents.filter((document) => document.url === url);
+          if (documents.length !== 1 || documents[0] === undefined) return [];
+          const $ = load(documents[0].body);
+          if ($('h1[data-slot="heading-title"]').length !== 1) return [];
+          const ids = [
+            ...new Set(
+              $('button[data-slot="badge"][title^="Click to copy: "]')
+                .toArray()
+                .flatMap((element) => {
+                  const id = $(element).attr("title")?.slice("Click to copy: ".length);
+                  return id !== undefined &&
+                    modelIdSchema.safeParse(id).success &&
+                    $(element).text().trim() === id
+                    ? [id]
+                    : [];
+                }),
+            ),
+          ];
+          return ids.length === 1 ? ids : [];
+        }),
+      );
+      if (linkedIds.size > 0) {
+        const targets =
+          input.catalogModels?.filter(
+            (model) =>
+              model.status !== "retired" &&
+              [...linkedIds].some((id) => model.model_id === id || model.aliases.includes(id)),
+          ) ?? [];
+        return linkedIds.size === 1 && targets.length === 1 && targets[0] !== undefined
+          ? { ...card, id: targets[0].model_id }
+          : card;
+      }
       // The page no longer exposes clipboard IDs. Only a unique, exact active catalog title
       // can replace that identity evidence; do not derive an API ID from a documentation slug.
       const matches =

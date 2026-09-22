@@ -1281,6 +1281,45 @@ function publicPricingReview(
 }
 
 function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["toolRates"] {
+  const xItems = pricing.match(
+    /^\| X Search \| `x_search` \|[^|]+\| \$([\d.]+) \/ 1k posts, \$([\d.]+) \/ 1k profiles \|$/m,
+  );
+  const itemRates: XaiCommercialEvidence["toolRates"] = [];
+  if (
+    xItems?.[1] !== undefined &&
+    xItems[2] !== undefined &&
+    pricing.includes(
+      "every post returned by a search or thread fetch, including parent and quoted posts",
+    ) &&
+    pricing.includes("every profile returned by a user search counts toward the profile rate")
+  ) {
+    for (const [key, name, amount, unit] of [
+      [
+        "x-search-posts",
+        "X Search posts",
+        xItems[1],
+        "posts fetched, including parent and quoted posts",
+      ],
+      ["x-search-profiles", "X Search user profiles", xItems[2], "user profiles fetched"],
+    ] as const) {
+      itemRates.push({
+        key,
+        name,
+        supportsVoice: true,
+        rate: publishedRate(
+          "retrieval",
+          amount,
+          "thousand_items",
+          input.source.id,
+          `USD / 1k ${unit}`,
+        ),
+      });
+    }
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "x_search_item_prices_bound",
+    });
+  }
   const rows = [
     ...pricing.matchAll(
       /^\|\s*([^|]+?)\s*\|\s*((?:`[^`]+`(?:,\s*)?)+)[^|]*\|[^|]+\|\s*\$([\d.]+)\s*\|$/gim,
@@ -1337,38 +1376,42 @@ function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["t
       supportsVoice: true,
     },
   ] as const;
-  return definitions.flatMap((definition) => {
-    const reasonCode = `tool_${definition.key.replaceAll("-", "_")}_price_drift`;
-    const value = reviewClaim(input, reasonCode, () => {
-      requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
-      const expectedNames = new Set<string>(definition.names);
-      const matches = rows.filter(
-        (row) =>
-          row.label === definition.name.replace("File Attachment Search", "File Attachments") ||
-          row.names.some((name) => expectedNames.has(name)),
-      );
-      const row = matches[0];
-      if (
-        row === undefined ||
-        matches.length !== 1 ||
-        JSON.stringify([...row.names].sort()) !== JSON.stringify([...definition.names].sort())
-      )
-        throw new Error(`xAI ${definition.name} pricing row changed`);
-      return {
-        key: definition.key,
-        name: definition.name,
-        supportsVoice: definition.supportsVoice,
-        rate: publishedRate(
-          definition.meter,
-          row.price,
-          "thousand_events",
-          input.source.id,
-          "USD / 1k successful tool calls",
-        ),
-      };
-    });
-    return value === undefined ? [] : [value];
-  });
+  return [
+    ...itemRates,
+    ...definitions.flatMap((definition) => {
+      if (definition.key === "x-search" && itemRates.length > 0) return [];
+      const reasonCode = `tool_${definition.key.replaceAll("-", "_")}_price_drift`;
+      const value = reviewClaim(input, reasonCode, () => {
+        requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
+        const expectedNames = new Set<string>(definition.names);
+        const matches = rows.filter(
+          (row) =>
+            row.label === definition.name.replace("File Attachment Search", "File Attachments") ||
+            row.names.some((name) => expectedNames.has(name)),
+        );
+        const row = matches[0];
+        if (
+          row === undefined ||
+          matches.length !== 1 ||
+          JSON.stringify([...row.names].sort()) !== JSON.stringify([...definition.names].sort())
+        )
+          throw new Error(`xAI ${definition.name} pricing row changed`);
+        return {
+          key: definition.key,
+          name: definition.name,
+          supportsVoice: definition.supportsVoice,
+          rate: publishedRate(
+            definition.meter,
+            row.price,
+            "thousand_events",
+            input.source.id,
+            "USD / 1k successful tool calls",
+          ),
+        };
+      });
+      return value === undefined ? [] : [value];
+    }),
+  ];
 }
 
 interface VoicePrices {
@@ -1449,15 +1492,19 @@ function commercialEvidence(
   pricing: string,
   voice: VoicePrices | undefined,
 ): XaiCommercialEvidence {
-  const imageGenerationTool =
-    reviewClaim(input, "image_generation_tool_contract_drift", () => {
-      requireClaims(
-        section(llms, "/developers/tools/image-generation"),
-        ["`grok-imagine-image-quality`", "`image_generation_call`", "no size or format parameters"],
-        "xAI image-generation tool contract drifted",
-      );
-      return true;
-    }) ?? false;
+  const imageGenerationModelId = reviewClaim(input, "image_generation_tool_contract_drift", () => {
+    const body = section(llms, "/developers/tools/image-generation");
+    const current = body.match(
+      /It uses the latest Imagine image models \(`(grok-[a-z0-9.-]+)`\)/,
+    )?.[1];
+    if (current !== undefined && body.includes("`image_generation_call`")) return current;
+    requireClaims(
+      body,
+      ["`grok-imagine-image-quality`", "`image_generation_call`", "no size or format parameters"],
+      "xAI image-generation tool contract drifted",
+    );
+    return "grok-imagine-image-quality";
+  });
   const voiceTools =
     reviewClaim(input, "voice_tool_contract_drift", () => {
       requireClaims(
@@ -1481,7 +1528,7 @@ function commercialEvidence(
     );
   });
   return {
-    imageGenerationTool,
+    imageGenerationModelId,
     toolRates: toolRates(input, pricing),
     ...(voice?.speech === undefined
       ? {}

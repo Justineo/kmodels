@@ -25,6 +25,7 @@ export interface MistralPricingRow {
 
 export interface MistralPricingCard {
   id: string;
+  modelUrls: string[];
   title: string;
   text: string;
   rows: MistralPricingRow[];
@@ -92,7 +93,27 @@ export function parseMistralPricingCards(
       });
     }
     const free = labels.includes("Free");
-    const parsed = { id, title, text, rows, free };
+    const modelUrls = [
+      ...new Set(
+        element
+          .find("a[href]")
+          .toArray()
+          .flatMap((link) => {
+            const href = $(link).attr("href");
+            if (href === undefined) return [];
+            try {
+              const url = new URL(href);
+              return url.origin === "https://docs.mistral.ai" &&
+                /^\/models\/(?:model-cards\/)?[a-z0-9-]+\/?$/.test(url.pathname)
+                ? [url.href]
+                : [];
+            } catch {
+              return [];
+            }
+          }),
+      ),
+    ];
+    const parsed = { id, modelUrls, title, text, rows, free };
     const fingerprint = JSON.stringify(id === "" ? parsed : { id, rows, free });
     if (seen.has(fingerprint)) {
       reconcileMany(reconcile, rows.length + Number(free), {

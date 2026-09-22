@@ -208,6 +208,7 @@ function text(value: string): string {
 function cellText(cell: Selection): string {
   const clone = cell.clone();
   clone.find("br").replaceWith(" ");
+  clone.find("p").append(" ");
   return text(clone.text());
 }
 
@@ -970,6 +971,10 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
 
 function priceName(value: string): string {
   return value
+    .replace(
+      /\s*\*?\s*(?:through|beginning|starting)\s+[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4}\s*$/i,
+      " ",
+    )
     .replace(/\((?:Promotional Price|Standard Price|Deprecated)[^)]*\)/gi, " ")
     .replace(/\bon Google Cloud\b/gi, " ")
     .replace(
@@ -1100,6 +1105,8 @@ function applyEmbeddingReference(models: Map<string, Evidence>, body: string): v
 
 function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][] {
   const value = descriptor.toLowerCase();
+  if (/\bcache write\b/.test(value)) return ["cache_write_text"];
+  if (/\bcache (?:hit|read)\b|\bcached input\b/.test(value)) return ["cache_read_text"];
   const input = /\binput\b/.test(value);
   const output = /\boutput\b|response|reasoning/.test(value);
   if (!cached && !input && !output) return [];
@@ -1325,14 +1332,31 @@ function tokenTables(
     const table = $(tableElement);
     const headers = tableHeaders($, table);
     const value = text(table.text());
+    const section = text(table.prevAll("h2,h3,h4").first().text());
+    const abbreviatedTokenHeader =
+      headers.join("|") === "Model|Type|Price /1M (USD)" &&
+      /^(?:Deepseek's|MiniMax's|Moonshot's|Qwen's|GLM's|OpenAI's|Meta's Llama|Mistral AI[’']s) models$/i.test(
+        section,
+      );
+    const geminiTokenHeader =
+      section === "Gemini 2.5" &&
+      headers.join("|") ===
+        "Model|Type|Token Price <= 200K tokens|Price > 200K tokens|Price <= 200K cached input tokens|Price > 200K cached input tokens";
+    const omniTokenHeader =
+      section === "Gemini Omni" && headers.join("|") === "Model|Type|Token Price /1M (USD)";
     if (
       excludedPricingTable(table, headers) ||
       headers.some((header) => /storage/i.test(header)) ||
-      (!headers.some((header) => /1M tokens|million tokens/i.test(header)) &&
+      (!abbreviatedTokenHeader &&
+        !geminiTokenHeader &&
+        !omniTokenHeader &&
+        !headers.some((header) => /1M tokens|million tokens/i.test(header)) &&
         !/\b1M (?:input|output).*\btokens\b/i.test(value))
     )
       return;
-    const modelIndex = headers.findIndex((header) => /^Model(?: name)?$/i.test(header));
+    const modelIndex = headers.findIndex((header) =>
+      /^(?:Open Source )?Model(?: name)?$/i.test(header),
+    );
     const typeIndex = headers.findIndex((header) => /^Type$/i.test(header));
     const regionIndex = headers.findIndex((header) => /^Region$/i.test(header));
     const requestTypeIndex = headers.findIndex((header) => /^Request Type$/i.test(header));
@@ -1345,7 +1369,7 @@ function tokenTables(
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
         if (cells.length === 1) {
-          const label = text(cells.eq(0).text());
+          const label = cellText(cells.eq(0));
           current = priceTargets(models, label);
           validity = current.length === 0 ? {} : pricingValidity(label);
           if (label !== "" && current.length === 0)
@@ -1357,8 +1381,10 @@ function tokenTables(
           return;
         }
         const modelCell = column(cells, headers.length, modelIndex);
-        const modelLabel = text(modelCell?.text() ?? "");
-        const direct = priceTargets(models, modelLabel);
+        const modelLabel = modelCell === undefined ? "" : cellText(modelCell);
+        const direct = omniTokenHeader
+          ? modelLabel.split(",").flatMap((label) => priceTargets(models, label.trim()))
+          : priceTargets(models, modelLabel);
         if (direct.length > 0) {
           current = direct;
           descriptor = "";
@@ -1413,7 +1439,9 @@ function tokenTables(
           if (rateMeters.length === 0) return;
           const raw = cellText($(cell));
           const alternative = raw.search(/\(\s*or\s*\$/i);
-          const prices = money(alternative < 0 ? raw : raw.slice(0, alternative));
+          const prices = /^(?:No charge|Free)$/i.test(raw)
+            ? [{ price: "0" }]
+            : money(alternative < 0 ? raw : raw.slice(0, alternative));
           if (prices.length === 0 && /^(?:N\/?A|Not available)$/i.test(raw))
             for (const target of current)
               for (const rateMeter of rateMeters)
@@ -1446,6 +1474,8 @@ function tokenTables(
                         region:
                           scope === "" || deploymentScope(scope) !== undefined ? undefined : scope,
                         ...contextTokenBounds(header),
+                        ...(/\b5m\b/i.test(descriptor) ? { cache_ttl_seconds: 300 } : {}),
+                        ...(/\b1h\b/i.test(descriptor) ? { cache_ttl_seconds: 3600 } : {}),
                         ...validity,
                       },
                     ),
@@ -1821,22 +1851,25 @@ function mediaTables(
         if (current.length === 0) return;
         const raw = cellText(cells.last());
         const rowText = text($(row).text());
-        const unit: SourcePriceFact["unit"] | undefined = /per image|\/image/i.test(rowText)
-          ? "image"
-          : /\bsong\b/i.test(rowText) || /per \d+ seconds?/i.test(rowText)
-            ? "request"
-            : /(?:second|\/sec\b)/i.test(rowText)
-              ? "second"
-              : /frame/i.test(rowText)
-                ? "frame"
-                : /1M tokens/i.test(rowText)
-                  ? "million_tokens"
-                  : /1,000 input tokens/i.test(headers.at(-1) ?? "")
-                    ? "thousand_tokens"
-                    : /1,000 characters/i.test(headers.at(-1) ?? "") ||
-                        /1k characters/i.test(rowText)
-                      ? "thousand_characters"
-                      : undefined;
+        const lyriaCount = section === "Lyria" && /^\$[\d.]+ \/ 1 count$/.test(raw);
+        const unit: SourcePriceFact["unit"] | undefined = lyriaCount
+          ? "thousand_items"
+          : /per image|\/image/i.test(rowText)
+            ? "image"
+            : /\bsong\b/i.test(rowText) || /per \d+ seconds?/i.test(rowText)
+              ? "request"
+              : /(?:second|\/sec\b)/i.test(rowText)
+                ? "second"
+                : /frame/i.test(rowText)
+                  ? "frame"
+                  : /1M tokens/i.test(rowText)
+                    ? "million_tokens"
+                    : /1,000 input tokens/i.test(headers.at(-1) ?? "")
+                      ? "thousand_tokens"
+                      : /1,000 characters/i.test(headers.at(-1) ?? "") ||
+                          /1k characters/i.test(rowText)
+                        ? "thousand_characters"
+                        : undefined;
         if (unit === undefined) return;
         const rateMeter: SourcePriceFact["meter"] = /Imagen/i.test(section)
           ? "image_generation"
@@ -1859,22 +1892,85 @@ function mediaTables(
             for (const model of current)
               addRate(
                 model,
-                publishedRate(rateMeter, item.price, unit, sourceId, raw, {
-                  operation: operation || undefined,
-                  resolution,
-                  region:
-                    regionIndex >= 0 && fullRow
-                      ? text(cells.eq(regionIndex).text()) || undefined
-                      : undefined,
-                  service_tier: item.serviceTier,
-                  audio: /video \+ audio/i.test(operation) || undefined,
-                  modality:
-                    /input (text|image|video|audio)/i.exec(rowText)?.[1]?.toLowerCase() ??
-                    (/Embeddings for Text/i.test(label) ? "text" : undefined),
-                }),
+                publishedRate(
+                  rateMeter,
+                  lyriaCount ? multiplyDecimal(item.price, "1000") : item.price,
+                  unit,
+                  sourceId,
+                  raw,
+                  {
+                    operation: operation || undefined,
+                    resolution,
+                    region:
+                      regionIndex >= 0 && fullRow
+                        ? text(cells.eq(regionIndex).text()) || undefined
+                        : undefined,
+                    service_tier: item.serviceTier,
+                    audio: /video \+ audio/i.test(operation) || undefined,
+                    modality:
+                      /input (text|image|video|audio)/i.exec(rowText)?.[1]?.toLowerCase() ??
+                      (/Embeddings for Text/i.test(label) ? "text" : undefined),
+                  },
+                ),
                 reconcile,
               );
       });
+  });
+}
+
+function embeddingCountTables(
+  models: Map<string, Evidence>,
+  sourceId: string,
+  $: LoadedDocument,
+  reconcile?: Reconcile,
+): void {
+  let parsed = false;
+  $(".devsite-article-body table").each((_index, element) => {
+    if (parsed) return;
+    const table = $(element);
+    const headers = tableHeaders($, table);
+    if (headers.join("|") !== "Model|Type|Region|Request Type|Price / 1,000 count (USD)") return;
+    const rows = table.find("tr").slice(1).toArray();
+    if (rows.length !== 8) return;
+    const labels = rows.map((row) => text($(row).find("td").eq(0).text()));
+    if (
+      labels.join("|") !== "Gemini Embedding||||Embeddings for Text (Excluding Gemini Embedding)|||"
+    )
+      return;
+    parsed = true;
+    for (let index = 0; index < rows.length; index += 1) {
+      const cells = $(rows[index]).find("td");
+      if (cells.length !== 5) continue;
+      const gemini = index < 4;
+      const targets = [...models.values()]
+        .map(({ model }) => model)
+        .filter(
+          (model) =>
+            model.tasks.includes("embeddings") &&
+            model.service_families?.includes("publishers/google") === true &&
+            (gemini
+              ? model.model_id === "gemini-embedding-001"
+              : /^(?:text-embedding-|text-multilingual-embedding-)/.test(model.model_id)),
+        );
+      const type = text(cells.eq(1).text()) || (index % 4 < 2 ? "Input" : "Output");
+      const region = text(cells.eq(2).text());
+      const request = text(cells.eq(3).text());
+      const amount = text(cells.eq(4).text());
+      if (region !== (index % 2 === 0 ? "Global" : "")) continue;
+      if (type !== (index % 4 < 2 ? "Input" : "Output")) continue;
+      if (!/^(?:Online requests|Batch requests)$/.test(request)) continue;
+      if (!/^(?:\$\d+(?:\.\d+)?|No charge)$/.test(amount)) continue;
+      for (const model of targets)
+        rawRate(
+          model,
+          sourceId,
+          `${type}; ${request}; Price / 1,000 count (USD)`,
+          amount,
+          { service_tier: request === "Batch requests" ? "batch" : "standard" },
+          "base_price",
+          reconcile,
+        );
+    }
   });
 }
 
@@ -2252,6 +2348,7 @@ function applyPricing(
   tokenTables(models, sourceId, $, evidence, reconcile);
   labeledTables(models, sourceId, $, evidence, reconcile);
   mediaTables(models, sourceId, $, reconcile);
+  embeddingCountTables(models, sourceId, $, reconcile);
   inlineUnitTables(models, sourceId, $, reconcile);
   if (groundingReferences !== undefined)
     googleGroundingTables(models, sourceId, $, groundingReferences, reconcile);
