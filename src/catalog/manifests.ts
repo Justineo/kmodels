@@ -4,6 +4,7 @@ import { sagemakerCatalogUrl } from "./sagemaker.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
+  | { kind: "typesafe-catalog"; minModels: number; maxModels: number }
   | { kind: "openai-catalog" }
   | { kind: "openai-model-pricing" }
   | { kind: "openai-api" }
@@ -551,6 +552,59 @@ const kimiPricingSource = (
 });
 
 export const manifests = [
+  {
+    provider: {
+      id: "typesafe",
+      name: "TypeSafe AI",
+      kind: "hosted",
+      homepage: "https://typesafe.ai/",
+      docs_url: "https://docs.typesafe.ai/",
+      catalog_scope: "global",
+    },
+    sources: [
+      {
+        id: "typesafe-models",
+        url: "https://docs.typesafe.ai/models.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
+        extractorVersion: "typesafe-catalog-v1",
+        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        fields: [
+          "model_id",
+          "name",
+          "aliases",
+          "tasks",
+          "api_endpoints",
+          "modalities",
+          "capabilities",
+          "limits",
+          "model_card",
+          "status",
+          "release_stage",
+          "pricing",
+          "pricing_inputs",
+        ],
+        allowedHosts: ["docs.typesafe.ai"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: fixedDocuments([
+            ["index", "https://docs.typesafe.ai/llms.txt", 1, "markdown"],
+            ["api", "https://docs.typesafe.ai/api.md", 1, "markdown", true, true],
+          ]),
+        },
+      },
+    ],
+  },
   {
     provider: {
       id: "openai",

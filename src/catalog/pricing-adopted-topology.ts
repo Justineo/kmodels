@@ -27,6 +27,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["mistral", ["resource", "binding", "disposition"]],
   ["ollama", ["binding"]],
   ["openai", ["resource", "binding", "contribution", "disposition"]],
+  ["typesafe", ["binding"]],
   ["vercel", ["resource", "binding"]],
   ["vertex", ["resource", "relation", "binding", "allowance"]],
   ["xai", ["resource", "binding"]],

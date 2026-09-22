@@ -51,6 +51,7 @@ import { applyOllamaCommercialTopology } from "./ollama-commercial.ts";
 import { applyVercelCommercialTopology } from "./vercel-commercial.ts";
 import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
 import { applyXaiCommercialTopology } from "./xai-commercial.ts";
+import { applyTypesafeCommercialTopology } from "./typesafe-commercial.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
@@ -236,6 +237,8 @@ function applyCommercialTopology(
   pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   switch (input.provider_id) {
+    case "typesafe":
+      return applyTypesafeCommercialTopology(input, pricingInputs);
     case "amazon-bedrock":
       return applyBedrockCommercialTopology(input, publishedModels, pricingInputs);
     case "anthropic":
