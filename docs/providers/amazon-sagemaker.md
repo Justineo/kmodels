@@ -186,6 +186,15 @@ A zero Marketplace software rate is only a zero software component. Missing mode
 remain unknown. Service books do not claim a complete total deployment bill, and no capacity
 price is marked `not_applicable` as a substitute for missing inference coverage.
 
+AWS's [JumpStart pricing FAQ](https://aws.amazon.com/sagemaker/ai/faqs/) distinguishes publicly
+available models, billed for the deployed infrastructure, from proprietary models, which may
+also incur publisher software charges. Marketplace software can be priced per running instance
+hour or per inference. Instance-hour prices remain outside this request-rate model, even when
+the software is used for inference; they must not be converted into token/request prices.
+Consequently a missing model rate does not by itself establish a collection failure or an
+unpublished official price. Public listing pages without a usable pricing query remain unresolved
+coverage gaps, separately from rates deliberately excluded by this boundary.
+
 Pricing references: [SageMaker AI pricing](https://aws.amazon.com/sagemaker/ai/pricing/),
 [Marketplace ML pricing](https://docs.aws.amazon.com/marketplace/latest/userguide/machine-learning-pricing.html),
 [Serverless limitations](https://docs.aws.amazon.com/sagemaker/latest/dg/serverless-endpoints.html).

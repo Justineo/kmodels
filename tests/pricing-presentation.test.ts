@@ -566,6 +566,7 @@ describe("canonical pricing presentation", () => {
     input.variants[0]!.validity = validity;
 
     expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+    expect(projectPricingTableCell(data, model(), "single")).toBeUndefined();
   });
 
   it("withholds a uniform candidate price that does not cover the numeric offer scope", () => {
@@ -574,6 +575,7 @@ describe("canonical pricing presentation", () => {
     setNumericScope(data, categoricalScope("region", "US", "EU"));
 
     expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+    expect(projectPricingTableCell(data, model(), "single")).toBeUndefined();
   });
 
   it("withholds context-qualified variants that disagree on exact price", () => {
@@ -593,6 +595,33 @@ describe("canonical pricing presentation", () => {
     });
 
     expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+    expect(projectPricingTableCell(data, model(), "single")).toBeUndefined();
+  });
+
+  it.each(["0", "6"])(
+    "shows a single provider-owned request rate of %s without choosing a token column",
+    (amount) => {
+      const inference = term("inference", "input_text", {
+        value: { numerator: amount, denominator: "1" },
+        denomination: { kind: "fiat", currency: "USD" },
+        per: { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },
+      });
+      inference.meter = { namespace: "provider", provider_id: providerId, value: "inference" };
+      const data = catalog([inference]);
+      expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+      expect(projectPricingTableCell(data, model(), "single")).toMatchObject({
+        amount: `$${amount}`,
+        displayUnit: "request",
+      });
+    },
+  );
+
+  it("does not collapse simultaneous charges into a single rate", () => {
+    const data = catalog([
+      term("input", "input_text", tokenPrice),
+      term("output", "output_text", tokenPrice),
+    ]);
+    expect(projectPricingTableCell(data, model(), "single")).toBeUndefined();
   });
 
   it("uses exact decimals and visibly marked decimal approximations", () => {

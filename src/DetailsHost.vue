@@ -1,7 +1,6 @@
 <script setup lang="ts" vapor>
 import { detailsState } from "./details-state.ts";
 import ModelDetails from "./components/ModelDetails.vue";
-import ProviderPricingDetails from "./components/ProviderPricingDetails.vue";
 </script>
 
 <template>
@@ -16,12 +15,5 @@ import ProviderPricingDetails from "./components/ProviderPricingDetails.vue";
     @navigate="detailsState.navigate"
     @retry="detailsState.retryModel"
     @pricing-target-reached="detailsState.pricingTarget = undefined"
-  />
-  <ProviderPricingDetails
-    :provider="detailsState.provider"
-    :detail="detailsState.providerPricing"
-    :loading="detailsState.loading"
-    :error="detailsState.error"
-    @close="detailsState.close"
   />
 </template>

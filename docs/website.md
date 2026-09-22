@@ -9,9 +9,9 @@ Status: implemented core; provider pricing convergence is in progress
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name/alias search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
-- When the selected provider has standalone commercial resources, show their
-  count as an action that opens a provider-level pricing inspector. This is the
-  home for separately priced request services that do not belong to one model row.
+- Pricing is browsed through model rows and their inspectors. There is no provider-level
+  `Pricing & services` action. Independently priced request services remain in canonical
+  price books; exact model-linked components appear in the model inspector.
 - One semantic table fills the remaining viewport. Model details open in a right-side inspector.
 - Unknown values stay explicit. Rows without a representative numeric price
   show a short model-level status with an explanatory tooltip.
@@ -72,13 +72,18 @@ Status: implemented core; provider pricing convergence is in progress
   context-dependent price, an offer count for
   several base offers, and retain the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, or `No base offer` distinction. An exact offer
-  that cannot fit the three columns shows its applicable base-rate count. Provider credits such as
+  that cannot fit the three columns shows the amount and explicit unit across those columns
+  when it has one invariant, fully covered rate. This uses the same canonical projection and
+  evidence checks as ordinary price cells, including provider-owned meters and zero rates.
+  The tooltip identifies the offer so a software-only price is not presented as a total bill.
+  These directly displayed single rates also count toward representative pricing coverage.
+  Multiple simultaneous rates retain their count. Provider credits such as
   DBUs and transcription duration still appear directly in a semantic column; simultaneous realtime
   message and session-duration charges remain a count because either single value would omit part of
   the cost. Interactive pricing status keeps the same body size as other table cells; its
   affordance comes from the dotted underline and interaction states. This status is never owned by
   the input meter. There is no
-  secondary flat-price path. On an exact model row, activating the status opens
+  secondary flat-price data source. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
 - The detail flow is `[Run mode when selectable] → model rates → collapsed add-ons and included
@@ -161,7 +166,7 @@ services → pricing notes`. The first mechanism in
   value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
-  remains in the provider inspector and canonical audit; a missing driver never hides a rate.
+  remains in the canonical audit; a missing driver never hides a rate.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,
@@ -174,18 +179,8 @@ services → pricing notes`. The first mechanism in
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
-- The provider-level pricing inspector is labeled `Service pricing`: it shows standalone
-  request services, not the provider's full pricing snapshot or model rate books.
-  It uses the same rate, driver, contribution, raw-fact, and
-  retained-snapshot semantics. Known raw facts may expose only concise source-native parameters
-  that affect cost; observations, locators, and audit evidence remain excluded.
-  It renders conditional or validity-qualified offer states before rates while
-  leaving unconditional singletons in the summary. Applicability follows the
-  bounded pricing projection, with one link to the exact canonical audit.
-  Raw-only official rows stay separate from normalized resources.
-  The provider inspector has a literal resource/offer search. Entering a query
-  loads the remaining bounded resource chunks before filtering so results are
-  provider-complete rather than limited to the initially loaded page.
+- Standalone service books remain available in the canonical pricing download. A service
+  without exact model applicability is not attached to all models to make it visible in the UI.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -343,23 +338,14 @@ services → pricing notes`. The first mechanism in
   provider-local offers in `/ui/offers/<provider>/<chunk>.json` instead of
   copying the same display-ready offer into every applicable model. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
-  bound and are requested only for a selected or window-preloaded model, or for
-  a provider inspector.
+  bound and are requested only for a selected or window-preloaded model.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
-- Provider pricing detail uses
-  `/ui/providers/<provider>/pricing/<chunk>.json`. It is requested on demand,
-  split into deterministic whole-resource chunks capped at 2 MiB uncompressed,
-  and cached by provider plus data version. Opening the inspector requests only
-  chunk zero; later resource chunks require an explicit “Load more” action.
-  Resources carry lightweight offer summaries and grouped offer references.
-  Expanding one offer requests only its shared-offer fragments, verifies stable
-  metadata, rejects duplicate rows, verifies the merged offer's ID, title,
-  billing mode, and state summary against the selected summary, and mounts its
-  detail DOM only while open. An explicit “Load more” action remains available
-  during browsing; entering a provider-pricing search loads all remaining chunks
-  before applying the literal filter.
+- Provider pricing projections remain at `/ui/providers/<provider>/pricing/<chunk>.json`,
+  in deterministic whole-resource chunks capped at 2 MiB uncompressed. The model-browser
+  UI does not load these standalone resources. Resources retain lightweight offer summaries
+  and grouped offer references for data consumers.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.
@@ -386,8 +372,8 @@ services → pricing notes`. The first mechanism in
   virtualized table. Keep catalog rows outside Vue's deep-reactive graph, and
   build the search index after first paint unless an earlier search needs it.
   After that paint, eagerly load the closed filter popover, inspector, their CSS,
-  and the full closed-schema validator in parallel. Only provider pricing and
-  out-of-window model details remain interaction-demanded. On coarse touch
+  and the full closed-schema validator in parallel. Out-of-window model details
+  remain interaction-demanded. On coarse touch
   devices, keep native
   scrolling for general surfaces; initialize the table's axis-specific
   OverlayScrollbars during the first mount against its real outer and nested
