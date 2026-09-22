@@ -70,13 +70,17 @@ Status: implemented core; provider pricing convergence is in progress
   light-neutral 45-degree hatch marks across the three pricing columns, explains
   the model-level outcome in a tooltip. Use `Varies` for a
   context-dependent price, an offer count for
-  several base offers, and retain the exact `Free`, `Quote`,
+  several base offers, and retain the exact `0` (explicitly free), `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, or `No base offer` distinction. An exact offer
   that cannot fit the three columns shows the amount and explicit unit across those columns
   when it has one invariant, fully covered rate. This uses the same canonical projection and
   evidence checks as ordinary price cells, including provider-owned meters and zero rates.
   The tooltip identifies the offer so a software-only price is not presented as a total bill.
   These directly displayed single rates also count toward representative pricing coverage.
+  Numeric zero rates remain visible as zero. Provider-owned token meters with an explicit
+  canonical total-input or output token charge binding use the corresponding table column,
+  including structured-decision output. An explicitly free offer displays `0` without inventing
+  a currency or billing unit; unknown or conditional pricing never becomes zero.
   Multiple simultaneous rates retain their count. Provider credits such as
   DBUs and transcription duration still appear directly in a semantic column; simultaneous realtime
   message and session-duration charges remain a count because either single value would omit part of
@@ -439,7 +443,7 @@ services → pricing notes`. The first mechanism in
 
 - Compile reviewed Lucide utility icons and Lobe provider marks into one hidden build-time SVG sprite. Visible icons use `<use>`.
 - Scope definition IDs per symbol so gradients remain stable.
-- Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry; Amazon SageMaker AI uses the supplied AWS Architecture Service Icons (2025-07-31) mark, preserving its green background and white artwork.
+- Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry; Amazon SageMaker AI uses the supplied AWS Architecture Service Icons (2025-07-31) mark, preserving its green background and white artwork. TypeSafe AI uses the supplied path with its original proportions and 0.86 opacity; `currentColor` follows the provider icon's black/light and white/dark theme colors.
 - Provider marks keep reviewed brand colors. Monochrome marks have explicit light/dark variants; Cerebras remains orange. Kimi uses its complete black mark on light surfaces and color mark on dark surfaces.
 - Provider icon containers have no border radius, preserving the artwork's original corners.
 

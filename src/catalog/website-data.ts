@@ -568,7 +568,7 @@ function pricingStatus(
   const summary = offerStateSummary(offer, modelRef);
   if (summary === "Free")
     return {
-      label: "Free",
+      label: "0",
       description: "The provider publishes this model offer as free.",
     };
   if (summary === "Custom quote")

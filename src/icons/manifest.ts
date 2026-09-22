@@ -35,6 +35,7 @@ const providerIconIds = [
   "mistral",
   "ollama",
   "openai",
+  "typesafe",
   "vercel",
   "vertex",
   "xai",
