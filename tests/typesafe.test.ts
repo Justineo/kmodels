@@ -4,6 +4,7 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
+import { projectPricingTableCell } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { sourcePriceFactSchema } from "../src/catalog/pricing-source.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
@@ -96,6 +97,20 @@ describe("TypeSafe AI", () => {
     expect(pricing).toBeDefined();
     if (pricing === undefined) throw new Error("Missing TypeSafe pricing");
     expect(() => validateAdoptedTopology(pricing)).not.toThrow();
+    const model = models[0];
+    if (model === undefined) throw new Error("Missing TypeSafe model");
+    expect(
+      projectPricingTableCell(
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+        model,
+        "output",
+      ),
+    ).toMatchObject({ amount: "$0", displayUnit: "1M tokens" });
     const offers = pricing.books.flatMap(({ offers }) => offers);
     expect(offers).toHaveLength(1);
     const rates = offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "rate"));

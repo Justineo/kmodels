@@ -381,7 +381,10 @@ export function projectPricingTableCellFromView(
   const meters: PriceMeter[] =
     slot === "single"
       ? rateTerms.map(({ meter }) => meter)
-      : slotMeters(model, slot).map((value) => ({ namespace: "kmodels", value }));
+      : [
+          ...slotMeters(model, slot).map((value) => ({ namespace: "kmodels" as const, value })),
+          ...rateTerms.filter((term) => providerTokenSlot(term) === slot).map(({ meter }) => meter),
+        ];
   for (const meter of meters) {
     const selectedTerms = rateTerms
       .filter(
@@ -1003,6 +1006,32 @@ function boundSatisfied(
     : inclusive
       ? comparison <= 0
       : comparison < 0;
+}
+
+function providerTokenSlot(term: PriceRateTerm): "input" | "output" | undefined {
+  if (term.meter.namespace !== "provider" || term.variants.length === 0) return;
+  const signal = term.variants[0]?.charge_binding?.signal;
+  if (signal?.namespace !== "kmodels") return;
+  const slot =
+    signal.value === "input_tokens"
+      ? "input"
+      : signal.value === "output_tokens"
+        ? "output"
+        : undefined;
+  if (slot === undefined) return;
+  return term.variants.every(({ charge_binding, price }) => {
+    const unit = price.per.factors[0];
+    return (
+      charge_binding?.signal.namespace === "kmodels" &&
+      charge_binding.signal.value === signal.value &&
+      price.per.factors.length === 1 &&
+      unit?.power === 1 &&
+      unit.unit.namespace === "kmodels" &&
+      unit.unit.value === "token"
+    );
+  })
+    ? slot
+    : undefined;
 }
 
 function slotMeters(

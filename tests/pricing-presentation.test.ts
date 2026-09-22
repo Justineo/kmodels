@@ -28,6 +28,7 @@ import type {
   UnitPrice,
 } from "../src/catalog/pricing-schema.ts";
 import type { ProviderModel } from "../src/catalog/schema.ts";
+import { websitePublication } from "../src/catalog/website-data.ts";
 
 const providerId = "test";
 const modelRef = "test/model";
@@ -186,6 +187,63 @@ const tokenPrice: UnitPrice = {
 };
 
 describe("canonical pricing presentation", () => {
+  it.each([
+    ["free", "0"],
+    ["not_published", "Unpublished"],
+  ] as const)("shows %s offers without inventing numeric rates", (state, label) => {
+    const data = catalog([]);
+    const offer = data.books[0]?.offers[0];
+    if (offer === undefined) throw new Error("Missing test offer");
+    offer.states = [{ state, applicability: unconditionalApplicability, observations: [source] }];
+    const publication = websitePublication(
+      {
+        catalog_version: "a".repeat(64),
+        generated_at: observedAt,
+        providers: [
+          {
+            id: providerId,
+            name: "Test",
+            kind: "hosted",
+            homepage: "https://example.com/",
+            catalog_scope: "global",
+            source_ids: [sourceRef],
+          },
+        ],
+        models: [model()],
+        sources: [],
+        coverage: [],
+        warnings: [],
+      },
+      data,
+      "b".repeat(64),
+    );
+    expect(publication.pricing.statuses).toEqual([[label, expect.any(String)]]);
+  });
+
+  it("uses explicit token bindings for provider meters while preserving missing usage semantics", () => {
+    const output = term("decision-output", "output_text", {
+      ...tokenPrice,
+      value: { numerator: "0", denominator: "1" },
+    });
+    output.meter = { namespace: "provider", provider_id: providerId, value: "decision_output" };
+    const variant = output.variants[0];
+    if (variant === undefined) throw new Error("Missing test rate");
+    const data = catalog([output]);
+    expect(projectPricingTableCell(data, model(), "output")).toBeUndefined();
+    variant.charge_binding = {
+      signal: { namespace: "kmodels", value: "output_tokens" },
+      aggregation: "request",
+      observations: [source],
+    };
+    expect(projectPricingTableCell(data, model(), "output")).toMatchObject({ amount: "$0" });
+    expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+    variant.price = {
+      ...variant.price,
+      per: { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },
+    };
+    expect(projectPricingTableCell(data, model(), "output")).toBeUndefined();
+  });
+
   it("uses a slash for compact rate units", () => {
     expect(formatRateUnit("per 1M tokens")).toBe("/ 1M tokens");
     expect(formatRateUnit("USD / request")).toBe("USD / request");

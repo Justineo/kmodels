@@ -33,6 +33,7 @@ import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
 import sagemaker from "../assets/provider-icons/amazon-sagemaker.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
+import typesafe from "../assets/provider-icons/typesafe.svg?raw";
 import type { DarkProviderIconId, ProviderIconId, UiIconName } from "./manifest.ts";
 import { svgSymbol } from "./svg.ts";
 
@@ -71,6 +72,7 @@ const providerSources = {
   mistral,
   ollama,
   openai: openAi,
+  typesafe,
   vercel,
   vertex: googleCloud,
   xai,
