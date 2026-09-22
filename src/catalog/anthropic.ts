@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { yamlBlock } from "./yaml.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
@@ -224,7 +225,6 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
       item.status = /\(deprecated\)$/i.test(table.headers[column] ?? "") ? "deprecated" : "active";
     }
   }
-
   for (const match of body.matchAll(
     /Claude ([A-Z][A-Za-z]+(?: (?:[A-Z][A-Za-z]+|\d+(?:\.\d+)?))*) \(`([a-z0-9._:/-]+)`\)/g,
   )) {
@@ -558,6 +558,23 @@ function callable(item: ProviderModel): boolean {
 }
 
 function listedModelIds(body: string): string[] | undefined {
+  const frontmatter = body.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1];
+  const metadata =
+    frontmatter === undefined ? undefined : yamlBlock(frontmatter, "featureMetadata", 0);
+  const supported = metadata === undefined ? undefined : yamlBlock(metadata, "supportedModels", 2);
+  if (supported !== undefined) {
+    const values = supported
+      .split(/\r?\n/)
+      .slice(1)
+      .filter((line) => line.trim() !== "");
+    const parsed = z
+      .array(modelIdSchema)
+      .nonempty()
+      .safeParse(values.map((line) => line.match(/^    - (claude-[a-z0-9._:/-]+)$/)?.[1]));
+    return parsed.success && new Set(parsed.data).size === parsed.data.length
+      ? parsed.data
+      : undefined;
+  }
   const list = body.match(/^- Supported models: (`[^`]+`(?:, `[^`]+`)*)\r?$/m)?.[1];
   if (list === undefined) return;
   const ids: string[] = [];
@@ -598,6 +615,7 @@ function listedModels(
 
 function capabilities(
   bodies: {
+    overview: string;
     citations: string;
     pdf: string;
     contextEditing: string;
@@ -608,6 +626,7 @@ function capabilities(
     promptCaching: string;
     glossary: string;
     thinking: string;
+    thinkingSupport: string;
     toolUse: string;
   },
   models: Map<string, ProviderModel>,
@@ -621,6 +640,12 @@ function capabilities(
       reason_code: "capability_contract_drift",
       sample: claim,
     });
+  if (
+    bodies.overview.includes(
+      "All current models support text and image input, text output, multilingual capabilities, vision, and tool use.",
+    )
+  )
+    for (const item of current) item.capabilities.tool_call = true;
 
   if (/^All \[active models]\([^)]*\) support citations\.$/m.test(bodies.citations))
     for (const item of current) item.capabilities.citations = true;
@@ -724,7 +749,17 @@ function capabilities(
   const thinkingLine = bodies.thinking
     .split(/\r?\n/)
     .find((line) => line.includes("thinking cannot be turned off on these models"));
-  const thinkingModels = thinkingLine === undefined ? [] : mentioned(thinkingLine, models);
+  const thinkingTable = tables(bodies.thinkingSupport).find(
+    (table) => table.headers.join("|") === "Model|Thinking types|Default|Rejected with 400",
+  );
+  const thinkingModels =
+    thinkingLine === undefined
+      ? (thinkingTable?.rows.flatMap((values) =>
+          /^(?:Adaptive|Extended)\b/.test(values[1] ?? "")
+            ? mentioned(values[0] ?? "", models)
+            : [],
+        ) ?? [])
+      : mentioned(thinkingLine, models);
   if (thinkingModels.length === 0) drift("thinking");
   else for (const item of thinkingModels) if (callable(item)) item.capabilities.reasoning = true;
 
@@ -732,7 +767,8 @@ function capabilities(
     .split(/\r?\n/)
     .find((line) => line.includes("does not support forced tool use"));
   const toolModels = toolLine === undefined ? [] : mentioned(toolLine, models);
-  if (toolModels.length === 0) drift("tool use");
+  if (toolModels.length === 0 && !current.every((item) => item.capabilities.tool_call === true))
+    drift("tool use");
   else for (const item of toolModels) if (callable(item)) item.capabilities.tool_call = true;
 }
 
@@ -941,19 +977,21 @@ function cacheMultipliers(parsedTables: MarkdownTable[], input: Input): CacheMul
       throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
     return value;
   };
-  const read = match(
-    "Cache read",
-    /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \(((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)\))?$/,
-  );
+  const read = match("Cache read", /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \((.+)\))?$/);
   const readValue = read[1];
   if (readValue === undefined)
     throw new Error("Anthropic cache multiplier was not machine-readable for Cache read");
-  const overrideValue = read[2];
-  const overrideModels = read[3];
-  const readOverrides =
-    overrideValue === undefined || overrideModels === undefined
-      ? new Map<string, string>()
-      : new Map(overrideModels.split(" and ").map((name) => [name, overrideValue] as const));
+  const readOverrides = new Map<string, string>();
+  for (const clause of read[2]?.split(/;\s*/) ?? []) {
+    const override = clause.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)$/);
+    if (override?.[1] === undefined || override[2] === undefined)
+      throw new Error("Anthropic cache-read exception changed");
+    for (const name of override[2].split(" and ")) {
+      if (!/^Claude [\w. -]+$/.test(name) || readOverrides.has(name))
+        throw new Error("Anthropic cache-read exception model changed");
+      readOverrides.set(name, override[1]);
+    }
+  }
   return {
     fiveMinuteWrite: multiplier("5-minute cache write"),
     oneHourWrite: multiplier("1-hour cache write"),
@@ -1068,7 +1106,10 @@ function pricing(
     if (multipliers !== undefined) {
       const expectedFiveMinuteWrite = multiplyDecimal(inputPrice, multipliers.fiveMinuteWrite);
       const expectedOneHourWrite = multiplyDecimal(inputPrice, multipliers.oneHourWrite);
-      const expectedCacheRead = multiplyDecimal(inputPrice, multipliers.read);
+      const expectedCacheRead = multiplyDecimal(
+        inputPrice,
+        multipliers.readOverrides.get(item.name) ?? multipliers.read,
+      );
       if (
         !decimalsEqual(fiveMinuteWrite, expectedFiveMinuteWrite) ||
         !decimalsEqual(oneHourWrite, expectedOneHourWrite) ||
@@ -1128,6 +1169,7 @@ function pricing(
     item.capabilities.batch = true;
   }
 
+  const fastIds = new Set<string>();
   for (const values of fast?.rows ?? []) {
     const inputPrice = amount(values[1]);
     const outputPrice = amount(values[2]);
@@ -1148,7 +1190,6 @@ function pricing(
       });
       continue;
     }
-    const fastIds = new Set<string>();
     for (const name of names) {
       const item = resolveRow(name, "Fast pricing");
       if (item === undefined) continue;
@@ -1175,6 +1216,12 @@ function pricing(
         ),
       ]);
     }
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "fast_model_price_row",
+    });
+  }
+  if (fastIds.size > 0) {
     try {
       validateFastMode(fastModeBody, fastIds);
     } catch {
@@ -1184,10 +1231,6 @@ function pricing(
         sample: [...fastIds].join(", "),
       });
     }
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "fast_model_price_row",
-    });
   }
 
   const tools = parsedTables.find((table) => table.headers.includes("Tool choice"));
@@ -1340,6 +1383,7 @@ function commercialPricing(
     codeExecution: string;
     advisor: string;
     compaction: string;
+    compactionThreshold: string;
     fallbackCredit: string;
   },
   input: Input,
@@ -1355,7 +1399,7 @@ function commercialPricing(
       sample,
     });
 
-  const compaction = bodies.compaction.replace(/\s+/g, " ");
+  const compaction = [bodies.compaction, bodies.compactionThreshold].join(" ").replace(/\s+/g, " ");
   const compactionBilling =
     compaction.includes("Compaction requires an additional sampling step") &&
     compaction.includes("sum across all entries in the `usage.iterations` array") &&
@@ -1377,7 +1421,7 @@ function commercialPricing(
         channel: "response",
         locator: {
           kind: "provider_field",
-          value: `usage.iterations[*].${field} grouped by usage.iterations[*].model`,
+          value: `usage.iterations[*].${field} attributed to advisor_message.model or response.model for message/compaction`,
         },
         availability: "conditional",
         source_ref: input.source.id,
@@ -1596,6 +1640,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   );
   capabilities(
     {
+      overview: bundle.index.body,
       citations: document("/docs/en/build-with-claude/citations.md"),
       pdf: document("/docs/en/build-with-claude/pdf-support.md"),
       contextEditing: document("/docs/en/build-with-claude/context-editing.md"),
@@ -1606,6 +1651,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
       promptCaching: document("/docs/en/build-with-claude/prompt-caching.md"),
       glossary: document("/docs/en/about-claude/glossary.md"),
       thinking: document("/docs/en/build-with-claude/thinking.md"),
+      thinkingSupport: document("/docs/en/build-with-claude/thinking-troubleshooting.md"),
       toolUse: document("/docs/en/agents-and-tools/tool-use/define-tools.md"),
     },
     models,
@@ -1617,6 +1663,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
       codeExecution: document("/docs/en/agents-and-tools/tool-use/code-execution-tool.md"),
       advisor: document("/docs/en/agents-and-tools/tool-use/advisor-tool.md"),
       compaction: document("/docs/en/build-with-claude/compaction.md"),
+      compactionThreshold: document("/docs/en/build-with-claude/compaction-threshold.md"),
       fallbackCredit: document("/docs/en/build-with-claude/fallback-credit.md"),
     },
     input,

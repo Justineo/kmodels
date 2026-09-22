@@ -70,6 +70,21 @@ replacement.
   location can select an exact region, but it does not infer the wildcard meaning of non-global.
 - Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
   independent applicability dimensions.
+- Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only
+  under the reviewed model-provider section titles. The Gemini 2.5 layout keeps its exact
+  short/long-context and cached-input columns. Unrelated abbreviated tables remain excluded.
+- Model-cell paragraph boundaries and trailing published effective-date annotations do not form
+  part of a model name. The annotations still contribute applicability dates. Cache-read and
+  cache-write rows retain their distinct meters and explicit five-minute/one-hour TTLs. An exact
+  `Free` or `No charge` cell establishes zero, while a missing cell never does.
+- A reviewed Gemini Omni table can name both Flash versions in one model cell; each target must
+  resolve independently to an existing catalog identity. Lyria's `$ / 1 count` entries price
+  generated music clips as items, not elapsed seconds or one request: a request can return multiple
+  clips. The source amount scales exactly to the shared thousand-item unit.
+- The current text-embedding table publishes dollars per 1,000 `count` without defining whether
+  that count is tokens or billable characters. Its exact online/Batch and input/output cells are
+  retained as bounded raw rates for Gemini Embedding 001 and the named older Google text-embedding
+  IDs. No token or character unit is inferred from an example response that reports both counts.
 - Page alternatives are ignored only when a model card gives an exact token equivalence. Otherwise
   the token rate stays normalized and the unresolved alternative remains bounded raw evidence.
 - A price cell's explicit denominator overrides a token column heading for that amount. A video

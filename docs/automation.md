@@ -6,7 +6,7 @@ Status: implemented
 - A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
   alone never starts Copilot: code-repair inference begins when the latest committed refresh report contains
   a parser failure, a changed source-contract finding, known unrecognized public pricing-card
-  structure, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
+  structure, an explicitly rejected Databricks pricing subpage, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
   pricing validation. The gate excludes operational states such as fetch failures and missing
   credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a

@@ -510,7 +510,9 @@ const anthropicDocuments = [
   ["/docs/en/build-with-claude/prompt-caching.md", "prompt-caching.md"],
   ["/docs/en/about-claude/glossary.md", "glossary.md"],
   ["/docs/en/build-with-claude/thinking.md", "thinking.md"],
+  ["/docs/en/build-with-claude/thinking-troubleshooting.md", "thinking-troubleshooting.md"],
   ["/docs/en/build-with-claude/compaction.md", "compaction.md"],
+  ["/docs/en/build-with-claude/compaction-threshold.md", "compaction-threshold.md"],
   ["/docs/en/agents-and-tools/tool-use/define-tools.md", "define-tools.md"],
   ["/docs/en/build-with-claude/fast-mode.md", "fast-mode.md"],
   ["/docs/en/manage-claude/data-residency.md", "data-residency.md"],
@@ -2970,6 +2972,53 @@ describe("Cohere adapters", () => {
 });
 
 describe("Mistral adapters", () => {
+  it("binds renamed price cards through their linked official API identity", () => {
+    const value = manifest("mistral");
+    const configured = value.sources.find(({ id }) => id === "mistral-pricing");
+    if (configured === undefined) throw new Error("Missing pricing source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "mistral-pricing", minCards: 1, maxCards: 4 },
+    };
+    const model = {
+      ...baseModel({
+        providerId: "mistral",
+        id: "zai-glm-5-3",
+        name: "Z.ai GLM 5.3",
+        sourceId: "mistral-models",
+        observedAt,
+      }),
+      status: "active" as const,
+    };
+    const url = "https://docs.mistral.ai/models/zai-glm-5-3";
+    const page =
+      '<h1 data-slot="heading-title">Z.ai GLM 5.3</h1><button data-slot="badge" title="Click to copy: zai-glm-5-3">zai-glm-5-3<span><svg></svg></span></button>';
+    const index = `<main><mistral-block-card-model><p>GLM 5.3</p><a href="${url}">Read documentation</a><div><p>Input (/M tokens)</p><mistral-atom-text-price data-prices='{"priceEur":1.4,"priceUsd":1.4}'></mistral-atom-text-price></div></mistral-block-card-model></main>`;
+    const parse = (body: string, linked = url) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels: [model],
+        body: JSON.stringify({
+          index: { url: source.url, body: index },
+          documents: [{ url: linked, body }],
+        }),
+      });
+    expect(parse(page)[0]?.price_facts).toContainEqual(
+      expect.objectContaining({ price: "1.4", meter: "input_text", currency: "USD" }),
+    );
+    expect(parse(page, "https://untrusted.test/models/zai-glm-5-3")).toEqual([]);
+    expect(parse(page.replaceAll("zai-glm-5-3", "unlisted-id"))).toEqual([]);
+    expect(
+      parse(page.replace("Click to copy: zai-glm-5-3", "Click to copy: a-different-id")),
+    ).toEqual([]);
+    expect(
+      parse(
+        page + '<button data-slot="badge" title="Click to copy: another-id">another-id</button>',
+      ),
+    ).toEqual([]);
+  });
   it("recognizes paragraph pricing titles only through a unique exact active catalog name", async () => {
     const pricing = (await fixture("mistral/pricing.html"))
       .replaceAll("<h2>Mistral Medium 3.5</h2>", "<p>Mistral Medium 3.5</p>")
@@ -4153,7 +4202,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://mistral.ai/pricing/api/",
         extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v3",
+        extractorVersion: "mistral-pricing-v4",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
@@ -6942,7 +6991,7 @@ describe("Azure adapters", () => {
       throw new Error("Missing Azure Claude pricing source");
     const source: SourceManifest = {
       ...configured,
-      extractor: { kind: "azure-claude-pricing", minModels: 2, maxModels: 2 },
+      extractor: { kind: "azure-claude-pricing", minModels: 3, maxModels: 3 },
     };
     const claude = (id: string, dataZone = false): ProviderModel => ({
       ...azurePricingModel(id),
@@ -6958,11 +7007,16 @@ describe("Azure adapters", () => {
       source,
       body: await fixture("azure/claude-pricing.md"),
       observedAt,
-      catalogModels: [claude("claude-opus-4-8", true), claude("claude-sonnet-5", true)],
+      catalogModels: [
+        claude("claude-opus-4-8", true),
+        claude("claude-sonnet-5", true),
+        claude("claude-opus-5-5", true),
+      ],
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
     const opus = models.find(({ model_id }) => model_id === "claude-opus-4-8");
     const sonnet = models.find(({ model_id }) => model_id === "claude-sonnet-5");
+    const opus55 = models.find(({ model_id }) => model_id === "claude-opus-5-5");
     expect(opus?.price_facts).toHaveLength(10);
     expect(
       opus?.price_facts.find(
@@ -6975,6 +7029,13 @@ describe("Azure adapters", () => {
       conditions: { inference_geo: "us" },
     });
     expect(sonnet?.price_facts).toHaveLength(10);
+    expect(opus55?.price_facts).toHaveLength(10);
+    expect(
+      opus55?.price_facts.find(
+        ({ meter, conditions }) =>
+          meter === "cache_read_text" && conditions.deployment_scope === "GlobalStandard",
+      )?.price,
+    ).toBe("0.20");
     expect(
       sonnet?.price_facts
         .filter(({ meter }) => meter === "input_text")
@@ -6991,6 +7052,7 @@ describe("Azure adapters", () => {
         sample: "claude-opus-4-8",
       }),
       expect.objectContaining({ sample: "claude-sonnet-5" }),
+      expect.objectContaining({ sample: "claude-opus-5-5" }),
       {
         disposition: "excluded",
         reason_code: "claude_price_model_not_offered",
@@ -7909,6 +7971,116 @@ describe("Gemini adapters", () => {
 });
 
 describe("Vertex AI adapters", () => {
+  it("reads dated token labels, scoped abbreviated units, and independent cache rows", async () => {
+    const value = manifest("vertex");
+    const source = value.sources.find(({ id }) => id === "vertex-pricing");
+    if (source === undefined) throw new Error("Missing pricing source");
+    const catalogModels = [
+      ["gemini-3.8-flash", "Gemini 3.8 Flash"],
+      ["deepseek-v3.1-maas", "DeepSeek V3.1"],
+      ["claude-sonnet-5", "Claude Sonnet 5"],
+      ["multilingual-e5-small", "multilingual-e5-small"],
+      ["gemini-omni-flash-preview", "Gemini Omni Flash Preview"],
+      ["gemini-omni-1.1-flash-preview", "Gemini Omni 1.1 Flash Preview"],
+      ["lyria-002", "Lyria 2"],
+      ["gemini-embedding-001", "gemini-embedding-001"],
+      ["text-embedding-005", "text-embedding-005"],
+    ].map(([id, name]) => {
+      if (id === undefined || name === undefined) throw new Error("Missing test identity");
+      return {
+        ...baseModel({ providerId: "vertex", id, name, sourceId: source.id, observedAt }),
+        ...(id.includes("embedding")
+          ? {
+              tasks: ["embeddings"] satisfies ModelTask[],
+              service_families: ["publishers/google"],
+            }
+          : {}),
+      };
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels,
+      body: JSON.stringify({
+        index: { url: source.url, body: await fixture("vertex/pricing-token-layout.html") },
+        documents: [],
+      }),
+    });
+    const facts = (id: string) => {
+      const model = models.find(({ model_id }) => model_id === id);
+      if (model === undefined) throw new Error(`Missing ${id}`);
+      return model.price_facts;
+    };
+    expect(facts("gemini-3.8-flash")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.75",
+          conditions: expect.objectContaining({ effective_until: "2026-12-31" }),
+        }),
+        expect.objectContaining({
+          price: "1.50",
+          conditions: expect.objectContaining({ effective_from: "2027-01-01" }),
+        }),
+      ]),
+    );
+    expect(
+      facts("deepseek-v3.1-maas").map(({ meter, price, unit, conditions }) => [
+        meter,
+        price,
+        unit,
+        conditions.service_tier,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["input_text", "0.60", "million_tokens", undefined],
+        ["output_text", "0.85", "million_tokens", "batch"],
+        ["cache_read_text", "0.06", "million_tokens", undefined],
+      ]),
+    );
+    expect(facts("deepseek-v3.1-maas").some(({ price }) => price === "999")).toBe(false);
+    expect(facts("claude-sonnet-5")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "cache_write_text",
+          price: "2.50",
+          conditions: expect.objectContaining({ cache_ttl_seconds: 300 }),
+        }),
+        expect.objectContaining({
+          meter: "cache_write_text",
+          price: "4.00",
+          conditions: expect.objectContaining({ cache_ttl_seconds: 3600 }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.10",
+          conditions: expect.objectContaining({ service_tier: "batch" }),
+        }),
+      ]),
+    );
+    expect(facts("multilingual-e5-small")).toContainEqual(
+      expect.objectContaining({ meter: "output_text", price: "0" }),
+    );
+    for (const id of ["gemini-omni-flash-preview", "gemini-omni-1.1-flash-preview"])
+      expect(facts(id)).toContainEqual(
+        expect.objectContaining({ meter: "output_video", price: "17.50", unit: "million_tokens" }),
+      );
+    expect(facts("lyria-002")).toContainEqual(
+      expect.objectContaining({ meter: "output_audio", price: "60", unit: "thousand_items" }),
+    );
+    for (const id of ["gemini-embedding-001", "text-embedding-005"]) {
+      const item = models.find(({ model_id }) => model_id === id);
+      expect(item?.price_facts).toEqual([]);
+      expect(item?.raw_price_facts).toHaveLength(4);
+      expect(item?.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          raw: expect.objectContaining({
+            fragment: id === "gemini-embedding-001" ? "$0.00015" : "$0.000025",
+          }),
+        }),
+      );
+    }
+  });
   it("resolves OCR page alternatives from the exact model billing companion", async () => {
     const value = manifest("vertex");
     const source = value.sources.find(({ id }) => id === "vertex-pricing");
@@ -7965,7 +8137,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v7",
+      extractorVersion: "vertex-pricing-v9",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -9461,6 +9633,72 @@ describe("Anthropic adapters", () => {
     });
   });
 
+  it("keeps separate Anthropic cache exceptions and validates Fast support across all rows", async () => {
+    const pricing = (await fixture("anthropic/pricing.md"))
+      .replace(
+        /0\.1x base input price\s*\| Same duration as the preceding write/,
+        "0.1x base input price (0.025x on Claude Fable 5 and Claude Mythos 5; 0.05x on Claude Opus 4.8) | Same duration as the preceding write",
+      )
+      .replace(
+        "Claude Opus 4.8 / Claude Opus 4.7 | $10 / MTok | $50 / MTok",
+        "Claude Opus 4.8 | $10 / MTok | $50 / MTok |\n| Claude Opus 4.7 | $10 / MTok | $50 / MTok",
+      );
+    const items: PricingReconciliationItem[] = [];
+    const models = await anthropicCatalog({
+      overrides: { "/docs/en/about-claude/pricing.md": pricing },
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    for (const [id, price] of [
+      ["claude-fable-5", "0.125"],
+      ["claude-mythos-5", "0.125"],
+      ["claude-opus-4-8", "0.125"],
+    ]) {
+      const model = models.find(({ model_id }) => model_id === id);
+      expect(model).toBeDefined();
+      expect(model?.price_facts).toContainEqual(
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price,
+          conditions: { service_tier: "batch" },
+        }),
+      );
+    }
+    expect(items.some(({ reason_code }) => reason_code === "fast_compatibility_conflict")).toBe(
+      false,
+    );
+  });
+
+  it("reads only the bounded feature metadata model list and preserves code execution pricing", async () => {
+    const original = await fixture("anthropic/code-execution-tool.md");
+    const body =
+      "---\ntitle: Code execution tool\nfeatureMetadata:\n  status: ga\n  supportedModels:\n    - claude-fable-5\n    - claude-opus-4-8\n  supportedPlatforms:\n    Claude API: ga\n---\n" +
+      original.slice(original.indexOf("## Usage and pricing"));
+    const models = await anthropicCatalog({
+      overrides: { "/docs/en/agents-and-tools/tool-use/code-execution-tool.md": body },
+    });
+    const service = models
+      .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+      .find(({ offer_key }) => offer_key === "standalone");
+    expect(service).toBeDefined();
+    expect(service?.model_refs).toEqual(["anthropic/claude-fable-5", "anthropic/claude-opus-4-8"]);
+    expect(service?.raw_price_facts).toContainEqual(
+      expect.objectContaining({ term_key: "monthly-container-allowance" }),
+    );
+    const malformed = await anthropicCatalog({
+      overrides: {
+        "/docs/en/agents-and-tools/tool-use/code-execution-tool.md": body.replace(
+          "    - claude-opus-4-8",
+          "    - [claude-opus-4-8]",
+        ),
+      },
+    });
+    expect(
+      malformed
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .some(({ resource_key }) => resource_key === "code-execution"),
+    ).toBe(false);
+  });
+
   it("accounts for every reviewed Anthropic pricing row or explicit boundary", async () => {
     const items: PricingReconciliationItem[] = [];
     await anthropicCatalog({ onPricingReconciliation: (item) => items.push(item) });
@@ -9924,7 +10162,8 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         locator: {
           kind: "provider_field",
-          value: "usage.iterations[*].output_tokens grouped by usage.iterations[*].model",
+          value:
+            "usage.iterations[*].output_tokens attributed to advisor_message.model or response.model for message/compaction",
         },
       }),
     ]);
@@ -10125,7 +10364,7 @@ describe("Anthropic adapters", () => {
 describe("Databricks adapters", () => {
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v13");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v14");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -10936,6 +11175,56 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it("prices fetched X posts and profiles separately without reusing tool-call counters", async () => {
+    const models = await xaiCatalog(
+      "xai/models.txt",
+      (body) => body,
+      (body) =>
+        body.replace(
+          /^\| X Search \|.*$/m,
+          "| X Search | `x_search` | Search X posts, user profiles, and threads | $5 / 1k posts, $10 / 1k profiles |\n\nX Search is billed per item fetched rather than per call: every post returned by a search or thread fetch, including parent and quoted posts, counts toward the post rate, and every profile returned by a user search counts toward the profile rate.",
+        ),
+    );
+    const facts = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    expect(facts.some(({ resource_key }) => resource_key === "x-search")).toBe(false);
+    for (const [key, amount] of [
+      ["x-search-posts", "5"],
+      ["x-search-profiles", "10"],
+    ]) {
+      const fact = facts.find(({ resource_key }) => resource_key === key);
+      expect(fact).toBeDefined();
+      expect(fact?.price_facts).toEqual([
+        expect.objectContaining({ meter: "retrieval", price: amount, unit: "thousand_items" }),
+      ]);
+    }
+    const value = manifest("xai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI source");
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    for (const [resource, signal] of [
+      ["x-search-posts", "fetched_x_posts"],
+      ["x-search-profiles", "fetched_x_profiles"],
+    ]) {
+      const book = partition?.books.find(
+        ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === resource,
+      );
+      expect(book).toBeDefined();
+      const terms = book?.offers.flatMap(({ terms }) => terms) ?? [];
+      expect(terms).toHaveLength(1);
+      for (const term of terms) {
+        if (term.kind !== "rate") throw new Error("Expected X Search rate");
+        expect(term.variants[0]?.charge_binding?.signal).toMatchObject({ value: signal });
+        expect(term.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
+      }
+    }
+  });
   it("keeps region-specific language prices without weakening identity or same-region conflict checks", async () => {
     const edit =
       (mode: "region" | "same-region" | "identity") =>
@@ -11717,7 +12006,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v14");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v15");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -11838,7 +12127,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v21");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v28");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -11989,6 +12278,214 @@ describe("document adapter", () => {
         { name: "Invoke", path: "model/{modelId}/invoke" },
       ],
     });
+  });
+
+  it("uses a model card's exact scoped token table when the price lists have no model rate", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    const body = (await fixture("bedrock/model-card-kimi-k3.md")).replace(
+      "- **Model launch date:**",
+      "+ **Model launch date:**",
+    );
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.md",
+      body,
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    const kimi = models.find(({ model_id }) => model_id === "moonshotai.kimi-k3");
+    expect(kimi).toMatchObject({
+      pricing_state: "numeric",
+      release_date: "2026-09-18",
+      api_endpoints: expect.arrayContaining([{ name: "Responses", path: "v1/responses" }]),
+    });
+    expect(kimi?.price_facts).toHaveLength(8);
+    expect(
+      kimi?.price_facts
+        .filter(({ meter }) => meter === "cache_write_text")
+        .map(({ price, conditions }) => [price, conditions]),
+    ).toEqual([
+      [
+        "3.75",
+        {
+          endpoint: "bedrock-runtime",
+          deployment_scope: "global_cross_region",
+          service_tier: "standard",
+          cache_ttl_seconds: 1_800,
+        },
+      ],
+      [
+        "4.125",
+        {
+          endpoint: "bedrock-runtime",
+          deployment_scope: "geo_cross_region",
+          service_tier: "standard",
+          inference_geo: "us",
+          cache_ttl_seconds: 1_800,
+        },
+      ],
+    ]);
+    const drifted = linkedBundle(JSON.stringify(bundle));
+    const card = drifted.documents.find(({ url }) =>
+      url.includes("model-card-moonshot-ai-kimi-k3"),
+    );
+    if (card === undefined) throw new Error("Missing Kimi K3 card");
+    card.body = card.body.replace("$4.125", "Contact sales");
+    const findings: PricingReconciliationItem[] = [];
+    const driftedModels = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+      onPricingReconciliation: (item) => findings.push(item),
+    });
+    expect(
+      driftedModels.find(({ model_id }) => model_id === "moonshotai.kimi-k3")?.price_facts,
+    ).toHaveLength(4);
+    expect(findings).toContainEqual({
+      disposition: "unsupported",
+      reason_code: "model_card_price_row_unreadable",
+      sample: "US CRIS",
+    });
+  });
+
+  it("uses the Bedrock OpenAI card's short and long context prices without inventing cache writes", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.md",
+      body: await fixture("bedrock/model-card-openai-tiered.md"),
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    const model = models.find(({ model_id }) => model_id === "openai.gpt-5.5");
+    expect(model?.api_endpoints).toContainEqual({ name: "Responses", path: "openai/v1/responses" });
+    expect(model?.price_facts).toHaveLength(6);
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "input_text")
+        .map(({ price, conditions }) => [
+          price,
+          conditions.context_max_tokens,
+          conditions.context_min_tokens,
+        ]),
+    ).toEqual([
+      ["5.50", 272_000, undefined],
+      ["11.00", undefined, 272_001],
+    ]);
+    expect(model?.price_facts.some(({ meter }) => meter === "cache_write_text")).toBe(false);
+    expect(
+      model?.price_facts.every(({ conditions }) => conditions.endpoint === "bedrock-mantle"),
+    ).toBe(true);
+  });
+
+  it("keeps OpenAI card Geo and Global cross-Region rates on Bedrock Runtime", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.md",
+      body: await fixture("bedrock/model-card-openai-cross.md"),
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    const rates = models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.price_facts;
+    expect(models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.api_endpoints).toEqual(
+      expect.arrayContaining([
+        { name: "Responses", path: "openai/v1/responses" },
+        { name: "Chat Completions", path: "openai/v1/chat/completions" },
+      ]),
+    );
+    expect(rates).toHaveLength(12);
+    expect(
+      rates
+        ?.filter(({ meter }) => meter === "input_text")
+        .map(({ price, conditions }) => [price, conditions.endpoint, conditions.deployment_scope]),
+    ).toEqual([
+      ["11.00", "bedrock-mantle", "in_region"],
+      ["11.00", "bedrock-runtime", "geo_cross_region"],
+      ["10.00", "bedrock-runtime", "global_cross_region"],
+    ]);
+  });
+
+  it("keeps Bedrock Runtime and Mantle availability separate on modern model cards", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.md",
+      body: `# Claude Opus 5.5
+## ![](claude.png) Anthropic — Claude Opus 5.5
+## Model Details
++ **Model launch date:** September 22, 2026
++ **Model lifecycle:** Active
+| Input Modalities | Output Modalities |
+| --- | --- |
+| ![Yes](icon-yes.png) Text | ![Yes](icon-yes.png) Text |
+## Endpoints and APIs supported
+| Endpoint | Supported |
+| --- | --- |
+| bedrock-runtime | ![Yes](icon-yes.png) |
+| bedrock-mantle | ![Yes](icon-yes.png) |
+**APIs supported on \`bedrock-runtime\` endpoint**
+| Messages | Responses |
+| --- | --- |
+| ![Yes](icon-yes.png) | ![No](icon-no.png) |
+**APIs supported on \`bedrock-mantle\` endpoint**
+| Messages | Responses |
+| --- | --- |
+| ![Yes](icon-yes.png) | ![No](icon-no.png) |
+## Programmatic Access
+| Endpoint | Model ID | Geo inference ID | Global inference ID |
+| --- | --- | --- | --- |
+| bedrock-runtime | anthropic.claude-opus-5-5 | us.anthropic.claude-opus-5-5 | global.anthropic.claude-opus-5-5 |
+| bedrock-mantle | anthropic.claude-opus-5-5 | N/A | N/A |
+| bedrock-runtime | N/A | N/A | N/A |
+## Regional Availability
+**Availability using the \`bedrock-runtime\` endpoint**
+| Region | In-Region | Geo | Global |
+| --- | --- | --- | --- |
+| us-east-1 (N. Virginia) | ![No](icon-no.png) | ![Yes](icon-yes.png) | ![Yes](icon-yes.png) |
+| eu-west-1 (Ireland) | Legacy (EOL: 2026-09-30) | ![No](icon-no.png) | ![No](icon-no.png) |
+**Availability using the \`bedrock-mantle\` endpoint**
+| Region | In-Region | Geo | Global |
+| --- | --- | --- | --- |
+| us-east-1 (N. Virginia) | ![Yes](icon-yes.png) | ![No](icon-no.png) | ![No](icon-no.png) |`,
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    expect(models.find(({ model_id }) => model_id === "anthropic.claude-opus-5-5")).toMatchObject({
+      release_date: "2026-09-22",
+      availability: [
+        { region: "us-east-1", deployment_type: "bedrock-mantle/in-region" },
+        { region: "us-east-1", deployment_type: "bedrock-runtime/geo" },
+        { region: "us-east-1", deployment_type: "bedrock-runtime/global" },
+        { region: "eu-west-1", deployment_type: "bedrock-runtime/in-region" },
+      ],
+    });
+    expect(models.some(({ model_id }) => model_id === "N/A")).toBe(false);
   });
 
   it("adds officially supported Bedrock rerank models absent from model cards", async () => {
@@ -18633,6 +19130,60 @@ describe("DashScope adapters", () => {
     ).toEqual([]);
   });
 
+  it("reads USD-prefixed Qwen Omni token and cache-hit prices with their regional scope", async () => {
+    const body = `<section><h2>Qwen-Omni</h2><h4>Singapore</h4><table>
+      <tr><th>Model ID</th><th>Deployment scope</th><th>Input price (per million tokens)</th><th>Cache-hit input price (per million tokens)</th><th>Output price (per million tokens)</th></tr>
+      <tr><td>qwen3.8-omni-flash</td><td>International</td><td>USD 0.15</td><td>USD 0.016</td><td>USD 0.47</td></tr>
+    </table></section>`;
+    const models = parse(source("dashscope-pricing"), await pricingBundle(Promise.resolve(body)));
+    expect(models.find(({ model_id }) => model_id === "qwen3.8-omni-flash")?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.15",
+          conditions: expect.objectContaining({ region: "Singapore" }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.016",
+          conditions: expect.objectContaining({ region: "Singapore" }),
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "0.47",
+          conditions: expect.objectContaining({ region: "Singapore" }),
+        }),
+      ]),
+    );
+  });
+
+  it("reads USD-per-million suffixes and header currency for audio token prices", async () => {
+    const body = `<section><h2>Speech recognition</h2><h4>Singapore</h4><table>
+      <tr><th>Model ID</th><th>Deployment scope</th><th>Input price</th><th>Output price</th></tr>
+      <tr><td>qwen-audio-3.1-asr-flash-streaming</td><td>International</td><td>0.93 USD/million tokens</td><td>0.70 USD/million tokens</td></tr>
+    </table><h2>Speech synthesis</h2><h4>China (Beijing)</h4><table>
+      <tr><th>Model ID</th><th>Input price (USD/million tokens)</th><th>Output price (USD/million tokens)</th></tr>
+      <tr><td>qwen-audio-3.1-tts-next</td><td>0.848</td><td>1.696</td></tr>
+    </table></section>`;
+    const models = parse(source("dashscope-pricing"), await pricingBundle(Promise.resolve(body)));
+    expect(
+      models
+        .find(({ model_id }) => model_id === "qwen-audio-3.1-asr-flash-streaming")
+        ?.price_facts.map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["input_audio", "0.93"],
+      ["output_text", "0.7"],
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "qwen-audio-3.1-tts-next")
+        ?.price_facts.map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["input_text", "0.848"],
+      ["output_audio", "1.696"],
+    ]);
+  });
+
   it("skips one malformed sparse price row without rejecting sibling prices", async () => {
     const findings: SourceContractEvidence[] = [];
     const body = (await fixture("dashscope/pricing.md")).replace(
@@ -19034,7 +19585,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v15",
+      extractorVersion: "dashscope-pricing-v17",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),

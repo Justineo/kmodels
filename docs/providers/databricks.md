@@ -83,6 +83,8 @@ dependency.
   Provisioned Throughput and Batch Inference tables. Read the reviewed token headers and their
   column order, including the optional row qualifier and one-hour cache-write column; discard
   hourly compute tables. Comma-separated version labels expand to exact catalog matches.
+  The capacity heading may qualify DBU per hour with an explicit number of model units; that
+  remains excluded capacity pricing and must not invalidate neighboring token tables.
 - Token cells normalize with their complete published applicability. Regional-processing markers
   expand into mutually exclusive regional and non-regional variants with the documented DBU
   uplift. Promotion markers bind only to the matching note in their table section; inclusive end
@@ -183,6 +185,8 @@ failure keeps catalog collection useful but retains the last accepted Databricks
 Within a fetched page, parsing is claim-local; malformed rows and cells do not reject valid siblings.
 Newly listed callable models may remain with unknown pricing, and pricing coverage is diagnostic
 rather than an admission threshold.
+Rejected open-model and partner-model pricing pages are explicit daily repair candidates even
+when the catalog and independent pricing page were accepted.
 
 Refresh is pure code with no LLM, fuzzy matching, or comparator dependency. First-party pages are
 the publication authority; models.dev and LiteLLM may be used only to audit coverage or reveal

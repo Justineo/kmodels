@@ -60,6 +60,8 @@ const requestResources = new Set([
   "text-to-speech",
   "web-search",
   "x-search",
+  "x-search-posts",
+  "x-search-profiles",
 ]);
 
 export function applyXaiCommercialTopology(
@@ -612,19 +614,23 @@ function resourceTerm(
 ): AtomicPricingTerm {
   if (term.kind !== "rate") return term;
   const meter =
-    resourceKey === "x-search"
-      ? providerMeter(input, "x_search", "Successful xAI X Search executions")
-      : resourceKey === "responses-policy"
-        ? providerMeter(
-            input,
-            "pre_generation_usage_guideline_violation",
-            "Responses requests rejected before generation for an xAI usage-guideline violation",
-          )
-        : resourceKey === "text-to-speech"
-          ? ({ namespace: "kmodels", value: "speech_generation" } as const)
-          : resourceKey === "speech-to-text"
-            ? ({ namespace: "kmodels", value: "transcription" } as const)
-            : term.meter;
+    resourceKey === "x-search-posts"
+      ? providerMeter(input, "x_search_posts", "X posts fetched, including parent and quoted posts")
+      : resourceKey === "x-search-profiles"
+        ? providerMeter(input, "x_search_profiles", "X user profiles fetched by user search")
+        : resourceKey === "x-search"
+          ? providerMeter(input, "x_search", "Successful xAI X Search executions")
+          : resourceKey === "responses-policy"
+            ? providerMeter(
+                input,
+                "pre_generation_usage_guideline_violation",
+                "Responses requests rejected before generation for an xAI usage-guideline violation",
+              )
+            : resourceKey === "text-to-speech"
+              ? ({ namespace: "kmodels", value: "speech_generation" } as const)
+              : resourceKey === "speech-to-text"
+                ? ({ namespace: "kmodels", value: "transcription" } as const)
+                : term.meter;
   return {
     ...term,
     ...(meter === term.meter ? {} : { term_key: resourceKey, meter }),
@@ -717,6 +723,14 @@ function toolSignal(
       keys: ["sdk.server_side_tool_usage.web_search"],
     };
   const values = new Map<string, readonly [string, string, string[]]>([
+    [
+      "x-search-posts",
+      ["fetched_x_posts", "Every X post fetched, including parent and quoted posts", []],
+    ],
+    [
+      "x-search-profiles",
+      ["fetched_x_profiles", "Every X user profile fetched by user search", []],
+    ],
     [
       "x-search",
       [

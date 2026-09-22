@@ -49,7 +49,8 @@ The main pricing and accounting sources are:
   web-tool condition;
 - [Messages](https://platform.claude.com/docs/en/api/messages/create),
   [Advisor](https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool),
-  [compaction](https://platform.claude.com/docs/en/build-with-claude/compaction), and
+  [compaction](https://platform.claude.com/docs/en/build-with-claude/compaction), its
+  [threshold accounting guide](https://platform.claude.com/docs/en/build-with-claude/compaction-threshold), and
   [fallback credit](https://platform.claude.com/docs/en/build-with-claude/fallback-credit) for
   request outcome accounting. These contracts are extracted as pricing-input facts independently
   from the rates, not encoded as informational raw prices;
@@ -80,6 +81,12 @@ one malformed inventory item is skipped without rejecting recognized sibling row
 - Capability claims are taken from their specific first-party compatibility lists or universal
   statements. A missing or changed statement leaves that fact unknown; it does not turn absence
   into `false`.
+- The model overview's explicit statement that all current models support tool use owns the
+  current `tool_call` capability. The optional thinking troubleshooting table supplies exact
+  per-model adaptive/extended thinking support when the overview guide no longer lists model IDs.
+- Feature guides may put exact compatible IDs in the bounded YAML
+  `featureMetadata.supportedModels` list. Read that field structurally, retaining the reviewed
+  legacy inline list. Neither surrounding frontmatter nor a display name establishes compatibility.
 - A newly published model is admitted mechanically from official IDs. Family names are not an
   allowlist.
 
@@ -97,7 +104,10 @@ exclusivity relation is emitted. The US-only inference multiplier is applied onl
 generation threshold in pricing agrees with the data-residency contract.
 
 Published cache columns are checked against the published multipliers, including a source-published
-per-model cache-read override. Conflicting facts are reported and the directly published row remains
+per-model cache-read override. Multiple semicolon-separated override groups remain independent;
+each group binds only its explicitly named models. Fast-mode compatibility is checked against the
+union of all published Fast rows, not against each row in isolation.
+Conflicting facts are reported and the directly published row remains
 authoritative. Pricing-table headings are matched case-insensitively while the exact reviewed
 columns remain required; a trailing numeric note marker on an otherwise exact `MTok` cell is parsed
 only as source annotation. A model without an exact published row stays price-unknown; rates are
@@ -149,7 +159,9 @@ signal.
 
 Each bound token rate publishes one direct quantity method with conditional response mappings for
 the independently evidenced top-level usage field and `usage.iterations[*]` grouped by its reported
-model. If one field drifts, only that mapping disappears; the price and any sibling mapping remain.
+advisor model or the response model for ordinary/compaction iterations. Ordinary and compaction
+entries do not report their own `model` in the reviewed example. If one field drifts, only that
+mapping disappears; the price and any sibling mapping remain.
 Cache-write rates use distinct five-minute and one-hour signals, but those bindings publish no
 quantity methods: the reviewed response contract exposes only aggregate
 `cache_creation_input_tokens`, not an exact TTL split.

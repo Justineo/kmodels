@@ -831,7 +831,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v15",
+        extractorVersion: "anthropic-catalog-v18",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -920,7 +920,15 @@ export const manifests = [
             ],
             ["glossary", "https://platform.claude.com/docs/en/about-claude/glossary.md"],
             ["thinking", "https://platform.claude.com/docs/en/build-with-claude/thinking.md"],
+            [
+              "thinking-troubleshooting",
+              "https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting.md",
+            ],
             ["compaction", "https://platform.claude.com/docs/en/build-with-claude/compaction.md"],
+            [
+              "compaction-threshold",
+              "https://platform.claude.com/docs/en/build-with-claude/compaction-threshold.md",
+            ],
             [
               "tool-use",
               "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md",
@@ -1126,7 +1134,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v21",
+        extractorVersion: "bedrock-catalog-v28",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1352,7 +1360,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v13",
+        extractorVersion: "databricks-catalog-v14",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1860,7 +1868,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "azure-claude-pricing", minModels: 1, maxModels: 50 },
-        extractorVersion: "azure-claude-pricing-v4",
+        extractorVersion: "azure-claude-pricing-v5",
         pricingEvidence: firstPartyPricing(
           "price_book",
           "exact_or_documented_alias",
@@ -2400,7 +2408,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v7",
+        extractorVersion: "vertex-pricing-v9",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
@@ -2911,11 +2919,11 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v3",
+        extractorVersion: "mistral-pricing-v4",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
-        allowedHosts: ["mistral.ai", "raw.githubusercontent.com"],
-        maxResponseBytes: mebibytes(8),
+        allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],
+        maxResponseBytes: mebibytes(48),
         scope: "global",
         exhaustive: false,
         role: "overlay",
@@ -2923,11 +2931,13 @@ export const manifests = [
         pricingRequired: true,
         retainOmittedFacts: true,
         linkedDocuments: {
-          path: /$^/,
+          path: /^\/models\/(?:model-cards\/)?[a-z0-9-]+\/?$/,
           indexFormat: "html",
           minDocuments: 0,
-          maxDocuments: 0,
+          maxDocuments: 40,
           concurrency: 5,
+          optionalDocuments: true,
+          maxDocumentBytes: mebibytes(2),
           documents: fixedDocuments([
             [
               "api-schema",
@@ -3264,7 +3274,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v14",
+        extractorVersion: "xai-catalog-v15",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3650,7 +3660,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v15",
+        extractorVersion: "dashscope-pricing-v17",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

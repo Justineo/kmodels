@@ -62,6 +62,7 @@ interface Card {
   releaseStage: ProviderModel["release_stage"];
   tasks: ModelTask[];
   identityKeys: Set<string>;
+  pricingSection: string | undefined;
 }
 
 type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle" | "bedrock-agent-runtime";
@@ -76,6 +77,7 @@ interface BedrockApiEndpoint {
 interface BedrockAvailability {
   region: string;
   deploymentType: DeploymentType;
+  programmaticEndpoint?: BedrockModelEndpoint;
 }
 
 interface BedrockCardSupport {
@@ -93,7 +95,13 @@ const rerankApi: BedrockApiEndpoint = {
 const bedrockApiDefinitions = new Map<string, Omit<BedrockApiEndpoint, "name">[]>([
   ["Invoke", [{ path: "model/{modelId}/invoke", programmaticEndpoint: "bedrock-runtime" }]],
   ["Converse", [{ path: "model/{modelId}/converse", programmaticEndpoint: "bedrock-runtime" }]],
-  ["Responses", [{ path: "v1/responses", programmaticEndpoint: "bedrock-mantle" }]],
+  [
+    "Responses",
+    [
+      { path: "v1/responses", programmaticEndpoint: "bedrock-runtime" },
+      { path: "v1/responses", programmaticEndpoint: "bedrock-mantle" },
+    ],
+  ],
   [
     "Chat Completions",
     [
@@ -330,6 +338,13 @@ function fact(body: string, label: string): string | undefined {
 
 function humanDate(value: string): string | undefined {
   const normalized = plain(value);
+  const ordinal = normalized.match(/^(\d{1,2})(?:st|nd|rd|th) ([A-Za-z]+) (\d{4})$/i);
+  if (ordinal?.[1] !== undefined && ordinal[2] !== undefined && ordinal[3] !== undefined) {
+    const month = months.get(ordinal[2].toLowerCase());
+    if (month === undefined) return undefined;
+    const result = `${ordinal[3]}-${String(month).padStart(2, "0")}-${ordinal[1].padStart(2, "0")}`;
+    return z.iso.date().safeParse(result).success ? result : undefined;
+  }
   const named = normalized.match(/^([A-Za-z]+)\s+(?:(\d{1,2}),?\s+)?(\d{4})$/);
   if (named !== null) {
     const month = months.get(named[1]?.toLowerCase() ?? "");
@@ -515,7 +530,7 @@ function splitCardSupport(
   const apiTables = new Set<BedrockModelEndpoint>();
   const headings = [
     ...content.matchAll(
-      /^\*\*APIs supported on `(bedrock-runtime|bedrock-mantle)` endpoint\*\*$/gm,
+      /^\*\*APIs supported on `(bedrock-runtime|bedrock-mantle)`(?: endpoint)?\*\*$/gm,
     ),
   ];
   if (headings.length === 0)
@@ -635,7 +650,13 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
     const endpoint = cells[endpointIndex];
     if (!isCardEndpoint(endpoint)) continue;
     const modelId = cells[idIndex];
-    if (modelId === undefined || !modelIdSchema.safeParse(modelId).success) continue;
+    if (
+      modelId === undefined ||
+      modelId !== modelId.toLowerCase() ||
+      !modelId.includes(".") ||
+      !modelIdSchema.safeParse(modelId).success
+    )
+      continue;
     const current = result.get(modelId) ?? {
       aliases: new Set<string>(),
       endpoints: new Set<BedrockModelEndpoint>(),
@@ -656,21 +677,210 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
   return result;
 }
 
-function cardAvailability(body: string): BedrockAvailability[] {
+function modelCardRates(
+  content: string | undefined,
+  access: CardId,
+  sourceId: string,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): SourcePriceFact[] {
+  if (
+    content === undefined ||
+    !/All prices are per 1 million tokens\. Pricing shown is for the Standard tier\./.test(content)
+  )
+    return [];
+  const table = markdownTable(content, [
+    "Inference option",
+    "Input",
+    "Output",
+    "Cache read",
+    "Cache write (30 min)",
+  ]);
+  if (table === undefined || !access.endpoints.has("bedrock-runtime")) return [];
+  const prices: SourcePriceFact[] = [];
+  for (const row of table.rows) {
+    const option = row[table.header.indexOf("Inference option")];
+    const scope = option === "Global CRIS" ? "global" : option === "US CRIS" ? "geo" : undefined;
+    if (scope === undefined || !access.deploymentTypes.has(scope)) continue;
+    const columns = [
+      ["Input", "input_text"],
+      ["Output", "output_text"],
+      ["Cache read", "cache_read_text"],
+      ["Cache write (30 min)", "cache_write_text"],
+    ] as const;
+    const parsed = columns.map(([header, meter]) => {
+      const raw = row[table.header.indexOf(header)] ?? "";
+      const amount = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+      return amount === undefined
+        ? undefined
+        : ({
+            meter,
+            price: amount,
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: {
+              endpoint: "bedrock-runtime",
+              deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
+              service_tier: "standard",
+              ...(scope === "geo" ? { inference_geo: "us" } : {}),
+              ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+            },
+            source_ref: sourceId,
+            derived: false,
+            raw_price: raw,
+            raw_unit: "1 million tokens",
+          } satisfies SourcePriceFact);
+    });
+    if (parsed.some((rate) => rate === undefined)) {
+      onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "model_card_price_row_unreadable",
+        sample: option,
+      });
+      continue;
+    }
+    prices.push(...parsed.filter((rate) => rate !== undefined));
+  }
+  return prices;
+}
+
+function openAiModelCardRates(
+  content: string | undefined,
+  access: CardId,
+  sourceId: string,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): SourcePriceFact[] {
+  if (
+    content === undefined ||
+    !content.includes("All prices are in USD per 1 million tokens for the Standard tier.") ||
+    !content.includes("Commercial In-Region prices include a 10% fee over OpenAI rates.")
+  )
+    return [];
+  const prices: SourcePriceFact[] = [];
+  for (const [heading, contextConditions] of [
+    [
+      "Commercial Regions — short context (272K input tokens or fewer)",
+      { context_max_tokens: 272_000 },
+    ],
+    [
+      "Commercial Regions — long context (more than 272K input tokens)",
+      { context_min_tokens: 272_001 },
+    ],
+  ] as const) {
+    const start = content.indexOf(`### ${heading}`);
+    if (start < 0) continue;
+    const following = content.slice(start + heading.length + 4);
+    const end = following.search(/\n### /);
+    const block = end < 0 ? following : following.slice(0, end);
+    const table = markdownTable(block, [
+      "Inference option",
+      "Input",
+      "Input — 30m cache write",
+      "Input — cache read",
+      "Output",
+    ]);
+    if (table === undefined) continue;
+    for (const row of table.rows) {
+      const option = row[table.header.indexOf("Inference option")];
+      const deploymentType =
+        option === "In-Region"
+          ? "in-region"
+          : option === "Geo CRIS"
+            ? "geo"
+            : option === "Global CRIS"
+              ? "global"
+              : undefined;
+      if (deploymentType === undefined || !access.deploymentTypes.has(deploymentType)) continue;
+      const endpoint = deploymentType === "in-region" ? "bedrock-mantle" : "bedrock-runtime";
+      if (!access.endpoints.has(endpoint)) continue;
+      for (const [column, meter] of [
+        ["Input", "input_text"],
+        ["Input — 30m cache write", "cache_write_text"],
+        ["Input — cache read", "cache_read_text"],
+        ["Output", "output_text"],
+      ] as const) {
+        const raw = row[table.header.indexOf(column)] ?? "";
+        if (raw === "—") continue;
+        const price = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+        if (price === undefined) {
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "model_card_price_row_unreadable",
+            sample: `${heading}: ${column}`,
+          });
+          continue;
+        }
+        prices.push({
+          meter,
+          price,
+          currency: "USD",
+          unit: "million_tokens",
+          conditions: {
+            endpoint,
+            deployment_scope:
+              deploymentType === "in-region"
+                ? "in_region"
+                : deploymentType === "geo"
+                  ? "geo_cross_region"
+                  : "global_cross_region",
+            service_tier: "standard",
+            ...contextConditions,
+            ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+          },
+          source_ref: sourceId,
+          derived: false,
+          raw_price: raw,
+          raw_unit: "1 million tokens",
+        });
+      }
+    }
+  }
+  return prices;
+}
+
+function cardAvailability(body: string, observedAt: string): BedrockAvailability[] {
   const content = section(body, "Regional Availability");
   if (content === undefined) throw new Error("Bedrock model card omitted Regional Availability");
-  const table = markdownTable(content, ["Region", "In-Region", "Geo", "Global"]);
-  if (table === undefined)
-    throw new Error("Bedrock model card omitted its regional availability table");
-  const { header } = table;
-  const regionIndex = header.indexOf("Region");
   const availability: BedrockAvailability[] = [];
-  for (const cells of table.rows) {
-    const region = plain(cells[regionIndex] ?? "").match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
-    if (region === undefined) throw new Error("Bedrock regional availability omitted a region");
-    for (const [deploymentType, heading] of availabilityColumns)
-      if (supported(cells[header.indexOf(heading)] ?? ""))
-        availability.push({ region, deploymentType });
+  const headings = [
+    ...content.matchAll(
+      /^\*\*Availability using the `(bedrock-runtime|bedrock-mantle)` endpoint\*\*$/gm,
+    ),
+  ];
+  const blocks =
+    headings.length === 0
+      ? [{ content, programmaticEndpoint: undefined }]
+      : headings.map((heading, index) => ({
+          content: content.slice(
+            (heading.index ?? 0) + heading[0].length,
+            headings[index + 1]?.index ?? content.length,
+          ),
+          programmaticEndpoint:
+            heading[1] === "bedrock-runtime"
+              ? ("bedrock-runtime" as const)
+              : ("bedrock-mantle" as const),
+        }));
+  for (const block of blocks) {
+    const table = markdownTable(block.content, ["Region", "In-Region", "Geo", "Global"]);
+    if (table === undefined)
+      throw new Error("Bedrock model card omitted its regional availability table");
+    const { header } = table;
+    const regionIndex = header.indexOf("Region");
+    for (const cells of table.rows) {
+      const region = plain(cells[regionIndex] ?? "").match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
+      if (region === undefined) throw new Error("Bedrock regional availability omitted a region");
+      for (const [deploymentType, heading] of availabilityColumns) {
+        const raw = cells[header.indexOf(heading)] ?? "";
+        const legacyDate = raw.match(/^Legacy \(EOL: (\d{4}-\d{2}-\d{2})\)$/)?.[1];
+        if (supported(raw) || (legacyDate !== undefined && legacyDate > observedAt.slice(0, 10)))
+          availability.push({
+            region,
+            deploymentType,
+            ...(block.programmaticEndpoint === undefined
+              ? {}
+              : { programmaticEndpoint: block.programmaticEndpoint }),
+          });
+      }
+    }
   }
   if (availability.length === 0)
     throw new Error("Bedrock model card contained no regional availability");
@@ -791,9 +1001,9 @@ function parseCard(
     .map((line) => line.trim())
     .find((line) => line !== "" && !line.startsWith("<a ") && !line.startsWith("+ "));
   const cardSupport = cardTable(body, onPricingReconciliation);
-  const documentedResponsePath = body.match(
-    /available on the `([^`]+)` path on the `bedrock-mantle` endpoint/i,
-  )?.[1];
+  const documentedResponsePath =
+    body.match(/available on the `([^`]+)` path on the `bedrock-mantle` endpoint/i)?.[1] ??
+    body.match(/On `bedrock-mantle`, this model is served at `\/([^`]+)`/i)?.[1];
   const responsePath =
     documentedResponsePath === undefined ||
     /^(?:[a-z0-9-]+\/)*v1\/responses$/.test(documentedResponsePath)
@@ -805,11 +1015,20 @@ function parseCard(
       reason_code: "model_card_response_path_unsupported",
       sample: `${name}: ${documentedResponsePath}`,
     });
+  const openAiMantleBase =
+    /On `bedrock-mantle`, both APIs use the `\/openai\/v1` base path, not `\/v1`/.test(body);
+  const openAiRuntimeBase =
+    /On `bedrock-runtime`, the base URL is ["`]?https:\/\/bedrock-runtime\.\{region\}\.amazonaws\.com\/openai\/v1/.test(
+      body,
+    );
   const apiEndpoints = cardSupport.apiEndpoints.flatMap((endpoint) => {
-    if (endpoint.name !== "Responses" || endpoint.programmaticEndpoint !== "bedrock-mantle")
-      return [endpoint];
-    if (documentedResponsePath !== undefined && responsePath === undefined) return [];
-    return responsePath === undefined ? [endpoint] : [{ ...endpoint, path: responsePath }];
+    if (endpoint.name !== "Responses" && endpoint.name !== "Chat Completions") return [endpoint];
+    if (endpoint.programmaticEndpoint === "bedrock-runtime")
+      return openAiRuntimeBase ? [{ ...endpoint, path: `openai/${endpoint.path}` }] : [endpoint];
+    if (endpoint.programmaticEndpoint !== "bedrock-mantle") return [endpoint];
+    if (endpoint.name === "Responses" && documentedResponsePath !== undefined)
+      return responsePath === undefined ? [] : [{ ...endpoint, path: responsePath }];
+    return openAiMantleBase ? [{ ...endpoint, path: `openai/${endpoint.path}` }] : [endpoint];
   });
   const cardIds = programmaticAccess(body, name);
   const programmaticEndpoints = new Set(
@@ -897,7 +1116,7 @@ function parseCard(
     ids: cardIds,
     modalities: cardSupport.modalities,
     apiEndpoints,
-    availability: cardAvailability(body),
+    availability: cardAvailability(body, observedAt),
     capabilities,
     limits,
     releaseDate,
@@ -907,6 +1126,7 @@ function parseCard(
     releaseStage,
     tasks,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
+    pricingSection: section(body, "Pricing"),
   };
 }
 
@@ -966,6 +1186,7 @@ function supplementalRerankCards(documents: BedrockDocuments): Card[] {
         releaseStage: "unknown",
         tasks: ["reranking"],
         identityKeys: cardIdentityKeys(name, publisher, ids),
+        pricingSection: undefined,
       },
     ];
   });
@@ -2774,7 +2995,30 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
       const current = models.get(id);
       if (current !== undefined && current.name !== card.name)
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
-      const pricing = prices.modelRates.get(id) ?? [];
+      const listedPricing = prices.modelRates.get(id) ?? [];
+      const pricing =
+        listedPricing.length > 0
+          ? listedPricing
+          : [
+              ...modelCardRates(
+                card.pricingSection,
+                access,
+                input.source.id,
+                input.onPricingReconciliation,
+              ),
+              ...openAiModelCardRates(
+                card.pricingSection,
+                access,
+                input.source.id,
+                input.onPricingReconciliation,
+              ),
+            ];
+      if (listedPricing.length === 0 && pricing.length > 0)
+        input.onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "model_card_public_rate",
+          sample: id,
+        });
       const apiEndpoints = [
         ...new Map(
           card.apiEndpoints
@@ -2787,10 +3031,11 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
       ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
       const availability = card.availability
         .filter(({ deploymentType }) => access.deploymentTypes.has(deploymentType))
-        .flatMap(({ region, deploymentType }) =>
+        .flatMap(({ region, deploymentType, programmaticEndpoint }) =>
           [...access.endpoints].flatMap((endpoint) =>
-            endpoint === "bedrock-mantle" &&
-            (deploymentType !== "in-region" || !supportedMantleRegions.has(region))
+            (programmaticEndpoint !== undefined && endpoint !== programmaticEndpoint) ||
+            (endpoint === "bedrock-mantle" &&
+              (deploymentType !== "in-region" || !supportedMantleRegions.has(region)))
               ? []
               : [{ region, deployment_type: `${endpoint}/${deploymentType}` }],
           ),

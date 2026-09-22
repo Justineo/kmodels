@@ -98,8 +98,13 @@ refresh mechanically while preserving their exact applicability.
   published rates differ.
 - Each paid server-side tool is a provider-resource book scoped to exact supported models.
   That scope already expresses applicability, so the partition does not repeat it as
-  `compatible_with` relations. The model rate and each successful paid tool call are additive.
-- The image-generation tool reuses the exact Imagine rate facts. xAI reports successful
+  `compatible_with` relations. The model rate and each separately billed tool quantity are additive.
+  X Search's current table charges separately per fetched post (including parent and quoted posts)
+  and fetched user profile. These use distinct provider resources and item quantities; a successful
+  tool-call counter cannot substitute for either quantity. The legacy per-call layout remains
+  supported only when that rate is actually published.
+- The image-generation tool reuses the exact Imagine model named by its dedicated tool guide,
+  resolved against an existing public catalog identity. xAI reports successful
   calls, but the tool does not expose the resolution/quality needed to choose a variant,
   so those variants remain displayed without an automatic charge binding.
 - The pre-generation violation amount is normalized and displayed, but stays unbound
@@ -123,21 +128,21 @@ retain. A calculator may choose any one complete quantity method published on a 
 binding; alternatives are not additive. Within one method, the closed calculation
 graph defines the arithmetic and enforces signal units.
 
-| Surface           | Published calculator inputs                                                                                            | Calculation and aggregation                                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Chat Completions  | prompt text, cached prompt text, prompt image, completion, reasoning, total prompt tokens, and realized service tier   | uncached text = prompt text − cached text; output = completion + reasoning; aggregate per request                  |
-| Chat streaming    | the same usage fields from the terminal usage chunk                                                                    | the same formulas; absence of the terminal chunk leaves the exact quantity unavailable                             |
-| Responses         | aggregate input, cached input, output, and realized service tier                                                       | uncached text = input − cached only for text-only models; output is direct                                         |
-| xAI SDK agent     | uncached prompt text, total prompt, cached prompt text, prompt image, completion, and reasoning tokens                 | direct text/cache/image; output = completion + reasoning                                                           |
-| Batch text        | the corresponding Chat or Responses usage object in each successful result item                                        | the same endpoint-specific formulas, aggregated per result item                                                    |
-| Imagine image     | accepted source-image count, successful output-array length, effective resolution, and effective quality               | input images and completed outputs are additive quantities; resolution and quality select variants                 |
-| Imagine video     | accepted source-image count, accepted source-video duration, completed video duration, and effective output resolution | source media and completed seconds are additive quantities; resolution selects the output variant                  |
-| Batch media       | successful image-result array length or completed video duration in each result item                                   | aggregate per result item; request media and selectors still come from the accepted original request               |
-| Speech to Speech  | accepted input-audio seconds, emitted output-audio seconds, and billable text-input-event count                        | billed audio = accepted input + emitted output, aggregated per session; billable text events are an additive meter |
-| Text to Speech    | accepted REST text billing characters or accepted streaming `text.delta` billing characters                            | provider-owned `tts_utterance` aggregation prevents REST and streaming fragments from being double-counted         |
-| Speech to Text    | successful REST response duration or terminal streaming transcript duration                                            | processed audio seconds, aggregated per REST request or streaming session                                          |
-| Server-side tools | successful Web Search, X Search, Code Execution, and Collections Search counters from `server_side_tool_usage`         | each provider category binds to its own successful-call meter                                                      |
-| Image tool        | completed `image_generation_call` outputs                                                                              | output count is bound per request; resolution and quality stay unresolved                                          |
+| Surface           | Published calculator inputs                                                                                                                     | Calculation and aggregation                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Chat Completions  | prompt text, cached prompt text, prompt image, completion, reasoning, total prompt tokens, and realized service tier                            | uncached text = prompt text − cached text; output = completion + reasoning; aggregate per request                  |
+| Chat streaming    | the same usage fields from the terminal usage chunk                                                                                             | the same formulas; absence of the terminal chunk leaves the exact quantity unavailable                             |
+| Responses         | aggregate input, cached input, output, and realized service tier                                                                                | uncached text = input − cached only for text-only models; output is direct                                         |
+| xAI SDK agent     | uncached prompt text, total prompt, cached prompt text, prompt image, completion, and reasoning tokens                                          | direct text/cache/image; output = completion + reasoning                                                           |
+| Batch text        | the corresponding Chat or Responses usage object in each successful result item                                                                 | the same endpoint-specific formulas, aggregated per result item                                                    |
+| Imagine image     | accepted source-image count, successful output-array length, effective resolution, and effective quality                                        | input images and completed outputs are additive quantities; resolution and quality select variants                 |
+| Imagine video     | accepted source-image count, accepted source-video duration, completed video duration, and effective output resolution                          | source media and completed seconds are additive quantities; resolution selects the output variant                  |
+| Batch media       | successful image-result array length or completed video duration in each result item                                                            | aggregate per result item; request media and selectors still come from the accepted original request               |
+| Speech to Speech  | accepted input-audio seconds, emitted output-audio seconds, and billable text-input-event count                                                 | billed audio = accepted input + emitted output, aggregated per session; billable text events are an additive meter |
+| Text to Speech    | accepted REST text billing characters or accepted streaming `text.delta` billing characters                                                     | provider-owned `tts_utterance` aggregation prevents REST and streaming fragments from being double-counted         |
+| Speech to Text    | successful REST response duration or terminal streaming transcript duration                                                                     | processed audio seconds, aggregated per REST request or streaming session                                          |
+| Server-side tools | successful Web Search, Code Execution, and Collections Search counters from `server_side_tool_usage`; separately supplied X post/profile counts | each category uses its own billed quantity; X item quantities have no reviewed acquisition path                    |
+| Image tool        | completed `image_generation_call` outputs                                                                                                       | output count is bound per request; resolution and quality stay unresolved                                          |
 
 The endpoint-specific distinctions are intentional:
 
@@ -171,6 +176,9 @@ count.
 - File Attachment Search has a published successful-call rate, but the reviewed public
   result contract has no stable category counter. Its semantic charge binding remains,
   without an acquisition method.
+- X Search post/profile rates have exact item semantics but no reviewed returned-item counters.
+  Their bindings require caller-supplied counts; `server_side_tool_usage.x_search` counts calls
+  and must not be mapped to these items.
 - Multimodal Responses input has no documented text/image token breakdown. Cache and
   output remain bindable, but input decomposition must come from a more specific
   first-party signal before it can be automated.
