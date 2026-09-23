@@ -212,24 +212,9 @@ function record(
   input.onPricingReconciliation?.({ disposition, reason_code });
 }
 
-function service(
+function resource(
   input: Input,
-  key: string,
-  name: string,
-  refs: string[],
-): SourceCommercialPricingFact {
-  return {
-    ...commercialResource(input.source.id, `service:${key}`, name, "service", key, refs, "usage"),
-    offer_key: key,
-    offer_name: name,
-    pricing_state: "numeric",
-    price_facts: [],
-    raw_price_facts: [],
-  };
-}
-
-function capacity(
-  input: Input,
+  kind: "service" | "capacity",
   key: string,
   name: string,
   refs: string[],
@@ -237,14 +222,14 @@ function capacity(
   return {
     ...commercialResource(
       input.source.id,
-      `capacity:${key}`,
+      `${kind}:${key}`,
       name,
-      "capacity",
+      kind,
       key,
       refs,
-      "capacity",
+      kind === "capacity" ? "capacity" : "usage",
     ),
-    offer_key: "instance-hour",
+    offer_key: kind === "capacity" ? "instance-hour" : key,
     offer_name: name,
     pricing_state: "numeric",
     price_facts: [],
@@ -258,15 +243,22 @@ function infrastructureFacts(
   modelRefs: string[],
 ): SourceCommercialPricingFact[] {
   const data = priceListSchema.parse(JSON.parse(body));
-  const dataProcessing = service(
+  const dataProcessing = resource(
     input,
+    "service",
     "endpoint-data-processing",
     "Endpoint data processing",
     modelRefs,
   );
   // Serverless deployment is conditional and excludes Marketplace/GPU containers. No
   // blanket model references: this service book does not assert model compatibility.
-  const serverless = service(input, "serverless-inference", "Serverless inference execution", []);
+  const serverless = resource(
+    input,
+    "service",
+    "serverless-inference",
+    "Serverless inference execution",
+    [],
+  );
   const hosting = new Map<string, SourceCommercialPricingFact>();
   for (const [sku, product] of Object.entries(data.products)) {
     const a = product.attributes;
@@ -299,7 +291,13 @@ function infrastructureFacts(
       : isServerless
         ? serverless
         : (hosting.get(instance) ??
-          capacity(input, `hosting-${instance}`, `SageMaker hosting · ${instance}`, []));
+          resource(
+            input,
+            "capacity",
+            `hosting-${instance}`,
+            `SageMaker hosting · ${instance}`,
+            [],
+          ));
     if (isHosting) hosting.set(instance, fact);
     const terms = Object.values(data.terms.OnDemand[sku] ?? {});
     if (terms.length !== 1)
@@ -410,9 +408,16 @@ function marketplaceFacts(
     record(input, "unresolved", "sagemaker_marketplace_public_pricing_unavailable");
     return [];
   }
-  const fact = service(input, `marketplace-${id}`, "Marketplace inference software", refs);
-  const hourly = capacity(
+  const fact = resource(
     input,
+    "service",
+    `marketplace-${id}`,
+    "Marketplace inference software",
+    refs,
+  );
+  const hourly = resource(
+    input,
+    "capacity",
     `marketplace-software-${id}`,
     "Marketplace real-time software",
     refs,
@@ -477,12 +482,13 @@ function marketplaceFacts(
         record(input, "raw", "sagemaker_marketplace_unreviewed_realtime_meter");
         continue;
       }
+      const target = isHourly ? hourly : fact;
       if (
         card.unit !== (isHourly ? "HostHrs" : "Requests") ||
         card.regionalPrices.length !== 0 ||
         card.dimensionLabels.length !== 1
       ) {
-        (isHourly ? hourly : fact).raw_price_facts.push(
+        target.raw_price_facts.push(
           rawPricingFact(
             input.source.id,
             `${id}:${card.dimensionKey}`,
@@ -505,7 +511,7 @@ function marketplaceFacts(
         );
         continue;
       }
-      (isHourly ? hourly : fact).price_facts.push({
+      target.price_facts.push({
         ...publishedRate(
           isHourly ? "instance_hour" : "inference",
           card.price,

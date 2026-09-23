@@ -37,6 +37,19 @@ const signals = new Map([
   ],
 ]);
 
+const capacitySignals = {
+  marketplace: {
+    key: "marketplace_billed_software_instance_time",
+    definition:
+      "Marketplace-billed software instance-time, prorated to the minute and expressed in instance-seconds",
+  },
+  hosting: {
+    key: "sagemaker_billed_hosting_instance_time",
+    definition:
+      "AWS-billed hosting instance-time, expressed in instance-seconds; the price list does not establish a billing minimum",
+  },
+};
+
 function marketplaceModelBooks(book: AtomicPricingBook): AtomicPricingBook[] {
   if (
     book.scope.kind !== "provider_resource" ||
@@ -126,35 +139,21 @@ export function applySagemakerCommercialTopology(
           ...offer,
           terms: offer.terms.map((term) =>
             bindRateTerm(term, (meter, variant) => {
-              if (meter.namespace === "kmodels" && meter.value === "provisioned_capacity") {
-                const marketplace =
-                  book.scope.kind === "provider_resource" &&
-                  book.scope.resource_key.startsWith("marketplace-software-");
-                const key = marketplace
-                  ? "marketplace_billed_software_instance_time"
-                  : "sagemaker_billed_hosting_instance_time";
-                addAtom(input, {
-                  kind: "usage_signal",
-                  key,
-                  definition: marketplace
-                    ? "Marketplace-billed software instance-time, prorated to the minute and expressed in instance-seconds"
-                    : "AWS-billed hosting instance-time, expressed in instance-seconds; the price list does not establish a billing minimum",
-                  unit: variant.price.per,
-                  resolution_phase: "account",
-                });
-                return {
-                  signal: { namespace: "provider", provider_id: input.provider_id, value: key },
-                  aggregation: "resource",
-                  observations: [rawEvidence(variant.observation)],
-                };
-              }
-              const signal = signals.get(meter.value);
+              const isCapacity =
+                meter.namespace === "kmodels" && meter.value === "provisioned_capacity";
+              const marketplace =
+                isCapacity &&
+                book.scope.kind === "provider_resource" &&
+                book.scope.resource_key.startsWith("marketplace-software-");
+              const signal = isCapacity
+                ? capacitySignals[marketplace ? "marketplace" : "hosting"]
+                : signals.get(meter.value);
               if (signal === undefined) return undefined;
               addAtom(input, {
                 kind: "usage_signal",
                 ...signal,
                 unit: variant.price.per,
-                resolution_phase: "outcome",
+                resolution_phase: isCapacity ? "account" : "outcome",
               });
               return {
                 signal: {
@@ -162,7 +161,7 @@ export function applySagemakerCommercialTopology(
                   provider_id: input.provider_id,
                   value: signal.key,
                 },
-                aggregation: "request",
+                aggregation: isCapacity ? "resource" : "request",
                 observations: [rawEvidence(variant.observation)],
               };
             }),
