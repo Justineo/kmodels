@@ -72,7 +72,8 @@ export interface ModelPricingView {
   mechanismRefsByRelatedOffer: ReadonlyMap<string, readonly string[]>;
   optionalServices: PricingOffer[];
   automaticComponents: PricingOffer[];
-  plansAndCapacity: PricingOffer[];
+  capacity: PricingOffer[];
+  plans: PricingOffer[];
   standaloneOffers: PricingOffer[];
   snapshot?: ProviderPricingSnapshot;
 }
@@ -219,7 +220,8 @@ export function modelPricingViewFromIndex(
     mechanismRefsByRelatedOffer: new Map<string, readonly string[]>(),
     optionalServices: [],
     automaticComponents: [],
-    plansAndCapacity: [],
+    capacity: [],
+    plans: [],
     standaloneOffers: [],
   };
   const projectedBooks = (index.books.get(model.uid) ?? []).filter(
@@ -293,22 +295,26 @@ export function modelPricingViewFromIndex(
     ),
   );
   const classified = new Set([...automaticComponents, ...optionalServices].map(({ id }) => id));
-  const plansAndCapacity = uniqueOffers(
+  const capacity = uniqueOffers(
     resources.flatMap(({ book, offer }) =>
-      !classified.has(offer.id) &&
-      (isStandardResourceKind(book, "plan") || isStandardResourceKind(book, "capacity"))
-        ? [offer]
-        : [],
+      !classified.has(offer.id) && isStandardResourceKind(book, "capacity") ? [offer] : [],
     ),
   );
-  for (const offer of plansAndCapacity) classified.add(offer.id);
+  for (const offer of capacity) classified.add(offer.id);
+  const plans = uniqueOffers(
+    resources.flatMap(({ book, offer }) =>
+      !classified.has(offer.id) && isStandardResourceKind(book, "plan") ? [offer] : [],
+    ),
+  );
+  for (const offer of plans) classified.add(offer.id);
   const standaloneOffers = uniqueOffers(
     resources.flatMap(({ offer }) => (classified.has(offer.id) ? [] : [offer])),
   );
   const relatedOffers = [
     ...optionalServices,
     ...automaticComponents,
-    ...plansAndCapacity,
+    ...capacity,
+    ...plans,
     ...standaloneOffers,
   ];
   const mechanismRefsByRelatedOffer = new Map(
@@ -329,7 +335,8 @@ export function modelPricingViewFromIndex(
     mechanismRefsByRelatedOffer,
     optionalServices,
     automaticComponents,
-    plansAndCapacity,
+    capacity,
+    plans,
     standaloneOffers,
     ...metadata,
   };
@@ -627,6 +634,8 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
     return [base, scaled("3600000000", "1M tokens·hour")];
   if (standardUnitProduct(value, "accelerator", "second"))
     return [base, scaled("3600", "accelerator·hour")];
+  if (standardUnitProduct(value, "instance", "second"))
+    return [scaled("3600", "instance·hour"), base];
   if (standardUnitProduct(value, "byte", "second"))
     return [scaled("92771293593600", "GiB·day"), scaled("86400000000000", "GB·day"), base];
   if (

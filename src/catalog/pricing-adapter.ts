@@ -72,6 +72,7 @@ export type PublishedPricingModel = Pick<
   ParsedProviderModel,
   | "api_endpoints"
   | "capabilities"
+  | "deployment"
   | "modalities"
   | "model_id"
   | "name"
@@ -268,7 +269,7 @@ function applyCommercialTopology(
     case "openai":
       return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
     case "amazon-sagemaker":
-      return applySagemakerCommercialTopology(input);
+      return applySagemakerCommercialTopology(input, publishedModels);
     case "vercel":
       return applyVercelCommercialTopology(input, pricingInputs);
     case "vertex":
@@ -1057,6 +1058,11 @@ function normalizedUnit(
         { unit: { namespace: "kmodels", value: "accelerator" }, power: 1 },
         { unit: standard("second"), power: 1, scale: "hour" },
       ]);
+    case "instance_hour":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "instance" }, power: 1 },
+        { unit: standard("second"), power: 1, scale: "hour" },
+      ]);
     case "unit_hour":
       return canonicalizeSourceUnit([
         {
@@ -1372,6 +1378,8 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
       return standard("session_runtime");
     case "gpu_hour":
       return standard("compute");
+    case "instance_hour":
+      return standard("provisioned_capacity");
     case "provisioned_throughput":
       return standard("provisioned_capacity");
     case "policy_enforcement":
@@ -1523,8 +1531,9 @@ function addScope(context: AdapterContext, sourceRef: string, modelRefs: readonl
 
 function rateMode(rate: SourcePriceFact): "usage" | "capacity" {
   if (rate.meter === "batch_inference") return "usage";
-  return ["gpu_hour", "provisioned_throughput"].includes(rate.meter) ||
+  return ["gpu_hour", "instance_hour", "provisioned_throughput"].includes(rate.meter) ||
     [
+      "instance_hour",
       "unit_hour",
       "unit_week",
       "unit_month",

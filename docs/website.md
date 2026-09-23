@@ -90,14 +90,15 @@ Status: implemented core; provider pricing convergence is in progress
   secondary flat-price data source. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `[Run mode when selectable] → model rates → collapsed add-ons and included
-services → pricing notes`. The first mechanism in
+- The detail flow is `[capacity charges when linked] → [Run mode when selectable] → model rates
+→ collapsed related services → pricing notes`. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
   recommendation, or cheapest-offer choice. A sole mechanism is named as the Run mode in the model
   rate block so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
   from the rates.
-  The selected mechanism remains the context for the entire cost breakdown; exact mechanism
-  references filter its related costs. The model rate block is primary. Optional services,
+  The selected mechanism remains the context for its request-cost breakdown; exact mechanism
+  references filter its related costs. Public running-capacity rates occupy a separate block and
+  are never converted to per-request prices. The model rate block is primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
   closed disclosure by default because they do not change the base model rates. The disclosure
   explains that these items are separate and expands them in that order. Each
@@ -111,8 +112,8 @@ services → pricing notes`. The first mechanism in
   separately and never combined
   into a total. When Run mode is selectable, the selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
-  kinds `Usage add-on`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
-  expose the schema term `optional`. Account plans and capacity are omitted.
+  kinds `Service charge`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
+  expose the schema term `optional`. Account plans and prepaid commitments are omitted.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
   explanatory prose already implied by the control. Multiple mechanism choices form a compact
@@ -155,8 +156,9 @@ services → pricing notes`. The first mechanism in
   Unresolved unequal or
   partial alternatives remain hidden until their required controls are chosen; the control labels
   and empty choices communicate that requirement without a repeated section heading or prompt.
-  Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
-  rate-book UI. The controls resolve exact applicable rates but do not estimate
+  Account enrollment, settlement, and plan selectors are outside the Gateway
+  rate-book UI. Capacity selectors are shown only for linked public running-resource rates.
+  The controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state. A resolved plan boundary appears once in
   a compact, icon-led status band instead of being repeated on every state and rate; unresolved

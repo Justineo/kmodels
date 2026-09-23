@@ -217,7 +217,16 @@ function pricingCoverage(
   const rawFacts = new Set<string>();
 
   for (const book of pricing.books) {
-    if (book.provider_id !== providerId || book.scope.kind !== "models") continue;
+    if (
+      book.provider_id !== providerId ||
+      (book.scope.kind !== "models" &&
+        !(
+          book.scope.kind === "provider_resource" &&
+          book.scope.resource_kind.namespace === "kmodels" &&
+          book.scope.resource_kind.value === "capacity"
+        ))
+    )
+      continue;
     const modelRefs = book.scope.model_refs.filter((modelRef) => current.has(modelRef));
     for (const modelRef of modelRefs) offers.add(modelRef);
     const hasNormalizedRate = book.offers.some((offer) =>

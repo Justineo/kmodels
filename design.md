@@ -30,11 +30,11 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Source semantic audit](docs/semantic-audit.md): manual Jev experiment, evidence replay, and evaluation limits; not scheduled.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
-  request-attributable rates, scoped usage signals, selector inputs and exact calculations, best-effort normalization and raw
+  request and inference-capacity rates, scoped usage signals, selector inputs and exact calculations, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
-  invocation-cost admission boundary, charge binding, presentation, conflict resolution, and
+  inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
 

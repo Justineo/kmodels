@@ -107,8 +107,9 @@ Status: implemented
   publication have separate columns because fresh catalog data can advance while failed pricing is
   retained. Summary enum cells use only emoji; the structured report retains stable machine-readable
   values and a collapsible set of compact legend tables defines every icon by column and boundary.
-  Coverage uses ✅ for resolved models and ❓ for unresolved models in both the current value and
-  delta. The legend distinguishes a published semantic model update from a source content,
+  Coverage uses ✅ for models with a direct inference or linked capacity offer and ❓ for models
+  without either in both the current value and delta; a shared service charge alone does not
+  resolve model-price coverage. The legend distinguishes a published semantic model update from a source content,
   extractor, or field-path change and defines pricing coverage. Every retained or withheld
   candidate has a provider-local table naming the affected boundary, failed source or validation
   stage, exact sanitized reason, and published fallback. Provider-specific model changes and

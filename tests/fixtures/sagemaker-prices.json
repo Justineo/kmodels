@@ -34,7 +34,15 @@
     "reserved": {
       "attributes": { "group": "ServerlessProvisionedConcurrency-Usage", "operation": "Serverless" }
     },
-    "gpu": { "attributes": { "group": "Hosting:ml.g5.2xlarge", "operation": "RunInstance" } },
+    "gpu": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.g5.2xlarge-Hosting",
+        "instanceName": "ml.g5.2xlarge",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
     "eval": {
       "attributes": { "group": "ServerlessTraining:Evaluation", "operation": "EvaluateModel" }
     },
@@ -100,6 +108,21 @@
               "endRange": "Inf",
               "unit": "seconds",
               "pricePerUnit": { "USD": "0.0000233" }
+            }
+          }
+        }
+      },
+      "gpu": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "gpu.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "1.52" }
             }
           }
         }

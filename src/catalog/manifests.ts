@@ -1052,7 +1052,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-pricing" },
-        extractorVersion: "sagemaker-pricing-v2",
+        extractorVersion: "sagemaker-pricing-v4",
         fields: ["pricing"],
         pricingEvidence: firstPartyPricing(
           "billing_catalog",

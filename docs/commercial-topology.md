@@ -8,11 +8,10 @@ identity matching, and vocabulary mappings.
 
 ## Purpose
 
-Kmodels is an AI Gateway rate book. Its job is to publish the rates, selectors, required usage
-inputs, and bounded calculation contracts from which a consumer can reconstruct the public list
-cost of a proxied upstream request, an asynchronous result item, or a provider-hosted component
-caused by that request. It does not observe a request lifecycle, store a usage ledger, or reconcile
-an invoice.
+Kmodels is an AI Gateway rate book. It publishes public list rates for proxied inference and for
+provider-hosted capacity that directly runs an admitted model. Request charges and running-resource
+charges remain separate: no instance-hour fee is allocated across calls. Kmodels does not observe
+a request lifecycle, store a usage ledger, or reconcile an invoice.
 
 The handoff to a calculator is explicit. For each applicable rate variant, Kmodels publishes:
 
@@ -35,20 +34,20 @@ cross-provider identity for an allegedly equivalent model; consumers that need s
 comparison own that separate, policy-driven mapping.
 
 This boundary is narrower than the wire's representational capacity. Existing shared types may
-decode broader facts while providers converge, but new collection work must not publish a fact only
-because the schema can express it.
+decode broader facts while providers converge, but new collection work must establish the
+inference relationship and public billing basis before publishing a capacity charge.
 
 ## Admission boundary
 
 Admit a commercial fact only when all of these are true:
 
-1. it prices a callable inference operation or a provider-hosted component attributable to one
-   proxied request or completed asynchronous item;
+1. it prices a callable inference operation, a component attributable to one proxied request or
+   result item, or the running provider-hosted endpoint resource used to serve an admitted model;
 2. the public rate is established by first-party evidence;
-3. its applicability can be selected from the proxied request or route configuration, or established
-   from the response, result item, or provider-reported usage; and
-4. it can be represented as a rate or exact non-numeric state without allocating an account-level
-   commitment.
+3. its applicability can be selected from request or deployment configuration, or established from
+   provider-reported usage; and
+4. it can be represented as a rate or exact non-numeric state without allocating a fixed charge
+   across requests.
 
 This includes:
 
@@ -61,13 +60,15 @@ This includes:
 - separately priced request components such as provider-hosted web search, grounding, reranking,
   guardrails, code execution, or tool calls when their trigger is exact; and
 - automatic downstream model or service usage when first-party evidence identifies both the
-  component and its request-visible quantity.
+  component and its request-visible quantity; and
+- on-demand inference-hosting instance hours and independently billed publisher software hours
+  when first-party rates and exact deployment or listing associations are available.
 
 Exclude:
 
 - training, fine-tuning jobs, checkpoints, model import, and artifact distribution;
 - storage retained beyond the request and general data-transfer products;
-- provisioned capacity, reserved throughput, subscriptions, seats, support plans, and commitments;
+- reserved throughput commitments, subscriptions, seats, support plans, and prepaid capacity;
 - account resources, balances, credits, private offers, negotiated discounts, taxes, invoices, and
   settlement order;
 - surcharges whose applicability depends on a provider-account setting that the proxied request,
@@ -75,6 +76,11 @@ Exclude:
 - orchestration products whose total platform activity cannot be attributed to the proxied model
   request; and
 - formulas that require workload forecasting or amortizing a fixed charge across requests.
+
+Capacity rates use resource aggregation and an instance-time denominator, never a request usage
+signal. A regional infrastructure rate does not establish that every model can deploy in that
+Region or that the account has capacity. Model links require exact supported-instance metadata;
+unlinked regional rates remain provider resources.
 
 An excluded fact is outside scope, not `unknown` pricing. It is discarded rather than preserved as
 raw commercial data. A temporarily missing or unsupported fact inside the boundary remains unknown
@@ -92,7 +98,7 @@ provider snapshot
                  -> applicability-qualified variant
 ```
 
-- A **book** owns one admitted model or one separately priced request service.
+- A **book** owns one admitted model, separately priced request service, or inference capacity resource.
 - An **offer** is one selectable invocation mechanism, such as on-demand, Batch, or a service call,
   or an independently scoped adjustment to exact referenced rates.
 - A **term** is one rate, exact price state, allowance that applies directly to admitted request
@@ -216,19 +222,21 @@ back freshly verified model identity; staleness is visible in pricing snapshot m
 
 ## Presentation
 
-The model list shows compact representative inference rates. Details show:
+The model list shows compact representative inference rates or a capacity status when no request
+rate is available. Details show:
 
-1. one selected invocation mechanism;
-2. its base and related request-cost meter/rate rows; and
-3. only the request dimensions that can change those rates.
+1. public running-capacity offers linked by exact compatibility evidence;
+2. one selected invocation mechanism, when present;
+3. its base and related request-cost meter/rate rows; and
+4. the deployment or request dimensions that can change those rates.
 
 The mechanism remains the stable presentation context. Its model rates remain visible while related
-services are grouped in one closed disclosure by default, with every meter kept separate. Usage
-add-ons label charges that apply only when used; included features distinguish a zero-marginal-charge
+services are grouped in one closed disclosure by default, with every meter kept separate. Service
+charges remain distinct from model and capacity rates; included features distinguish a zero-marginal-charge
 state; automatic charges identify costs produced by the mechanism. Only an exact `exclusive_with`
 relation creates a mutually exclusive related-service choice.
 
-The UI does not expose training, storage, capacity procurement, plan enrollment, or settlement
+The UI does not expose training, storage, prepaid capacity procurement, plan enrollment, or settlement
 topology. It does not ask for usage quantities or show a total. Known parameters that affect the
 rate remain visible. Cost-driver definitions stay out of model details; exact source wording remains
 available as evidence.
