@@ -22,7 +22,6 @@ const emit = defineEmits<{ retry: [] }>();
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
 const offers = computed(() => props.detail?.offers ?? []);
-const capacityOffers = computed(() => offers.value.filter(({ group }) => group === "capacity"));
 interface CapacityGroup {
   key: string;
   title: string;
@@ -30,7 +29,7 @@ interface CapacityGroup {
 }
 const capacityGroups = computed(() => {
   const groups = new Map<string, CapacityGroup>();
-  for (const offer of capacityOffers.value) {
+  for (const offer of offers.value.filter(({ group }) => group === "capacity")) {
     const key = offer.capacity_choice?.group_key ?? offer.id;
     const group = groups.get(key);
     if (group === undefined) groups.set(key, { key, title: offer.title, offers: [offer] });
@@ -171,7 +170,7 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 
     <template v-else-if="detail">
       <section
-        v-if="capacityOffers.length > 0"
+        v-if="capacityGroups.length > 0"
         class="base-rates"
         aria-labelledby="capacity-rates-heading"
       >
@@ -245,7 +244,7 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
       </section>
 
       <div
-        v-else-if="supplementaryOffers.length > 0 && capacityOffers.length === 0"
+        v-else-if="supplementaryOffers.length > 0 && capacityGroups.length === 0"
         class="pricing-outcome no-base-offer"
       >
         <strong>No model inference rate shown</strong>
