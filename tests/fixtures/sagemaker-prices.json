@@ -43,6 +43,24 @@
         "regionCode": "us-east-1"
       }
     },
+    "cpu": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.c6i.xlarge-Hosting",
+        "instanceName": "ml.c6i.xlarge",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
+    "unlinked": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.m5.large-Hosting",
+        "instanceName": "ml.m5.large",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
     "eval": {
       "attributes": { "group": "ServerlessTraining:Evaluation", "operation": "EvaluateModel" }
     },
@@ -123,6 +141,36 @@
               "endRange": "Inf",
               "unit": "Hrs",
               "pricePerUnit": { "USD": "1.52" }
+            }
+          }
+        }
+      },
+      "cpu": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "cpu.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "0.24" }
+            }
+          }
+        }
+      },
+      "unlinked": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "unlinked.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "0.12" }
             }
           }
         }

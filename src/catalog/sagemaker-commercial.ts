@@ -111,7 +111,13 @@ function linkHostingModels(
         raw: { label: `Published deployment profiles support ${instance}` },
       },
     ],
-    offers: book.offers.map((offer) => ({ ...offer, model_refs: refs })),
+    offers: book.offers.map((offer) => ({
+      ...offer,
+      ...(offer.terms.some((term) => term.kind === "rate" && term.variants.length > 0)
+        ? { name: "SageMaker hosting" }
+        : {}),
+      model_refs: refs,
+    })),
   };
 }
 

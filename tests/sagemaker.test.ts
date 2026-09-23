@@ -105,7 +105,7 @@ function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) 
         {
           name: "default",
           configurations: [],
-          instance_types: ["ml.g5.2xlarge"],
+          instance_types: ["ml.g5.2xlarge", "ml.c6i.xlarge"],
           context_settings: [],
         },
       ],
@@ -316,7 +316,7 @@ describe("SageMaker price books", () => {
         extractor_version: entry.extractorVersion,
       })),
     });
-    expect(partition.books).toHaveLength(6);
+    expect(partition.books).toHaveLength(8);
     const serverless = partition.books.find(
       (book) =>
         book.scope.kind === "provider_resource" &&
@@ -330,6 +330,13 @@ describe("SageMaker price books", () => {
         book.scope.resource_key === "hosting-ml.g5.2xlarge",
     );
     expect(hosting?.scope.model_refs).toEqual([`amazon-sagemaker/${openModelId}`]);
+    expect(
+      partition.books.find(
+        (book) =>
+          book.scope.kind === "provider_resource" &&
+          book.scope.resource_key === "hosting-ml.m5.large",
+      )?.scope.model_refs,
+    ).toEqual([]);
     const hostingRate = hosting?.offers
       .flatMap(({ terms }) => terms)
       .flatMap((term) => (term.kind === "rate" ? term.variants : []))[0];
@@ -411,13 +418,39 @@ describe("SageMaker price books", () => {
     const openModel = providerModelSchema.parse(
       models.find(({ model_id }) => model_id === openModelId),
     );
+    const openDetail = websiteModelDetail(pricing, openModel).pricing;
+    const hostingOffers = openDetail?.offers.filter(
+      ({ group, title }) => group === "capacity" && title === "SageMaker hosting",
+    );
+    expect(hostingOffers?.map(({ capacity_choice }) => capacity_choice?.label).sort()).toEqual([
+      "ml.c6i.xlarge",
+      "ml.g5.2xlarge",
+    ]);
+    expect(
+      new Set(hostingOffers?.map(({ capacity_choice }) => capacity_choice?.group_key)).size,
+    ).toBe(1);
+    expect(
+      hostingOffers?.map(({ capacity_choice, rates }) => [
+        capacity_choice?.label,
+        rates[0]?.amount,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["ml.c6i.xlarge", "$0.24"],
+        ["ml.g5.2xlarge", "$1.52"],
+      ]),
+    );
     const openHtml = await renderComponent(PricingDetails, {
       model: { ...openModel, pricing: { outcome: "offers" } },
-      detail: websiteModelDetail(pricing, openModel).pricing,
+      detail: openDetail,
     });
     expect(openHtml).toContain("Capacity charges");
     expect(openHtml).toContain("SageMaker hosting");
-    expect(openHtml).toContain("$1.52");
+    expect(openHtml).toContain("Choose instance type");
+    expect(openHtml).toContain("ml.c6i.xlarge");
+    expect(openHtml).toContain("ml.g5.2xlarge");
+    expect(openHtml).not.toContain("ml.m5.large");
+    expect(openHtml).not.toContain("$1.52");
     expect(openHtml).toContain("Other charges &amp; services");
     expect(openHtml).toContain("Service charge");
     expect(openHtml).toContain("Endpoint data processing");

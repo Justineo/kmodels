@@ -970,6 +970,11 @@ The shared projection decodes plan, capacity, enrollment, allowance, and settlem
 Running inference capacity uses the existing `capacity` resource and billing mode; the website
 shows those offers separately from per-request mechanisms. Other broad commercial fields remain
 subject to the admission boundary above.
+When several capacity books have the same offer identity and charge signal, and each has one fixed
+`capacity` selector value, the website presents their choices under one capacity heading. This is a
+selection among exact resource books, not a merged rate or an allocation of instance-time to
+requests. The model's exact book links determine the available choices; no choice is implied by
+list order. The selected resource retains its own Region and other price selectors.
 
 ## Validation and bounded work
 
