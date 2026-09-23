@@ -79,7 +79,7 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
 
 Provider guides and reviewed fixtures define each repaired boundary. No model inference is involved.
 
-The complete local refresh at 2026-09-22T19:09:22.419Z published 4,310 models with 20/20 accepted
+The complete local refresh at 2026-09-22T23:18:31.329Z published 4,310 models with 20/20 accepted
 catalog and pricing partitions, no retained or withheld provider partitions. Bedrock added 15
 formerly omitted model cards and now has numeric rates for 127 of 128 current models. DashScope
 has numeric rates for 354 of 376, Vertex for 69 of 76 with 11 raw-rate models, Anthropic for 14
