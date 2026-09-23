@@ -98,7 +98,10 @@ Status: implemented core; provider pricing convergence is in progress
   from the rates.
   The selected mechanism remains the context for its request-cost breakdown; exact mechanism
   references filter its related costs. Public running-capacity rates occupy a separate block and
-  are never converted to per-request prices. The model rate block is primary for request pricing. Services,
+  are never converted to per-request prices. Capacity books with the same offer identity and
+  charge signal appear under one heading when each has a single fixed capacity option; the viewer
+  chooses a resource before its regional rates appear. Only books exactly linked to that model are
+  offered, and the first option is not treated as a default. The model rate block is primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
   closed disclosure by default because they do not change the base model rates. The disclosure
   explains that these items are separate and expands them in that order. Each

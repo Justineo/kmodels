@@ -717,8 +717,8 @@ function websitePricingDetail(
       group: "standalone" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
-  ].map(({ offer, group, mechanismRefs }) =>
-    websiteOffer(
+  ].map(({ offer, group, mechanismRefs }) => {
+    const projected = websiteOffer(
       view.books,
       offer,
       group,
@@ -726,12 +726,52 @@ function websitePricingDetail(
       labels,
       atoms,
       mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs },
-    ),
-  );
+    );
+    const choice = group === "capacity" ? capacityChoice(offer, projected) : undefined;
+    return choice === undefined ? projected : { ...projected, capacity_choice: choice };
+  });
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
   });
+}
+
+function capacityChoice(
+  offer: PricingOffer,
+  projected: WebsitePricingOffer,
+): WebsitePricingOffer["capacity_choice"] {
+  const selector = projected.selectors.find(
+    ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "capacity",
+  );
+  if (selector?.kind !== "categorical" || selector.values.length !== 1) return;
+  const option = selector.values[0];
+  if (option === undefined) return;
+  const rates = offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
+  if (rates.length === 0 || rates.some(({ charge_binding }) => charge_binding === undefined))
+    return;
+  const optionKey = canonicalJsonKey(option.value);
+  if (
+    rates.some(({ applicability }) =>
+      applicability.any_of.some(
+        ({ all_of }) =>
+          !all_of.some(
+            (condition) =>
+              condition.kind === "categorical" &&
+              condition.dimension.namespace === "kmodels" &&
+              condition.dimension.value === "capacity" &&
+              condition.values.length === 1 &&
+              condition.values.some((value) => canonicalJsonKey(value) === optionKey),
+          ),
+      ),
+    )
+  )
+    return;
+  const signals = uniqueCanonicalValues(rates.map(({ charge_binding }) => charge_binding?.signal));
+  if (signals.length !== 1) return;
+  return {
+    group_key: canonicalJsonHash([offer.offer_key, offer.name, signals[0]]),
+    label: option.label,
+  };
 }
 
 function websiteProviderPricingResources(

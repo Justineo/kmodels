@@ -175,6 +175,12 @@ The pricing bundle uses the same open/proprietary manifest admission rules as th
 so new SDK-only models also join the shared service book and their exact Marketplace listing.
 The assembly layer resolves this ownership from normalized source facts, so `vp run compile:pricing`
 can rebuild it offline without refetching AWS or advancing the source verification time.
+Each hosting instance remains a separate price book with its exact SKU identity and SDK-supported
+model links. In model details, books with the same hosting offer and billed-instance-time signal
+form one selectable capacity group. The instance type is the choice, not a metered quantity; the
+selected book then exposes its Region-qualified rates. Only SDK-supported instances appear for
+that model, no instance is preselected, and unmatched public instance books remain available as
+provider resources without claiming model compatibility.
 
 Rates have exact rational prices and semantic usage bindings. Hosting and Marketplace software
 capacity rates use an instance-hour denominator, selected by published instance type and Region
