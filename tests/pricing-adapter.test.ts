@@ -3163,7 +3163,8 @@ describe("parsed-source canonical pricing adapter", () => {
         expect.objectContaining({ offer_key: "current" }),
       ]),
       automaticComponents: [],
-      plansAndCapacity: [],
+      capacity: [],
+      plans: [],
       standaloneOffers: [],
     });
   });

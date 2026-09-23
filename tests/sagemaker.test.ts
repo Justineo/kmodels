@@ -9,6 +9,7 @@ import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
+import { summarizeRefresh } from "../src/catalog/summary.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { websiteModelDetail, websitePublication } from "../src/catalog/website-data.ts";
 import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
@@ -78,7 +79,7 @@ function bundle(overrides: object = {}) {
       page("prodview-speech", [
         term([
           card("6.00000000"),
-          card("2", { dimensionKey: "ml.g5.2xlarge.m.i.h", unit: "HostHrs" }),
+          card("2", { dimensionKey: "ml.g5.2xlarge.m.i.r", unit: "HostHrs" }),
         ]),
       ]),
       page("prodview-embedding", [term([card("0.00000000")])]),
@@ -87,13 +88,29 @@ function bundle(overrides: object = {}) {
   });
 }
 function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) {
-  return parseSource({
+  const models = parseSource({
     provider,
     source: source("sagemaker-pricing"),
     body,
     observedAt,
     onPricingReconciliation: (item) => items.push(item),
   });
+  const open = models.find(
+    ({ model_id }) => model_id === "meta-textgeneration-llama-3-1-8b-instruct",
+  );
+  if (open !== undefined)
+    open.deployment = {
+      region: "us-west-2",
+      profiles: [
+        {
+          name: "default",
+          configurations: [],
+          instance_types: ["ml.g5.2xlarge"],
+          context_settings: [],
+        },
+      ],
+    };
+  return models;
 }
 
 function assemblePricing(models: ReturnType<typeof parsePricing>) {
@@ -239,7 +256,7 @@ describe("SageMaker price books", () => {
     ]);
   });
 
-  it("keeps service charges separate, excludes capacity/training, and binds billable quantities", async () => {
+  it("publishes hosting and software capacity alongside request charges", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = parsePricing(bundle(), items);
     const s = source("sagemaker-pricing");
@@ -251,26 +268,31 @@ describe("SageMaker price books", () => {
       model_dispositions: partition.model_dispositions,
       books: partition.books,
     };
-    const publication = websitePublication(
-      {
-        catalog_version: "a".repeat(64),
-        generated_at: observedAt,
-        providers: [provider],
-        models: models.map((model) => providerModelSchema.parse(model)),
-        sources: [],
-        coverage: [],
-        warnings: [],
-      },
-      pricing,
-      "b".repeat(64),
-    );
+    const core = {
+      catalog_version: "a".repeat(64),
+      generated_at: observedAt,
+      providers: [provider],
+      models: models.map((model) => providerModelSchema.parse(model)),
+      sources: [],
+      coverage: [],
+      warnings: [],
+    };
+    const publication = websitePublication(core, pricing, "b".repeat(64));
+    expect(
+      summarizeRefresh(undefined, core, pricing, pricing).providers[0]?.pricing_coverage,
+    ).toMatchObject({ offer_models: 3, normalized_rate_models: 3, unknown_models: 1 });
     const rows = parseWebsiteCatalog(publication.catalog, publication.pricing).models;
+    const openModelId = "meta-textgeneration-llama-3-1-8b-instruct";
     expect(publication.catalog.providers[0]?.pricing_coverage.representative_models).toBe(2);
+    expect(rows.find(({ model_id }) => model_id === openModelId)?.pricing.status).toEqual({
+      label: "Capacity",
+      description: expect.stringContaining("published capacity rate"),
+    });
     expect(
       rows.find(({ model_id }) => model_id === "fixture-speech")?.pricing.status,
     ).toMatchObject({
       label: "$6 / request",
-      description: expect.stringContaining("Marketplace software"),
+      description: expect.stringContaining("Capacity charges are separate"),
     });
     expect(
       rows.find(({ model_id }) => model_id === "fixture-embedding")?.pricing.status?.label,
@@ -278,32 +300,74 @@ describe("SageMaker price books", () => {
     validatePricingCatalog(pricing, {
       providers: [provider],
       models,
-      sources: [
-        {
-          id: s.id,
-          provider_id: provider.id,
-          url: s.url,
-          source: s.source ?? [s.type],
-          stability: s.stability,
-          scope: "global",
-          exhaustive: false,
-          role: "overlay",
-          field_paths: s.fields,
-          ...(s.pricingEvidence === undefined ? {} : { pricing_evidence: s.pricingEvidence }),
-          observed_at: observedAt,
-          content_hash: "1".repeat(64),
-          extractor_version: s.extractorVersion,
-        },
-      ],
+      sources: [s, source("sagemaker-sdk")].map((entry) => ({
+        id: entry.id,
+        provider_id: provider.id,
+        url: entry.url,
+        source: entry.source ?? [entry.type],
+        stability: entry.stability,
+        scope: "global" as const,
+        exhaustive: false,
+        role: entry.role ?? "catalog",
+        field_paths: entry.fields,
+        ...(entry.pricingEvidence === undefined ? {} : { pricing_evidence: entry.pricingEvidence }),
+        observed_at: observedAt,
+        content_hash: "1".repeat(64),
+        extractor_version: entry.extractorVersion,
+      })),
     });
-    expect(partition.books).toHaveLength(4);
+    expect(partition.books).toHaveLength(6);
     const serverless = partition.books.find(
       (book) =>
         book.scope.kind === "provider_resource" &&
         book.scope.resource_key === "serverless-inference",
     );
     expect(serverless?.scope.model_refs).toEqual([]);
-    expect(items.filter(({ disposition }) => disposition === "excluded")).toHaveLength(5);
+    expect(items.filter(({ disposition }) => disposition === "excluded")).toHaveLength(3);
+    const hosting = partition.books.find(
+      (book) =>
+        book.scope.kind === "provider_resource" &&
+        book.scope.resource_key === "hosting-ml.g5.2xlarge",
+    );
+    expect(hosting?.scope.model_refs).toEqual([`amazon-sagemaker/${openModelId}`]);
+    const hostingRate = hosting?.offers
+      .flatMap(({ terms }) => terms)
+      .flatMap((term) => (term.kind === "rate" ? term.variants : []))[0];
+    if (hostingRate?.charge_binding === undefined) throw new Error("Missing capacity binding");
+    expect(hostingRate.charge_binding.aggregation).toBe("resource");
+    expect(hostingRate.price.per.factors.map(({ unit }) => unit.value)).toEqual([
+      "instance",
+      "second",
+    ]);
+    expect(
+      evaluateRateCost(hostingRate, [
+        {
+          signal: hostingRate.charge_binding.signal,
+          value: { numerator: "3600", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "38", denominator: "25" } });
+    const software = partition.books.find(
+      (book) =>
+        book.scope.kind === "provider_resource" &&
+        book.scope.resource_key === "marketplace-software-prodview-speech",
+    );
+    expect(software?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-speech"]);
+    const softwareRate = software?.offers
+      .flatMap(({ terms }) => terms)
+      .flatMap((term) => (term.kind === "rate" ? term.variants : []))[0];
+    if (softwareRate?.charge_binding === undefined)
+      throw new Error("Missing Marketplace hourly binding");
+    expect(softwareRate.charge_binding.aggregation).toBe("resource");
+    expect(softwareRate.charge_binding.signal).not.toEqual(hostingRate.charge_binding.signal);
+    expect(
+      evaluateRateCost(softwareRate, [
+        {
+          signal: softwareRate.charge_binding.signal,
+          value: { numerator: "3600", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "2", denominator: "1" } });
     const speech = partition.books.find(
       (book) =>
         book.scope.kind === "models" &&
@@ -332,15 +396,33 @@ describe("SageMaker price books", () => {
           },
         ]),
       );
-      expect(detail?.offers).toHaveLength(2);
+      expect(detail?.offers).toHaveLength(modelId === "fixture-speech" ? 3 : 2);
+      if (modelId === "fixture-speech")
+        expect(detail?.offers.some(({ group }) => group === "capacity")).toBe(true);
       const html = await renderComponent(PricingDetails, {
         model: { ...model, pricing: { outcome: "offers" } },
         detail,
       });
       expect(html).toContain("Marketplace software");
+      if (modelId === "fixture-speech") expect(html).toContain("$2");
       expect(html).not.toContain("No base model rate");
       expect(html).not.toContain("Serverless");
     }
+    const openModel = providerModelSchema.parse(
+      models.find(({ model_id }) => model_id === openModelId),
+    );
+    const openHtml = await renderComponent(PricingDetails, {
+      model: { ...openModel, pricing: { outcome: "offers" } },
+      detail: websiteModelDetail(pricing, openModel).pricing,
+    });
+    expect(openHtml).toContain("Capacity charges");
+    expect(openHtml).toContain("SageMaker hosting");
+    expect(openHtml).toContain("$1.52");
+    expect(openHtml).toContain("Other charges &amp; services");
+    expect(openHtml).toContain("Service charge");
+    expect(openHtml).toContain("Endpoint data processing");
+    expect(openHtml).not.toContain("No base model rate");
+    expect(openHtml).not.toContain("Usage add-on");
   });
 
   it("gives each exactly linked model its own software offer when they share a listing", () => {
@@ -396,6 +478,39 @@ describe("SageMaker price books", () => {
     expect(modelBooks).toHaveLength(1);
     expect(modelBooks[0]?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-embedding"]);
     expect(modelBooks[0]?.offers.flatMap(({ terms }) => terms)).toMatchObject([{ kind: "raw" }]);
+  });
+
+  it("retains unreviewed real-time Marketplace meters as bounded raw prices", () => {
+    const items: PricingReconciliationItem[] = [];
+    const models = parsePricing(
+      bundle({
+        listings: [
+          page("prodview-speech", [
+            term([card("0.3", { dimensionKey: "inference.bytes.m.i.c", unit: "Bytes" })]),
+          ]),
+          page("prodview-embedding", []),
+        ],
+      }),
+      items,
+    );
+    expect(items).toContainEqual({
+      disposition: "raw",
+      reason_code: "sagemaker_marketplace_unreviewed_realtime_meter",
+    });
+    expect(
+      models
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .flatMap(({ raw_price_facts }) => raw_price_facts)
+        .find(({ term_key }) => term_key === "prodview-speech:inference.bytes.m.i.c")?.raw,
+    ).toMatchObject({ amount: "0.3", denomination: "USD", unit: "Bytes" });
+    expect(
+      assemblePricing(models).books.some(
+        (book) =>
+          book.scope.kind === "models" &&
+          book.scope.model_refs.includes("amazon-sagemaker/fixture-speech") &&
+          book.offers.some(({ terms }) => terms.some(({ kind }) => kind === "raw")),
+      ),
+    ).toBe(true);
   });
 
   it("rejects version-dependent listing joins, incomplete bundles, and truncated rate cards", () => {

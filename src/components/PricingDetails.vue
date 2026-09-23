@@ -19,6 +19,7 @@ const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
 const offers = computed(() => props.detail?.offers ?? []);
+const capacityOffers = computed(() => offers.value.filter(({ group }) => group === "capacity"));
 const modelMechanisms = computed(() =>
   offers.value.filter(({ group }) => group === "model_mechanism"),
 );
@@ -31,7 +32,8 @@ const supplementaryOffers = computed(() =>
   offers.value.filter(
     (offer) =>
       offer.group !== "model_mechanism" &&
-      offer.group !== "plan_capacity" &&
+      offer.group !== "capacity" &&
+      offer.group !== "plan" &&
       (activeMechanism.value === undefined ||
         offer.mechanism_refs === undefined ||
         offer.mechanism_refs.includes(activeMechanism.value.id)),
@@ -64,8 +66,9 @@ function offerState(offer: WebsitePricingOffer): string | undefined {
 }
 
 function supplementaryOfferKind(offer: WebsitePricingOffer): string {
-  if (offer.group === "optional_service")
-    return offer.state_summary === "Included" ? "Included feature" : "Usage add-on";
+  if (offer.group === "optional_service") {
+    return offer.state_summary === "Included" ? "Included feature" : "Service charge";
+  }
   if (offer.group === "automatic_component") return "Automatic charge";
   return "Separate service";
 }
@@ -123,6 +126,25 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 
     <template v-else-if="detail">
       <section
+        v-if="capacityOffers.length > 0"
+        class="base-rates"
+        aria-labelledby="capacity-rates-heading"
+      >
+        <h4 id="capacity-rates-heading" class="section-heading">Capacity charges</h4>
+        <p class="capacity-note">
+          Billed for the selected resource while it runs. These rates are separate from per-request
+          usage and do not establish deployment availability.
+        </p>
+        <article v-for="offer in capacityOffers" :key="offer.id" class="rate-offer">
+          <header class="rate-offer-heading">
+            <h5>{{ offer.title }}</h5>
+            <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
+          </header>
+          <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
+        </article>
+      </section>
+
+      <section
         v-if="modelMechanisms.length > 1"
         class="run-mode"
         aria-labelledby="run-mode-heading"
@@ -157,14 +179,17 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
         <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
       </section>
 
-      <div v-else-if="supplementaryOffers.length > 0" class="pricing-outcome no-base-offer">
-        <strong>No base model rate</strong>
+      <div
+        v-else-if="supplementaryOffers.length > 0 && capacityOffers.length === 0"
+        class="pricing-outcome no-base-offer"
+      >
+        <strong>No model inference rate shown</strong>
       </div>
 
       <details v-if="supplementaryOffers.length > 0" class="additional-costs">
         <summary>
-          <strong>Add-ons &amp; included services</strong>
-          <small>Separate from the model rates above</small>
+          <strong>Other charges & services</strong>
+          <small>Separate from the rates above</small>
         </summary>
 
         <div class="supplementary-list">
@@ -252,6 +277,18 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 .base-rates {
   min-width: 0;
   margin-top: var(--space-4);
+}
+
+.capacity-note {
+  margin: var(--space-1) 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.base-rates > .rate-offer + .rate-offer {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 
 .rate-offer-heading {

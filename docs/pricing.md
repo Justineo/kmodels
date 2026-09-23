@@ -14,8 +14,8 @@ Kmodels publishes one canonical pricing resource. The model catalog does not
 contain a second flat-price projection, and the website never falls back to
 one.
 
-The resource models the request-attributable part of a provider's current public pricing snapshot
-as:
+The resource models public inference request charges and directly serving capacity charges from a
+provider's current pricing snapshot as:
 
 ```text
 provider snapshot
@@ -145,8 +145,8 @@ The following are deliberately outside this contract:
 - execution of imprecise validity labels as a time query;
 - a provider default, cheapest offer, or automatic offer recommendation;
 - a lossless model for every possible commercial contract.
-- training, retained storage, capacity procurement, subscriptions, plans, and
-  account settlement that cannot be attributed to one proxied request or result item.
+- training, retained storage, prepaid capacity commitments, subscriptions, plans, and
+  account settlement; running inference capacity with a public unit-time rate is admitted separately.
 
 An unsupported public fact remains visible as bounded raw pricing. A fact
 outside the public boundary is discarded or quarantined, never serialized as
@@ -240,6 +240,8 @@ Newly reviewed provider partitions normalize:
 
 - on-demand, Batch, realtime, and other directly callable inference offer identities;
 - request-attributable model and provider-service rates with exact denomination and compound unit;
+- public unit-time rates for inference-hosting resources, with resource-level billing signals and
+  exact model compatibility evidence when linked to model details;
 - applicability over reviewed request, outcome, and publication dimensions;
 - numeric, free, included, externally billed, custom-quote, and not-published states for admitted
   operations;
@@ -250,7 +252,7 @@ Newly reviewed provider partitions normalize:
 - optional dimensionally checked charge and contribution bindings; and
 - exact bounded adapter calculations whose result and provenance are first-party evidenced.
 
-Training, retained storage, capacity commitments, subscriptions, account-resource templates,
+Training, retained storage, prepaid capacity commitments, subscriptions, account-resource templates,
 settlement, invoices, private prices, and workload-amortization formulas are outside the publication
 boundary. The shared decoder retains its closed broader vocabulary while older provider partitions
 converge; provider adapters must not use those fields merely because they remain representable.
@@ -539,7 +541,9 @@ Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
 denominator is dimensional: storage stated per token-hour is
 `token × second`, not token throughput per second. Calendar months remain
-non-convertible.
+non-convertible. Inference hosting stated per instance-hour is `instance × second` in the
+canonical rate and keeps its source hourly amount for display; this conversion does not
+assert a provider's billing minimum or granularity.
 
 A usage allowance references exact normalized rate-term IDs whose units are
 compatible with the allowance quantity. A credit allowance targets the whole
@@ -844,7 +848,8 @@ all three price columns and exposes its explanation through the shared tooltip:
 - a base-rate count for one exact offer that cannot fit the three summary columns. Exact
   provider-credit rates and transcription duration are projected directly; a count remains for
   genuinely composite pricing such as simultaneous realtime message and session-duration charges;
-- `No model offer` when pricing detail exists but no model offer applies;
+- `Capacity` when a linked running-resource rate exists without a model inference offer;
+- `Service charges` when only separate service prices relate to the model;
 - `No offer`: an exact `not_applicable` disposition establishes that no public
   hosted pricing offer applies;
 - `Unknown`: no reliable public book or disposition exists.
@@ -858,11 +863,12 @@ representative number exists, unavailable sibling cells use an em dash.
 
 For a converged provider, the order is:
 
-1. Run mode, when more than one model invocation mechanism exists;
-2. the selected mechanism's model-rate block;
-3. one collapsed group for related add-ons, automatic charges, included features, and standalone
-   services; and
-4. each expanded offer's price-changing options and plain-language pricing notes.
+1. Capacity charges linked to the model, when present;
+2. Run mode, when more than one model invocation mechanism exists;
+3. the selected mechanism's model-rate block;
+4. one collapsed group for related service charges, automatic charges, included features, and
+   standalone services; and
+5. each expanded offer's price-changing options and plain-language pricing notes.
 
 The first mechanism in presentation order is the initial browsing focus, not a provider default.
 Alternative mechanisms use radio controls; a sole mechanism is explicitly named as the Run mode in
@@ -871,10 +877,11 @@ The website projection emits offers in the presentation order above and retains 
 references so changing Run mode also filters its related costs.
 
 The model-rate block never merges meters. Related services are closed by default and use the
-user-facing kinds `Usage add-on`, `Included feature`, `Automatic charge`, and `Separate service`.
+user-facing kinds `Service charge`, `Included feature`, `Automatic charge`, and `Separate service`.
 Expanding that group shows each offer without merging its meters. These are prices, not request
-controls: Kmodels does not configure a request, accept quantities, or calculate a total. Account
-plans and capacity procurement do not appear in model details.
+controls: Kmodels does not configure a request, accept quantities, or calculate a total. Public
+running-capacity rates appear in their own block when exact model compatibility is established;
+account plans and prepaid commitments do not appear in model details.
 
 Each offer owns its pricing-context controls; a related offer never consumes or resets another
 offer's context. Controls include only dimensions needed to resolve unequal or partially covered
@@ -959,9 +966,10 @@ until that value reappears. Generated-data tests require every projected label
 to agree with its matching configuration and reject duplicate labels inside a
 selector so distinct canonical choices remain distinguishable.
 
-The shared projection still decodes broader plan, capacity, enrollment, allowance, and settlement
-fields while older provider partitions converge. Newly reviewed adapters do not populate those
-groups, and the UI removes them provider by provider with the underlying data.
+The shared projection decodes plan, capacity, enrollment, allowance, and settlement fields.
+Running inference capacity uses the existing `capacity` resource and billing mode; the website
+shows those offers separately from per-request mechanisms. Other broad commercial fields remain
+subject to the admission boundary above.
 
 ## Validation and bounded work
 

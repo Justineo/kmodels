@@ -530,7 +530,8 @@ function pricingStatus(
     const resourceOffers = [
       ...view.optionalServices,
       ...view.automaticComponents,
-      ...view.plansAndCapacity,
+      ...view.capacity,
+      ...view.plans,
       ...view.standaloneOffers,
     ];
     if (
@@ -547,10 +548,16 @@ function pricingStatus(
         description:
           "A self-hosted or externally billed execution path exists; infrastructure cost is set outside this provider price book.",
       };
+    if (view.capacity.length > 0)
+      return {
+        label: "Capacity",
+        description:
+          "A published capacity rate applies to this model. Open model details to select the resource and Region; request usage charges may be separate.",
+      };
     return {
-      label: "Context",
+      label: "Service charges",
       description:
-        "Commercial services or plans relate to this model, but no provider-priced inference offer applies.",
+        "Separate service prices relate to this model, but no model inference or hosting rate is established.",
     };
   }
   if (view.modelMechanisms.length > 1)
@@ -563,7 +570,7 @@ function pricingStatus(
   if (singleRate !== undefined)
     return {
       label: `${singleRate.amount} / ${singleRate.displayUnit}`,
-      description: `${offer.name ?? "Model rate"}: ${singleRate.accessibleText}. Open model details for applicable services and pricing notes.`,
+      description: `${offer.name ?? "Model rate"}: ${singleRate.accessibleText}.${view.capacity.length > 0 ? " Capacity charges are separate." : ""} Open model details for applicable services and pricing notes.`,
     };
   const summary = offerStateSummary(offer, modelRef);
   if (summary === "Free")
@@ -695,9 +702,14 @@ function websitePricingDetail(
       group: "automatic_component" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
-    ...view.plansAndCapacity.map((offer) => ({
+    ...view.capacity.map((offer) => ({
       offer,
-      group: "plan_capacity" as const,
+      group: "capacity" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
+    })),
+    ...view.plans.map((offer) => ({
+      offer,
+      group: "plan" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
     ...view.standaloneOffers.map((offer) => ({

@@ -123,7 +123,8 @@ check remains a CI verification.
   `amazon.titan-embed-g1-text-02`. Google lists three older Claude models without current token
   prices, and its embedding `count` denominator is undefined. These stay unknown or raw by design.
   SageMaker Marketplace and Hugging Face hardware-linked inventory likewise cannot be assigned
-  a public per-model inference rate merely because a model is listed.
+  a public per-model inference rate merely because a model is listed. Exact SageMaker listing and
+  deployment links can separately expose publisher or hosting instance-hour capacity rates.
 - `linkedUrls` checks selected hosts, paths, suffixes and counts but does not inventory excluded
   links. This is an observability limitation, not proof of a missed commercial page. Cohere
   demonstrates why fetched-page coverage and parser coverage must be examined separately.

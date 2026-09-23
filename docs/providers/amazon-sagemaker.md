@@ -1,6 +1,6 @@
 # Amazon SageMaker AI
 
-Status: implemented; source research and access verification 2026-09-21
+Status: implemented; source research and access verification 2026-09-23
 
 ## Catalog boundary
 
@@ -64,16 +64,12 @@ availability. Package revisions do not populate model `version` or release dates
 `<4K` remain labels instead of becoming exact `limits.context_tokens`. Metadata and deployment
 profiles appear in the inspector's deferred, byte-bounded detail chunks, not the homepage core.
 
-The 2026-09-21 complete SDK probe admitted 623 models (66 beyond the static tables), with
-451 modality records, 501 publisher labels, 366 licenses, 317 size labels, 175 context ranges,
-347 language lists, 413 upstream IDs, and 2,362 deployment profiles. 255 models had scoped
-context controls. These are dated observations, not exhaustiveness claims or test thresholds.
-The accepted refresh also completed all 603 admitted Hub detail reads, supplied 603 descriptions,
-and established 482 positive `us-west-2` deployment tuples. API enrichment increased license
-coverage to 381. Twenty globally admitted IDs were absent from this Region's Hub, which does not
-retire them. All four SageMaker sources succeeded; the API source's consecutive-failure count
-returned to zero. The shared endpoint-data book now references all 623 models; the snapshot still
-has five request-cost books, including three Marketplace per-inference books.
+The 2026-09-23 accepted snapshot contains 624 models, including 617 with nonempty supported
+instance lists in their published deployment profiles. It contains 452 modality records, 502
+publisher labels, 382 licenses, 318 size labels, 175 context ranges, 347 language lists, 414
+upstream IDs, and 2,379 deployment profiles. These are dated observations, not exhaustiveness
+claims or test thresholds. The accepted Hub enrichment completed 604 detail reads; absence from
+this Region's Hub does not retire globally admitted IDs. All four SageMaker sources succeeded.
 
 ## Optional regional API
 
@@ -144,25 +140,30 @@ queries, ambiguous joins, truncated rate-card arrays, or incomplete dependency b
 pricing source. Known sibling rates survive unfamiliar supported-family price cells as bounded
 raw facts. The shared collector retains an accepted provider pricing snapshot on source failure.
 
-The 2026-09-21 public-data probe fetched 245 dependencies and validated a 557-model partition
-with five request-cost books: two service books for endpoint data processing and Serverless
-execution, and three model books for Marketplace per-inference software. It recognized 324 infrastructure invocation SKUs and three per-inference
-cards; 20 listing pages had no public pricing. These are dated coverage observations, not tests
-against volatile upstream counts or proof that every model has a complete inference bill.
+The 2026-09-23 accepted price snapshot has 404 books: 298 real-time hosting instance books, 101
+Marketplace hourly software books, two service books, and three model books for Marketplace
+per-inference software. It recognized 4,003 AWS hosting SKUs, 324 infrastructure invocation SKUs,
+652 Marketplace hourly cards, and three per-inference cards; 20 listing pages had no public
+pricing. These are dated coverage observations, not tests against volatile upstream counts or
+proof that every model has a complete inference bill.
+Exact SDK instance lists link hosting capacity to 617 models. Five Nova package records have
+empty supported-instance lists and no public per-inference rate, so the website shows only
+separate service charges for them instead of guessing a hosting SKU.
 
-## Request-cost boundary
+## Inference and hosting charges
 
-| Charge                                                                                                 | Pricebook treatment                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hosting input/output data processing                                                                   | Separate `input_data` and `output_data` meters; exact Region and AWS SKU evidence. They are request data processing, not general network transfer. |
-| Serverless on-demand execution                                                                         | Per-second rate, selected by Region and 1–6 GB memory configuration.                                                                               |
-| Provisioned-concurrency execution duration                                                             | Separate execution tier; does not include reserved concurrency capacity.                                                                           |
-| Marketplace real-time per-inference software                                                           | Model book with a real-time inference offer, joined by exact model-to-listing association; explicitly labeled as software only.                    |
-| Instance hosting, GPU/HyperPod capacity, reserved concurrency capacity, Batch Transform instance hours | Excluded; no amortization into token/request prices.                                                                                               |
-| Training, fine-tuning, evaluation, notebook, storage and other ML services                             | Excluded, including misleadingly token-denominated evaluation/training SKUs.                                                                       |
-| Subscription, upfront contracts, free trials and negotiated discounts                                  | Outside the request-cost catalog.                                                                                                                  |
+| Charge                                                                  | Pricebook treatment                                                                     |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Hosting input/output data processing                                    | Separate `input_data` and `output_data` meters, with exact Region and SKU evidence.     |
+| Serverless execution                                                    | Per-second rate by Region, memory size, and execution tier; reserved capacity excluded. |
+| Marketplace real-time per-inference software                            | Model offer joined by exact listing ID; software only.                                  |
+| Real-time hosting instance hours                                        | Capacity book per instance type, with Region-qualified AWS infrastructure rates.        |
+| Marketplace real-time instance-hour software                            | Separate capacity book joined by exact listing ID and instance selector.                |
+| Other capacity, training, notebook, storage, and ML services            | Excluded; no amortization into token/request prices.                                    |
+| Subscriptions, upfront contracts, free trials, and negotiated discounts | Excluded.                                                                               |
 
-Endpoint data processing is a shared service book linked to admitted models. Serverless execution
+Endpoint data processing is a shared service book linked to admitted models. It is a separate
+service charge, not an optional discount or a complete endpoint bill. Serverless execution
 is a standalone service book with no blanket model references: AWS excludes GPU and Marketplace
 model-package deployments from Serverless. Its presence must not assert support for all JumpStart
 models. Marketplace software belongs to each exactly linked model's book, with a real-time
@@ -175,7 +176,13 @@ so new SDK-only models also join the shared service book and their exact Marketp
 The assembly layer resolves this ownership from normalized source facts, so `vp run compile:pricing`
 can rebuild it offline without refetching AWS or advancing the source verification time.
 
-Rates have exact rational prices and semantic usage bindings. The caller supplies **AWS-billed
+Rates have exact rational prices and semantic usage bindings. Hosting and Marketplace software
+capacity rates use an instance-hour denominator, selected by published instance type and Region
+where the source supplies one. AWS hosting and Marketplace software have separate resource-level
+billed-instance-time signals, so their billing granularity is not silently equated. Marketplace
+software usage is [prorated to the minute](https://docs.aws.amazon.com/marketplace/latest/userguide/machine-learning-pricing.html);
+the AWS bulk hosting rate alone does not establish its billing minimum. Neither charge is assigned
+to an inference request. The caller supplies **AWS-billed
 GB**, **AWS-billed execution seconds**, or **publisher-metered billable inferences**. The catalog
 does not equate those quantities with payload length, client wall-clock time or HTTP request
 count. AWS's price feed labels data processing `GB` without specifying the byte conversion in
@@ -189,8 +196,10 @@ price is marked `not_applicable` as a substitute for missing inference coverage.
 AWS's [JumpStart pricing FAQ](https://aws.amazon.com/sagemaker/ai/faqs/) distinguishes publicly
 available models, billed for the deployed infrastructure, from proprietary models, which may
 also incur publisher software charges. Marketplace software can be priced per running instance
-hour or per inference. Instance-hour prices remain outside this request-rate model, even when
-the software is used for inference; they must not be converted into token/request prices.
+hour or per inference. Instance-hour prices are separate capacity offers and are never converted
+into token/request prices. The website presents capacity, per-inference software, and endpoint data
+processing as distinct charges. Public regional instance prices do not establish deployment or
+account availability.
 Consequently a missing model rate does not by itself establish a collection failure or an
 unpublished official price. Public listing pages without a usable pricing query remain unresolved
 coverage gaps, separately from rates deliberately excluded by this boundary.
