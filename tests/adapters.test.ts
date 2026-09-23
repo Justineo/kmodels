@@ -750,9 +750,8 @@ function vercelDocumentation(): { url: string; body: string }[] {
     {
       url: "https://vercel.com/docs/ai-gateway/getting-started/image.md",
       body: [
-        "experimental_generateImage",
-        "result.images",
-        "Image-only models use result.images",
+        "const { images } = await generateImage({",
+        "Image-only models use the returned images array",
       ].join("\n"),
     },
     {
