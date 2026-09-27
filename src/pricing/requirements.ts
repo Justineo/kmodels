@@ -8,7 +8,7 @@ import {
   type SelectionRequest,
   type Selector,
 } from "./schema.ts";
-import type { Requirements } from "./types.ts";
+import type { ChargeRequirement, ReferencedRateRequirement, Requirements } from "./types.ts";
 import {
   getOffer,
   offerApplicabilities,
@@ -62,7 +62,7 @@ function collectTermRequirements(
   if (term.kind === "raw") return;
   for (const variant of term.variants) {
     if (evaluateApplicability(variant.applicability, selectors).state === "false") continue;
-    collectVariantRequirements(result, term, variant);
+    collectVariantRequirements(snapshot, result, term.id, variant, selectors);
     if (!("target_rate_refs" in variant)) continue;
     for (const rateRef of variant.target_rate_refs) {
       const rateTerm = snapshot.rates.get(rateRef);
@@ -94,23 +94,61 @@ function collectRawGaps(
 }
 
 function collectVariantRequirements(
+  snapshot: PricingSnapshot,
   result: Requirements,
-  term: CalculationTerm,
+  termRef: string,
   variant: NormalizedVariant,
+  selectors: Selector[],
 ): void {
-  const chargeRequirement = {
-    termRef: term.id,
-    kind: term.kind,
+  const common = {
+    termRef,
     applicability: variant.applicability,
     ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-    ...("target_rate_refs" in variant ? { targetRateRefs: variant.target_rate_refs } : {}),
+    alternatives: [],
   };
+  if ("benefit" in variant) {
+    result.charges.push({
+      ...common,
+      kind: "allowance",
+      benefit: variant.benefit,
+      target: variant.target,
+      reset: variant.reset,
+    });
+    if (variant.reset.namespace !== "kmodels" || variant.reset.value !== "none") {
+      result.gaps.push({
+        offerRef: result.offerRef,
+        termRef,
+        code: "unsupported_aggregation",
+        reason: "Allowance resets beyond this billing component",
+      });
+    }
+    if (variant.benefit.kind === "rate_substitution") {
+      result.gaps.push({
+        offerRef: result.offerRef,
+        termRef,
+        code: "unsupported_structure",
+        reason: "Allowance rate substitution is not supported",
+      });
+    }
+    return;
+  }
+  const chargeRequirement: ChargeRequirement =
+    "price" in variant
+      ? { ...common, kind: "rate", selectorSources: variant.selector_sources ?? [] }
+      : {
+          ...common,
+          kind: "contribution",
+          targetRateRefs: variant.target_rate_refs,
+          referencedRates: referencedRateRequirements(
+            snapshot,
+            variant.target_rate_refs,
+            selectors,
+          ),
+        };
   const bindings = variantBindings(variant);
   if (bindings.length === 0) {
-    result.charges.push({ ...chargeRequirement, alternatives: [] });
-    if (term.kind !== "allowance") {
-      result.gaps.push({ offerRef: result.offerRef, termRef: term.id, code: "unbound_charge" });
-    }
+    result.charges.push(chargeRequirement);
+    result.gaps.push({ offerRef: result.offerRef, termRef, code: "unbound_charge" });
     return;
   }
   for (const binding of bindings) {
@@ -121,4 +159,25 @@ function collectVariantRequirements(
     });
     result.aggregationBoundaries.push(binding.aggregation);
   }
+}
+
+function referencedRateRequirements(
+  snapshot: PricingSnapshot,
+  rateRefs: string[],
+  selectors: Selector[],
+): ReferencedRateRequirement[] {
+  return rateRefs.flatMap((rateTermRef) => {
+    const term = snapshot.rates.get(rateTermRef);
+    if (term === undefined) return [];
+    return term.variants
+      .filter(
+        (variant) => evaluateApplicability(variant.applicability, selectors).state !== "false",
+      )
+      .map((variant) => ({
+        rateTermRef,
+        applicability: variant.applicability,
+        ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+        selectorSources: variant.selector_sources ?? [],
+      }));
+  });
 }

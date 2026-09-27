@@ -1,4 +1,4 @@
-import type { CalculationComponent } from "./schema.ts";
+import type { ParsedCalculationComponent as CalculationComponent } from "./schema.ts";
 import type { Charge } from "./types.ts";
 import { PricingError } from "./errors.ts";
 

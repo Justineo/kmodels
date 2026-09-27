@@ -15,7 +15,7 @@ import {
   type UnitExpression,
   type UsageSignal,
 } from "../catalog/pricing-schema.ts";
-import type { CalculationProvider } from "./schema.ts";
+import type { CalculationProvider, CalculationRate } from "./schema.ts";
 import { PricingError } from "./errors.ts";
 
 interface VocabularyContext {
@@ -117,6 +117,36 @@ export function validateCondition(condition: PriceCondition, provider: Calculati
   if (condition.kind === "decimal_range") unitKey(condition.unit);
   if (condition.kind === "categorical") {
     for (const value of condition.values) validateCategoricalValue(value, dimension, provider);
+  }
+}
+
+export function validateSelectorSources(
+  rate: CalculationRate,
+  provider: CalculationProvider,
+): void {
+  for (const source of rate.selector_sources ?? []) {
+    const dimensionKey = canonicalJson(source.dimension);
+    const conditions = rate.applicability.any_of.flatMap(({ all_of }) =>
+      all_of.filter(({ dimension }) => canonicalJson(dimension) === dimensionKey),
+    );
+    if (conditions.length === 0)
+      throw new Error("Selector source dimension is absent from applicability");
+    const allowedValues = new Set(
+      conditions.flatMap((condition) =>
+        condition.kind === "categorical" ? condition.values.map(canonicalJson) : [],
+      ),
+    );
+    const values = source.normalization?.entries.map(({ value }) => value) ?? [];
+    if (source.absent_value !== undefined) values.push(source.absent_value);
+    for (const value of values) {
+      validateCategoricalValue(value, source.dimension, provider);
+      if (!allowedValues.has(canonicalJson(value)))
+        throw new Error("Selector source value is absent from applicability");
+    }
+    const sourceValues =
+      source.normalization?.entries.map(({ source_value }) => source_value) ?? [];
+    if (new Set(sourceValues).size !== sourceValues.length)
+      throw new Error("Selector source repeats a normalization input");
   }
 }
 

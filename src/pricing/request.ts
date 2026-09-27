@@ -5,7 +5,7 @@ import { canonicalizeInstant } from "../catalog/pricing-time.ts";
 import type { PriceCondition } from "../catalog/pricing-schema.ts";
 import {
   calculationRequestSchema,
-  type CalculationComponent,
+  type ParsedCalculationComponent as CalculationComponent,
   type CalculationProvider,
   type Quantity,
   type Selector,

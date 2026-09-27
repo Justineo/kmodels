@@ -12,6 +12,8 @@ export type {
   Charge,
   OfferEntry,
   Requirements,
+  ChargeRequirement,
+  ReferencedRateRequirement,
   Subtotal,
 } from "./types.ts";
 export type {

@@ -1,0 +1,30 @@
+import { createCalculator, type CalculationComponent, type CalculationRequest, type CalculationResult, type Subtotal } from "@kmodels/pricing";
+
+const component: CalculationComponent = { id: "request-1", offerRef: "0".repeat(64), quantities: [] };
+const request: CalculationRequest = { evaluatedAt: "2026-09-27T00:00:00Z", components: [component] };
+declare const data: unknown;
+const calculator = createCalculator(data);
+const result = calculator.calculate(request);
+function readTotals(result: CalculationResult): Subtotal[] {
+  if (result.status === "calculated" || result.status === "estimated") return result.totals;
+  const absent: undefined = result.totals;
+  return absent ?? [];
+}
+for (const charge of result.charges) {
+  charge.unitPrice.per.factors;
+  charge.binding.signal;
+}
+for (const requirement of calculator.requirements({ offerRef: component.offerRef }).charges) {
+  if (requirement.kind === "rate") requirement.selectorSources;
+  if (requirement.kind === "contribution") requirement.referencedRates;
+  if (requirement.kind === "allowance") {
+    requirement.reset;
+    requirement.benefit;
+    requirement.target;
+  }
+}
+// @ts-expect-error Complete results must include totals.
+const invalidComplete: CalculationResult = { ...result, status: "calculated", totals: undefined };
+// @ts-expect-error Incomplete results cannot include totals.
+const invalidPartial: CalculationResult = { ...result, status: "partial", totals: [] };
+void [readTotals, invalidComplete, invalidPartial];

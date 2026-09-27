@@ -14,7 +14,11 @@ import {
 import { PricingError } from "./errors.ts";
 import { pricingSemantics } from "./selection.ts";
 import { validateBinding } from "./validation-quantity.ts";
-import { unitKey, validateProviderProperties } from "./validation-vocabulary.ts";
+import {
+  unitKey,
+  validateProviderProperties,
+  validateSelectorSources,
+} from "./validation-vocabulary.ts";
 
 interface ProviderReferences {
   provider: CalculationProvider;
@@ -167,6 +171,7 @@ function validateTerm(term: CalculationTerm, references: ProviderReferences): vo
   switch (term.kind) {
     case "rate":
       for (const rate of term.variants) {
+        validateSelectorSources(rate, references.provider);
         unitKey(rate.price.per);
         if (rate.charge_binding !== undefined)
           validateBinding(rate.charge_binding, references.provider, rate.price.per);
