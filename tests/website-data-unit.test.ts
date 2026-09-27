@@ -15,8 +15,10 @@ import type {
   ProviderAtomRegistryEntry,
   RawPricingVariant,
   UnitExpression,
+  UsageInputSource,
 } from "../src/catalog/pricing-schema.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-presentation.ts";
 
 const providerId = "test";
 const modelId = "model";
@@ -367,6 +369,75 @@ describe("website data projection", () => {
     });
   });
 
+  it("preserves quantity semantics for comparison without publishing acquisition contracts", () => {
+    const signal = { namespace: "kmodels" as const, value: "active_seconds" as const };
+    const binding: ChargeBinding = {
+      signal,
+      aggregation: "request",
+      observations: [bindingObservation()],
+    };
+    const driver = (value: ChargeBinding) => {
+      const result = detail(
+        [
+          {
+            kind: "decimal_range",
+            dimension: durationDimension,
+            unit: secondUnit,
+            lower: { value: "0", inclusive: true },
+          },
+        ],
+        [],
+        { rateBinding: value },
+      ).pricing?.offers[0]?.rates[0]?.driver;
+      if (result === undefined) throw new Error("fixture driver is missing");
+      return result;
+    };
+    const inputSource = (locator: string): UsageInputSource => ({
+      signal,
+      channel: "response",
+      locator: { kind: "json_pointer", value: locator },
+      availability: "terminal_only",
+    });
+    const direct = (locator: string): ChargeBinding => ({
+      ...binding,
+      quantity_methods: [
+        {
+          input_sources: [inputSource(locator)],
+        },
+      ],
+    });
+    expect(driver(direct("/usage/seconds"))).toEqual(driver(direct("/metrics/runtime")));
+    expect(driver({ ...binding, scale: { numerator: "1", denominator: "1" } })).toEqual(
+      driver(binding),
+    );
+    const scaled = driver({ ...binding, scale: { numerator: "2", denominator: "1" } });
+    expect(scaled.quantity_key).toMatch(/^[0-9a-f]{64}$/);
+    expect(scaled).not.toEqual(driver(binding));
+
+    const minimum = (seconds: string, locator: string): ChargeBinding => ({
+      ...binding,
+      quantity_methods: [
+        {
+          input_sources: [inputSource(locator)],
+          calculation: {
+            nodes: [
+              { op: "signal", signal },
+              { op: "minimum", input: 0, value: { numerator: seconds, denominator: "1" } },
+            ],
+            result: 1,
+          },
+        },
+      ],
+    });
+    const fiveMinutes = driver(minimum("300", "/usage/seconds"));
+    expect(fiveMinutes.quantity_key).toMatch(/^[0-9a-f]{64}$/);
+    expect(fiveMinutes).toEqual(driver(minimum("300", "/metrics/runtime")));
+    expect(fiveMinutes).not.toEqual(driver(minimum("600", "/usage/seconds")));
+    expect(fiveMinutes).not.toHaveProperty("quantity_methods");
+    expect(JSON.stringify(fiveMinutes)).not.toContain("/usage/seconds");
+    expect(JSON.stringify(fiveMinutes)).not.toContain("minimum");
+  });
+
   it("uses reviewed provider vocabulary labels and keeps a generic fallback", () => {
     const dimension = { namespace: "kmodels" as const, value: "operation" as const };
     const value = {
@@ -456,7 +527,7 @@ describe("website data projection", () => {
     });
   });
 
-  it("uses range choices only for a complete non-overlapping numeric partition", () => {
+  it("uses range choices for contiguous numeric domains, including finite domains", () => {
     const partition = numericDetail([
       { upper: { value: "10", inclusive: true } },
       { lower: { value: "10", inclusive: false } },
@@ -484,6 +555,61 @@ describe("website data projection", () => {
       { lower: { value: "20", inclusive: true } },
     ]);
     expect(gap.pricing?.offers[0]?.selectors[0]).toMatchObject({ kind: "decimal_range" });
+    const finite = numericDetail([
+      { upper: { value: "10", inclusive: true } },
+      { lower: { value: "10", inclusive: false }, upper: { value: "20", inclusive: true } },
+    ]);
+    expect(finite.pricing?.offers[0]?.selectors[0]).toMatchObject({
+      kind: "decimal_buckets",
+      values: [{ label: "≤ 10" }, { label: "> 10 and ≤ 20" }],
+    });
+  });
+
+  it("splits overlapping regional token bands into choices that resolve every predicate", () => {
+    const dimension = { namespace: "kmodels", value: "context_tokens" } as const;
+    const unit: UnitExpression = {
+      factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+    };
+    for (const minimum of ["128000", "128001"]) {
+      const conditions: DecimalCondition[] = [
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "1", inclusive: true },
+          upper: { value: "128000", inclusive: true },
+        },
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "1", inclusive: true },
+          upper: { value: "256000", inclusive: true },
+        },
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: minimum, inclusive: true },
+          upper: { value: "256000", inclusive: true },
+        },
+      ];
+      const selector = detail(conditions).pricing?.offers[0]?.selectors[0];
+      expect(selector?.kind).toBe("decimal_buckets");
+      if (selector?.kind !== "decimal_buckets") throw new Error("Missing range choices");
+      expect(selector.values.length).toBe(minimum === "128000" ? 3 : 2);
+      expect(selector.values[0]?.lower).toEqual({ value: "1", inclusive: true });
+      expect(selector.values.at(-1)?.upper).toEqual({ value: "256000", inclusive: true });
+      for (const bucket of selector.values) {
+        for (const condition of conditions) {
+          expect(
+            evaluateApplicability({ any_of: [{ all_of: [condition] }] }, [
+              { kind: "decimal_range", dimension, unit, ...bucket },
+            ]).state,
+          ).not.toBe("missing");
+        }
+      }
+    }
   });
 
   it("projects a retained provider failure without audit details", () => {

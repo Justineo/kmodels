@@ -1311,7 +1311,9 @@ function azureClaudeIdentity(label: string):
 }
 
 function azureClaudeAmount(value: string): string | undefined {
-  return plain(value).match(/^\$((?:0|[1-9]\d*)(?:[.]\d+)?) \/ MTok$/)?.[1];
+  return plain(value.replace(/<sup>\d+<\/sup>$/i, "")).match(
+    /^\$((?:0|[1-9]\d*)(?:[.]\d+)?) \/ MTok$/,
+  )?.[1];
 }
 
 function azureClaudeRate(

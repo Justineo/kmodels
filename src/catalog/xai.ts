@@ -84,6 +84,15 @@ const embeddingModelSchema = z.object({
   promptTextTokenPrice: integerString,
   promptImageTokenPrice: integerString,
 });
+const languageIdentitySchema = languageModelSchema.omit({
+  promptTextTokenPrice: true,
+  promptImageTokenPrice: true,
+  promptTextTokenPriceLongContext: true,
+  cachedPromptTokenPrice: true,
+  cachedPromptTokenPriceLongContext: true,
+  completionTextTokenPrice: true,
+  completionTokenPriceLongContext: true,
+});
 const imageModelSchema = z.object({
   ...commonModelShape,
   imagePrice: integerString.optional(),
@@ -622,12 +631,19 @@ function embeddedModels(input: ParseInput, body: string): PublicModels {
   };
 }
 
-function distinct<T extends { name: string }>(values: T[], category: string): T[] {
+function distinct<T extends { name: string }>(
+  values: T[],
+  category: string,
+  identity: (value: T) => unknown = (value) => value,
+): T[] {
   const models = new Map<string, T>();
   for (const value of values) {
     const current = models.get(value.name);
-    if (current !== undefined && JSON.stringify(current) !== JSON.stringify(value))
-      throw new Error(`xAI ${category} model differs across public clusters`);
+    if (
+      current !== undefined &&
+      JSON.stringify(identity(current)) !== JSON.stringify(identity(value))
+    )
+      throw new Error(`xAI ${category} model ${value.name} differs across public clusters`);
     models.set(value.name, value);
   }
   return [...models.values()];
@@ -667,7 +683,7 @@ function section(body: string, pathname: string): string {
   const marker = `===${pathname}===`;
   const start = body.indexOf(marker);
   if (start < 0 || body.indexOf(marker, start + marker.length) >= 0)
-    throw new Error(`xAI llms.txt requires one ${pathname} section`);
+    throw new Error(`xAI llms-full.txt requires one ${pathname} section`);
   const end = body.indexOf("\n\n===", start + marker.length);
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
 }
@@ -1265,6 +1281,45 @@ function publicPricingReview(
 }
 
 function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["toolRates"] {
+  const xItems = pricing.match(
+    /^\| X Search \| `x_search` \|[^|]+\| \$([\d.]+) \/ 1k posts, \$([\d.]+) \/ 1k profiles \|$/m,
+  );
+  const itemRates: XaiCommercialEvidence["toolRates"] = [];
+  if (
+    xItems?.[1] !== undefined &&
+    xItems[2] !== undefined &&
+    pricing.includes(
+      "every post returned by a search or thread fetch, including parent and quoted posts",
+    ) &&
+    pricing.includes("every profile returned by a user search counts toward the profile rate")
+  ) {
+    for (const [key, name, amount, unit] of [
+      [
+        "x-search-posts",
+        "X Search posts",
+        xItems[1],
+        "posts fetched, including parent and quoted posts",
+      ],
+      ["x-search-profiles", "X Search user profiles", xItems[2], "user profiles fetched"],
+    ] as const) {
+      itemRates.push({
+        key,
+        name,
+        supportsVoice: true,
+        rate: publishedRate(
+          "retrieval",
+          amount,
+          "thousand_items",
+          input.source.id,
+          `USD / 1k ${unit}`,
+        ),
+      });
+    }
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "x_search_item_prices_bound",
+    });
+  }
   const rows = [
     ...pricing.matchAll(
       /^\|\s*([^|]+?)\s*\|\s*((?:`[^`]+`(?:,\s*)?)+)[^|]*\|[^|]+\|\s*\$([\d.]+)\s*\|$/gim,
@@ -1321,38 +1376,42 @@ function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["t
       supportsVoice: true,
     },
   ] as const;
-  return definitions.flatMap((definition) => {
-    const reasonCode = `tool_${definition.key.replaceAll("-", "_")}_price_drift`;
-    const value = reviewClaim(input, reasonCode, () => {
-      requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
-      const expectedNames = new Set<string>(definition.names);
-      const matches = rows.filter(
-        (row) =>
-          row.label === definition.name.replace("File Attachment Search", "File Attachments") ||
-          row.names.some((name) => expectedNames.has(name)),
-      );
-      const row = matches[0];
-      if (
-        row === undefined ||
-        matches.length !== 1 ||
-        JSON.stringify([...row.names].sort()) !== JSON.stringify([...definition.names].sort())
-      )
-        throw new Error(`xAI ${definition.name} pricing row changed`);
-      return {
-        key: definition.key,
-        name: definition.name,
-        supportsVoice: definition.supportsVoice,
-        rate: publishedRate(
-          definition.meter,
-          row.price,
-          "thousand_events",
-          input.source.id,
-          "USD / 1k successful tool calls",
-        ),
-      };
-    });
-    return value === undefined ? [] : [value];
-  });
+  return [
+    ...itemRates,
+    ...definitions.flatMap((definition) => {
+      if (definition.key === "x-search" && itemRates.length > 0) return [];
+      const reasonCode = `tool_${definition.key.replaceAll("-", "_")}_price_drift`;
+      const value = reviewClaim(input, reasonCode, () => {
+        requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
+        const expectedNames = new Set<string>(definition.names);
+        const matches = rows.filter(
+          (row) =>
+            row.label === definition.name.replace("File Attachment Search", "File Attachments") ||
+            row.names.some((name) => expectedNames.has(name)),
+        );
+        const row = matches[0];
+        if (
+          row === undefined ||
+          matches.length !== 1 ||
+          JSON.stringify([...row.names].sort()) !== JSON.stringify([...definition.names].sort())
+        )
+          throw new Error(`xAI ${definition.name} pricing row changed`);
+        return {
+          key: definition.key,
+          name: definition.name,
+          supportsVoice: definition.supportsVoice,
+          rate: publishedRate(
+            definition.meter,
+            row.price,
+            "thousand_events",
+            input.source.id,
+            "USD / 1k successful tool calls",
+          ),
+        };
+      });
+      return value === undefined ? [] : [value];
+    }),
+  ];
 }
 
 interface VoicePrices {
@@ -1433,15 +1492,19 @@ function commercialEvidence(
   pricing: string,
   voice: VoicePrices | undefined,
 ): XaiCommercialEvidence {
-  const imageGenerationTool =
-    reviewClaim(input, "image_generation_tool_contract_drift", () => {
-      requireClaims(
-        section(llms, "/developers/tools/image-generation"),
-        ["`grok-imagine-image-quality`", "`image_generation_call`", "no size or format parameters"],
-        "xAI image-generation tool contract drifted",
-      );
-      return true;
-    }) ?? false;
+  const imageGenerationModelId = reviewClaim(input, "image_generation_tool_contract_drift", () => {
+    const body = section(llms, "/developers/tools/image-generation");
+    const current = body.match(
+      /It uses the latest Imagine image models \(`(grok-[a-z0-9.-]+)`\)/,
+    )?.[1];
+    if (current !== undefined && body.includes("`image_generation_call`")) return current;
+    requireClaims(
+      body,
+      ["`grok-imagine-image-quality`", "`image_generation_call`", "no size or format parameters"],
+      "xAI image-generation tool contract drifted",
+    );
+    return "grok-imagine-image-quality";
+  });
   const voiceTools =
     reviewClaim(input, "voice_tool_contract_drift", () => {
       requireClaims(
@@ -1465,7 +1528,7 @@ function commercialEvidence(
     );
   });
   return {
-    imageGenerationTool,
+    imageGenerationModelId,
     toolRates: toolRates(input, pricing),
     ...(voice?.speech === undefined
       ? {}
@@ -1592,6 +1655,26 @@ function currentModels(
   const language = distinct(
     catalog.clusterConfigs.flatMap(({ languageModels }) => languageModels),
     "language",
+    (value) => languageIdentitySchema.parse(value),
+  );
+  const languageRegions = new Map<string, Map<string, z.infer<typeof languageModelSchema>>>();
+  for (const cluster of catalog.clusterConfigs) {
+    for (const value of cluster.languageModels) {
+      const entries =
+        languageRegions.get(value.name) ?? new Map<string, z.infer<typeof languageModelSchema>>();
+      const previous = entries.get(cluster.clusterName);
+      if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(value))
+        throw new Error(
+          `xAI language model ${value.name} conflicts within region ${cluster.clusterName}`,
+        );
+      entries.set(cluster.clusterName, value);
+      languageRegions.set(value.name, entries);
+    }
+  }
+  const regionalPrices = new Set(
+    [...languageRegions].flatMap(([id, entries]) =>
+      new Set([...entries.values()].map((value) => JSON.stringify(value))).size > 1 ? [id] : [],
+    ),
   );
   const embeddings = distinct(
     catalog.clusterConfigs.flatMap(({ embeddingModels }) => embeddingModels),
@@ -1642,7 +1725,14 @@ function currentModels(
           warnings: new Map<string, SourceRawPricingFact[]>(),
         }
       : (reviewClaim(input, "public_pricing_contract_drift", () =>
-          publicPricingReview(input, pricing, modelsPage, language, images, videos),
+          publicPricingReview(
+            input,
+            pricing,
+            modelsPage,
+            language.filter((value) => !regionalPrices.has(value.name)),
+            images,
+            videos,
+          ),
         ) ?? {
           text: new Map<string, TextPrice[]>(),
           warnings: new Map<string, SourceRawPricingFact[]>(),
@@ -1721,17 +1811,20 @@ function currentModels(
       status: "active",
       release_stage: releaseStage,
       pricing_state: "numeric",
-      price_facts: ratesFor(
-        value.name,
-        textRates(
-          value,
-          input.source.id,
-          publicPrices.text.get(value.name),
-          batchMultipliers !== undefined &&
-            excludedFromBatch !== undefined &&
-            !excludedFromBatch.has(value.name),
-          batchMultipliers?.get(value.name),
-          priorityMultiplier,
+      price_facts: [...(languageRegions.get(value.name) ?? [])].flatMap(([region, regional]) =>
+        regionalRates(
+          textRates(
+            regional,
+            input.source.id,
+            // An unscoped public summary cannot override a narrower regional amount.
+            regionalPrices.has(value.name) ? undefined : publicPrices.text.get(value.name),
+            batchMultipliers !== undefined &&
+              excludedFromBatch !== undefined &&
+              !excludedFromBatch.has(value.name),
+            batchMultipliers?.get(value.name),
+            priorityMultiplier,
+          ),
+          [region],
         ),
       ),
       raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
@@ -2165,7 +2258,7 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
 
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const llms = companion(bundle, "/llms.txt");
+  const llms = companion(bundle, "/llms-full.txt");
   const current = currentModels(
     input,
     embeddedModels(input, bundle.index.body),

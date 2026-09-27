@@ -6,9 +6,16 @@ import type {
 } from "./pricing-source.ts";
 
 export interface XaiCommercialEvidence {
-  imageGenerationTool: boolean;
+  imageGenerationModelId: string | undefined;
   toolRates: Array<{
-    key: "attachment-search" | "code-execution" | "collections-search" | "web-search" | "x-search";
+    key:
+      | "attachment-search"
+      | "code-execution"
+      | "collections-search"
+      | "web-search"
+      | "x-search"
+      | "x-search-posts"
+      | "x-search-profiles";
     name: string;
     rate: SourcePriceFact;
     supportsVoice: boolean;
@@ -48,8 +55,8 @@ export function extractXaiCommercialFacts(
     raw_price_facts: [],
   }));
 
-  if (evidence.imageGenerationTool) {
-    const image = models.find(({ model_id }) => model_id === "grok-imagine-image-quality");
+  if (evidence.imageGenerationModelId !== undefined) {
+    const image = models.find(({ model_id }) => model_id === evidence.imageGenerationModelId);
     if (image !== undefined)
       facts.push({
         ...service(

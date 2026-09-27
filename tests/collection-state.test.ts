@@ -10,6 +10,32 @@ const previousAt = "2026-07-23T00:00:00.000Z";
 const currentAt = "2026-07-24T00:00:00.000Z";
 const noPricing = emptyPricingCatalog();
 
+it("reports metadata-only model changes even when identity and capabilities are unchanged", () => {
+  const model = baseModel({
+    providerId: "test",
+    id: "model",
+    name: "Model",
+    sourceId: "test-catalog",
+    observedAt: previousAt,
+  });
+  const next = {
+    ...model,
+    model_card: { license: "MIT" },
+    deployment: { package_version: "2.0", region: "west", profiles: [] },
+  };
+  const summary = summarizeRefresh(
+    catalog("1", previousAt, [model], "a"),
+    catalog("2", currentAt, [next], "b"),
+    noPricing,
+    noPricing,
+  );
+  expect(summary.providers[0]?.models.changed).toBe(1);
+  expect(summary.providers[0]?.models.changed_fields).toMatchObject({
+    model_card: 1,
+    deployment: 1,
+  });
+});
+
 function contractFinding(
   disposition: SourceContractEvidence["disposition"],
   path: string,
@@ -305,6 +331,38 @@ describe("collection state", () => {
     );
 
     expect(summary.providers[0]?.models).toMatchObject({ changed: 0, unchanged: 1 });
+  });
+
+  it("publishes count decreases as diagnostics without claiming a validation failure", () => {
+    const model = baseModel({
+      providerId: "test",
+      id: "model",
+      name: "Model",
+      sourceId: "test-catalog",
+      observedAt: currentAt,
+    });
+    const removed = { ...model, model_id: "removed", uid: "test/removed" };
+    const summary = summarizeRefresh(
+      catalog("a", previousAt, [model, removed], "b"),
+      catalog("c", currentAt, [model], "d"),
+      noPricing,
+      noPricing,
+      [{ provider_id: "test", outcome: "accepted", sources: [] }],
+    );
+    expect(summary).toMatchObject({
+      publication: "complete",
+      totals: { accepted: 1, retained: 0 },
+      providers: [
+        {
+          publication: "accepted",
+          models: { removed: 1 },
+          signals: ["catalog_count_decrease"],
+          count_decreases: [{ field: "models", previous: 2, current: 1 }],
+          attempt: { outcome: "accepted" },
+        },
+      ],
+    });
+    expect(summary.providers[0]?.attempt?.validation_issue).toBeUndefined();
   });
 
   it("separates rejected observations from retained publication", () => {

@@ -6,8 +6,12 @@ Status: current
 
 The exhaustive global catalog and current public rates come from the official
 [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) table. A valid model column
-creates one exact callable ID; names found only in footnotes, integrations, wildcard routing, old
-pages, or release history do not create current rows. The current table is also authoritative over
+creates one exact callable ID. A current first-party footnote can additionally establish a legacy
+request ID only when it explicitly says the ID is still accepted, identifies its current table
+target, and binds its billing to that target. Such IDs retain exact rows with `legacy` status,
+replacement IDs, and target rates with explicit derivation evidence. A dated future redirect does
+not apply early. Other names in integrations, wildcard routing, old pages, or release history do
+not create current rows. The current table is also authoritative over
 orphaned `pricing-details-*` pages that still describe retired models.
 
 The fetch bundle contains only companions that contribute a current catalog or rate-book field:
@@ -46,22 +50,23 @@ conflict because their denominations differ. Kmodels does not infer which curren
 credential; a consumer selects the applicable currency from its own account configuration.
 
 The current price tables publish Peak and Off-peak rows directly inside the model table. They are
-`billing_period` variants. Since `2026-08-22T16:00:00Z`, Peak covers the half-open UTC windows
-`01:00–04:00` and `06:00–10:00` on Monday through Friday, while Off-peak is the weekly remainder;
-Saturday and Sunday in Beijing time are therefore entirely Off-peak. The Chinese table is accepted
-only when its Beijing-time rule maps to the same UTC schedule. Kmodels records the published weekly
-rule and exposes Peak/Off-peak as categorical choices; collection never decides a period from its
-own clock. The recurring weekday sentence and the dated weekend-transition notice establish the
-same schedule once the transition is effective. Observations before the exact rule-change instant
-retain the preceding daily schedule.
+`billing_period=peak|off_peak` variants. The current rule defines Peak as UTC `01:00–04:00` and
+`06:00–10:00`, Monday through Friday excluding Chinese public holidays. All other hours, weekends
+and Chinese public holidays are Off-peak. The Chinese table independently establishes the matching
+Beijing-time windows. Both categories preserve the exact source definition and informational
+evidence; callers supply the applicable category. Kmodels neither maintains annual holiday dates
+nor evaluates make-up workdays or the current clock. A plain weekly schedule would misrepresent
+the holiday exception, so the current categories deliberately omit executable schedule metadata.
+Historical fixtures retain their independently reviewed daily or weekly rules.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
 changes quantity rather than rate. FIM, Responses, and Anthropic compatibility do not create new
 offers when they use the same model rates.
 
-`deepseek-v4-flash-vision-exp` owns the same explicit Peak/Off-peak token rates published in its
-model column. Images are converted to tokens from their dimensions and included with text input
+`deepseek-flash` is the current Flash identity. The explicitly accepted legacy IDs
+`deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` route to it and use its current rates, rather
+than retaining the retired underlying models' prices. Images are converted to tokens from their dimensions and included with text input
 tokens, so the price book does not duplicate that aggregate input usage as a second image rate. The
 Vision guide establishes image input in the model catalog, while verified Chat Completions and
 Responses usage counters remain the charge bindings for the combined billable input-token totals.
@@ -83,8 +88,8 @@ published as `unknown` or raw pricing.
 The price book publishes provider-independent charge signals separately from the provider fields
 that can supply them. Numeric rates therefore remain useful if an optional interface reference
 drifts. Each verified field is an independent `pricing_input`; losing one field removes only that
-locator and any calculation method that requires it, not its sibling fields, endpoint, model, or
-rate.
+locator, not a known calculation, sibling field, endpoint, model, or rate. The uncached-input
+equation and surviving mappings remain available; an unmapped signal is an explicit caller input.
 
 The current machine-readable input contract is:
 
@@ -99,6 +104,12 @@ same usage object immediately before `data: [DONE]`. Responses non-streaming pat
 `/usage`; terminal `response.completed`, `response.incomplete`, and `response.failed` events expose
 the full response under `/response`, so their streaming paths are rooted at `/response/usage`.
 Every stream input is marked `terminal_only`.
+
+Accounting prose is matched as rendered HTML text, so inline `<code>` around `data: [DONE]`
+does not break the terminal-chunk contract. Responses may publish cache usage as a nested
+OpenAPI schema instead of a dotted field name. Require the integer `cached_tokens` field under
+`usage → input_tokens_details`; an output-token or unrelated usage subtree cannot establish
+the cache-input locator. The terminal-event markers remain mandatory for stream mappings.
 
 Chat and FIM cache-miss quantities are direct observations. Responses cache-miss input uses a
 closed, unit-preserving calculation graph: total input tokens minus cached input tokens, floored at
@@ -129,8 +140,8 @@ reported without removing either model or its ordinary rates.
 - A malformed model header, field, support value, billing-period label, price cell, companion
   operation, or usage group suppresses only that exact claim. Valid siblings remain.
 - An optional companion failure cannot erase current IDs or numeric price-table rows. If usage
-  evidence fails, only the affected pricing-input locator or dependent calculation method is
-  omitted. The semantic charge binding and numeric rate remain.
+  evidence fails, only the affected pricing-input locator is omitted. Known arithmetic, surviving
+  mappings, the semantic charge binding, and the numeric rate remain.
 - The public model-list witness and optional authenticated inventory report exact-ID disagreements
   but do not override the exhaustive price table.
 - Unknown table rows are reported and ignored. Account-only and otherwise out-of-scope rows are
@@ -143,8 +154,9 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 
 ## Presentation
 
-Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors, the compact UTC
-weekly rule, the three applicable published rates, and their verified pricing-input methods. They do not
+Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors,
+the three applicable published rates, and their verified pricing-input methods. The categorical
+definitions preserve the holiday rule. They do not
 show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
 web-search price. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by

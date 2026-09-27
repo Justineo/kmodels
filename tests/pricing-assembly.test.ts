@@ -11,6 +11,7 @@ import {
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
 import type {
+  ChargeBinding,
   NormalizedPriceObservation,
   PriceApplicability,
   PricingCatalog,
@@ -102,6 +103,20 @@ function rate(
   };
 }
 
+function chargeBinding(signal: ChargeBinding["signal"], locator: string): ChargeBinding {
+  return {
+    signal,
+    aggregation: "request",
+    observations: [
+      {
+        source_ref: sourceRef,
+        locator: { kind: "table", value: locator },
+        raw: { fragment: "Reported billable token quantity" },
+      },
+    ],
+  };
+}
+
 function input(rates: AtomicRateVariant[]): AtomicProviderPricing {
   return {
     provider_id: providerId,
@@ -185,6 +200,101 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.variants).toHaveLength(1);
     expect(term.variants[0]!.applicability.any_of).toHaveLength(2);
     expect(term.variants[0]!.observations).toHaveLength(2);
+  });
+
+  it("preserves different accounting contracts even when regional rates are equal", () => {
+    const us = rate(region("US"), "US");
+    const eu = rate(region("EU"), "EU");
+    us.charge_binding = chargeBinding({ namespace: "kmodels", value: "input_tokens" }, "US usage");
+    eu.charge_binding = chargeBinding(
+      { namespace: "kmodels", value: "uncached_input_tokens" },
+      "EU usage",
+    );
+    const source = input([us, eu]);
+    const partition = assemble(source);
+    const term = partition.books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toHaveLength(2);
+    for (const original of [us, eu])
+      expect(term.variants).toContainEqual(
+        expect.objectContaining({
+          applicability: original.applicability,
+          charge_binding: original.charge_binding,
+        }),
+      );
+    expect(assemble(input([eu, us]))).toEqual(partition);
+  });
+
+  it("does not widen a charge binding or selector mapping into an unbound region", () => {
+    const us = rate(region("US"), "US");
+    const eu = rate(region("EU"), "EU");
+    us.charge_binding = chargeBinding({ namespace: "kmodels", value: "input_tokens" }, "US usage");
+    us.selector_sources = [
+      {
+        dimension: { namespace: "kmodels", value: "region" },
+        channel: "request",
+        locator: { kind: "json_pointer", value: "/region" },
+        availability: "always",
+        absent_value: { namespace: "provider", provider_id: providerId, value: "US" },
+        observations: us.charge_binding.observations,
+      },
+    ];
+    const term = assemble(input([us, eu])).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toHaveLength(2);
+    const unbound = term.variants.find(
+      (variant) => JSON.stringify(variant.applicability) === JSON.stringify(eu.applicability),
+    );
+    expect(unbound).toBeDefined();
+    expect(unbound).not.toHaveProperty("charge_binding");
+    expect(unbound).not.toHaveProperty("selector_sources");
+  });
+
+  it("still compacts matching contracts and combines only their evidence", () => {
+    const rates = [rate(region("US"), "US"), rate(region("EU"), "EU")];
+    for (const variant of rates)
+      variant.charge_binding = chargeBinding(
+        { namespace: "kmodels", value: "input_tokens" },
+        variant.observation.locator.value,
+      );
+    const term = assemble(input(rates)).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]!.charge_binding?.signal).toEqual({
+      namespace: "kmodels",
+      value: "input_tokens",
+    });
+    expect(term.variants[0]!.charge_binding?.observations).toHaveLength(2);
+  });
+
+  it("deduplicates equivalent selector mappings before grouping their scopes", () => {
+    const us = rate(region("US"), "US");
+    const eu = rate(region("EU"), "EU");
+    const selector = {
+      dimension: { namespace: "kmodels", value: "region" },
+      channel: "request",
+      locator: { kind: "json_pointer", value: "/region" },
+      availability: "always",
+    } as const;
+    const signal = { namespace: "kmodels", value: "input_tokens" } as const;
+    us.selector_sources = ["first", "second"].map((locator) => ({
+      ...selector,
+      observations: chargeBinding(signal, locator).observations,
+    }));
+    eu.selector_sources = [
+      { ...selector, observations: chargeBinding(signal, "third").observations },
+    ];
+    const partition = assemble(input([us, eu]));
+    const term = partition.books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]!.selector_sources).toHaveLength(1);
+    expect(term.variants[0]!.selector_sources![0]!.observations).toHaveLength(3);
+    expect(assemble(input([eu, us]))).toEqual(partition);
   });
 
   it("shards an oversized equal-value applicability instead of downgrading it", () => {

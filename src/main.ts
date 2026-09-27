@@ -1,27 +1,25 @@
 import { createVaporApp } from "vue";
 import App from "./App.vue";
-import { parseWebsiteCatalog } from "./catalog/website-runtime.ts";
+import { loadWebsiteCatalog } from "./catalog/website-runtime.ts";
 import { prepareOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import "./tokens.css";
 import "./style.css";
 
-async function json(path: string, label: string): Promise<unknown> {
+async function json(path: string): Promise<unknown> {
   const response = await fetch(path, {
     cache: "no-cache",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error(`${label} request failed with ${response.status}`);
+  if (!response.ok) throw new Error(`Catalog request failed with ${response.status}`);
   return response.json();
 }
 
 try {
-  const [catalogValue, pricingValue] = await Promise.all([
-    json("/ui/catalog/index.json", "Catalog"),
-    json("/ui/catalog/pricing.json", "Pricing summary"),
+  const [catalog] = await Promise.all([
+    loadWebsiteCatalog(json),
     prepareOverlayScrollbars(),
     import("./icons/sprite.ts").then(({ installIconSprite }) => installIconSprite()),
   ]);
-  const catalog = parseWebsiteCatalog(catalogValue, pricingValue);
   createVaporApp(App, { catalog }).mount("#app");
 } catch (error) {
   console.error(error);

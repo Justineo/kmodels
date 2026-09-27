@@ -4,7 +4,7 @@ Status: implemented
 
 ## Product boundary
 
-Kmodels is a best-effort catalog of model offerings from 18 providers.
+Kmodels is a best-effort catalog of model offerings from the registered providers.
 `Provider` and `ProviderModel` describe the model catalog. Pricing is a separate
 content-bound resource containing provider vocabularies, snapshots, books,
 offers, terms, and explicit model dispositions. Equal names or IDs from
@@ -112,6 +112,24 @@ with provenance.
 - `routes` binds one source to an exact upstream provider, provider model ID, raw task, and route state. Normalized tasks never replace this relation.
 
 ## Lifecycle, dates, and capabilities
+
+Optional `model_card` facts preserve the provider's publisher, license label, size range,
+context-window label, languages, upstream identity, access label and framework. They are
+descriptive model metadata, not a grant of license rights or account entitlement. A label
+such as `<4K` or `1B-10B` must not become an exact numeric limit or parameter count.
+
+Optional `deployment` records a package version and the Region of the published configuration,
+with named deployment profiles, default/supported instance types, serving framework versions,
+and explicitly scoped context settings. Profiles may be components of several configurations;
+`configurations` preserves those associations. Instance variants retain their instance or family
+selector, and profile defaults remain distinct. These are package configuration facts, not
+model release versions, global model limits, positive regional availability, benchmark promises,
+or deployable account resources. Resource ARNs, artifacts, container locations, credentials and
+arbitrary environment variables are outside this public contract.
+
+Both fields are optional, bounded, and detail-only on the website. Sources declare their ownership
+in `field_paths`; lower-authority model-card facts fill only missing keys, while a deployment
+snapshot is merged atomically to avoid combining different package versions.
 
 - Capability flags are tri-state; missing evidence stays unknown.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.

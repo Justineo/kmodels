@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
+import { calculationCoverage } from "../src/catalog/pricing-calculation-coverage.ts";
 import {
   createCalculator,
   PricingError,
@@ -80,6 +81,47 @@ describe("portable conformance", () => {
     });
 });
 describe("calculator boundaries", () => {
+  it("preserves partial acquisition mappings without treating missing quantities as zero", () => {
+    const supplied = basePriceData();
+    const term = firstRateTerm(supplied);
+    const method = term.variants[0]?.charge_binding?.quantity_methods?.[0];
+    if (method === undefined) throw new Error("Missing quantity method");
+    method.input_sources = [
+      {
+        signal: { namespace: "kmodels", value: "input_tokens" },
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "conditional",
+      },
+    ];
+    const calculator = createCalculator(supplied);
+    expect(calculator.calculate(baseCalculationRequest()).totals).toEqual(
+      createCalculator(basePriceData()).calculate(baseCalculationRequest()).totals,
+    );
+    const coverage = calculationCoverage(supplied).providers[0]?.components.find(
+      (component) => component.termRef === term.id,
+    );
+    expect(coverage).toMatchObject({ chargesWithAcquisition: 0, chargesRequiringCallerInputs: 1 });
+    const missing = baseCalculationRequest();
+    const component = firstComponent(missing);
+    component.quantities = component.quantities.filter(
+      ({ signal }) => signal.value !== "cached_input_tokens",
+    );
+    const result = calculator.calculate(missing);
+    expect(result.totals).toBeUndefined();
+    expect(result.unresolved).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "missing_quantity", termRef: term.id }),
+      ]),
+    );
+    method.input_sources.push({
+      signal: { namespace: "kmodels", value: "output_tokens" },
+      channel: "response",
+      locator: { kind: "json_pointer", value: "/usage/output_tokens" },
+      availability: "conditional",
+    });
+    expectPricingError(() => createCalculator(supplied), "INVALID_DATA");
+  });
   it("owns an isolated snapshot and allows atomic instance replacement", () => {
     const supplied = basePriceData();
     const old = createCalculator(supplied);

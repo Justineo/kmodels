@@ -4,6 +4,7 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
+  rateVariantIdentity,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
@@ -458,7 +459,7 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
       raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
       continue;
     }
-    append(grouped, canonicalJson([item.price, ...optionalValue(item.validity)]), item);
+    append(grouped, canonicalJson(rateVariantIdentity(item)), item);
   }
   const result: PriceRateVariant[] = [];
   for (const group of grouped.values()) {
@@ -502,18 +503,13 @@ function mergedSelectorSources(variants: AtomicRateVariant[]): PriceSelectorSour
 }
 
 function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | undefined {
-  const bindings = variants.flatMap(({ charge_binding }) =>
-    charge_binding === undefined ? [] : [charge_binding],
-  );
-  const first = bindings[0];
-  if (first === undefined) return;
-  const identity = ({ observations: _observations, ...binding }: ChargeBinding) =>
-    canonicalJson(binding);
-  if (bindings.some((binding) => identity(binding) !== identity(first))) return;
+  // The grouping key already guarantees identical binding semantics.
+  const binding = variants[0]?.charge_binding;
+  if (binding === undefined) return;
   return {
-    ...first,
+    ...binding,
     observations: sortUnique(
-      bindings.flatMap(({ observations }) => observations),
+      variants.flatMap(({ charge_binding }) => charge_binding?.observations ?? []),
       rawObservationKey,
     ),
   };
@@ -1060,11 +1056,11 @@ function sortStates(states: PriceStateVariant[]): PriceStateVariant[] {
 }
 
 function sortRateVariants(variants: PriceRateVariant[]): PriceRateVariant[] {
-  return sortByCanonicalKey(variants, ({ price, validity, charge_binding, applicability }) => [
-    price,
-    ...optionalValue(validity),
-    ...optionalValue(charge_binding),
-    applicability,
+  return sortByCanonicalKey(variants, (variant) => [
+    variant.price,
+    ...optionalValue(variant.validity),
+    variant.applicability,
+    rateVariantIdentity(variant),
   ]);
 }
 
@@ -1228,6 +1224,7 @@ function precompactionProjection(prepared: PreparedProvider) {
                       : chargeBindingIdentity(variant.charge_binding),
                   ),
                   ...optional("validity", variant.validity),
+                  ...optional("selector_sources", variant.selector_sources),
                   observation: variant.observation,
                 }))
               : [],
@@ -1279,7 +1276,7 @@ function precompactionProjection(prepared: PreparedProvider) {
               ? term.input.variants.map((variant) => ({
                   term_id: term.id,
                   target_rate_refs: variant.target_rate_refs,
-                  charge_bindings: variant.charge_bindings.map(chargeBindingIdentity),
+                  charge_bindings: variant.charge_bindings,
                   applicability: variant.applicability,
                   ...optional("validity", variant.validity),
                   observation: variant.observation,
@@ -1312,24 +1309,41 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
   const projection = precompactionProjection(prepared);
   if (canonicalJsonBytes(projection).byteLength > pricingLimits.providerPrecompactionBytes)
     throw new Error("Provider precompaction byte limit exceeded");
+  const variantCount =
+    projection.states.length +
+    projection.rates.length +
+    projection.allowances.length +
+    projection.contributions.length +
+    projection.raw_variants.length;
   const counts = {
     books: projection.books.length,
     offers: projection.offers.length,
     terms: projection.terms.length,
-    variants:
-      projection.states.length +
-      projection.rates.length +
-      projection.allowances.length +
-      projection.raw_variants.length,
+    variants: variantCount,
     observations:
       projection.scope_observations.length +
       projection.relation_observations.length +
       projection.charge_observations.length +
       projection.disposition_observations.length +
-      projection.states.length +
-      projection.rates.length +
-      projection.allowances.length +
-      projection.raw_variants.length,
+      variantCount +
+      projection.rates.reduce(
+        (count, rate) =>
+          count +
+          (rate.selector_sources ?? []).reduce(
+            (total, source) => total + source.observations.length,
+            0,
+          ),
+        0,
+      ) +
+      projection.contributions.reduce(
+        (count, variant) =>
+          count +
+          variant.charge_bindings.reduce(
+            (total, binding) => total + binding.observations.length,
+            0,
+          ),
+        0,
+      ),
   };
   if (
     counts.books > pricingLimits.booksPerProvider ||

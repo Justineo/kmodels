@@ -14,6 +14,7 @@ import {
   applicabilityContainedIn,
   canonicalizeApplicability,
   normalizeUnitExpression,
+  rateVariantIdentity,
   selectorWeight,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
@@ -537,12 +538,13 @@ function validateTerm(
         canonicalJson(variant.price),
         ...optionalComponent(variant.validity),
         canonicalJson(variant.applicability),
+        canonicalJson(rateVariantIdentity(variant)),
       ],
       `${path} variants`,
     );
     assertBoundedApplicabilityGroups(
       term.variants,
-      (variant) => canonicalJson([variant.price, ...optionalComponent(variant.validity)]),
+      (variant) => canonicalJson(rateVariantIdentity(variant)),
       `${path} variant grouping key`,
     );
     assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
@@ -791,7 +793,11 @@ function validateOfferSemantics(
 ): void {
   const rates = offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
   const baseRaw = offer.terms.flatMap(rawVariants).filter(({ impact }) => impact === "base_price");
-  if (offer.states.length === 0 && baseRaw.length === 0)
+  const hasAdjustment = offer.terms.some(
+    (term) =>
+      (term.kind === "allowance" || term.kind === "contribution") && term.variants.length > 0,
+  );
+  if (offer.states.length === 0 && baseRaw.length === 0 && !hasAdjustment)
     fail(path, "offer has neither a state nor a base-price raw fact");
 
   for (let left = 0; left < offer.states.length; left += 1) {
@@ -944,16 +950,12 @@ function validateChargeBinding(
       const required = new Set(
         requiredUsageSignalsForMethod(binding, method).map((signal) => canonicalJson(signal)),
       );
-      const covered = new Set<string>();
       for (const source of method.input_sources) {
         validateOwnedAtom("usage_signal", source.signal, undefined, context, path);
         validateInputLocator(source, `${path} usage input`);
         const key = canonicalJson(source.signal);
         if (!required.has(key)) fail(path, "usage input source does not belong to the method");
-        covered.add(key);
       }
-      if (covered.size !== required.size)
-        fail(path, "usage input sources do not cover every method input");
     }
   }
   if (typeof binding.aggregation !== "string")

@@ -22,8 +22,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # Keep commit/tree history for the catalog update link, without historical blobs.
           fetch-depth: 0
+          filter: blob:none
           ref: main
+          sparse-checkout-cone-mode: false
+          # Keep the full TypeScript check scope; production reads only these data projections.
+          sparse-checkout: |
+            /*
+            !/*/
+            /src/
+            /scripts/
+            /tests/
+            !/tests/fixtures/
+            /public/
+            /data/website-assets.json
+            /data/website-assets.pack
+            /data/export-assets.json
+            /data/export-assets.pack
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6

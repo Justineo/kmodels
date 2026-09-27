@@ -11,6 +11,7 @@ import {
   rawPriceFactSchema,
   rawPriceObservationSchema,
   unitExpressionSchema,
+  usageInputLocatorSchema,
   usageQuantityCalculationSchema,
 } from "../src/catalog/pricing-schema.ts";
 
@@ -181,6 +182,18 @@ describe("canonical pricing wire schema", () => {
         extra: true,
       }),
     ).toThrow();
+  });
+
+  it("requires exact JSON Pointer escapes in usage input locations", () => {
+    for (const value of ["/", "/usage/input_tokens", "/usage~1tokens/cache~0read"])
+      expect(usageInputLocatorSchema.parse({ kind: "json_pointer", value })).toEqual({
+        kind: "json_pointer",
+        value,
+      });
+    for (const value of ["usage/input_tokens", "/usage/~", "/usage/~2tokens"])
+      expect(() => usageInputLocatorSchema.parse({ kind: "json_pointer", value })).toThrow(
+        "Usage JSON Pointer",
+      );
   });
 
   it("validates closed calendar labels and canonical UTC instants", () => {

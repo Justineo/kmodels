@@ -15,6 +15,7 @@ import type {
   UsageQuantityNode,
   UsageSignal,
 } from "./pricing-schema.ts";
+import { rationalSchema } from "./pricing-schema.ts";
 
 export interface ObservedUsageQuantity {
   signal: UsageSignal;
@@ -108,7 +109,7 @@ export function evaluateChargeQuantity(
   for (const input of observed) {
     const key = canonicalJson(input.signal);
     if (values.has(key)) throw new Error("Observed usage contains a duplicate signal");
-    values.set(key, input.value);
+    values.set(key, rationalSchema.parse(input.value));
   }
 
   const resolved: Rational[] = [];

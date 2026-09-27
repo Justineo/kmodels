@@ -2,6 +2,7 @@ import {
   canonicalJsonFromValidated,
   canonicalJsonKey as canonicalKey,
   compareUtf8,
+  uniqueCanonicalValues,
 } from "./canonical-value.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
@@ -10,12 +11,33 @@ import {
   type PriceCategoricalValue,
   type PriceCondition,
   type PriceDimension,
+  type PriceRateVariant,
   type UnitExpression,
 } from "./pricing-schema.ts";
 
 export const unconditionalApplicability: PriceApplicability = {
   any_of: [{ all_of: [] }],
 };
+
+// Acquisition contracts qualify a rate just as its amount does. Audit evidence
+// may be combined, but a mapping or formula must not spread to another scope.
+export function rateVariantIdentity(
+  variant: Pick<PriceRateVariant, "price" | "validity" | "charge_binding" | "selector_sources">,
+) {
+  const { observations: _observations, ...binding } = variant.charge_binding ?? {};
+  return {
+    price: variant.price,
+    ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    ...(variant.charge_binding === undefined ? {} : { charge_binding: binding }),
+    ...(variant.selector_sources === undefined
+      ? {}
+      : {
+          selector_sources: uniqueCanonicalValues(
+            variant.selector_sources.map(({ observations: _observations, ...source }) => source),
+          ),
+        }),
+  };
+}
 
 const exactClauseIndexes = new WeakMap<PriceApplicability, ReadonlySet<string>>();
 const overlapResults = new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>();

@@ -5,6 +5,7 @@ import {
   failedPricingTransition,
   pricingTransitionProviderId,
   providerPartition,
+  providerPartitionSourceRefs,
   transitionProviderPricing,
   type ProviderPricingTransition,
 } from "./pricing-transition.ts";
@@ -89,6 +90,41 @@ export function composeCatalogPair(
       previousPartition !== undefined,
     );
 
+    if (prior !== undefined && previousPartition !== undefined && transition.kind === "failed") {
+      const reason = retainedPricingCoreMismatch(catalog, previousPartition);
+      if (reason !== undefined) {
+        catalog = retainProviderCore(catalog, prior, providerId);
+        const priorCoverage = prior.coverage.find(({ provider_id }) => provider_id === providerId);
+        catalog.coverage = replaceProviderRecords(
+          catalog.coverage,
+          [
+            {
+              provider_id: providerId,
+              status: "stale",
+              model_count: catalog.models.filter(({ provider_id }) => provider_id === providerId)
+                .length,
+              pricing_term_count: previousPartition.books.reduce(
+                (total, book) =>
+                  total + book.offers.reduce((count, offer) => count + offer.terms.length, 0),
+                0,
+              ),
+              checked_at: current.generated_at,
+              ...(priorCoverage?.last_successful_sync_at === undefined
+                ? {}
+                : { last_successful_sync_at: priorCoverage.last_successful_sync_at }),
+              reason,
+            },
+          ],
+          ({ provider_id }) => provider_id === providerId,
+        );
+        catalog.warnings.push({
+          code: "retained_pricing_core_mismatch",
+          provider_id: providerId,
+          message: reason,
+        });
+      }
+    }
+
     if (
       prior !== undefined &&
       previousPartition !== undefined &&
@@ -105,6 +141,40 @@ export function composeCatalogPair(
   const composed = { catalog: withCatalogVersion(catalog), pricing };
   validateSafetyOutcome(prior, priorPricing, composed, findings, modelOwners);
   return composed;
+}
+
+function retainedPricingCoreMismatch(
+  catalog: Catalog,
+  partition: ProviderPricingPartition,
+): string | undefined {
+  const providerId = partition.snapshot.provider_id;
+  if (!catalog.providers.some(({ id }) => id === providerId))
+    return `Retained pricing requires the previous catalog provider: ${providerId}`;
+  const modelRefs = new Set(
+    catalog.models.filter(({ provider_id }) => provider_id === providerId).map(({ uid }) => uid),
+  );
+  // Other model references in an accepted partition are bounded by these book scopes.
+  const requiredModels = [
+    ...partition.model_dispositions.map(({ model_ref }) => model_ref),
+    ...partition.books.flatMap((book) => [
+      ...book.scope.model_refs,
+      ...book.resource_edges.flatMap(({ target }) =>
+        target.kind === "models" ? target.model_refs : [],
+      ),
+    ]),
+  ];
+  const missingModel = requiredModels.find((modelRef) => !modelRefs.has(modelRef));
+  if (missingModel !== undefined)
+    return `Retained pricing requires the previous catalog model: ${missingModel}`;
+  const sourceRefs = new Set(
+    catalog.sources.filter(({ provider_id }) => provider_id === providerId).map(({ id }) => id),
+  );
+  const missingSource = providerPartitionSourceRefs(partition).find(
+    (sourceRef) => !sourceRefs.has(sourceRef),
+  );
+  return missingSource === undefined
+    ? undefined
+    : `Retained pricing requires the previous catalog source: ${missingSource}`;
 }
 
 function validateSafetyFindings(

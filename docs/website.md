@@ -9,9 +9,9 @@ Status: implemented core; provider pricing convergence is in progress
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name/alias search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
-- When the selected provider has standalone commercial resources, show their
-  count as an action that opens a provider-level pricing inspector. This is the
-  home for separately priced request services that do not belong to one model row.
+- Pricing is browsed through model rows and their inspectors. There is no provider-level
+  `Pricing & services` action. Independently priced request services remain in canonical
+  price books; exact model-linked components appear in the model inspector.
 - One semantic table fills the remaining viewport. Model details open in a right-side inspector.
 - Unknown values stay explicit. Rows without a representative numeric price
   show a short model-level status with an explanatory tooltip.
@@ -70,25 +70,38 @@ Status: implemented core; provider pricing convergence is in progress
   light-neutral 45-degree hatch marks across the three pricing columns, explains
   the model-level outcome in a tooltip. Use `Varies` for a
   context-dependent price, an offer count for
-  several base offers, and retain the exact `Free`, `Quote`,
+  several base offers, and retain the exact `0` (explicitly free), `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, or `No base offer` distinction. An exact offer
-  that cannot fit the three columns shows its applicable base-rate count. Provider credits such as
+  that cannot fit the three columns shows the amount and explicit unit across those columns
+  when it has one invariant, fully covered rate. This uses the same canonical projection and
+  evidence checks as ordinary price cells, including provider-owned meters and zero rates.
+  The tooltip identifies the offer so a software-only price is not presented as a total bill.
+  These directly displayed single rates also count toward representative pricing coverage.
+  Numeric zero rates remain visible as zero. Provider-owned token meters with an explicit
+  canonical total-input or output token charge binding use the corresponding table column,
+  including structured-decision output. An explicitly free offer displays `0` without inventing
+  a currency or billing unit; unknown or conditional pricing never becomes zero.
+  Multiple simultaneous rates retain their count. Provider credits such as
   DBUs and transcription duration still appear directly in a semantic column; simultaneous realtime
   message and session-duration charges remain a count because either single value would omit part of
   the cost. Interactive pricing status keeps the same body size as other table cells; its
   affordance comes from the dotted underline and interaction states. This status is never owned by
   the input meter. There is no
-  secondary flat-price path. On an exact model row, activating the status opens
+  secondary flat-price data source. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `[Run mode when selectable] → model rates → collapsed add-ons and included
-services → pricing notes`. The first mechanism in
+- The detail flow is `[capacity charges when linked] → [Run mode when selectable] → model rates
+→ collapsed related services → pricing notes`. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
   recommendation, or cheapest-offer choice. A sole mechanism is named as the Run mode in the model
   rate block so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
   from the rates.
-  The selected mechanism remains the context for the entire cost breakdown; exact mechanism
-  references filter its related costs. The model rate block is primary. Optional services,
+  The selected mechanism remains the context for its request-cost breakdown; exact mechanism
+  references filter its related costs. Public running-capacity rates occupy a separate block and
+  are never converted to per-request prices. Capacity books with the same offer identity and
+  charge signal appear under one heading when each has a single fixed capacity option; the viewer
+  chooses a resource before its regional rates appear. Only books exactly linked to that model are
+  offered, and the first option is not treated as a default. The model rate block is primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
   closed disclosure by default because they do not change the base model rates. The disclosure
   explains that these items are separate and expands them in that order. Each
@@ -102,8 +115,8 @@ services → pricing notes`. The first mechanism in
   separately and never combined
   into a total. When Run mode is selectable, the selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
-  kinds `Usage add-on`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
-  expose the schema term `optional`. Account plans and capacity are omitted.
+  kinds `Service charge`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
+  expose the schema term `optional`. Account plans and prepaid commitments are omitted.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
   explanatory prose already implied by the control. Multiple mechanism choices form a compact
@@ -139,23 +152,30 @@ services → pricing notes`. The first mechanism in
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the
   complete remaining numeric offer-state scope, that invariant rate appears
-  immediately without repeating invariant dimensions. Unresolved unequal or
+  immediately without repeating invariant dimensions. Driver equality includes a compact quantity
+  identity for exact scaling and calculation rules, so equal unit prices with different minimums or
+  quantity formulas keep their required context. Acquisition field locations and evidence do not
+  affect this identity; the browser receives neither those mappings nor the calculation graph.
+  Unresolved unequal or
   partial alternatives remain hidden until their required controls are chosen; the control labels
   and empty choices communicate that requirement without a repeated section heading or prompt.
-  Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
-  rate-book UI. The controls resolve exact applicable rates but do not estimate
+  Account enrollment, settlement, and plan selectors are outside the Gateway
+  rate-book UI. Capacity selectors are shown only for linked public running-resource rates.
+  The controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state. A resolved plan boundary appears once in
   a compact, icon-led status band instead of being repeated on every state and rate; unresolved
   validity remains visible. A single offer state stays in the offer
   summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
-  choices, and complete non-overlapping range partitions become ordered range
+  choices, and contiguous finite or unbounded domains become ordered range
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
-  operators. Ranges with gaps or overlaps continue to accept an exact value and
+  operators. Overlapping integer bands are split at every predicate boundary so
+  each choice resolves every original condition without guessing a representative
+  value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
-  remains in the provider inspector and canonical audit; a missing driver never hides a rate.
+  remains in the canonical audit; a missing driver never hides a rate.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,
@@ -168,16 +188,8 @@ services → pricing notes`. The first mechanism in
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
-- The provider-level pricing inspector uses the same rate, driver, contribution, raw-fact, and
-  retained-snapshot semantics. Known raw facts may expose only concise source-native parameters
-  that affect cost; observations, locators, and audit evidence remain excluded.
-  It renders conditional or validity-qualified offer states before rates while
-  leaving unconditional singletons in the summary. Applicability follows the
-  bounded pricing projection, with one link to the exact canonical audit.
-  Raw-only official rows stay separate from normalized resources.
-  The provider inspector has a literal resource/offer search. Entering a query
-  loads the remaining bounded resource chunks before filtering so results are
-  provider-complete rather than limited to the initially loaded page.
+- Standalone service books remain available in the canonical pricing download. A service
+  without exact model applicability is not attached to all models to make it visible in the UI.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -299,17 +311,25 @@ services → pricing notes`. The first mechanism in
 - Replace the current history entry on state changes; `popstate` restores visited state.
 - Theme is local preference. Version-group expansion, popover visibility, and
   scroll positions are transient.
-- The browser's first-render data dependencies are `/ui/catalog/index.json` and
-  `/ui/catalog/pricing.json`. Request both concurrently and await both before
-  mounting the application; preload both from the HTML shell so their transfers
-  start in parallel with the core module graph. Core table data never has a
+- Preload `/ui/catalog/index.json` from the HTML shell. This lightweight manifest
+  contains provider labels, the data version, and ordered chunk row counts.
+  Load `/ui/catalog/chunks/<data_version>/<chunk>.json` with at most four concurrent
+  requests and await all chunks before mounting. Core table data never has a
   deferred loading state.
-  The catalog chunk contains provider labels and only the model fields needed
-  for rows, grouping, search, filters, and sorting. The pricing chunk contains
-  build-time representative pricing in matching model order. Browser-only UIDs
+  Split deterministically at model-row boundaries using the serialized UTF-8
+  size, capped at 128 KiB per chunk (including its envelope and dictionaries).
+  Each chunk keeps model rows and their representative prices together, with
+  local status and price-cell dictionaries. Inventory growth creates more chunks;
+  there is no fixed aggregate-size target or growth warning. An indivisible row
+  or manifest exceeding the chunk ceiling is a publication error.
+  Verify each chunk's version, ordinal and row count, the complete pricing/model
+  correspondence, and model uniqueness before mounting. Completion order cannot
+  change row order. Versioned chunk URLs prevent mixing cached snapshots.
+  Model rows contain only the fields needed for grouping, search, filters, and
+  sorting. Browser-only UIDs
   are derived from the exact tuple; `updated_date`, inspector facts, audit
   fields, and random per-model references do not inflate either payload.
-  Both chunks use versioned compact row tuples instead of repeating field names.
+  Both kinds of rows use versioned compact tuples instead of repeating field names.
   Catalog rows index providers and fixed vocabularies; pricing rows index shared
   status and cell dictionaries. A display name identical to its model ID and a
   zero detail-chunk index use compact sentinel values and are restored at the
@@ -327,44 +347,42 @@ services → pricing notes`. The first mechanism in
   provider-local offers in `/ui/offers/<provider>/<chunk>.json` instead of
   copying the same display-ready offer into every applicable model. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
-  bound and are requested only for a selected or window-preloaded model, or for
-  a provider inspector.
+  bound and are requested only for a selected or window-preloaded model.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
-- Provider pricing detail uses
-  `/ui/providers/<provider>/pricing/<chunk>.json`. It is requested on demand,
-  split into deterministic whole-resource chunks capped at 2 MiB uncompressed,
-  and cached by provider plus data version. Opening the inspector requests only
-  chunk zero; later resource chunks require an explicit “Load more” action.
-  Resources carry lightweight offer summaries and grouped offer references.
-  Expanding one offer requests only its shared-offer fragments, verifies stable
-  metadata, rejects duplicate rows, verifies the merged offer's ID, title,
-  billing mode, and state summary against the selected summary, and mounts its
-  detail DOM only while open. An explicit “Load more” action remains available
-  during browsing; entering a provider-pricing search loads all remaining chunks
-  before applying the literal filter.
+- Provider pricing projections remain at `/ui/providers/<provider>/pricing/<chunk>.json`,
+  in deterministic whole-resource chunks capped at 2 MiB uncompressed. The model-browser
+  UI does not load these standalone resources. Resources retain lightweight offer summaries
+  and grouped offer references for data consumers.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.
-- Use one `data_version` derived from the accepted catalog/pricing pair on the
-  catalog, pricing-summary, model-detail, shared-offer, and provider-detail
-  projections. Reject mismatched core
-  chunks before mounting and mismatched deferred details before rendering them.
+- The model inspector shows published publisher, license, model-size/context-range labels,
+  languages, upstream ID, access and framework under Model information. Deployment configurations
+  are a separate disclosure with a profile selector, package/Region identity, default and supported
+  instances, serving framework and conditional context controls. Never promote these controls to
+  the table's model-wide context limit. These facts live only in the existing byte-bounded detail
+  chunks; inventory growth and richer details do not inflate the core rows or create aggregate-size
+  warnings. Provider strings are rendered as text.
+- Use one `data_version` derived from the accepted catalog/pricing pair and core
+  transport version on the manifest, core chunks, model-detail, shared-offer,
+  and provider-detail projections. Reject mismatched core chunks before mounting
+  and mismatched deferred details before rendering them.
   Scope deferred-source, parsed-chunk, and model-detail caches to that version;
   evict rejected requests so a transient fetch or validation failure cannot
   poison later attempts.
 - Keep the initial catalog parser small and dependency-free. Provider/UI icons
   and table scrollbars belong to the first rendered state: start the icon
-  sprite, applicable OverlayScrollbars runtime/CSS, and two core data requests
+  sprite, applicable OverlayScrollbars runtime/CSS, and core manifest request
   concurrently; await them before mounting and initialize scrollbars during
   mount. These may be separate cacheable async chunks, but are not post-paint
   work. The first Vapor root renders only visible workspace chrome and the
   virtualized table. Keep catalog rows outside Vue's deep-reactive graph, and
   build the search index after first paint unless an earlier search needs it.
   After that paint, eagerly load the closed filter popover, inspector, their CSS,
-  and the full closed-schema validator in parallel. Only provider pricing and
-  out-of-window model details remain interaction-demanded. On coarse touch
+  and the full closed-schema validator in parallel. Out-of-window model details
+  remain interaction-demanded. On coarse touch
   devices, keep native
   scrolling for general surfaces; initialize the table's axis-specific
   OverlayScrollbars during the first mount against its real outer and nested
@@ -430,8 +448,9 @@ services → pricing notes`. The first mechanism in
 
 - Compile reviewed Lucide utility icons and Lobe provider marks into one hidden build-time SVG sprite. Visible icons use `<use>`.
 - Scope definition IDs per symbol so gradients remain stable.
-- Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry.
+- Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry; Amazon SageMaker AI uses the supplied AWS Architecture Service Icons (2025-07-31) mark, preserving its green background and white artwork. TypeSafe AI uses the supplied path with its original proportions and 0.86 opacity; `currentColor` follows the provider icon's black/light and white/dark theme colors.
 - Provider marks keep reviewed brand colors. Monochrome marks have explicit light/dark variants; Cerebras remains orange. Kimi uses its complete black mark on light surfaces and color mark on dark surfaces.
+- Provider icon containers have no border radius, preserving the artwork's original corners.
 
 ## Virtualization and scrollbars
 

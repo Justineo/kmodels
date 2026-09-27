@@ -14,6 +14,11 @@ This index points to the repository's current decisions. Detailed documents are 
 
 ## Domain topics
 
+- [Pricing research](docs/pricing-research.md): DBU conversion, Grok Priority, OCR billing, and
+  source evidence for session, geography, search, and grounding rules.
+
+- [Price-book completeness assessment](docs/pricing-raw-audit.md): accepted refresh coverage,
+  pricing dimensions, raw and omitted rules, and informational provenance.
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.
@@ -21,23 +26,27 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Kong AI Gateway](docs/kong-ai-gateway.md): consumer boundary and compatibility evidence.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
+- [Refresh and repair evidence audit](docs/refresh-repair-audit.md): observed coverage gaps, raw-evidence follow-up, and criteria for intelligent nodes.
+- [Source semantic audit](docs/semantic-audit.md): manual Jev experiment, evidence replay, and evaluation limits; not scheduled.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
-  request-attributable inference rates and calculation-input contracts, best-effort normalization and raw
+  request and inference-capacity rates, scoped usage signals, selector inputs and exact calculations, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
 - [Portable pricing calculator](docs/pricing-calculator.md): caller-owned calculation exports, pure ESM package, exact evaluation, and language-neutral conformance.
 - [Request-charge audit](docs/pricing-audit.md): evidence-backed mechanism coverage and explicit gaps across all 18 providers.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
-  invocation-cost admission boundary, charge binding, presentation, conflict resolution, and
+  inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
 
 ## Providers
 
+- [TypeSafe AI](docs/providers/typesafe.md)
 - [OpenAI](docs/providers/openai.md)
 - [Anthropic](docs/providers/anthropic.md)
 - [Amazon Bedrock](docs/providers/amazon-bedrock.md)
+- [Amazon SageMaker AI](docs/providers/amazon-sagemaker.md)
 - [Databricks](docs/providers/databricks.md)
 - [Vercel AI Gateway](docs/providers/vercel.md)
 - [Microsoft Foundry](docs/providers/azure.md)

@@ -811,7 +811,8 @@ function recommendedMarkdownRoute(raw: string): { endpoint?: ApiEndpoint; region
 
 function recommendedListingTarget(raw: string): { id: string; region: string } {
   const url = new URL(raw);
-  const regionKey = url.pathname.match(/^\/([a-z0-9-]+)\/?$/)?.[1];
+  const pathDetail = url.pathname.match(/^\/([a-z0-9-]+)\/model\/market\/detail\/([^/]+)$/);
+  const regionKey = pathDetail?.[1] ?? url.pathname.match(/^\/([a-z0-9-]+)\/?$/)?.[1];
   const region = regionKey === undefined ? undefined : recommendedWorkspaceRegions.get(regionKey);
   if (
     url.protocol !== "https:" ||
@@ -826,7 +827,11 @@ function recommendedListingTarget(raw: string): { id: string; region: string } {
   const query =
     queryOffset < 0 ? new URLSearchParams() : new URLSearchParams(url.hash.slice(queryOffset + 1));
   const detail = url.hash.match(/\/model-market\/detail\/([^?]+)/)?.[1];
-  const id = exactId(query.get("modelId") ?? decodeURIComponent(detail ?? ""));
+  const id = exactId(
+    pathDetail === null
+      ? (query.get("modelId") ?? decodeURIComponent(detail ?? ""))
+      : decodeURIComponent(pathDetail[2] ?? ""),
+  );
   if (id === undefined)
     throw new Error(`DashScope recommended-model listing omitted an exact ID: ${raw}`);
   return { id, region };
@@ -1041,6 +1046,12 @@ function meter(
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
   const direction = /output/.test(header.toLowerCase()) ? "output" : "input";
   const modality = conditions.modality;
+  if (/^Cache-hit input price \(per million tokens\)$/i.test(header)) return "cache_read_text";
+  if (
+    /^(?:Input|Output) price \(per million tokens\)$/i.test(header) &&
+    tasks.includes("text_generation")
+  )
+    return direction === "output" ? "output_text" : "input_text";
   if (tasks.includes("embeddings")) return "embedding";
   if (tasks.includes("reranking") || /\b(?:input|output)\b/i.test(header)) {
     if (modality === "text") return direction === "output" ? "output_text" : "input_text";
@@ -1055,7 +1066,8 @@ function meter(
   if (/voice clone/.test(evidence)) return "speech_generation";
   if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
     return direction === "output" ? "output_audio" : "input_text";
-  if (tasks.includes("transcription")) return "input_audio";
+  if (tasks.includes("transcription"))
+    return direction === "output" ? "output_text" : "input_audio";
   if (/output/.test(header.toLowerCase())) {
     if (/audio/.test(header.toLowerCase())) return "output_audio";
     if (/image/.test(header.toLowerCase())) return "output_image";
@@ -1104,13 +1116,14 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
     ?.replace(/,/g, "")
     .match(/(?:(\d+(?:\.\d+)?[KM]?)<)?Token≤(\d+(?:\.\d+)?[KM]?)/i);
   const mode = value(table, row, /^Mode(?:$| \/)/i);
+  const exclusiveMinimum = tokenCount(range?.[1]);
   const subheading = header.split(" / ").at(-1);
   const operation = mode ?? (/thinking mode/i.test(subheading ?? "") ? subheading : undefined);
   const resolution = value(table, row, /^(?:Output (?:image|video) )?resolution|^Max resolution/i);
   return {
     ...(region === undefined ? {} : { region }),
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
-    ...(range?.[1] === undefined ? {} : { context_min_tokens: tokenCount(range[1]) }),
+    ...(exclusiveMinimum === undefined ? {} : { context_min_tokens: exclusiveMinimum + 1 }),
     ...(range?.[2] === undefined ? {} : { context_max_tokens: tokenCount(range[2]) }),
     ...(tier === undefined || /No tiered|flat-rate/i.test(tier) ? {} : { context_tier: tier }),
     ...(operation === undefined
@@ -1130,10 +1143,28 @@ interface PriceSegment {
   accountEligibility?: string;
 }
 
-function priceSegments(cell: Cell): PriceSegment[] {
-  const parts = cell.parts.length === 0 ? [cell.text] : cell.parts;
+function priceSegments(cell: Cell, header: string): PriceSegment[] {
+  const hourly = cell.text.match(/^Busy hours:\s*\$?([\d,.]+)\s*Idle hours:\s*\$?([\d,.]+)$/i);
+  if (hourly !== null) {
+    const busy = decimal(hourly[1] ?? "");
+    const idle = decimal(hourly[2] ?? "");
+    if (busy !== undefined && idle !== undefined)
+      return [
+        { price: busy, label: "Busy hours" },
+        { price: idle, label: "Idle hours" },
+      ];
+  }
+  const parts = (cell.parts.length === 0 ? [cell.text] : cell.parts).map((part) => {
+    const trimmed = part.trim();
+    if (/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(trimmed) && /USD\s*\/\s*million tokens/i.test(header))
+      return `$${trimmed}`;
+    return part.replace(
+      /((?:0|[1-9]\d*)(?:\.\d+)?)\s+USD\s*\/\s*million tokens\b/gi,
+      (_match, amount: string) => `$${amount}`,
+    );
+  });
   const pricedParts = parts.filter((part) =>
-    /\$[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),
+    /(?:\$|USD\s+)[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),
   );
   return pricedParts.flatMap((raw): PriceSegment[] => {
     const free = raw.trim().match(/^(Free|Free trial|Limited-time free)$/i)?.[1];
@@ -1145,7 +1176,7 @@ function priceSegments(cell: Cell): PriceSegment[] {
           ...(/^Free trial$/i.test(free) ? { accountEligibility: "free_trial" } : {}),
         },
       ];
-    const matches = [...raw.matchAll(/\$([\d,.]+)/g)];
+    const matches = [...raw.matchAll(/(?:\$|USD\s+)([\d,.]+)/gi)];
     return matches.flatMap((match, index) => {
       const price = match[1] === undefined ? undefined : decimal(match[1]);
       if (price === undefined) return [];
@@ -1232,7 +1263,7 @@ function rates(
     const raw = cell.text;
     const rateUnit =
       unit(effectiveHeader, raw) ?? (sharedRateUnits.length === 1 ? sharedRateUnits[0] : undefined);
-    const segments = priceSegments(cell);
+    const segments = priceSegments(cell, effectiveHeader);
     if (segments.length === 0) {
       if (raw === "" || /^(?:--|-)$/.test(raw) || /\bDiscontinued\b/i.test(raw)) continue;
       input.onPricingReconciliation?.({

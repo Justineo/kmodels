@@ -1,4 +1,4 @@
-import { compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
+import { compareCanonicalValues } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
   AtomicPricingTerm,
@@ -8,21 +8,16 @@ import type {
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { bindRateTerm, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
 import {
+  directQuantityMethods,
+  mergeQuantityMethods,
+  subtractQuantityMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
-  pricingInputFacts,
   pricingInputObservation,
-  uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
-import type {
-  ChargeBinding,
-  PriceMeter,
-  UsageQuantityMethod,
-  UsageSignal,
-} from "./pricing-schema.ts";
+import type { ChargeBinding, PriceMeter, UsageSignal } from "./pricing-schema.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 
 const protocols = [
@@ -118,46 +113,30 @@ function binding(
 function uncachedInputMethods(inputIndex: PricingInputIndex): MethodsAndFacts {
   const totalSignal = standardSignal("input_tokens");
   const cachedSignal = standardSignal("cached_input_tokens");
-  const facts: SourcePricingInputFact[] = [];
-  const methods = protocols.flatMap((protocol) =>
-    ["response", "stream_event"].flatMap((channel): UsageQuantityMethod[] => {
-      const suffix = channel === "response" ? "" : ".stream";
-      const total = pricingInputFacts(inputIndex, [`${protocol}${suffix}.input_tokens`]);
-      const cached = pricingInputFacts(inputIndex, [`${protocol}${suffix}.cached_input_tokens`]);
-      if (total.length === 0 || cached.length === 0) return [];
-      facts.push(...total, ...cached);
-      return [
-        {
-          calculation: {
-            nodes: [
-              { op: "signal", signal: totalSignal },
-              { op: "signal", signal: cachedSignal },
-              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-            ],
-            result: 2,
-          },
-          input_sources: [
-            ...usageInputSources(totalSignal, total),
-            ...usageInputSources(cachedSignal, cached),
-          ].sort(compareCanonicalValues),
-        },
-      ];
-    }),
+  return mergeQuantityMethods(
+    protocols.flatMap((protocol) =>
+      ["", ".stream"].map((suffix) =>
+        subtractQuantityMethods(
+          totalSignal,
+          [`${protocol}${suffix}.input_tokens`],
+          cachedSignal,
+          [`${protocol}${suffix}.cached_input_tokens`],
+          inputIndex,
+        ),
+      ),
+    ),
   );
-  return { methods: uniqueCanonicalValues(methods), facts: uniquePricingInputFacts(facts) };
 }
 
 function directMethods(signal: UsageSignal, inputIndex: PricingInputIndex): MethodsAndFacts {
-  const facts = pricingInputFacts(
-    inputIndex,
+  return directQuantityMethods(
+    signal,
     protocols.flatMap((protocol) => [
       `${protocol}.${signal.value}`,
       `${protocol}.stream.${signal.value}`,
     ]),
+    inputIndex,
   );
-  return facts.length === 0
-    ? { methods: [], facts: [] }
-    : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
 }
 
 function standardSignal(

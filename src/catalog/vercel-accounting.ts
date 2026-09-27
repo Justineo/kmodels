@@ -51,7 +51,7 @@ const contracts: readonly Contract[] = [
     markers: [
       /providerMetadata\.gateway\.serviceTier/,
       /bills the request at the tier the provider actually served/i,
-      /field is omitted/i,
+      /field is omitted|If the provider reports the standard tier, AI Gateway omits this field/i,
     ],
     channel: "response",
     locator: { kind: "provider_field", value: "providerMetadata.gateway.serviceTier" },
@@ -65,7 +65,7 @@ const contracts: readonly Contract[] = [
       /confirm the resolved region from the response/i,
       /inferenceEndpoint/,
       /geoRegion/,
-      /Leave it unset \(the `global` default\)/i,
+      /Leave it unset(?:[ \t]+|[ \t]*\r?\n[ \t]*)\(the `global` default\)/i,
     ],
     channel: "response",
     locator: {
@@ -79,7 +79,11 @@ const contracts: readonly Contract[] = [
   {
     key: "image.generated_images",
     document: imagePath,
-    markers: [/experimental_generateImage/, /result\.images/, /Image-only models/i],
+    markers: [
+      /experimental_generateImage|generateImage\s*\(/,
+      /result\.images|const\s*\{\s*images\b/,
+      /image-only(?:\s+or\s+multimodal)?\s+models/i,
+    ],
     channel: "result",
     locator: { kind: "provider_field", value: "AiSdkGenerateImageResult.images" },
     reduction: { kind: "array_length" },
@@ -175,7 +179,7 @@ function searchContracts(): Contract[] {
     markers: [
       new RegExp(`\\b${sdkName}\\b`),
       new RegExp(wireName),
-      /gatewayToolCalls.*successful search-call counts/i,
+      /gatewayToolCalls`?(?:[ \t]+|[ \t]*\r?\n[ \t]*)for[ \t]+successful search-call counts/i,
     ],
     channel: "response",
     locator: {

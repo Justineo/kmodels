@@ -38,13 +38,8 @@ function validateMethodSources(binding: CalculationBinding, method: UsageQuantit
   const requiredSignals = new Set(
     requiredUsageSignalsForMethod(binding, method).map(canonicalJson),
   );
-  const mappedSignals = new Set(method.input_sources.map((source) => canonicalJson(source.signal)));
-  if (
-    requiredSignals.size !== mappedSignals.size ||
-    [...requiredSignals].some((signal) => !mappedSignals.has(signal))
-  ) {
-    throw new Error("Input sources do not exactly cover a quantity method");
-  }
+  if (method.input_sources.some((source) => !requiredSignals.has(canonicalJson(source.signal))))
+    throw new Error("Input source does not belong to the quantity method");
 }
 
 function validateCalculationUnits(

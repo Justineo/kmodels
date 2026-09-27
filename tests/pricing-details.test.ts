@@ -220,8 +220,8 @@ describe("model pricing details", () => {
     expect(html).not.toContain("Base model");
     expect(html).toContain("$2");
     expect(html).toContain('<details class="additional-costs"');
-    expect(html).toContain("Add-ons &amp; included services");
-    expect(html).toContain("Usage add-on");
+    expect(html).toContain("Other charges &amp; services");
+    expect(html).toContain("Service charge");
     expect(html).toContain("Web Search");
     expect(html).toContain("$10");
     expect(html.indexOf("$2")).toBeLessThan(html.indexOf("Web Search"));
@@ -351,18 +351,26 @@ describe("model pricing details", () => {
     expect(html).not.toContain("Usage");
   });
 
-  it("omits account-level plans and capacity from the model cost breakdown", async () => {
+  it("shows linked capacity separately from model rates", async () => {
     const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
     const capacity = offer([], {
       id: "e".repeat(64),
-      title: "Reserved throughput",
-      group: "plan_capacity",
+      title: "Instance hosting",
+      group: "capacity",
+      mechanismRefs: [mechanism.id],
+    });
+    const plan = offer([], {
+      id: "f".repeat(64),
+      title: "Annual commitment",
+      group: "plan",
       mechanismRefs: [mechanism.id],
     });
 
-    const html = await render([mechanism, capacity]);
+    const html = await render([mechanism, capacity, plan]);
 
-    expect(html).not.toContain("Reserved throughput");
+    expect(html).toContain("Capacity charges");
+    expect(html).toContain("Instance hosting");
+    expect(html).not.toContain("Annual commitment");
   });
 
   it("keeps driver metadata out of the primary rate table", async () => {

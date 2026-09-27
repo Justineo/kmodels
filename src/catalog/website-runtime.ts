@@ -1,4 +1,6 @@
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
+import { mapConcurrent } from "./concurrency.ts";
+import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreChunkPath } from "./website-core.ts";
 import type {
   WebsiteCatalog,
   WebsiteCatalogIndexModel,
@@ -25,6 +27,66 @@ const providerPricingCoverageKeys = new Set([
   "detail_chunks",
 ]);
 const pricingKeys = new Set(["schema_version", "data_version", "statuses", "cells", "pricing"]);
+const manifestKeys = new Set([
+  "schema_version",
+  "data_version",
+  "generated_at",
+  "providers",
+  "chunks",
+]);
+const coreChunkKeys = new Set(["schema_version", "data_version", "chunk", "models", "pricing"]);
+
+export async function loadWebsiteCatalog(
+  readJson: (path: string) => Promise<unknown>,
+): Promise<WebsiteCatalog> {
+  const encoder = new TextEncoder();
+  async function read(path: string): Promise<Record<string, unknown>> {
+    const value = record(await readJson(path), "Website core asset");
+    if (encoder.encode(JSON.stringify(value)).byteLength > WEBSITE_CORE_CHUNK_MAX_BYTES)
+      throw new Error("Website core asset exceeds the chunk limit");
+    return value;
+  }
+  const manifest = await read("/ui/catalog/index.json");
+  exactKeys(manifest, manifestKeys, "Website core manifest");
+  if (manifest.schema_version !== 1) throw new Error("Unsupported website core manifest schema");
+  if (!Array.isArray(manifest.chunks)) throw new Error("Website core chunks must be an array");
+  const counts = manifest.chunks.map((count) => positiveInteger(count, "Website core chunk count"));
+  const catalog = {
+    schema_version: 4,
+    data_version: manifest.data_version,
+    generated_at: manifest.generated_at,
+    providers: manifest.providers,
+    models: [],
+  };
+  const metadata = parseWebsiteCatalog(catalog, {
+    schema_version: 3,
+    data_version: manifest.data_version,
+    statuses: [],
+    cells: [],
+    pricing: [],
+  });
+  const parts = await mapConcurrent(
+    counts.map((count, index) => ({ count, index })),
+    4,
+    async ({ count, index }) => {
+      const chunk = await read(`/${websiteCoreChunkPath(metadata.data_version, index)}`);
+      exactKeys(chunk, coreChunkKeys, "Website core chunk");
+      if (
+        chunk.schema_version !== 1 ||
+        chunk.data_version !== metadata.data_version ||
+        chunk.chunk !== index
+      )
+        throw new Error("Website core chunk does not match its manifest");
+      if (!Array.isArray(chunk.models) || chunk.models.length !== count)
+        throw new Error("Website core chunk row count does not match its manifest");
+      return parseWebsiteCatalog({ ...catalog, models: chunk.models }, chunk.pricing).models;
+    },
+  );
+  const models = parts.flat();
+  if (new Set(models.map(({ uid }) => uid)).size !== models.length)
+    throw new Error("Website core contains duplicate models");
+  return { ...metadata, models };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

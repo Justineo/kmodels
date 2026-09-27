@@ -119,8 +119,9 @@ Responses response/stream pairing is a separate alternative method, so fields fr
 cannot be mixed accidentally. A card without a cache rate may bind input directly to total input.
 
 Pricing-input extraction is field-local. Drift in one cached field or one streaming terminal
-contract removes only the affected locators and methods. Rates, identities, and sibling inputs
-survive. Kmodels does not add a raw accounting pseudo-term or claim that a runtime event was
+contract removes only the affected locators. Known cache subtraction and surviving mappings
+remain within their protocol and channel method; required unmapped signals remain caller inputs.
+Rates, identities, and sibling inputs survive. Kmodels does not add a raw accounting pseudo-term or claim that a runtime event was
 captured. Ollama's Responses implementation currently emits `reasoning_tokens: 0` with an upstream
 TODO, so Kmodels does not expose it as a trustworthy thinking-token input.
 

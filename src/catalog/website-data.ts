@@ -1,4 +1,5 @@
-import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
+import { canonicalJsonHash } from "./canonical-json.ts";
+import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
@@ -226,7 +227,7 @@ function pricingOutcomeCode(outcome: WebsitePricingSummary["outcome"]): 0 | 1 | 
 function providerPricingCoverage(
   catalog: Catalog,
   pricing: PricingCatalog,
-  summaries: readonly WebsitePricingSummary[],
+  summaries: readonly ReturnType<typeof pricingSummary>[],
   providerId: string,
   detailChunks: number,
 ) {
@@ -234,10 +235,7 @@ function providerPricingCoverage(
     model.provider_id === providerId && summaries[index] !== undefined ? [summaries[index]] : [],
   );
   return {
-    representative_models: providerModels.filter(
-      (summary) =>
-        summary.input !== undefined || summary.cache !== undefined || summary.output !== undefined,
-    ).length,
+    representative_models: providerModels.filter((summary) => summary.representative).length,
     offer_models: providerModels.filter(({ outcome }) => outcome === "offers").length,
     unknown_models: providerModels.filter(({ outcome }) => outcome === "unknown").length,
     not_applicable_models: providerModels.filter(({ outcome }) => outcome === "not_applicable")
@@ -484,10 +482,14 @@ function pricingSummary(
   const input = websitePricingCell(view, model, "input");
   const cache = websitePricingCell(view, model, "cache");
   const output = websitePricingCell(view, model, "output");
-  const hasRepresentativeRate = input !== undefined || cache !== undefined || output !== undefined;
+  const hasColumnRate = input !== undefined || cache !== undefined || output !== undefined;
+  const singleRate = hasColumnRate
+    ? undefined
+    : projectPricingTableCellFromView(view, model, "single");
   return {
+    representative: hasColumnRate || singleRate !== undefined,
     outcome: view.outcome,
-    ...(hasRepresentativeRate ? {} : { status: pricingStatus(view, model.uid, labels) }),
+    ...(hasColumnRate ? {} : { status: pricingStatus(view, model.uid, labels, singleRate) }),
     ...(input === undefined ? {} : { input }),
     ...(cache === undefined ? {} : { cache }),
     ...(output === undefined ? {} : { output }),
@@ -508,7 +510,12 @@ function websitePricingCell(
   };
 }
 
-function pricingStatus(view: ModelPricingView, modelRef: string, labels: CategoricalMetadataIndex) {
+function pricingStatus(
+  view: ModelPricingView,
+  modelRef: string,
+  labels: CategoricalMetadataIndex,
+  singleRate: ReturnType<typeof projectPricingTableCellFromView>,
+) {
   if (view.outcome === "not_applicable")
     return {
       label: "No offer",
@@ -523,7 +530,8 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
     const resourceOffers = [
       ...view.optionalServices,
       ...view.automaticComponents,
-      ...view.plansAndCapacity,
+      ...view.capacity,
+      ...view.plans,
       ...view.standaloneOffers,
     ];
     if (
@@ -540,10 +548,16 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
         description:
           "A self-hosted or externally billed execution path exists; infrastructure cost is set outside this provider price book.",
       };
+    if (view.capacity.length > 0)
+      return {
+        label: "Capacity",
+        description:
+          "A published capacity rate applies to this model. Open model details to select the resource and Region; request usage charges may be separate.",
+      };
     return {
-      label: "Context",
+      label: "Service charges",
       description:
-        "Commercial services or plans relate to this model, but no provider-priced inference offer applies.",
+        "Separate service prices relate to this model, but no model inference or hosting rate is established.",
     };
   }
   if (view.modelMechanisms.length > 1)
@@ -553,10 +567,15 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
     };
 
   const offer = view.modelMechanisms[0]!;
+  if (singleRate !== undefined)
+    return {
+      label: `${singleRate.amount} / ${singleRate.displayUnit}`,
+      description: `${offer.name ?? "Model rate"}: ${singleRate.accessibleText}.${view.capacity.length > 0 ? " Capacity charges are separate." : ""} Open model details for applicable services and pricing notes.`,
+    };
   const summary = offerStateSummary(offer, modelRef);
   if (summary === "Free")
     return {
-      label: "Free",
+      label: "0",
       description: "The provider publishes this model offer as free.",
     };
   if (summary === "Custom quote")
@@ -584,7 +603,7 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
     return {
       label: "1 rate",
       description:
-        "This model has one exact base rate that does not map to Input, Cache, or Output. Open model details to see it.",
+        "This model has one base rate with conditions that require model details to interpret.",
     };
   if (rateCount > 1)
     return {
@@ -622,6 +641,8 @@ function websiteModelDetailFromView(
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
     ...(model.description === undefined ? {} : { description: model.description }),
+    ...(model.model_card === undefined ? {} : { model_card: model.model_card }),
+    ...(model.deployment === undefined ? {} : { deployment: model.deployment }),
     ...(model.delivery_modes === undefined ? {} : { delivery_modes: model.delivery_modes }),
     ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
     modalities: model.modalities,
@@ -681,9 +702,14 @@ function websitePricingDetail(
       group: "automatic_component" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
-    ...view.plansAndCapacity.map((offer) => ({
+    ...view.capacity.map((offer) => ({
       offer,
-      group: "plan_capacity" as const,
+      group: "capacity" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
+    })),
+    ...view.plans.map((offer) => ({
+      offer,
+      group: "plan" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
     ...view.standaloneOffers.map((offer) => ({
@@ -691,8 +717,8 @@ function websitePricingDetail(
       group: "standalone" as const,
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
-  ].map(({ offer, group, mechanismRefs }) =>
-    websiteOffer(
+  ].map(({ offer, group, mechanismRefs }) => {
+    const projected = websiteOffer(
       view.books,
       offer,
       group,
@@ -700,12 +726,52 @@ function websitePricingDetail(
       labels,
       atoms,
       mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs },
-    ),
-  );
+    );
+    const choice = group === "capacity" ? capacityChoice(offer, projected) : undefined;
+    return choice === undefined ? projected : { ...projected, capacity_choice: choice };
+  });
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
   });
+}
+
+function capacityChoice(
+  offer: PricingOffer,
+  projected: WebsitePricingOffer,
+): WebsitePricingOffer["capacity_choice"] {
+  const selector = projected.selectors.find(
+    ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "capacity",
+  );
+  if (selector?.kind !== "categorical" || selector.values.length !== 1) return;
+  const option = selector.values[0];
+  if (option === undefined) return;
+  const rates = offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
+  if (rates.length === 0 || rates.some(({ charge_binding }) => charge_binding === undefined))
+    return;
+  const optionKey = canonicalJsonKey(option.value);
+  if (
+    rates.some(({ applicability }) =>
+      applicability.any_of.some(
+        ({ all_of }) =>
+          !all_of.some(
+            (condition) =>
+              condition.kind === "categorical" &&
+              condition.dimension.namespace === "kmodels" &&
+              condition.dimension.value === "capacity" &&
+              condition.values.length === 1 &&
+              condition.values.some((value) => canonicalJsonKey(value) === optionKey),
+          ),
+      ),
+    )
+  )
+    return;
+  const signals = uniqueCanonicalValues(rates.map(({ charge_binding }) => charge_binding?.signal));
+  if (signals.length !== 1) return;
+  return {
+    group_key: canonicalJsonHash([offer.offer_key, offer.name, signals[0]]),
+    label: option.label,
+  };
 }
 
 function websiteProviderPricingResources(
@@ -1273,7 +1339,8 @@ function decimalBuckets(
   const partition = isWholeNumberDimension(dimension)
     ? integerPartition(ranges)
     : continuousPartition(ranges);
-  return partition?.map((range) => ({
+  if (partition === undefined || partition.length < 2) return undefined;
+  return partition.map((range) => ({
     key: canonicalJsonKey(range),
     label: decimalBucketLabel(range),
     ...range,
@@ -1281,27 +1348,36 @@ function decimalBuckets(
 }
 
 function integerPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
-  const normalized = ranges.flatMap((range) => {
-    const lower = integerLower(range.lower);
-    const upper = integerUpper(range.upper);
-    return upper !== undefined && upper < lower
-      ? []
-      : [{ lower, ...(upper === undefined ? {} : { upper }) }];
-  });
-  if (normalized.length !== ranges.length) return undefined;
-  normalized.sort((left, right) =>
-    left.lower < right.lower ? -1 : left.lower > right.lower ? 1 : 0,
-  );
-  if (normalized[0]?.lower !== 0n || normalized.at(-1)?.upper !== undefined) return undefined;
-  for (let index = 1; index < normalized.length; index++) {
-    const previousUpper = normalized[index - 1]?.upper;
-    if (previousUpper === undefined || normalized[index]?.lower !== previousUpper + 1n)
-      return undefined;
-  }
-  return normalized.map(({ lower, upper }) => ({
-    lower: { value: String(lower), inclusive: true },
-    ...(upper === undefined ? {} : { upper: { value: String(upper), inclusive: true } }),
+  const normalized = ranges.map((range) => ({
+    lower: integerLower(range.lower),
+    upper: integerUpper(range.upper),
   }));
+  if (normalized.some(({ lower, upper }) => upper !== undefined && upper < lower)) return undefined;
+  // Split at every predicate boundary, including boundaries inside wider regional
+  // bands. Each choice is then wholly contained in or disjoint from every rule.
+  const boundaries = [
+    ...new Set(
+      normalized.flatMap(({ lower, upper }) =>
+        upper === undefined ? [lower] : [lower, upper + 1n],
+      ),
+    ),
+  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const partition: WebsiteDecimalRange[] = [];
+  for (const [index, lower] of boundaries.entries()) {
+    const next = boundaries[index + 1];
+    const covered = normalized.some(
+      (range) => range.lower <= lower && (range.upper === undefined || lower <= range.upper),
+    );
+    if (!covered) {
+      if (next !== undefined) return undefined;
+      continue;
+    }
+    partition.push({
+      lower: { value: String(lower), inclusive: true },
+      ...(next === undefined ? {} : { upper: { value: String(next - 1n), inclusive: true } }),
+    });
+  }
+  return partition;
 }
 
 function integerLower(bound: WebsiteDecimalRange["lower"]): bigint {
@@ -1323,9 +1399,7 @@ function decimalParts(value: string): { integer: bigint; fractional: boolean } {
 
 function continuousPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
   const sorted = [...ranges].sort(compareRangeLower);
-  const first = sorted[0];
-  if (first === undefined || !rangeIncludesZero(first) || sorted.at(-1)?.upper !== undefined)
-    return undefined;
+  if (sorted.length === 0) return undefined;
   for (let index = 1; index < sorted.length; index++) {
     const previousUpper = sorted[index - 1]?.upper;
     const lower = sorted[index]?.lower;
@@ -1356,16 +1430,6 @@ function compareRangeLower(left: WebsiteDecimalRange, right: WebsiteDecimalRange
   return compareRationals(
     rationalFromDecimal(left.lower.value),
     rationalFromDecimal(right.lower.value),
-  );
-}
-
-function rangeIncludesZero(range: WebsiteDecimalRange): boolean {
-  if (range.lower !== undefined && (range.lower.value !== "0" || !range.lower.inclusive))
-    return false;
-  return (
-    range.upper === undefined ||
-    compareRationals(rationalFromDecimal(range.upper.value), rationalFromDecimal("0")) > 0 ||
-    (range.upper.value === "0" && range.upper.inclusive)
   );
 }
 
@@ -1488,6 +1552,7 @@ function chargeDriver(
 ): NonNullable<WebsitePricingOffer["rates"][number]["driver"]> {
   const signal = usageSignalDetails(binding.signal, atoms);
   const aggregation = aggregationDetails(binding.aggregation, atoms);
+  const quantityKey = quantitySemanticsKey(binding);
   return {
     label: signal.label,
     definition: signal.definition,
@@ -1496,7 +1561,29 @@ function chargeDriver(
       ? {}
       : { aggregation_definition: aggregation.definition }),
     resolution_phase: signal.resolution_phase,
+    ...(quantityKey === undefined ? {} : { quantity_key: quantityKey }),
   };
+}
+
+function quantitySemanticsKey(binding: ChargeBinding): string | undefined {
+  const scale =
+    binding.scale?.numerator === "1" && binding.scale.denominator === "1"
+      ? undefined
+      : binding.scale;
+  const calculations = uniqueCanonicalValues(
+    binding.quantity_methods?.flatMap(({ calculation }) => {
+      if (calculation === undefined) return [];
+      const onlyNode = calculation.nodes.length === 1 ? calculation.nodes[0] : undefined;
+      if (
+        onlyNode?.op === "signal" &&
+        canonicalJsonKey(onlyNode.signal) === canonicalJsonKey(binding.signal)
+      )
+        return [];
+      return [calculation];
+    }) ?? [],
+  );
+  if (scale === undefined && calculations.length === 0) return;
+  return canonicalJsonHash({ ...(scale === undefined ? {} : { scale }), calculations });
 }
 
 function usageSignalDetails(signal: UsageSignal, atoms: ProviderAtomIndex) {
@@ -1561,6 +1648,8 @@ function enrollmentLabel(state: PricingOffer["enrollment"][number]["state"]): st
 
 function stateLabel(state: PricingOffer["states"][number]["state"]): string {
   switch (state) {
+    case "not_supported":
+      return "Not supported";
     case "numeric":
       return "Metered pricing";
     case "free":

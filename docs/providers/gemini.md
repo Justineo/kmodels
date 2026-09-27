@@ -14,13 +14,14 @@ Included:
 - input, output, cache-read, embedding, image, audio, video, and other direct generation rates;
 - request/outcome dimensions such as account eligibility, realized service tier, context band,
   modality, resolution, and operation;
-- independently priced Google Search and Google Maps grounding executions.
+- independently priced Google Search and Google Maps grounding executions;
+- public grounding allowances with an exact reset, shared pool, and compatible target rate unit.
 
 Excluded:
 
 - explicit cache storage and File Search stores or indexing;
 - tuning and training;
-- provisioned capacity, subscriptions, commitments, credits, allowances, balance, tax, discounts,
+- provisioned capacity, subscriptions, commitments, credits, balance, tax, private discounts,
   invoices, and settlement;
 - managed-agent environments and aggregate agent formulas that only restate underlying model and
   tool usage.
@@ -41,8 +42,12 @@ a failure retains the last verified Gemini pricebook without rejecting fresh mod
 optional claim-local Discovery document verifies GenerateContent, embedding, and Batch result
 fields used by charge bindings. The first-party Interactions API reference independently supplies
 Interactions usage and grounding counters, the GenerateContent Batch and Embeddings API references
-establish the response-file JSONL item types, and the video-generation guide supplies Veo request
-duration, resolution, and audio selectors. A missing or incompatible field removes only that exact
+establish the response-file JSONL item types, and the Veo guide at `/gemini-api/docs/veo` supplies
+documented video request selectors. `/video` is now an overview linking to Veo and Omni; it is not
+the parameter reference. Interactions fields are recognized from both inline code and the API
+reference's `.signature > .field-name` definitions, never from arbitrary prose or navigation.
+The current Veo parameter table establishes duration and resolution; an absent `generateAudio`
+definition remains an explicitly reported missing mapping. A missing or incompatible field removes only that exact
 input mapping; rates, sibling mappings, and model identity still refresh.
 
 The authenticated `/v1beta/models` source is an optional account-scoped inventory overlay enabled
@@ -73,9 +78,25 @@ publishes a primary token price; it is not a second charge. When a paid cell pub
 `through` and `starting` prices, those dates remain applicability boundaries; the adjacent undated
 Free Tier cell remains continuous rather than inheriting the paid schedule.
 
-Gemini 3 Search and Maps are priced per executed query. Gemini 2.5 and older rows are priced per
-grounded prompt. The source unit is retained exactly; no cross-generation conversion is inferred.
-Account-period free-query allowances are outside the gateway pricebook.
+Gemini 3 Search is priced per executed search query. The same monthly Search allowance cell also
+establishes Robotics membership in that shared pool; a model-name prefix does not override the cell.
+Older Search rows are priced per grounded prompt. Maps' independent grounding guide establishes
+one billable request when at least one Maps result is returned, regardless of internal query count.
+That exact companion claim resolves the Maps pricing table's mixed prompts/requests/search-query
+wording. It is a billing-unit clarification, not an assumed prompt-to-query multiplier.
+An explicitly shared Gemini 3 monthly free-search allowance is one quantity benefit targeting all
+documented compatible rate terms in that service book. The Gemini 2.5 Flash/Flash-Lite daily shared
+grounding allowance likewise has one pool, and an unshared daily RPD allowance targets its own
+model's rate. Search and Maps have separate service pools. These allowances use the published
+amount and daily/monthly reset; they do not create a fresh allowance for each model or each
+request. Consumers supply the remaining shared quota and apply it once across the target terms.
+
+Allowance normalization requires a compatible billing unit. The Maps monthly prompt/request
+allowance targets the request-based Maps rate only while the independent guide establishes that
+unit. If that companion is absent or its contract changes, the ambiguous Maps allowance stays raw.
+Unknown sharing rules and disagreeing quantities within one stated pool also stay raw while the
+known overage rate remains usable. An allowance's unavailable runtime counter does not invalidate
+its published quantity, scope, reset, or rate.
 
 ## Charge bindings
 
@@ -106,7 +127,9 @@ Batch locators refer only to each successful inline/file result's contained Gene
 embedding response, never Interactions usage or the job submission count. A rate whose denominator
 has no exact documented request/result quantity remains unbound; publishing a rate does not require
 fabricating observability. In particular, GenerateContent does not expose an exact Maps query count,
-and a Veo request that omits `durationSeconds` has no exact duration input mapping. Stream interruption
+and a Veo request that omits `durationSeconds` has no exact duration input mapping. Known modality
+subtraction, document/image sums, and output/thinking sums remain alongside surviving locators if
+an accounting field drifts. The caller must supply unmapped required signals. Stream interruption
 and usage retention policy remain downstream runtime concerns.
 
 ## Lifecycle and identity

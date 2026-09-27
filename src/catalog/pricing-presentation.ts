@@ -72,7 +72,8 @@ export interface ModelPricingView {
   mechanismRefsByRelatedOffer: ReadonlyMap<string, readonly string[]>;
   optionalServices: PricingOffer[];
   automaticComponents: PricingOffer[];
-  plansAndCapacity: PricingOffer[];
+  capacity: PricingOffer[];
+  plans: PricingOffer[];
   standaloneOffers: PricingOffer[];
   snapshot?: ProviderPricingSnapshot;
 }
@@ -219,7 +220,8 @@ export function modelPricingViewFromIndex(
     mechanismRefsByRelatedOffer: new Map<string, readonly string[]>(),
     optionalServices: [],
     automaticComponents: [],
-    plansAndCapacity: [],
+    capacity: [],
+    plans: [],
     standaloneOffers: [],
   };
   const projectedBooks = (index.books.get(model.uid) ?? []).filter(
@@ -293,22 +295,26 @@ export function modelPricingViewFromIndex(
     ),
   );
   const classified = new Set([...automaticComponents, ...optionalServices].map(({ id }) => id));
-  const plansAndCapacity = uniqueOffers(
+  const capacity = uniqueOffers(
     resources.flatMap(({ book, offer }) =>
-      !classified.has(offer.id) &&
-      (isStandardResourceKind(book, "plan") || isStandardResourceKind(book, "capacity"))
-        ? [offer]
-        : [],
+      !classified.has(offer.id) && isStandardResourceKind(book, "capacity") ? [offer] : [],
     ),
   );
-  for (const offer of plansAndCapacity) classified.add(offer.id);
+  for (const offer of capacity) classified.add(offer.id);
+  const plans = uniqueOffers(
+    resources.flatMap(({ book, offer }) =>
+      !classified.has(offer.id) && isStandardResourceKind(book, "plan") ? [offer] : [],
+    ),
+  );
+  for (const offer of plans) classified.add(offer.id);
   const standaloneOffers = uniqueOffers(
     resources.flatMap(({ offer }) => (classified.has(offer.id) ? [] : [offer])),
   );
   const relatedOffers = [
     ...optionalServices,
     ...automaticComponents,
-    ...plansAndCapacity,
+    ...capacity,
+    ...plans,
     ...standaloneOffers,
   ];
   const mechanismRefsByRelatedOffer = new Map(
@@ -329,7 +335,8 @@ export function modelPricingViewFromIndex(
     mechanismRefsByRelatedOffer,
     optionalServices,
     automaticComponents,
-    plansAndCapacity,
+    capacity,
+    plans,
     standaloneOffers,
     ...metadata,
   };
@@ -342,7 +349,7 @@ function offerIncludesModel(offer: PricingOffer, modelRef: string): boolean {
 export function projectPricingTableCell(
   data: PricingCatalog,
   model: PricingModel,
-  slot: "input" | "cache" | "output",
+  slot: "input" | "cache" | "output" | "single",
 ): PricingTableCell | undefined {
   return projectPricingTableCellFromView(modelPricingView(data, model), model, slot);
 }
@@ -350,10 +357,11 @@ export function projectPricingTableCell(
 export function projectPricingTableCellFromView(
   view: ModelPricingView,
   model: PricingModel,
-  slot: "input" | "cache" | "output",
+  slot: "input" | "cache" | "output" | "single",
 ): PricingTableCell | undefined {
   if (view.outcome !== "offers" || view.modelMechanisms.length !== 1) return undefined;
   const offer = view.modelMechanisms[0]!;
+  if (slot === "single" && applicableRateCount(offer, model.uid) !== 1) return undefined;
   const context = withModelSelection(fixedOfferStateSelections(offer, model.uid), model.uid);
   const states = offer.states.filter(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
@@ -376,14 +384,19 @@ export function projectPricingTableCellFromView(
   )
     return undefined;
 
-  const meters = slotMeters(model, slot);
   const rateTerms = offer.terms.filter(isRateTerm);
+  const meters: PriceMeter[] =
+    slot === "single"
+      ? rateTerms.map(({ meter }) => meter)
+      : [
+          ...slotMeters(model, slot).map((value) => ({ namespace: "kmodels" as const, value })),
+          ...rateTerms.filter((term) => providerTokenSlot(term) === slot).map(({ meter }) => meter),
+        ];
   for (const meter of meters) {
     const selectedTerms = rateTerms
       .filter(
         (term) =>
-          term.meter.namespace === "kmodels" &&
-          term.meter.value === meter &&
+          canonicalJsonKey(term.meter) === canonicalJsonKey(meter) &&
           term.variants.some(
             ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
           ),
@@ -413,7 +426,7 @@ export function projectPricingTableCellFromView(
       return undefined;
     }
     return tableCell(
-      { namespace: "kmodels", value: meter },
+      meter,
       [...prices.values()][0]!,
       selected.flatMap(({ observations }) => observations),
     );
@@ -621,6 +634,8 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
     return [base, scaled("3600000000", "1M tokens·hour")];
   if (standardUnitProduct(value, "accelerator", "second"))
     return [base, scaled("3600", "accelerator·hour")];
+  if (standardUnitProduct(value, "instance", "second"))
+    return [scaled("3600", "instance·hour"), base];
   if (standardUnitProduct(value, "byte", "second"))
     return [scaled("92771293593600", "GiB·day"), scaled("86400000000000", "GB·day"), base];
   if (
@@ -1000,6 +1015,32 @@ function boundSatisfied(
     : inclusive
       ? comparison <= 0
       : comparison < 0;
+}
+
+function providerTokenSlot(term: PriceRateTerm): "input" | "output" | undefined {
+  if (term.meter.namespace !== "provider" || term.variants.length === 0) return;
+  const signal = term.variants[0]?.charge_binding?.signal;
+  if (signal?.namespace !== "kmodels") return;
+  const slot =
+    signal.value === "input_tokens"
+      ? "input"
+      : signal.value === "output_tokens"
+        ? "output"
+        : undefined;
+  if (slot === undefined) return;
+  return term.variants.every(({ charge_binding, price }) => {
+    const unit = price.per.factors[0];
+    return (
+      charge_binding?.signal.namespace === "kmodels" &&
+      charge_binding.signal.value === signal.value &&
+      price.per.factors.length === 1 &&
+      unit?.power === 1 &&
+      unit.unit.namespace === "kmodels" &&
+      unit.unit.value === "token"
+    );
+  })
+    ? slot
+    : undefined;
 }
 
 function slotMeters(

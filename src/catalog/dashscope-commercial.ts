@@ -17,6 +17,8 @@ import {
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import {
+  calculatedQuantityMethods,
+  sumQuantityMethods as sumMethod,
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
@@ -24,7 +26,6 @@ import {
   mergeQuantityMethods as mergeMethods,
   pricingInputFacts,
   pricingInputObservation,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -650,19 +651,10 @@ function subtractionMethod(
           inputs: excluded.map((_value, index) => index + 1),
         }) - 1;
   nodes.push({ op: "subtract_floor_zero", minuend: 0, subtrahend: excludedIndex });
-  const facts = [...total, ...excluded.flatMap(({ facts: values }) => values)];
-  return {
-    methods: [
-      {
-        calculation: { nodes, result: nodes.length - 1 },
-        input_sources: uniqueCanonical([
-          ...usageInputSources(totalSignal, total),
-          ...excluded.flatMap(({ signal, facts: values }) => usageInputSources(signal, values)),
-        ]),
-      },
-    ],
-    facts,
-  };
+  return calculatedQuantityMethods({ nodes, result: nodes.length - 1 }, [
+    { signal: totalSignal, facts: total },
+    ...excluded,
+  ]);
 }
 
 function bindResourceBook(
@@ -848,35 +840,6 @@ function categoricalValues(
       ),
     ),
   );
-}
-
-function sumMethod(
-  requirements: ReadonlyArray<{ signal: UsageSignal; keys: readonly string[] }>,
-  inputIndex: PricingInputIndex,
-): MethodsAndFacts {
-  const mapped = requirements.map(({ signal, keys }) => ({
-    signal,
-    facts: pricingInputFacts(inputIndex, keys),
-  }));
-  if (mapped.some(({ facts }) => facts.length === 0)) return emptyMethods();
-  const facts = mapped.flatMap(({ facts: values }) => values);
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            ...mapped.map(({ signal }) => ({ op: "signal" as const, signal })),
-            { op: "sum", inputs: mapped.map((_value, index) => index) },
-          ],
-          result: mapped.length,
-        },
-        input_sources: uniqueCanonical(
-          mapped.flatMap(({ signal, facts: values }) => usageInputSources(signal, values)),
-        ),
-      },
-    ],
-    facts,
-  };
 }
 
 function quantityBinding(

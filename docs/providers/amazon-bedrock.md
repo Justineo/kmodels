@@ -59,9 +59,24 @@ optional product-specific overlay. AWS states that service pricing pages control
 informational Price List differs, so an exact page row may replace only the same narrower scope.
 If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
 reported for the panel while a recognized sibling panel can still contribute exact rates.
+When none of the Price List offers binds a model, an exact model-card Pricing table can supply
+Standard token rates if the card states the unit and identifies the matching inference-profile
+aliases. Kimi K3 currently publishes Global and US cross-Region input, output, 30-minute cache-write,
+and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
+These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Its
+Priority and Flex multipliers apply only to Responses and Chat Completions, so they are not broadened
+to the other APIs by this fallback.
+The OpenAI Bedrock model cards use a separate exact Standard table for Mantle In-Region pricing.
+Their short/long context bands are bounded at 272K input tokens, and an em dash cache-write cell
+does not become a numeric rate. The card already includes its stated commercial fee, so no extra
+percentage is applied. Exact Geo and Global CRIS rows apply to Runtime inference-profile aliases;
+the In-Region row applies to Mantle where that endpoint is published.
 
-The [Mantle guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) supplies
-service Regions. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
+The [Responses API guide](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html)
+supplies Mantle service Regions through its `Supported Regions and Endpoints` table. The former
+`bedrock-mantle.md` URL returns 404; the fixed companion retains its `bedrock-mantle` dependency key
+but fetches `inference-responses-api.md`. Region codes must still agree with the exact Mantle endpoint
+hostname. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
 public ID, but it cannot create global catalog presence or publish account data.
 It uses the standard AWS credential chain. Long-lived access keys require the access-key ID and
 secret; temporary credentials additionally require `AWS_SESSION_TOKEN`. Rejected or revoked
@@ -91,15 +106,24 @@ rules decide whether a new price partition can advance.
 - Rerank uses bedrock-agent-runtime and the Rerank operation. A normal model card may also expose
   Runtime invocation separately.
 - Runtime and Mantle IDs stay distinct unless AWS publishes the exact same ID.
+- Programmatic Access placeholders such as `N/A` are not IDs. Callable Bedrock model IDs retain
+  the lower-case dotted provider namespace printed on the card.
+- Responses can also run on Bedrock Runtime where a model card explicitly lists that API and endpoint.
 - Per-card paths are preserved; an explicit openai/v1/responses path is not rewritten to a common
-  default.
+  default. An exact OpenAI `/openai/v1` base-path statement supplies Responses and Chat
+  Completions paths on the named endpoint, rather than inheriting the generic `/v1` path.
 - Region and deployment type remain exact pairs. Geo/global availability requires its published
   inference-profile alias. Mantle stays in-region and intersects the Mantle service-region table.
+- Newer model cards publish Runtime and Mantle availability in separate tables. Each positive
+  region/scope row applies only to its named endpoint; the shared legacy single-table layout
+  remains supported. A legacy availability cell with a dated EOL remains callable before that date.
 - A billing product binds only through one exact model identity or one unique reviewed family match.
   An explicit different version never falls back to a similar name.
 - A current support-table row establishes an active rerank model even when no normal model card
   exists. Unknown limits and capabilities remain unknown.
 - Legacy remains callable. An exact effective EOL date maps to retired; “No sooner than” does not.
+- Published launch dates also accept a strict day-first ordinal such as `18th Sept 2026`; invalid
+  calendar dates remain unknown with a source diagnostic.
 - The regional authenticated API contributes only recognized positive facts. A new enum value leaves
   the affected fact unknown and emits a contract signal rather than rejecting the row.
 

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { mapConcurrentByKey } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import {
@@ -60,6 +61,8 @@ import {
 import { validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import {
   publishedModel,
+  sourcePriceFactKey,
+  sourceRawPricingFactKey,
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
@@ -216,17 +219,13 @@ function optional<T>(
   return incoming === undefined || (fillOnly && current !== undefined) ? current : incoming;
 }
 
-function priceFactKey(fact: SourcePriceFact): string {
-  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
-}
-
 function mergePriceFacts(
   current: ParsedProviderModel,
   incoming: ParsedProviderModel,
 ): SourcePriceFact[] {
   if (incoming.price_facts.length === 0) return incoming.price_facts;
-  return mergeBy(current.price_facts, incoming.price_facts, priceFactKey).sort((left, right) =>
-    priceFactKey(left).localeCompare(priceFactKey(right)),
+  return mergeBy(current.price_facts, incoming.price_facts, sourcePriceFactKey).sort(
+    (left, right) => compareUtf8(sourcePriceFactKey(left), sourcePriceFactKey(right)),
   );
 }
 
@@ -235,8 +234,10 @@ function mergeRawPriceFacts(
   incoming: ParsedProviderModel,
 ): SourceRawPricingFact[] {
   if (incoming.raw_price_facts.length === 0) return incoming.raw_price_facts;
-  return mergeBy(current.raw_price_facts, incoming.raw_price_facts, JSON.stringify).sort(
-    (left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)),
+  const key = (fact: SourceRawPricingFact) =>
+    canonicalJson([fact.source_ref, sourceRawPricingFactKey(fact)]);
+  return mergeBy(current.raw_price_facts, incoming.raw_price_facts, key).sort((left, right) =>
+    compareUtf8(key(left), key(right)),
   );
 }
 
@@ -282,6 +283,15 @@ function applyFields(
     description: fields.has("description")
       ? optional(current.description, incoming.description, fillOnly)
       : current.description,
+    model_card:
+      fields.has("model_card") && incoming.model_card !== undefined
+        ? fillOnly
+          ? { ...incoming.model_card, ...current.model_card }
+          : { ...current.model_card, ...incoming.model_card }
+        : current.model_card,
+    deployment: fields.has("deployment")
+      ? optional(current.deployment, incoming.deployment, fillOnly)
+      : current.deployment,
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,
@@ -782,6 +792,18 @@ async function collectProvider(
   const pricingSources: SourceGroup[] = [];
   const omittedPricingDependencies = new Set<string>();
   const collectedSources: SourceRecord[] = [];
+  function capturePricingInputs(): PricingReplaySource[] | undefined {
+    try {
+      return capturePricingReplaySources(pricingSources, collectedSources);
+    } catch (error) {
+      warnings.push({
+        code: "pricing_replay_input_invalid",
+        provider_id: manifest.provider.id,
+        message: message(error),
+      });
+      return undefined;
+    }
+  }
 
   try {
     const sourceFetches = new Map(
@@ -1042,7 +1064,7 @@ async function collectProvider(
       .map(normalizeDeliveryModes);
     const freshModels = candidate.map(publishedModel);
     candidateModels = freshModels;
-    const validation = validateProvider(freshModels, comparableOldModels);
+    const validation = validateProvider(freshModels);
     if (!validation.ok) {
       validationIssue = validation.issue;
       throw new Error(validation.issue.message);
@@ -1101,6 +1123,7 @@ async function collectProvider(
         pricingFailure = "source_unavailable";
         throw new Error(`Pricing source bundle is incomplete at ${missingPricingSource.id}`);
       }
+      pricingReplaySources = capturePricingInputs();
       pricing = assembleParsedProviderPricing(
         manifest.provider.id,
         observedAt,
@@ -1109,15 +1132,6 @@ async function collectProvider(
         manifest.pricingCategoricalLabels,
       );
       if (pricing !== undefined) {
-        try {
-          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
-        } catch (error) {
-          warnings.push({
-            code: "pricing_replay_input_invalid",
-            provider_id: manifest.provider.id,
-            message: message(error),
-          });
-        }
         validateProviderPricing(pricing, provider, models, [...sourceById.values()]);
       }
     } catch (error) {
@@ -1180,6 +1194,7 @@ async function collectProvider(
       .every(({ id }) => fetchedPricingSourceIds.has(id));
     if (hasPrevious && omittedPricingDependencies.size === 0 && hasCompletePricingBundle) {
       try {
+        pricingReplaySources = capturePricingInputs();
         pricing = assembleParsedProviderPricing(
           manifest.provider.id,
           observedAt,
@@ -1188,7 +1203,6 @@ async function collectProvider(
           manifest.pricingCategoricalLabels,
         );
         if (pricing !== undefined) {
-          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
           validateProviderPricing(
             pricing,
             providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),
@@ -1363,7 +1377,22 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     composed.catalog,
     previous === undefined ? emptyPricingCatalog() : acceptedPricing,
     composed.pricing,
-    results.map(({ attempt }) => attempt),
+    results.map(({ attempt, models }): ProviderRefreshAttempt => {
+      const retention = composed.catalog.warnings.find(
+        (warning) =>
+          warning.code === "retained_pricing_core_mismatch" &&
+          "provider_id" in warning &&
+          warning.provider_id === attempt.provider_id,
+      );
+      return retention === undefined
+        ? attempt
+        : {
+            ...attempt,
+            outcome: "rejected",
+            candidate_models: models,
+            failure: { code: retention.code, message: retention.message },
+          };
+    }),
   );
   const [candidate] = await Promise.all([candidatePromise, ...stateWrites]);
   const pricingCompilation = createPricingCompilationSnapshot(

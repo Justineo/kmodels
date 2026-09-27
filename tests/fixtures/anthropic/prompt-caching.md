@@ -8,7 +8,7 @@ Prompt caching (both automatic and explicit) is supported on all [active Claude 
 
 The response includes detailed cache information:
 
-```json
+```json Output
 {
   "usage": {
     "cache_creation_input_tokens": 248,

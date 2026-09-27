@@ -22,6 +22,7 @@ import {
 } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import {
+  subtractQuantityMethods,
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
@@ -29,8 +30,6 @@ import {
   mergeQuantityMethods as mergeMethods,
   pricingInputFacts,
   pricingInputObservation,
-  uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -230,7 +229,17 @@ function modelBinding(
   const signal = modelSignal(modelRef, meter);
   if (signal === undefined) return;
   if (mechanism === "batch") {
-    if (modelRef.endsWith("/kimi-k2.7-code")) return;
+    const scopeConflict = book.offers.some(({ terms }) =>
+      terms.some(
+        (term) =>
+          term.kind === "raw" &&
+          term.term_key === "batch_applicability_conflict" &&
+          term.variants.some(
+            ({ observation }) => observation.source_ref === variant.observation.source_ref,
+          ),
+      ),
+    );
+    if (scopeConflict) return;
     const mapped =
       signal.value === "output_tokens"
         ? directMethods(signal, ["batch.result.output_tokens"], inputIndex)
@@ -250,15 +259,17 @@ function modelSignal(
   meter: PriceMeter,
 ): Extract<UsageSignal, { namespace: "kmodels" }> | undefined {
   const value =
-    meter.value === "cache_read_text"
-      ? "cached_input_tokens"
-      : meter.value === "output_text"
-        ? "output_tokens"
-        : meter.value === "input_text"
-          ? modelRef.includes("/moonshot-v1-")
-            ? "input_tokens"
-            : "uncached_input_tokens"
-          : undefined;
+    meter.value === "cache_write_text"
+      ? "cache_write_tokens"
+      : meter.value === "cache_read_text"
+        ? "cached_input_tokens"
+        : meter.value === "output_text"
+          ? "output_tokens"
+          : meter.value === "input_text"
+            ? modelRef.includes("/moonshot-v1-")
+              ? "input_tokens"
+              : "uncached_input_tokens"
+            : undefined;
   return value === undefined ? undefined : { namespace: "kmodels", value };
 }
 
@@ -311,28 +322,13 @@ function subtractionMethod(
 ): MethodsAndFacts {
   const totalSignal = standardSignal("input_tokens");
   const cachedSignal = standardSignal("cached_input_tokens");
-  const total = pricingInputFacts(inputIndex, usageKeys(protocol, totalSignal.value));
-  const cached = pricingInputFacts(inputIndex, usageKeys(protocol, cachedSignal.value));
-  if (total.length === 0 || cached.length === 0) return emptyMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: totalSignal },
-            { op: "signal", signal: cachedSignal },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          ],
-          result: 2,
-        },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...usageInputSources(cachedSignal, cached),
-        ].sort(compareCanonicalValues),
-      },
-    ],
-    facts: uniquePricingInputFacts([...total, ...cached]),
-  };
+  return subtractQuantityMethods(
+    totalSignal,
+    usageKeys(protocol, totalSignal.value),
+    cachedSignal,
+    usageKeys(protocol, cachedSignal.value),
+    inputIndex,
+  );
 }
 
 function standardSignal(
@@ -376,6 +372,24 @@ function resourceBinding(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): ChargeBinding | undefined {
+  if (
+    ["web-search-basic", "web-search-pro", "web-fetch"].includes(resourceKey) &&
+    isStandardUnit(variant.price.per, "event")
+  ) {
+    const fetch = resourceKey === "web-fetch";
+    const endpoint = fetch ? "fetch" : resourceKey === "web-search-pro" ? "search_pro" : "search";
+    return providerBinding(
+      input,
+      `successful_rest_${endpoint}_calls`,
+      `POST /v1/tools/${endpoint} calls returning HTTP 200 and ${fetch ? "non-blank markdown" : "non-empty search_results"}; failed or empty results are not billable`,
+      variant.price.per,
+      "request",
+      variant.observation,
+      [],
+      "outcome",
+      inputIndex,
+    );
+  }
   if (resourceKey !== "web-search" || !isStandardUnit(variant.price.per, "event")) return;
   const formula = offer.offer_key === "formula";
   return providerBinding(

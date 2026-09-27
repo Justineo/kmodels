@@ -1,4 +1,5 @@
 import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
+import { requiredUsageSignalsForMethod } from "./pricing-calculation.ts";
 import type { PriceCategoricalValue, PriceDimension } from "./pricing-schema.ts";
 import type {
   CalculationBook,
@@ -91,7 +92,12 @@ function termOperations(term: CalculationTerm): PriceCategoricalValue[] {
 function bindingCoverage(term: CalculationTerm) {
   const bindings = termBindings(term);
   const acquisitionCount = bindings.filter((binding) =>
-    binding.quantity_methods?.some((method) => method.input_sources !== undefined),
+    binding.quantity_methods?.some((method) => {
+      const mapped = new Set(method.input_sources?.map((source) => canonicalJson(source.signal)));
+      return requiredUsageSignalsForMethod(binding, method).every((signal) =>
+        mapped.has(canonicalJson(signal)),
+      );
+    }),
   ).length;
   const unmappedSelectors =
     term.kind === "rate" ? term.variants.flatMap(selectorsWithoutAcquisition) : [];

@@ -1,5 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
+import { compareUtf8 } from "../catalog/canonical-value.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
@@ -7,6 +8,7 @@ import type {
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import RelativeTime from "./RelativeTime.vue";
+import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -18,7 +20,43 @@ const props = defineProps<{
 const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
+const selectedCapacityIds = ref<Record<string, string>>({});
 const offers = computed(() => props.detail?.offers ?? []);
+interface CapacityGroup {
+  key: string;
+  title: string;
+  offers: WebsitePricingOffer[];
+}
+const capacityGroups = computed(() => {
+  const groups = new Map<string, CapacityGroup>();
+  for (const offer of offers.value.filter(({ group }) => group === "capacity")) {
+    const key = offer.capacity_choice?.group_key ?? offer.id;
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, { key, title: offer.title, offers: [offer] });
+    else group.offers.push(offer);
+  }
+  return [...groups.values()]
+    .flatMap((group) => {
+      const labels = group.offers.map((offer) => offer.capacity_choice?.label);
+      if (new Set(labels).size !== labels.length)
+        return group.offers.map((offer) => ({
+          key: offer.id,
+          title: offer.title,
+          offers: [offer],
+        }));
+      group.offers.sort((left, right) =>
+        compareUtf8(left.capacity_choice?.label ?? "", right.capacity_choice?.label ?? ""),
+      );
+      return [group];
+    })
+    .map((group) => ({
+      ...group,
+      active:
+        group.offers.length === 1
+          ? group.offers[0]
+          : group.offers.find(({ id }) => id === selectedCapacityIds.value[group.key]),
+    }));
+});
 const modelMechanisms = computed(() =>
   offers.value.filter(({ group }) => group === "model_mechanism"),
 );
@@ -31,7 +69,8 @@ const supplementaryOffers = computed(() =>
   offers.value.filter(
     (offer) =>
       offer.group !== "model_mechanism" &&
-      offer.group !== "plan_capacity" &&
+      offer.group !== "capacity" &&
+      offer.group !== "plan" &&
       (activeMechanism.value === undefined ||
         offer.mechanism_refs === undefined ||
         offer.mechanism_refs.includes(activeMechanism.value.id)),
@@ -42,8 +81,13 @@ watch(
   () => props.model.uid,
   () => {
     selectedMechanismId.value = "";
+    selectedCapacityIds.value = {};
   },
 );
+
+function selectCapacity(groupKey: string, offerId: string): void {
+  selectedCapacityIds.value[groupKey] = offerId;
+}
 
 watch(modelMechanisms, (current) => {
   if (
@@ -57,15 +101,18 @@ function selectMechanism(offerId: string): void {
   selectedMechanismId.value = offerId;
 }
 
-function offerState(offer: WebsitePricingOffer): string | undefined {
-  return offer.state_summary === "Metered pricing" || offer.state_summary === "Included"
+function offerState(offer: WebsitePricingOffer | undefined): string | undefined {
+  return offer === undefined ||
+    offer.state_summary === "Metered pricing" ||
+    offer.state_summary === "Included"
     ? undefined
     : offer.state_summary;
 }
 
 function supplementaryOfferKind(offer: WebsitePricingOffer): string {
-  if (offer.group === "optional_service")
-    return offer.state_summary === "Included" ? "Included feature" : "Usage add-on";
+  if (offer.group === "optional_service") {
+    return offer.state_summary === "Included" ? "Included feature" : "Service charge";
+  }
   if (offer.group === "automatic_component") return "Automatic charge";
   return "Separate service";
 }
@@ -88,8 +135,8 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
       <span>
         {{
           model.pricing.outcome === "unknown"
-            ? "No pricing was present in the provider snapshot"
-            : "Showing provider pricing"
+            ? "No pricing was available in the snapshot"
+            : "Showing prices"
         }}
         verified
         <RelativeTime class="pricing-time" :value="detail.snapshot.observed_at" />.
@@ -122,6 +169,45 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
     </div>
 
     <template v-else-if="detail">
+      <section
+        v-if="capacityGroups.length > 0"
+        class="base-rates"
+        aria-labelledby="capacity-rates-heading"
+      >
+        <h4 id="capacity-rates-heading" class="section-heading">Capacity charges</h4>
+        <p class="capacity-note">
+          Billed for the selected resource while it runs. These rates are separate from per-request
+          usage and do not establish deployment availability.
+        </p>
+        <article v-for="group in capacityGroups" :key="group.key" class="rate-offer">
+          <header class="rate-offer-heading">
+            <h5>{{ group.title }}</h5>
+            <small v-if="offerState(group.active)" class="offer-state">
+              {{ offerState(group.active) }}
+            </small>
+          </header>
+          <div v-if="group.offers.length > 1" class="capacity-selector">
+            <label :for="`capacity-${group.key}`">Instance type</label>
+            <UiSelect
+              :id="`capacity-${group.key}`"
+              :model-value="selectedCapacityIds[group.key] ?? ''"
+              :options="
+                group.offers.map((offer) => ({
+                  value: offer.id,
+                  label: offer.capacity_choice?.label ?? offer.title,
+                }))
+              "
+              placeholder="Choose instance type"
+              @update:model-value="selectCapacity(group.key, $event)"
+            />
+          </div>
+          <p v-else-if="group.offers[0]?.capacity_choice" class="capacity-instance">
+            Instance type: {{ group.offers[0].capacity_choice.label }}
+          </p>
+          <PricingOfferBreakdown v-if="group.active" :offer="group.active" :model-ref="model.uid" />
+        </article>
+      </section>
+
       <section
         v-if="modelMechanisms.length > 1"
         class="run-mode"
@@ -157,14 +243,17 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
         <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
       </section>
 
-      <div v-else-if="supplementaryOffers.length > 0" class="pricing-outcome no-base-offer">
-        <strong>No base model rate</strong>
+      <div
+        v-else-if="supplementaryOffers.length > 0 && capacityGroups.length === 0"
+        class="pricing-outcome no-base-offer"
+      >
+        <strong>No model inference rate shown</strong>
       </div>
 
       <details v-if="supplementaryOffers.length > 0" class="additional-costs">
         <summary>
-          <strong>Add-ons &amp; included services</strong>
-          <small>Separate from the model rates above</small>
+          <strong>Other charges & services</strong>
+          <small>Separate from the rates above</small>
         </summary>
 
         <div class="supplementary-list">
@@ -252,6 +341,41 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 .base-rates {
   min-width: 0;
   margin-top: var(--space-4);
+}
+
+.capacity-note {
+  margin: var(--space-1) 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.capacity-selector {
+  display: grid;
+  gap: var(--space-1);
+  max-width: var(--layout-pricing-select-width);
+  margin-bottom: var(--space-3);
+}
+
+.capacity-selector > label,
+.capacity-instance {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.capacity-selector :deep(.ui-select-control) {
+  height: var(--control-height-default);
+  border: var(--stroke-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.capacity-instance {
+  margin: 0 0 var(--space-3);
+}
+
+.base-rates > .rate-offer + .rate-offer {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 
 .rate-offer-heading {

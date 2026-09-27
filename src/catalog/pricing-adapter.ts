@@ -40,6 +40,7 @@ import { applyCerebrasCommercialTopology } from "./cerebras-commercial.ts";
 import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
 import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
 import { applyDashscopeCommercialTopology } from "./dashscope-commercial.ts";
+import { applySagemakerCommercialTopology } from "./sagemaker-commercial.ts";
 import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
 import { applyHuggingFaceCommercialTopology } from "./huggingface-commercial.ts";
@@ -50,6 +51,7 @@ import { applyOllamaCommercialTopology } from "./ollama-commercial.ts";
 import { applyVercelCommercialTopology } from "./vercel-commercial.ts";
 import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
 import { applyXaiCommercialTopology } from "./xai-commercial.ts";
+import { applyTypesafeCommercialTopology } from "./typesafe-commercial.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
@@ -70,6 +72,7 @@ export type PublishedPricingModel = Pick<
   ParsedProviderModel,
   | "api_endpoints"
   | "capabilities"
+  | "deployment"
   | "modalities"
   | "model_id"
   | "name"
@@ -99,7 +102,7 @@ export function isPricingDependencySource(source: SourceManifest): boolean {
 }
 
 export function isRequiredPricingSource(source: SourceManifest): boolean {
-  return (!source.optional || source.pricingRequired === true) && isPricingSource(source);
+  return (!source.optional || source.pricingRequired === true) && isPricingDependencySource(source);
 }
 
 interface OfferBuilder {
@@ -235,6 +238,8 @@ function applyCommercialTopology(
   pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   switch (input.provider_id) {
+    case "typesafe":
+      return applyTypesafeCommercialTopology(input, pricingInputs);
     case "amazon-bedrock":
       return applyBedrockCommercialTopology(input, publishedModels, pricingInputs);
     case "anthropic":
@@ -263,6 +268,8 @@ function applyCommercialTopology(
       return applyOllamaCommercialTopology(input, publishedModels, pricingInputs);
     case "openai":
       return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
+    case "amazon-sagemaker":
+      return applySagemakerCommercialTopology(input, publishedModels);
     case "vercel":
       return applyVercelCommercialTopology(input, pricingInputs);
     case "vertex":
@@ -976,6 +983,17 @@ function normalizedUnit(
       ]);
     case "gigabyte":
       return one("byte", "gigabyte");
+    case "sagemaker_data_gb":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "data_processing_gb",
+            "One GB of endpoint data processing as metered by AWS; no byte conversion is asserted",
+          ),
+          power: 1,
+        },
+      ]);
     case "gibibyte":
       return one("byte", "gibibyte");
     case "container_session":
@@ -1038,6 +1056,11 @@ function normalizedUnit(
     case "gpu_hour":
       return canonicalizeSourceUnit([
         { unit: { namespace: "kmodels", value: "accelerator" }, power: 1 },
+        { unit: standard("second"), power: 1, scale: "hour" },
+      ]);
+    case "instance_hour":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "instance" }, power: 1 },
         { unit: standard("second"), power: 1, scale: "hour" },
       ]);
     case "unit_hour":
@@ -1153,6 +1176,35 @@ function rateApplicability(
   conditions: SourcePriceFact["conditions"],
 ): PriceApplicability {
   const predicates: PriceCondition[] = [];
+  const providerDimensions = [
+    {
+      key: "billing_unit",
+      definition:
+        "Applicable billing measure among explicitly published alternative denominations of the same output; select one, never add alternatives",
+      resolution_phase: "outcome",
+    },
+    {
+      key: "cache_retention",
+      definition:
+        "Published cache-write retention option; default does not imply an undocumented duration",
+      resolution_phase: "request",
+    },
+  ] as const;
+  for (const atom of providerDimensions) {
+    const value = conditions[atom.key];
+    if (value === undefined) continue;
+    const dimension: PriceDimension = {
+      namespace: "provider",
+      provider_id: context.providerId,
+      value: atom.key,
+    };
+    addAtom(context, { kind: "dimension", ...atom });
+    predicates.push({
+      kind: "categorical",
+      dimension,
+      values: [providerCategorical(context, dimension, value)],
+    });
+  }
   const categorical = [
     "region",
     "endpoint",
@@ -1199,6 +1251,23 @@ function rateApplicability(
       value: key === "audio" ? "request_audio" : key,
     };
     predicates.push({ kind: "boolean", dimension, value });
+  }
+  if (conditions.eu_data_residency !== undefined) {
+    addAtom(context, {
+      kind: "dimension",
+      key: "eu_data_residency",
+      definition: "Whether the request uses OpenAI EU data residency",
+      resolution_phase: "request",
+    });
+    predicates.push({
+      kind: "boolean",
+      dimension: {
+        namespace: "provider",
+        provider_id: context.providerId,
+        value: "eu_data_residency",
+      },
+      value: conditions.eu_data_residency,
+    });
   }
   const tokenRange = contextTokenRange(
     conditions.context_min_tokens,
@@ -1291,6 +1360,16 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
     value,
   });
   switch (rate.meter) {
+    case "input_data":
+    case "output_data":
+    case "inference":
+      return providerMeter(
+        context,
+        rate.meter,
+        rate.meter === "inference"
+          ? "Provider-metered billable inference units, which may differ from HTTP invocation count"
+          : `Endpoint ${rate.meter === "input_data" ? "input" : "output"} data processing`,
+      );
     case "cache_storage":
       return standard("storage");
     case "rerank_request":
@@ -1299,6 +1378,8 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
       return standard("session_runtime");
     case "gpu_hour":
       return standard("compute");
+    case "instance_hour":
+      return standard("provisioned_capacity");
     case "provisioned_throughput":
       return standard("provisioned_capacity");
     case "policy_enforcement":
@@ -1450,8 +1531,9 @@ function addScope(context: AdapterContext, sourceRef: string, modelRefs: readonl
 
 function rateMode(rate: SourcePriceFact): "usage" | "capacity" {
   if (rate.meter === "batch_inference") return "usage";
-  return ["gpu_hour", "provisioned_throughput"].includes(rate.meter) ||
+  return ["gpu_hour", "instance_hour", "provisioned_throughput"].includes(rate.meter) ||
     [
+      "instance_hour",
       "unit_hour",
       "unit_week",
       "unit_month",

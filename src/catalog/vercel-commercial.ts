@@ -14,6 +14,7 @@ import {
   standardSignal,
 } from "./pricing-commercial-assembly.ts";
 import {
+  calculatedQuantityMethods,
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
@@ -175,6 +176,29 @@ function modelBinding(
       variant,
     );
   }
+  if (
+    meter.namespace === "kmodels" &&
+    meter.value === "input_image" &&
+    isStandardUnit(variant.price.per, "image")
+  )
+    return quantityBinding(standardSignal("processed_images"), "job", emptyMethods(), variant);
+  if (
+    meter.namespace === "kmodels" &&
+    meter.value === "input_video" &&
+    isStandardUnit(variant.price.per, "second")
+  )
+    return quantityBinding(
+      providerSignal(
+        input,
+        "billable_video_input_seconds",
+        "Billable input video duration supplied to a video generation job",
+        variant.price.per,
+        "outcome",
+      ),
+      "job",
+      emptyMethods(),
+      variant,
+    );
   if (meter.namespace === "kmodels" && meter.value === "image_generation") {
     if (isStandardUnit(variant.price.per, "image")) {
       const signal = standardSignal("generated_images");
@@ -310,7 +334,6 @@ function videoDurationMethods(
 ): MethodsAndFacts {
   const durationFacts = pricingInputFacts(inputIndex, ["video.requested_duration_seconds"]);
   const resultFacts = pricingInputFacts(inputIndex, ["video.generated_videos"]);
-  if (durationFacts.length === 0 || resultFacts.length === 0) return emptyMethods();
   const duration = providerSignal(
     input,
     "requested_video_seconds",
@@ -319,25 +342,20 @@ function videoDurationMethods(
     "request",
   );
   const items = standardSignal("generated_items");
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: duration },
-            { op: "signal", signal: items },
-            { op: "product", inputs: [0, 1] },
-          ],
-          result: 2,
-        },
-        input_sources: [
-          ...usageInputSources(duration, durationFacts),
-          ...usageInputSources(items, resultFacts),
-        ].sort(compareCanonicalValues),
-      },
+  return calculatedQuantityMethods(
+    {
+      nodes: [
+        { op: "signal", signal: duration },
+        { op: "signal", signal: items },
+        { op: "product", inputs: [0, 1] },
+      ],
+      result: 2,
+    },
+    [
+      { signal: duration, facts: durationFacts },
+      { signal: items, facts: resultFacts },
     ],
-    facts: uniquePricingInputFacts([...durationFacts, ...resultFacts]),
-  };
+  );
 }
 
 function nativeBooks(

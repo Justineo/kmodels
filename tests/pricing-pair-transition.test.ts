@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
+import { pricingBookId, pricingOfferId } from "../src/catalog/pricing-identifiers.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
-import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { pricingCatalogSchema, type PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { Catalog, ProviderModel } from "../src/catalog/schema.ts";
 
 const providerId = "test";
@@ -123,6 +125,57 @@ function pricing(value?: ProviderPricingPartition): PricingCatalog {
   };
 }
 
+function bookPartition(): ProviderPricingPartition {
+  return {
+    ...partition(),
+    model_dispositions: [],
+    books: [
+      {
+        id: pricingBookId(providerId, "model"),
+        provider_id: providerId,
+        book_key: "model",
+        scope: { kind: "models", model_refs: [modelRef] },
+        source_refs: [sourceRef],
+        scope_observations: [
+          {
+            source_ref: sourceRef,
+            locator: { kind: "table", value: "row" },
+            establishes: { kind: "models", model_refs: [modelRef] },
+            raw: { label: "Model pricing" },
+          },
+        ],
+        offers: [
+          {
+            id: pricingOfferId(pricingBookId(providerId, "model"), "standard"),
+            offer_key: "standard",
+            billing_mode: { namespace: "kmodels", value: "usage" },
+            states: [
+              {
+                state: "not_published",
+                applicability: { any_of: [{ all_of: [] }] },
+                observations: [
+                  {
+                    source_ref: sourceRef,
+                    locator: { kind: "table", value: "state" },
+                    raw: { label: "Price not published" },
+                    establishes_applicability: { any_of: [{ all_of: [] }] },
+                  },
+                ],
+              },
+            ],
+            enrollment: [],
+            terms: [],
+            relations: [],
+            settlement: [],
+            source_refs: [sourceRef],
+          },
+        ],
+        resource_edges: [],
+      },
+    ],
+  };
+}
+
 const safety = (
   affects: "core" | "pricing" | "both",
   cleared: { core?: true; pricing?: true } = {},
@@ -140,6 +193,131 @@ const safety = (
 });
 
 describe("paired core/pricing provider transition", () => {
+  it.each(["book", "disposition"])(
+    "retains the matching core when retained %s pricing references a removed model",
+    (kind) => {
+      const prior = catalog("old");
+      const fresh = catalog("new");
+      fresh.generated_at = "2026-07-29T00:00:00.000Z";
+      fresh.models = [
+        { ...model("Replacement"), uid: "test/replacement", model_id: "replacement" },
+      ];
+      fresh.coverage = fresh.coverage.map((coverage) => ({
+        ...coverage,
+        checked_at: fresh.generated_at,
+        last_successful_sync_at: fresh.generated_at,
+      }));
+      const acceptedPricing = pricing(kind === "book" ? bookPartition() : partition());
+      pricingCatalogSchema.parse(acceptedPricing);
+      validatePricingCatalog(acceptedPricing, prior);
+      const result = composeCatalogPair(prior, fresh, acceptedPricing, []);
+
+      expect(() => validatePricingCatalog(result.pricing, result.catalog)).not.toThrow();
+      expect(result.catalog.models).toEqual(prior.models);
+      expect(result.catalog.sources).toEqual(prior.sources);
+      expect(result.catalog.providers).toEqual(prior.providers);
+      expect(result.catalog.coverage[0]).toMatchObject({
+        status: "stale",
+        checked_at: fresh.generated_at,
+        last_successful_sync_at: observedAt,
+        model_count: prior.models.length,
+        reason: expect.stringContaining(modelRef),
+      });
+      expect(result.catalog.warnings).toContainEqual({
+        code: "retained_pricing_core_mismatch",
+        provider_id: providerId,
+        message: expect.stringContaining(modelRef),
+      });
+      expect(result.pricing.books).toEqual(acceptedPricing.books);
+      expect(result.pricing.model_dispositions).toEqual(acceptedPricing.model_dispositions);
+      expect(result.pricing.provider_snapshots[0]).toMatchObject({
+        observed_at: observedAt,
+        publication: "retained",
+      });
+      expect(() => composeCatalogPair(prior, fresh, acceptedPricing, [], safety("core"))).toThrow(
+        "Unsafe accepted core",
+      );
+    },
+  );
+
+  it("retains core when pricing-only source provenance disappears", () => {
+    const prior = catalog("old");
+    const fresh = catalog("new");
+    fresh.sources = [];
+    const result = composeCatalogPair(prior, fresh, pricing(partition()), []);
+    expect(result.catalog.sources).toEqual(prior.sources);
+    expect(result.catalog.coverage[0]?.reason).toContain(sourceRef);
+    expect(() => validatePricingCatalog(result.pricing, result.catalog)).not.toThrow();
+  });
+
+  it("allows removal of models not referenced by retained pricing", () => {
+    const prior = catalog("old");
+    prior.models.push({ ...model("Unpriced"), uid: "test/unpriced", model_id: "unpriced" });
+    const fresh = catalog("new");
+    const result = composeCatalogPair(prior, fresh, pricing(partition()), []);
+    expect(result.catalog.models).toEqual(fresh.models);
+    expect(result.catalog.coverage[0]?.status).toBe("fresh");
+    expect(() => validatePricingCatalog(result.pricing, result.catalog)).not.toThrow();
+  });
+
+  it("checks resource-edge targets outside the book's own model scope", () => {
+    const prior = catalog("old");
+    prior.models.push({ ...model("Target"), uid: "test/target", model_id: "target" });
+    const value = bookPartition();
+    for (const book of value.books)
+      book.resource_edges.push({
+        kind: "derived_from",
+        target: { kind: "models", model_refs: ["test/target"] },
+        applicability: { any_of: [{ all_of: [] }] },
+        observations: [
+          {
+            source_ref: sourceRef,
+            locator: { kind: "table", value: "edge" },
+            raw: { label: "Derived from target" },
+          },
+        ],
+      });
+    const acceptedPricing = pricing(value);
+    validatePricingCatalog(acceptedPricing, prior);
+    const result = composeCatalogPair(prior, catalog("new"), acceptedPricing, []);
+    expect(result.catalog.models).toEqual(prior.models);
+    expect(result.catalog.coverage[0]?.reason).toContain("test/target");
+    expect(() => validatePricingCatalog(result.pricing, result.catalog)).not.toThrow();
+  });
+
+  it("keeps another provider's fresh catalog while retaining the incompatible provider", () => {
+    const prior = catalog("old");
+    const fresh = catalog("new");
+    fresh.models = [];
+    fresh.providers.push({
+      id: "other",
+      name: "Other",
+      kind: "hosted",
+      homepage: "https://example.com",
+      catalog_scope: "global",
+      source_ids: ["other-source"],
+      catalog_version: "1".repeat(64),
+    });
+    fresh.models.push({
+      ...model("Other"),
+      provider_id: "other",
+      uid: "other/model",
+      source_refs: ["other-source"],
+    });
+    fresh.sources.push(
+      ...catalog("new").sources.map((source) => ({
+        ...source,
+        provider_id: "other",
+        id: "other-source",
+      })),
+    );
+    const result = composeCatalogPair(prior, fresh, pricing(partition()), []);
+    expect(result.catalog.models.find(({ uid }) => uid === modelRef)).toEqual(prior.models[0]);
+    expect(result.catalog.models.find(({ uid }) => uid === "other/model")).toEqual(fresh.models[0]);
+    expect(result.catalog.providers.find(({ id }) => id === "other")?.name).toBe("Other");
+    expect(() => validatePricingCatalog(result.pricing, result.catalog)).not.toThrow();
+  });
+
   it("retains pricing without holding back independently refreshed core data", () => {
     const result = composeCatalogPair(catalog("old"), catalog("new"), pricing(partition()), []);
     expect(result.catalog.providers[0]?.name).toBe("new");

@@ -4,28 +4,70 @@ Status: implemented
 
 - GitHub Actions checks every push and pull request, including the portable pricing package build
   and packed Node/browser conformance checks. Package preparation never publishes to npm.
-- A separate daily `Catalog repair` workflow first runs a deterministic, non-AI gate. The schedule
-  alone never starts Copilot: inference begins only when the latest committed refresh report contains
-  a parser failure, a changed source-contract finding, a rejected provider validation, or a failed
-  pricing validation. The gate excludes only operational states such as fetch failures and missing
+- A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
+  alone never starts Copilot: code-repair inference begins when the latest committed refresh report contains
+  a parser failure, a changed source-contract finding, known unrecognized public pricing-card
+  structure, an explicitly rejected Databricks pricing subpage, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
+  pricing validation. The gate excludes operational states such as fetch failures and missing
   credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
   safe code repair exists. A provider simply not publishing a price is never a repair candidate.
+- Missing owned mappings and unrecognized pricing cards remain candidates on unchanged source bytes;
+  accepted publication or fallback does not resolve them. The gate includes their reason counts and
+  bounded diagnostic samples. Source candidates do not hide separate pricing validation failures
+  for the same provider. Unknown meters and unbound product names alone are not automatically
+  parser failures. When transport or required commercial evidence is unavailable and no code-repair
+  candidate exists, preparation reports incomplete instead of claiming a healthy no-op. Missing
+  optional credentials alone remains a normal configured scope.
+- Public 404/410 responses enter relocation review after two consecutive failures. Transient
+  transport/auth failures do not. A source URL changes only after independent first-party evidence
+  establishes its successor. The public evidence CLI reports omitted companions explicitly even
+  when the main bundle succeeds.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
   `gh workflow run catalog-repair.lock.yml`. Manual runs use the same issue gate and deduplication
   rules as scheduled runs.
+- Neither hourly refresh nor daily repair runs Jev. The [manual semantic experiment](semantic-audit.md)
+  remains available, but has not demonstrated incremental production defect discovery. Follow the
+  [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
+  repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
+  supplies no semantic-audit directory, key, or cache.
 - Repair runs are serialized. After an active run finishes, any queued run checks for an open pull
   request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
-  and provider guide. It never changes generated `data/`, weakens a drift guard, or guesses a price.
-  Repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
+  and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
+  Code-repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
   cost-efficient while retaining deeper analysis for source-drift diagnosis.
+  Public refetches automatically compare body hashes with the matching attempt in
+  `data/fetch-state.json`; failed transport attempts cannot establish identity using a retained
+  older hash. The refresh summary does not duplicate those hashes. Review runs the
+  actual parser before comparing output counts. Historical-byte identity establishes historical
+  reproduction, while independently reproduced current-source defects remain repairable. One
+  unresolved candidate does not prevent a validated independent repair PR; unresolved candidates
+  are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
+  empty, or contradictory final outputs even when the model process exits successfully.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
   direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
   fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
   ordinary GitHub CLI OAuth token is not an acceptable substitute.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand.
+- Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
+  `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
+  stays outside the framework's log-redaction and artifact directories.
+  The setup action's `~/.vite-plus` installation is outside AWF's mounted home subdirectories.
+  Vite+ installs the Node.js version from `.node-version` and the frozen dependency graph before
+  inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's
+  tool-cache PATH scan cannot select a different Node.js version for project commands.
+  The agent checks its prepared environment before diagnosis, runs validation sequentially after
+  reviewing the diff, and reuses results unless a relevant change requires another check. An
+  unavailable toolchain or blocked validation produces a structured incomplete report without a
+  pull request. A repair pull request requires every repository validation command to pass.
+- Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
+  (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
+  Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
+  that list synchronized when adding source hosts. An unavailable tool/source or an unreproduced
+  issue produces `report_incomplete`, not a no-op. Runtime sandbox connectivity must be verified in
+  CI; local fetch success alone does not establish remote access.
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.
@@ -35,14 +77,26 @@ Status: implemented
   derived UI/export asset indexes and packs, fetch state, quarantine, and
   refresh summary using a `chore(data): ...` commit. Its commit records the
   producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
-  out full history so the website generation-time link can resolve the latest
-  catalog-producing commit and prefer that run, while manually produced catalog
-  commits fall back to their GitHub commit page. After a refresh commits and
+  out full commit/tree history with `filter: blob:none` so the website generation-time
+  link can resolve the latest catalog-producing commit without downloading historical
+  file contents, and prefer that run, while manually produced catalog commits fall
+  back to their GitHub commit page. A non-cone sparse checkout includes root files,
+  `src/`, `scripts/`, test source files, `public/`, and only the website/export projection
+  manifests and packs from `data/`. Scripts and test sources preserve the production
+  build's full TypeScript check scope; fixtures, guides, collector state, and canonical
+  data files are unnecessary for that build. The catalog history query uses Git trees
+  even though `data/catalog.json` is absent from the working tree. After a refresh commits and
   pushes changed data, it explicitly dispatches the dedicated deployment
   workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
   not emit another `push` workflow run. Void accepts the dispatch workflow's
   GitHub OIDC token; deployment always checks out the latest `main`, while
   ordinary human-authenticated pushes retain their direct deployment trigger.
+- If a refresh push is rejected and a fresh fetch shows that `main` has moved
+  from the collection checkout, publication is skipped with a warning and job
+  summary. The next hourly refresh collects against the new code. Generated
+  data is never rebased onto code it was not validated with, and a skipped
+  publication does not dispatch deployment. Push failures with an unchanged
+  remote, and failures to check the remote, still fail the job.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
   summary, emits warnings for retained or withheld providers, and keeps the
@@ -54,8 +108,9 @@ Status: implemented
   publication have separate columns because fresh catalog data can advance while failed pricing is
   retained. Summary enum cells use only emoji; the structured report retains stable machine-readable
   values and a collapsible set of compact legend tables defines every icon by column and boundary.
-  Coverage uses ✅ for resolved models and ❓ for unresolved models in both the current value and
-  delta. The legend distinguishes a published semantic model update from a source content,
+  Coverage uses ✅ for models with a direct inference or linked capacity offer and ❓ for models
+  without either in both the current value and delta; a shared service charge alone does not
+  resolve model-price coverage. The legend distinguishes a published semantic model update from a source content,
   extractor, or field-path change and defines pricing coverage. Every retained or withheld
   candidate has a provider-local table naming the affected boundary, failed source or validation
   stage, exact sanitized reason, and published fallback. Provider-specific model changes and
@@ -64,9 +119,10 @@ Status: implemented
 - A recognized source-contract mismatch warns on its first occurrence with bounded path,
   mismatch kind, affected/observed counts, fingerprint, and public sample IDs
   when available. A second consecutive source failure adds persistence and,
-  when available, last-success staleness. Unclassified parser failures and abrupt count loss
-  remain `possible_structural_change`; automation never upgrades that heuristic
-  into a factual schema-change claim.
+  when available, last-success staleness. Unclassified parser failures remain
+  `possible_structural_change`. Published count decreases are separate diagnostics, never
+  structural failures or repair triggers by themselves; automation does not infer schema drift
+  from a change in catalog size.
 - Collection starts every provider concurrently because provider fetch, failure,
   validation, and publication boundaries are independent. Total collection time
   therefore approaches the slowest provider instead of accumulating behind a

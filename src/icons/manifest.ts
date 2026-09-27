@@ -20,6 +20,7 @@ export type UiIconName = (typeof uiIconNames)[number];
 
 const providerIconIds = [
   "amazon-bedrock",
+  "amazon-sagemaker",
   "anthropic",
   "azure",
   "cerebras",
@@ -34,6 +35,7 @@ const providerIconIds = [
   "mistral",
   "ollama",
   "openai",
+  "typesafe",
   "vercel",
   "vertex",
   "xai",

@@ -16,6 +16,10 @@ Status: implemented
   the current existence, price, status, or variant count of an otherwise volatile provider record.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
+- Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source
+  judgments, deterministic gap routing without inference, parser replay, cache reuse, evidence
+  integrity, exact dismissals and failure isolation. The separate opt-in live evaluation measures
+  marker-preserving semantic drift; see [Source semantic audit](semantic-audit.md).
 
 The generated-data file list is defined once in `tests/generated-data-tests.ts` and consumed by Vite+
 configuration and the test-boundary guard. Adding a test that reads durable generated state
@@ -43,6 +47,10 @@ after each test, including failures.
 - Keep explicit upper bounds on payload size, chunk size, offer count, and preview length: those
   protect consumer resource contracts. Test their behavior with synthetic inputs and verify the
   current published assets stay within the same bounds.
+  Website core data splits at complete model/price row boundaries into 128 KiB UTF-8 chunks.
+  Verify per-chunk bounds, complete round trips, local dictionary remapping, deterministic order,
+  and rejection of missing, reordered or mixed-version chunks. Normal inventory growth creates
+  more chunks and has no fixed aggregate-size assertion or warning.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
   This includes table-cell amounts and statuses and model-specific selector examples: a current
@@ -51,9 +59,20 @@ after each test, including failures.
 - Generated pricing replay checks current extractor inputs against their manifests and verifies
   obsolete-input providers keep their exact accepted partitions. An extractor bump must not require
   a live data refresh merely to validate code changes.
+  A current replay rejected by the adopted-topology gate may preserve only an already-retained,
+  valid accepted partition with an explicit compilation failure report; fresh failures still abort.
+  An obsolete extractor preserves the already validated snapshot under its collected topology;
+  new topology requirements apply to current replays and fresh collection. Registering a provider
+  does not require a live refresh during code validation. Generated tests require every published
+  provider to remain configured, covered, and internally valid; fixture tests validate newly
+  registered adapters and features before their first authorized collection.
 - Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
   applicability must remain normalized as deterministic bounded shards with complete observations;
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.
+- Keep equal-price accounting contracts scoped through assembly: different signals, formulas, or
+  mappings must survive, and an unbound scope must not inherit a sibling's binding. Drift tests
+  preserve independently known calculations and partial input mappings, while quantity evaluation
+  still reports every missing signal.
 - Treat projection closure and interaction budgets as behavior: shared resource books must not leak
   sibling-model offers, every provider pricing row must expose readable applicability, model-detail
   offer counts stay bounded, provider loading is chunk/offer-lazy, deferred offers match their

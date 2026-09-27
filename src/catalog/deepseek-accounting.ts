@@ -1,3 +1,4 @@
+import { load } from "cheerio";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -40,7 +41,7 @@ export function extractDeepseekPricingInputs(
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
   const bodies = new Map(
-    documents.map(({ url, body }) => [normalizePath(new URL(url).pathname), body]),
+    documents.map(({ url, body }) => [normalizePath(new URL(url).pathname), accountingText(body)]),
   );
   const facts = contracts.flatMap((item) => {
     const body = bodies.get(item.document);
@@ -114,6 +115,27 @@ function contract(
 
 function marker(field: string): RegExp {
   return new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+}
+
+function accountingText(body: string): string {
+  const $ = load(body);
+  $("script, style").remove();
+  const text = $.root().text().replace(/\s+/gu, " ");
+  const cached = $("strong.openapi-schema__property")
+    .toArray()
+    .some((element) => {
+      if ($(element).text().trim() !== "cached_tokens") return false;
+      const item = $(element).closest(".openapi-schema__list-item");
+      if (item.find(".openapi-schema__name").first().text().trim() !== "integer") return false;
+      const parents = item.parents(".openapi-schema__list-item").toArray();
+      return (
+        $(parents[0]).find("strong.openapi-schema__property").first().text().trim() ===
+          "input_tokens_details" &&
+        $(parents[1]).find("strong.openapi-schema__property").first().text().trim() === "usage"
+      );
+    });
+  // The HTML schema publishes nested property names instead of a literal dotted path.
+  return cached ? `${text} input_tokens_details.cached_tokens` : text;
 }
 
 function normalizePath(path: string): string {

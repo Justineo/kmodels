@@ -12,6 +12,7 @@ type TopologyFeature =
 
 export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["amazon-bedrock", ["resource", "binding"]],
+  ["amazon-sagemaker", ["resource", "binding"]],
   ["anthropic", ["resource", "binding", "allowance"]],
   ["azure", ["resource", "binding"]],
   ["cerebras", ["resource", "binding"]],
@@ -19,15 +20,16 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["dashscope", ["resource", "binding", "disposition"]],
   ["databricks", ["binding"]],
   ["deepseek", ["binding"]],
-  ["gemini", ["resource", "relation", "binding"]],
+  ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
   ["kimi", ["resource", "relation", "binding", "settlement"]],
   ["llama", []],
   ["mistral", ["resource", "binding", "disposition"]],
   ["ollama", ["binding"]],
-  ["openai", ["resource", "binding", "disposition"]],
+  ["openai", ["resource", "binding", "contribution", "disposition"]],
+  ["typesafe", ["binding"]],
   ["vercel", ["resource", "binding"]],
-  ["vertex", ["resource", "relation", "binding"]],
+  ["vertex", ["resource", "relation", "binding", "allowance"]],
   ["xai", ["resource", "binding"]],
 ]);
 

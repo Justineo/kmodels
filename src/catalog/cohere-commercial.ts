@@ -154,6 +154,11 @@ function signalSpec(
       ),
       keys: paths.has("v2/rerank") ? ["rerank.v2.search_units"] : [],
     };
+  if (meter.value === "input_image" && isStandardUnit(variant.price.per, "page"))
+    return {
+      signal: { namespace: "kmodels", value: "processed_pages" },
+      keys: paths.has("v2/parse") ? ["parse.v2.pages"] : [],
+    };
 }
 
 function providerSignal(

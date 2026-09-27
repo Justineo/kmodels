@@ -39,54 +39,56 @@ export function extractVertexCommercialFacts(
       if (rate.meter !== "tool_call") return true;
       const service = services.get(rate.conditions.operation ?? "");
       if (service === undefined) return true;
-      addRate(facts, fact(model, service), { ...rate, meter: service[2] });
+      const fact = serviceFact(facts, model, service);
+      const mapped = { ...rate, meter: service[2] };
+      if (
+        !fact.price_facts.some(
+          (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(mapped),
+        )
+      )
+        fact.price_facts.push(mapped);
       return false;
     });
-    model.raw_price_facts = model.raw_price_facts.filter(
-      ({ impact, term_key }) => impact !== "allowance" && !term_key.startsWith("grounding_"),
-    );
+    model.raw_price_facts = model.raw_price_facts.filter((raw) => {
+      if (!raw.term_key.startsWith("grounding_")) return raw.impact !== "allowance";
+      const service = services.get(raw.conditions.operation ?? "");
+      if (service === undefined) return true;
+      serviceFact(facts, model, service).raw_price_facts.push(raw);
+      return false;
+    });
   }
   const carrier = values.sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && facts.size > 0)
     carrier.commercial_facts = [...facts.values()].map((item) => ({
       source_ref: sourceId,
       ...item,
-      raw_price_facts: item.raw_price_facts,
     }));
 }
 
-function fact(
+function serviceFact(
+  facts: Map<string, MutableFact>,
   model: ParsedProviderModel,
   service: readonly [string, string, SourcePriceFact["meter"]],
 ): MutableFact {
-  const [key, name] = service;
-  return {
-    book_key: `service:${key}`,
+  const [resource, name] = service;
+  const bookKey = `service:${resource}`;
+  const offerKey = `request:${model.uid}`;
+  const key = `${bookKey}\0${offerKey}`;
+  const existing = facts.get(key);
+  if (existing !== undefined) return existing;
+  const fact: MutableFact = {
+    book_key: bookKey,
     book_name: name,
     resource_kind: "service",
-    resource_key: key,
+    resource_key: resource,
     model_refs: [model.uid],
-    offer_key: `request:${model.uid}`,
+    offer_key: offerKey,
     offer_name: `${name} for ${model.model_id}`,
     billing_mode: "usage",
     pricing_state: "numeric",
     price_facts: [],
     raw_price_facts: [],
   };
-}
-
-function addRate(facts: Map<string, MutableFact>, next: MutableFact, rate: SourcePriceFact): void {
-  const key = `${next.book_key}\0${next.offer_key}`;
-  const current = facts.get(key);
-  if (current === undefined) {
-    next.price_facts.push(rate);
-    facts.set(key, next);
-    return;
-  }
-  if (
-    !current.price_facts.some(
-      (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(rate),
-    )
-  )
-    current.price_facts.push(rate);
+  facts.set(key, fact);
+  return fact;
 }

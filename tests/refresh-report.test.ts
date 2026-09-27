@@ -2,6 +2,35 @@ import { describe, expect, it } from "vite-plus/test";
 import { refreshReport } from "../src/catalog/refresh-report.ts";
 
 describe("refresh report", () => {
+  it("shows accepted count decreases as diagnostics without publication warnings", () => {
+    const output = refreshReport({
+      generated_at: "2026-08-01T00:00:00.000Z",
+      catalog_version: "abcdef0123456789",
+      outcome: "changed",
+      publication: "complete",
+      providers: [
+        {
+          provider_id: "example",
+          status: "fresh",
+          publication: "accepted",
+          pricing_publication: "accepted",
+          models: { current: 10, added: 0, removed: 0, changed: 0 },
+          sources: { changed: 1 },
+          pricing: { outcome: "unchanged" },
+          signals: ["catalog_count_decrease"],
+          count_decreases: [{ field: "routes", previous: 100, current: 10 }],
+        },
+      ],
+    });
+
+    expect(output.warnings).toEqual([]);
+    expect(output.markdown).toContain("↘️");
+    expect(output.markdown).toContain(
+      "| Count decrease | `routes` | 100 → 10 · published; diagnostic only |",
+    );
+    expect(output.markdown).not.toContain("#### Unaccepted candidates");
+  });
+
   it("makes retained publication and exact model changes visible", () => {
     const output = refreshReport({
       schema_version: 2,

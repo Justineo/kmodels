@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import {
   deliveryModes,
   modalities,
@@ -313,6 +314,7 @@ const websiteChargeDriverSchema = z.strictObject({
   aggregation: nonEmpty,
   aggregation_definition: nonEmpty.optional(),
   resolution_phase: z.enum(applicabilityResolutionPhases),
+  quantity_key: hash.optional(),
 });
 
 const websiteRateRowSchema = z.strictObject({
@@ -378,9 +380,11 @@ const websitePricingOfferSchema = z.strictObject({
     "model_mechanism",
     "optional_service",
     "automatic_component",
-    "plan_capacity",
+    "capacity",
+    "plan",
     "standalone",
   ]),
+  capacity_choice: z.strictObject({ group_key: hash, label: nonEmpty }).optional(),
   mechanism_refs: z.array(hash).min(1).optional(),
   billing_mode: websiteBillingModeSchema,
   composition: z.string().min(1).optional(),
@@ -449,6 +453,8 @@ const websiteModelDetailShape = {
   model_ref: nonEmpty,
   updated_date: modelDate.optional(),
   description: z.string().optional(),
+  model_card: modelCardSchema.optional(),
+  deployment: deploymentSpecSchema.optional(),
   delivery_modes: z.array(z.enum(deliveryModes)).optional(),
   api_endpoints: z
     .array(

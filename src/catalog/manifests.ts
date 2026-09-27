@@ -1,8 +1,10 @@
 import type { PriceDimension } from "./pricing-schema.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
+import { sagemakerCatalogUrl } from "./sagemaker.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
+  | { kind: "typesafe-catalog"; minModels: number; maxModels: number }
   | { kind: "openai-catalog" }
   | { kind: "openai-model-pricing" }
   | { kind: "openai-api" }
@@ -35,6 +37,10 @@ export type Extractor =
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
+  | { kind: "sagemaker-catalog" }
+  | { kind: "sagemaker-sdk" }
+  | { kind: "sagemaker-pricing" }
+  | { kind: "sagemaker-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
@@ -145,6 +151,8 @@ export type SourceField =
   | "version"
   | "name"
   | "description"
+  | "model_card"
+  | "deployment"
   | "aliases"
   | "tasks"
   | "delivery_modes"
@@ -196,6 +204,9 @@ export interface SourceManifest {
     | { scheme: "google-service-account"; env: string };
   headers?: { name: string; value: string }[];
   transport?:
+    | { kind: "sagemaker-pricing" }
+    | { kind: "sagemaker-sdk" }
+    | { kind: "aws-sagemaker"; region: string }
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
     | { kind: "azure-retail-prices" }
@@ -486,7 +497,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v7",
+  extractorVersion: "kimi-pricing-v8",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -541,6 +552,59 @@ const kimiPricingSource = (
 });
 
 export const manifests = [
+  {
+    provider: {
+      id: "typesafe",
+      name: "TypeSafe AI",
+      kind: "hosted",
+      homepage: "https://typesafe.ai/",
+      docs_url: "https://docs.typesafe.ai/",
+      catalog_scope: "global",
+    },
+    sources: [
+      {
+        id: "typesafe-models",
+        url: "https://docs.typesafe.ai/models.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
+        extractorVersion: "typesafe-catalog-v1",
+        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        fields: [
+          "model_id",
+          "name",
+          "aliases",
+          "tasks",
+          "api_endpoints",
+          "modalities",
+          "capabilities",
+          "limits",
+          "model_card",
+          "status",
+          "release_stage",
+          "pricing",
+          "pricing_inputs",
+        ],
+        allowedHosts: ["docs.typesafe.ai"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: fixedDocuments([
+            ["index", "https://docs.typesafe.ai/llms.txt", 1, "markdown"],
+            ["api", "https://docs.typesafe.ai/api.md", 1, "markdown", true, true],
+          ]),
+        },
+      },
+    ],
+  },
   {
     provider: {
       id: "openai",
@@ -682,7 +746,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v9",
+        extractorVersion: "openai-pricing-v12",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -690,6 +754,22 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "supplement",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: fixedDocuments([
+            [
+              "container-billing-changelog",
+              "https://developers.openai.com/api/docs/changelog.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
+        },
       },
       {
         id: "openai-accounting",
@@ -751,7 +831,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v16",
+        extractorVersion: "anthropic-catalog-v19",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -840,7 +920,15 @@ export const manifests = [
             ],
             ["glossary", "https://platform.claude.com/docs/en/about-claude/glossary.md"],
             ["thinking", "https://platform.claude.com/docs/en/build-with-claude/thinking.md"],
+            [
+              "thinking-troubleshooting",
+              "https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting.md",
+            ],
             ["compaction", "https://platform.claude.com/docs/en/build-with-claude/compaction.md"],
+            [
+              "compaction-threshold",
+              "https://platform.claude.com/docs/en/build-with-claude/compaction-threshold.md",
+            ],
             [
               "tool-use",
               "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md",
@@ -887,6 +975,131 @@ export const manifests = [
   },
   {
     provider: {
+      id: "amazon-sagemaker",
+      name: "Amazon SageMaker AI",
+      kind: "cloud_platform",
+      homepage: "https://aws.amazon.com/sagemaker/ai/",
+      docs_url: sagemakerCatalogUrl,
+      catalog_scope: "regional",
+    },
+    pricingCategoricalLabels: [
+      ...pricingLabels("endpoint", {
+        InvokeEndpoint: "InvokeEndpoint",
+      }),
+      ...pricingLabels("service_tier", {
+        on_demand: "On-demand",
+        provisioned_execution: "Provisioned concurrency execution",
+      }),
+      ...pricingLabels(
+        "operation",
+        Object.fromEntries(
+          [1, 2, 3, 4, 5, 6].map((memory) => [`memory-${memory}gb`, `${memory} GB memory`]),
+        ),
+      ),
+    ],
+    sources: [
+      {
+        id: "sagemaker-models",
+        url: sagemakerCatalogUrl,
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-catalog" },
+        extractorVersion: "sagemaker-catalog-v2",
+        fields: ["model_id", "name", "tasks", "capabilities", "service_families", "status"],
+        allowedHosts: ["docs.aws.amazon.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "sagemaker-sdk",
+        url: sagemakerCatalogUrl,
+        type: "repository",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-sdk" },
+        extractorVersion: "sagemaker-sdk-v1",
+        fields: [
+          "model_id",
+          "tasks",
+          "modalities",
+          "capabilities",
+          "service_families",
+          "model_card",
+          "deployment",
+        ],
+        allowedHosts: [
+          "docs.aws.amazon.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+        ],
+        maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: false,
+        role: "supplement",
+        fillOnly: true,
+        transport: { kind: "sagemaker-sdk" },
+      },
+      {
+        id: "sagemaker-pricing",
+        url: sagemakerCatalogUrl,
+        type: "website",
+        source: ["website", "api"],
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-pricing" },
+        extractorVersion: "sagemaker-pricing-v4",
+        fields: ["pricing"],
+        pricingEvidence: firstPartyPricing(
+          "billing_catalog",
+          "reviewed_unique_join",
+          "current_snapshot",
+        ),
+        allowedHosts: [
+          "docs.aws.amazon.com",
+          "pricing.us-east-1.amazonaws.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+          "aws.amazon.com",
+        ],
+        maxResponseBytes: mebibytes(192),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        pricingRequired: true,
+        transport: { kind: "sagemaker-pricing" },
+      },
+      {
+        id: "sagemaker-api-us-west-2",
+        url: "https://api.sagemaker.us-west-2.amazonaws.com/",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "sagemaker-api" },
+        extractorVersion: "sagemaker-api-v2",
+        fields: ["name", "description", "model_card", "modalities", "capabilities", "availability"],
+        allowedHosts: [
+          "api.sagemaker.us-west-2.amazonaws.com",
+          "docs.aws.amazon.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+        ],
+        maxResponseBytes: mebibytes(4),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "aws", envs: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] },
+        transport: { kind: "aws-sagemaker", region: "us-west-2" },
+      },
+    ],
+  },
+  {
+    provider: {
       id: "amazon-bedrock",
       name: "Amazon Bedrock",
       kind: "cloud_platform",
@@ -921,7 +1134,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v20",
+        extractorVersion: "bedrock-catalog-v28",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -966,7 +1179,7 @@ export const manifests = [
           documents: fixedDocuments([
             [
               "bedrock-mantle",
-              "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.md",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.md",
               1,
               "markdown",
               true,
@@ -1147,7 +1360,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v12",
+        extractorVersion: "databricks-catalog-v14",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1287,7 +1500,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v18",
+        extractorVersion: "vercel-catalog-v23",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1655,7 +1868,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "azure-claude-pricing", minModels: 1, maxModels: 50 },
-        extractorVersion: "azure-claude-pricing-v4",
+        extractorVersion: "azure-claude-pricing-v5",
         pricingEvidence: firstPartyPricing(
           "price_book",
           "exact_or_documented_alias",
@@ -1869,7 +2082,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v3",
+        extractorVersion: "gemini-pricing-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
@@ -1902,8 +2115,16 @@ export const manifests = [
               true,
               true,
             ],
-            ["video", "https://ai.google.dev/gemini-api/docs/video", 4, "html", true, true],
+            ["video", "https://ai.google.dev/gemini-api/docs/veo", 4, "html", true, true],
             ["batch-api", "https://ai.google.dev/api/batch-api", 4, "html", true, true],
+            [
+              "maps-grounding",
+              "https://ai.google.dev/gemini-api/docs/maps-grounding",
+              1,
+              "html",
+              true,
+              true,
+            ],
             ["embeddings-api", "https://ai.google.dev/api/embeddings", 4, "html", true, true],
           ]),
         },
@@ -2187,7 +2408,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v3",
+        extractorVersion: "vertex-pricing-v9",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
@@ -2205,6 +2426,14 @@ export const manifests = [
           concurrency: 4,
           maxDocumentBytes: mebibytes(4),
           documents: fixedDocuments([
+            [
+              "mistral-ocr-billing",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/mistral-ocr",
+              2,
+              "html",
+              true,
+              true,
+            ],
             [
               "discovery",
               "https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1",
@@ -2373,7 +2602,7 @@ export const manifests = [
           minModels: 40,
           maxModels: 70,
         },
-        extractorVersion: "cohere-catalog-v12",
+        extractorVersion: "cohere-catalog-v14",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2509,6 +2738,14 @@ export const manifests = [
               true,
             ],
             [
+              "api-parse-v2",
+              "https://docs.cohere.com/v2/reference/parse.md",
+              1,
+              undefined,
+              true,
+              true,
+            ],
+            [
               "api-openai-compatibility",
               "https://docs.cohere.com/docs/compatibility-api.md",
               1,
@@ -2536,7 +2773,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "cohere-pricing", minProducts: 5, maxProducts: 30 },
-        extractorVersion: "cohere-pricing-v2",
+        extractorVersion: "cohere-pricing-v3",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["pricing"],
         allowedHosts: ["cohere.com"],
@@ -2682,11 +2919,11 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v2",
+        extractorVersion: "mistral-pricing-v4",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
-        allowedHosts: ["mistral.ai", "raw.githubusercontent.com"],
-        maxResponseBytes: mebibytes(8),
+        allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],
+        maxResponseBytes: mebibytes(48),
         scope: "global",
         exhaustive: false,
         role: "overlay",
@@ -2694,11 +2931,13 @@ export const manifests = [
         pricingRequired: true,
         retainOmittedFacts: true,
         linkedDocuments: {
-          path: /$^/,
+          path: /^\/models\/(?:model-cards\/)?[a-z0-9-]+\/?$/,
           indexFormat: "html",
           minDocuments: 0,
-          maxDocuments: 0,
+          maxDocuments: 40,
           concurrency: 5,
+          optionalDocuments: true,
+          maxDocumentBytes: mebibytes(2),
           documents: fixedDocuments([
             [
               "api-schema",
@@ -3035,7 +3274,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v12",
+        extractorVersion: "xai-catalog-v15",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3070,7 +3309,7 @@ export const manifests = [
           documents: [
             {
               id: "llms",
-              url: "https://docs.x.ai/llms.txt",
+              url: "https://docs.x.ai/llms-full.txt",
               maxResponseBytes: mebibytes(3),
             },
           ],
@@ -3214,7 +3453,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "huggingface-featherless", minModels: 1, maxModels: 50_000 },
-        extractorVersion: "huggingface-featherless-v1",
+        extractorVersion: "huggingface-featherless-v2",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: ["limits", "pricing"],
         allowedHosts: ["api.featherless.ai", "featherless.ai"],
@@ -3394,7 +3633,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
-        extractorVersion: "dashscope-recommended-v6",
+        extractorVersion: "dashscope-recommended-v7",
         fields: ["api_endpoints", "availability"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),
@@ -3421,7 +3660,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v13",
+        extractorVersion: "dashscope-pricing-v17",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3518,7 +3757,11 @@ export const manifests = [
               1,
             ],
             ["base-url", "https://www.alibabacloud.com/help/en/model-studio/base-url.md", 1],
-          ]),
+          ]).map((document) =>
+            document.id.endsWith("-accounting") || document.id === "base-url"
+              ? { ...document, claimLocal: true }
+              : document,
+          ),
         },
         optional: true,
         pricingRequired: true,
@@ -3944,7 +4187,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v15",
+        extractorVersion: "deepseek-catalog-v18",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4163,9 +4406,11 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "kimi-releases", minModels: 8, maxModels: 25 },
-        extractorVersion: "kimi-releases-v2",
+        extractorVersion: "kimi-releases-v3",
         fields: ["release_date"],
-        allowedHosts: ["platform.kimi.com", "www.kimi.com"],
+        optional: true,
+        retainOmittedFacts: true,
+        allowedHosts: ["platform.kimi.com", "www.kimi.com", "www.kimi.ai"],
         maxResponseBytes: mebibytes(6),
         scope: "global",
         exhaustive: false,
@@ -4178,7 +4423,7 @@ export const manifests = [
           concurrency: 2,
           maxDocumentBytes: mebibytes(2),
           documents: fixedDocuments([
-            ["research", "https://www.kimi.com/blog/", 2],
+            ["research", "https://www.kimi.ai/blog/", 2],
             ["code", "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html", 2],
             ["catalog", "https://platform.kimi.com/docs/models", 1, "markdown"],
           ]),

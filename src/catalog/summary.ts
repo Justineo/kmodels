@@ -10,12 +10,18 @@ import type {
 } from "./pricing-reconciliation.ts";
 import type { SourceContractEvidence } from "./source-contract.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
-import type { ProviderValidationIssue } from "./validation.ts";
+import {
+  providerCountDecreases,
+  type ProviderCountDecrease,
+  type ProviderValidationIssue,
+} from "./validation.ts";
 
 const semanticModelFields = [
   "id_kind",
   "name",
   "description",
+  "model_card",
+  "deployment",
   "aliases",
   "tasks",
   "task_evidence",
@@ -144,6 +150,7 @@ interface ProviderAttemptSummary {
 }
 
 type ProviderRefreshSignal =
+  | "catalog_count_decrease"
   | "drift_guard_triggered"
   | "breaking_contract_mismatch"
   | "unreviewed_extension"
@@ -162,6 +169,7 @@ interface ProviderRefreshSummary {
   pricing_coverage: PricingCoverageSummary;
   warning_codes: Record<string, number>;
   signals: ProviderRefreshSignal[];
+  count_decreases?: ProviderCountDecrease[];
   attempt?: ProviderAttemptSummary;
 }
 
@@ -209,7 +217,16 @@ function pricingCoverage(
   const rawFacts = new Set<string>();
 
   for (const book of pricing.books) {
-    if (book.provider_id !== providerId || book.scope.kind !== "models") continue;
+    if (
+      book.provider_id !== providerId ||
+      (book.scope.kind !== "models" &&
+        !(
+          book.scope.kind === "provider_resource" &&
+          book.scope.resource_kind.namespace === "kmodels" &&
+          book.scope.resource_kind.value === "capacity"
+        ))
+    )
+      continue;
     const modelRefs = book.scope.model_refs.filter((modelRef) => current.has(modelRef));
     for (const modelRef of modelRefs) offers.add(modelRef);
     const hasNormalizedRate = book.offers.some((offer) =>
@@ -485,6 +502,11 @@ export function summarizeRefresh(
       ),
     );
     const signals: ProviderRefreshSignal[] = [];
+    const countDecreases = providerCountDecreases(
+      current.models.filter((model) => model.provider_id === providerId),
+      oldModels,
+    );
+    if (status === "fresh" && countDecreases.length > 0) signals.push("catalog_count_decrease");
     if (countDropped) signals.push("drift_guard_triggered");
     if (breakingFinding) signals.push("breaking_contract_mismatch");
     if (acceptedFindings.length > 0) signals.push("unreviewed_extension");
@@ -539,6 +561,9 @@ export function summarizeRefresh(
       },
       warning_codes: warningCodes,
       signals,
+      ...(status !== "fresh" || countDecreases.length === 0
+        ? {}
+        : { count_decreases: countDecreases }),
       ...(attempt === undefined
         ? {}
         : {

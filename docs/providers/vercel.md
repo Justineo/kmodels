@@ -2,6 +2,11 @@
 
 Status: current
 
+The model-page `+N more` count can describe only the default no-video-input variants. When the
+reviewed pricing registry also contains video-input variants, validate the count against the
+default subset and retain both complete groups, including each quality, resolution, and
+`video_input` selector. The count is not a reason to discard the video-editing rates.
+
 ## Boundary
 
 Vercel publishes a directly callable gateway catalog, so Kmodels admits every valid row from
@@ -55,6 +60,10 @@ service, model-list pricing, or the provider refresh. Malformed model rows are i
 identity disagreement, duplicate route ownership, truncated exhaustive list, unsafe count change,
 or invalid pricing partition still fails closed.
 
+The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
+returned array is the completed-image quantity. Older examples that expose the same result as
+`result.images` remain equivalent evidence, but arbitrary image-related prose is not.
+
 ## Price normalization
 
 The model-list and endpoint APIs publish per-token values. Kmodels scales them exactly to per-million
@@ -67,11 +76,36 @@ Fast mode uses the `speed` dimension. Named Flex or Priority prices use
 Regional prices use `region`. This separation prevents a Fast rate from being misrepresented as a
 service tier and permits speed, tier, route, and region to coexist on one rate.
 
+A `-fast` model with the published `fast` tag and an independently listed, fast-capable base model
+uses the fast list price. Some fast-slug endpoint documents repeat the base model's standard
+prices. They describe the documented standard-speed fallback only when their token and regional
+amounts match the independent base record. Those rates retain their exact context bands under
+`speed=standard`; the fast list amounts use `speed=fast`. An unexplained disagreement remains a
+conflict instead of being silently relabeled.
+
+Video duration rows with an omitted resolution or quality beside explicitly qualified siblings
+use the source's `default` selector value, as image rows do. They are not wildcard prices over all
+resolutions or qualities, and `default` does not infer a particular physical resolution.
+`capabilities.pricing.image_input_cost_per_image_usd` and
+`video_input_cost_per_second_usd` add independently charged input-image and input-video terms.
+Their bindings take billable input images and input-video seconds per generation job; they do not
+reuse output duration or multiply input assets by generated sample count without evidence.
+
 A visible model page fills an otherwise empty price object only when amount, denominator, and route
 are unambiguous. A page is free only when every non-empty price column is `Free`. Detailed video rows
 retain quality, resolution, and video-input conditions; image rows retain quality and resolution;
 native web-search rows retain context tier. A missing or disagreeing detail registry leaves only the
 affected term raw.
+The reviewed image-detail registry may put the price object directly under the model slug or
+inside its `model` property. Both literal structures are parsed without executing JavaScript;
+the wrapper cannot create a fictitious model named `model`.
+
+The search-price prose parser removes Markdown quote prefixes and folds whitespace before matching
+reviewed sentences. Source line wrapping must not remove a known price; unrecognized commercial
+wording still remains local. Public tool pages also contain structured `webSearchCallCost` base
+amounts, but the inspected records omit Deep effort and excess-result/export pricing. The model
+API and SDK do not provide a complete alternative search tariff. The guide therefore remains the
+amount authority for the full search schedule; see the [source investigation](../pricing-research.md).
 
 ## Search services
 
@@ -118,6 +152,17 @@ runtime must retry a temporary “not found.” Terminal response selectors and 
 are not stream-interrupt detectors. A non-terminal stream cannot be priced from missing terminal
 metadata alone.
 
+Search-count and regional-default evidence accepts whitespace wrapping inside the reviewed prose
+without joining unrelated paragraphs. Service-tier evidence recognizes both the existing passive
+omission wording and the explicit statement that AI Gateway omits the field when the provider
+reports the standard tier. This omission default assumes the caller receives complete gateway
+metadata; a client that drops that metadata needs request logs instead of guessing the served tier.
+
+The optional maintenance [semantic contract audit](../semantic-audit.md) independently checks the
+meaning of emitted search counts, speed, tier and region mappings against complete original public
+documents. Known missing mappings go directly to repair without a model call. Jev may request
+review when source meaning contradicts an emitted contract; it never supplies a published fact.
+
 Base text input remains semantically bound but has no source-derived quantity method when a separate
 cache partition is priced, because Vercel does not explicitly establish whether the native prompt
 counter includes every priced cache partition. Aggregate native prompt/completion counters also do
@@ -139,6 +184,8 @@ Vercel contracts do not establish an exact public input for:
 - native-search context tier and media flags such as generated audio or voice control; or
 - interrupted-stream finalization and attempt deduplication.
 
+Known video-duration multiplication retains its calculation and surviving request/result locators
+when a companion field drifts; the caller supplies the missing duration or successful-output count.
 These are input-contract gaps, not reasons to drop exact public rates. Account totals and invoice
 reconciliation are deliberately excluded rather than labeled missing.
 

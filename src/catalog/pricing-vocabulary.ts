@@ -208,6 +208,7 @@ export const pricingRefreshFailureCodes = [
   "pricing_not_observed",
 ] as const;
 export const priceStates = [
+  "not_supported",
   "numeric",
   "free",
   "included",

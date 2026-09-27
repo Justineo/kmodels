@@ -5,6 +5,9 @@ Status: implemented
 ## Source trust
 
 - `src/catalog/manifests.ts` is the reviewed provider registry and source allowlist. Requests never choose root URLs.
+- Adding a provider requires an explicit product-scope decision. Pricing completeness work stays
+  within the registered providers. Upstream model brands and third-party tools offered by an
+  existing provider do not authorize registering those vendors as independent providers.
 - Every source that can establish pricing declares a first-party pricing-evidence policy. The policy
   records whether the source is a model catalog, price book, billing catalog, commercial-terms
   surface, or scoped meter inventory; how identities may bind; and whether the source is an explicit
@@ -69,7 +72,11 @@ Status: implemented
   bundle incomplete so publication retains the previous compatible pricing partition.
   This keeps pricebook completeness independent from catalog availability without
   silently replacing a previously broad pricebook with a partial one.
-- A missing fixed optional companion is likewise a bundle-level omission. A missing document
+- A missing fixed optional companion is a bundle-level omission unless the manifest explicitly
+  marks it `claimLocal`. Use claim-local companions when an adapter can isolate their absence to
+  particular capabilities, usage locators, or selector mappings without weakening independent
+  identity or price evidence. Accounting-only omissions must not freeze independently verified
+  rates. Required price-bearing inputs still protect their complete pricing partition. A missing document
   discovered from a bounded index is claim-local: report the partial source, refresh surviving
   claims, and do not reject independently observed pricing merely because one discovered card was
   unavailable. Providers may conservatively retain source-owned catalog enrichment for such a
@@ -106,6 +113,10 @@ Status: implemented
   failures and reviewed cloud throttling responses, including rate-limit bodies returned with a
   successful status. It makes at most three attempts, honors bounded `Retry-After`, and otherwise
   uses exponential backoff with full jitter. Transports do not add an independent retry loop.
+- Transport diagnostics retain a bounded curl exit code and reviewed failure category, including
+  TLS-handshake timeouts, for both ordinary and cloud requests. Never publish the raw command,
+  stderr, headers, URLs or credential-bearing error message. Local proxy routing is an operator
+  setting, not a provider parser rule; diagnose it separately from an upstream HTTP failure.
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Bounded multi-document fetches assign the next item to the first free slot while preserving
   deterministic result order.
@@ -119,6 +130,11 @@ Status: implemented
   diagnostics still follow manifest order, so transport overlap neither raises a host's request
   concurrency nor changes deterministic provider semantics.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
+- Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
+  save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
+  public repair source or fixed companion, to temporary external artifacts for replay. This is not
+  collector snapshotting; authenticated responses remain prohibited. Snapshots never enter the
+  repository, generated `data/`, or static exports; only minimal reviewed fixtures may be committed.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
   repository does retain a bounded public-only parsed pricing compilation
@@ -130,14 +146,30 @@ Status: implemented
 
 - Validate candidate catalogs per provider.
 - A lossy source grammar must validate the admitted share of its in-scope rows; a plausible output-model count alone is not a completeness check.
-- Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
-- A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has been reviewed. Those rows are excluded from the old comparison baseline and are not preserved, while every unlisted deletion remains protected by the normal drift guard.
-- `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
+- Reject malformed or incomplete source envelopes, pagination failures, invalid identities,
+  duplicate IDs or structured facts, unresolved route provenance, and invalid prices. An empty
+  candidate without an explicit authoritative empty-catalog contract remains unpublishable; a
+  successful HTTP response alone does not establish that the provider has no models.
+- Model, service-family, endpoint, route, availability, and price counts are observations, not
+  invariants. Neither a count decrease nor a large numeric price change independently rejects a
+  valid candidate. Validate extraction against the current source's own structure and in-scope
+  denominator, not the previous snapshot's population or amounts. Publication follows exact
+  source scope, exhaustiveness, and lifecycle evidence even when the change is large.
+- Reports record published count decreases with their previous/current values as diagnostics,
+  independently of validation failures. A decrease does not assert parser drift or start repair
+  inference by itself. Existing structural and source-coverage failures remain repair candidates.
+- A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has
+  been reviewed. Those rows are excluded from reconciliation and are not preserved; all other
+  removals follow source authority and exhaustiveness rather than a percentage guard.
+- `KMODELS_REBUILD_PROVIDER` may remove the old reconciliation baseline for one reviewed parser migration. Every other provider still reconciles against its previous accepted catalog.
 - Catalog publication is failure-closed and provider-atomic across required catalog inputs. A
-  rejected or suspicious provider keeps its last validated catalog; optional or credential-scoped
+  provider whose required evidence fails keeps its last validated catalog; optional or credential-scoped
   inventory sources may be skipped, and providers do not block one another. Pricing has a separate
   provider-atomic publication decision, so valid fresh catalog data may advance while failed pricing
-  retains its previous accepted partition.
+  retains its previous accepted partition, provided its references still resolve in the fresh
+  catalog. Otherwise both accepted provider slices are retained with stale catalog coverage and
+  a `retained_pricing_core_mismatch` diagnostic; other providers continue to publish. The report
+  records the rejected catalog candidate separately from the retained publication.
 - The collector classifies a retained pricing attempt with one finite public
   code: required source unavailable, reviewed source format changed, pricing
   validation failed, provider refresh failed, or no complete pricing snapshot
@@ -158,8 +190,9 @@ Status: implemented
   provider remains the last accepted partition. Reports never make a rejected candidate look like
   a successful no-op.
 - Source attempts use finite outcomes: changed, unchanged, fetch failed, parse failed, or skipped
-  because configuration is absent. Provider drift guards use finite issue codes plus the measured
-  previous value, candidate value, and threshold where applicable.
+  because configuration is absent. Provider validation failures use finite issue codes. Published
+  count decreases use separate field-level previous/current diagnostics and never appear as a
+  rejected candidate or a structural mismatch merely because of their magnitude.
 - A pricing source reports two independent observations. Extraction counts the parsed model records,
   pricing states, normalized facts, and raw facts that left the adapter. Reconciliation accounts for
   the adapter's pricing-input denominator: every reviewed source item is normalized, preserved raw,
@@ -252,6 +285,13 @@ Status: implemented
   refresh; projection-only changes use `vp run prepare:assets`. Parser or
   extractor changes still require collection because raw response bodies are
   intentionally not retained.
+- Capture a complete public parsed pricing bundle before canonical assembly. Assembly or validation
+  failure retains those inputs for local repair while retaining the accepted provider prices. Check
+  source ownership and provenance during capture, so one malformed provider input cannot abort
+  publication of independent providers. Parsed rate fields and qualifiers are closed: an unsupported
+  commercial condition must become an explicit raw fact, never silently disappear into an
+  unconditional rate. Source-fact identities compare condition and raw-field objects independently
+  of property insertion order.
 - Compilation input is bound to the accepted catalog core. Provider snapshot
   metadata comes from the current accepted canonical pair rather than being
   duplicated in the input. Source IDs, extractor versions, content hashes,
@@ -260,9 +300,17 @@ Status: implemented
   collection captures fresh input; other binding or source-contract mismatches abort compilation.
   Authenticated or otherwise non-public pricing inputs are never persisted;
   providers without replay input keep their exact accepted partitions.
+  Replay uses model identity, lifecycle, tasks, and capabilities from the bound accepted catalog;
+  pricing or accounting carriers cannot overwrite them with placeholder metadata.
+- Offline replay checks the adopted commercial topology before accepting each real provider's
+  rebuilt partition. A topology failure for a fresh snapshot aborts compilation. If the snapshot
+  was already retained, compilation may keep its exact accepted partition only after that partition
+  passes the same topology gate; it reports the provider and bounded failure reason. Observation
+  time, retention metadata, and parsed repair inputs remain unchanged. Binding, provenance, schema,
+  and assembly failures still abort compilation rather than using this fallback.
 - A manifest source declares `pricing` when it owns rates and `pricing_inputs`
   when it owns accounting or selector contracts. Either role makes it a pricing
-  dependency for omission and replay. Only the rate role carries pricing-evidence
+  dependency for omission, required-source completeness, and replay. Only the rate role carries pricing-evidence
   authority, so an accounting-only API or schema document cannot accidentally
   claim that it published a price.
 - The refresh summary reports canonical pricing commercial additions,
@@ -307,12 +355,14 @@ remain authoritative during collection and recovery; canonical and derived
 mirrors are repaired from that pointer after interruption. Once
 those mirrors are durable, superseded local snapshots are removed. Git history
 retains published pairs, while ignored crash-recovery state stays bounded to
-the only pair it can recover. The
-committed mirrors define the pair in a checkout, so `vp run prepare:assets`
-reads them directly and regenerates projections without letting stale ignored
-local state replace newer fetched or pulled data. `vp run compile:pricing`
-instead reassembles canonical pricing first and then publishes the resulting
-pair and projections. A reviewed pricing withdrawal may temporarily leave a
+the only pair it can recover. The committed mirrors define the pair in a checkout. Both
+`vp run prepare:assets` and `vp run compile:pricing` read and validate those mirrors directly;
+neither restores an ignored recovery snapshot over checked-out files. `prepare:assets` regenerates
+projections, while `compile:pricing` checks the parsed input against the checked-out catalog,
+reassembles canonical pricing, and then publishes the resulting pair and projections. An invalid
+pair or mismatched compilation input fails before publication and leaves the mirrors unchanged.
+Crash recovery is reserved for collection and explicit recovery, where the local accepted-pair
+pointer is authoritative. A reviewed pricing withdrawal may temporarily leave a
 safe pricing-only source record in the catalog; the next successful fresh
 provider publication prunes it.
 

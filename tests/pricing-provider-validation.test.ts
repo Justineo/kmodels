@@ -36,22 +36,40 @@ describe("provider pricing validation", () => {
     };
 
     const providerIds = pricing.data.provider_snapshots.map(({ provider_id }) => provider_id);
-    expect(providerIds).toEqual([...adoptedTopologies.keys()]);
+    expect(providerIds.every((id) => adoptedTopologies.has(id))).toBe(true);
     for (const providerId of providerIds) {
       const partition = providerPartition(pricing.data, providerId, modelProvider);
       if (partition === undefined)
         throw new Error(`Provider ${providerId} has no pricing partition`);
-      validateAdoptedTopology(partition);
+      const configured = manifests.find(({ provider }) => provider.id === providerId);
+      const obsolete = catalog.sources
+        .filter(({ provider_id }) => provider_id === providerId)
+        .some(
+          (source) =>
+            configured?.sources.find(({ id }) => id === source.id)?.extractorVersion !==
+            source.extractor_version,
+        );
+      if (!obsolete) validateAdoptedTopology(partition);
     }
   });
 
-  it("replays current extractor inputs and preserves obsolete captured partitions", async () => {
+  it("replays admissible inputs and preserves obsolete or rejected retained partitions", async () => {
     const { catalog, pricing } = await generatedData();
     const current = prepareCatalogPair(catalog, pricing);
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
 
     const compiled = await compilePricingSnapshot(current, snapshot);
+    const rejected = new Set(compiled.replayFailures.map(({ provider_id }) => provider_id));
+    expect(rejected.size).toBe(compiled.replayFailures.length);
+    for (const failure of compiled.replayFailures) {
+      expect(failure.reason.length).toBeGreaterThan(0);
+      expect(
+        pricing.data.provider_snapshots.find(
+          ({ provider_id }) => provider_id === failure.provider_id,
+        ),
+      ).toMatchObject({ publication: "retained" });
+    }
     for (const captured of snapshot.providers) {
       const manifest = manifests.find(({ provider }) => provider.id === captured.provider_id);
       if (manifest === undefined) throw new Error(`Missing manifest for ${captured.provider_id}`);
@@ -60,10 +78,10 @@ describe("provider pricing validation", () => {
         return configured !== undefined && configured.extractorVersion !== source.extractor_version;
       });
       expect(compiled.preservedProviders.includes(captured.provider_id), captured.provider_id).toBe(
-        obsolete,
+        obsolete || rejected.has(captured.provider_id),
       );
       expect(compiled.replayedProviders.includes(captured.provider_id), captured.provider_id).toBe(
-        !obsolete,
+        !obsolete && !rejected.has(captured.provider_id),
       );
     }
     expect([...compiled.replayedProviders, ...compiled.preservedProviders].sort()).toEqual(
@@ -77,6 +95,16 @@ describe("provider pricing validation", () => {
       if (providerId === undefined) throw new Error(`Unresolved model ${ref}`);
       return providerId;
     };
+    for (const providerId of [...compiled.replayedProviders, ...compiled.preservedProviders]) {
+      const partition = providerPartition(
+        compiled.candidate.pricing.data,
+        providerId,
+        modelProvider,
+      );
+      if (partition === undefined) throw new Error(`Missing compiled partition for ${providerId}`);
+      if (compiled.replayedProviders.includes(providerId))
+        expect(() => validateAdoptedTopology(partition), providerId).not.toThrow();
+    }
     for (const providerId of compiled.preservedProviders)
       expect(providerPartition(compiled.candidate.pricing.data, providerId, modelProvider)).toEqual(
         providerPartition(pricing.data, providerId, modelProvider),

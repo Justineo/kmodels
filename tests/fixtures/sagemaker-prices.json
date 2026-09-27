@@ -1,0 +1,180 @@
+{
+  "offerCode": "AmazonSageMaker",
+  "products": {
+    "input": {
+      "attributes": {
+        "group": "Hosting:IN",
+        "operation": "Invoke-Endpoint",
+        "regionCode": "us-east-1"
+      }
+    },
+    "output": {
+      "attributes": {
+        "group": "Hosting:OUT",
+        "operation": "Invoke-Endpoint",
+        "regionCode": "us-east-1"
+      }
+    },
+    "serverless": {
+      "attributes": {
+        "group": "ServerlessInf",
+        "operation": "Serverless",
+        "regionCode": "us-east-1",
+        "memorygb": "2"
+      }
+    },
+    "execution": {
+      "attributes": {
+        "group": "ServerlessProvisionedConcurrency-Duration",
+        "operation": "Serverless",
+        "regionCode": "us-east-1",
+        "memorygb": "2"
+      }
+    },
+    "reserved": {
+      "attributes": { "group": "ServerlessProvisionedConcurrency-Usage", "operation": "Serverless" }
+    },
+    "gpu": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.g5.2xlarge-Hosting",
+        "instanceName": "ml.g5.2xlarge",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
+    "cpu": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.c6i.xlarge-Hosting",
+        "instanceName": "ml.c6i.xlarge",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
+    "unlinked": {
+      "attributes": {
+        "component": "Hosting",
+        "instanceType": "ml.m5.large-Hosting",
+        "instanceName": "ml.m5.large",
+        "operation": "RunInstance",
+        "regionCode": "us-east-1"
+      }
+    },
+    "eval": {
+      "attributes": { "group": "ServerlessTraining:Evaluation", "operation": "EvaluateModel" }
+    },
+    "training": {
+      "attributes": { "group": "ServerlessTraining:FineTuning", "operation": "FineTune" }
+    }
+  },
+  "terms": {
+    "OnDemand": {
+      "input": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "input.current.rate",
+              "description": "Input data processed",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB",
+              "pricePerUnit": { "USD": "0.016" }
+            }
+          }
+        }
+      },
+      "output": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "output.current.rate",
+              "description": "Output data processed",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB",
+              "pricePerUnit": { "USD": "0.016" }
+            }
+          }
+        }
+      },
+      "serverless": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "serverless.current.rate",
+              "description": "Serverless execution",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "seconds",
+              "pricePerUnit": { "USD": "0.00004" }
+            }
+          }
+        }
+      },
+      "execution": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "execution.current.rate",
+              "description": "Provisioned concurrency execution",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "seconds",
+              "pricePerUnit": { "USD": "0.0000233" }
+            }
+          }
+        }
+      },
+      "gpu": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "gpu.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "1.52" }
+            }
+          }
+        }
+      },
+      "cpu": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "cpu.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "0.24" }
+            }
+          }
+        }
+      },
+      "unlinked": {
+        "current": {
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "rate": {
+              "rateCode": "unlinked.current.rate",
+              "description": "Hosting instance hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": { "USD": "0.12" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

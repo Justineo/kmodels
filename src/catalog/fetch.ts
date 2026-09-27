@@ -5,6 +5,16 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
+import { fetchSagemakerInventory } from "./sagemaker-api.ts";
+import {
+  sagemakerCatalogUrl,
+  sagemakerOpenManifestUrl,
+  sagemakerManifestUrl,
+  sagemakerPricingSpecs,
+  sagemakerRows,
+} from "./sagemaker.ts";
+import { sagemakerOpenSpecs } from "./sagemaker-sdk.ts";
 import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
 import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
@@ -175,7 +185,7 @@ export const fetchStateSchema = z.object({
 export type FetchState = z.infer<typeof fetchStateSchema>;
 export type SourceState = z.infer<typeof sourceStateSchema>;
 
-interface FetchPayload {
+export interface FetchPayload {
   body: string;
   contentHash: string;
   etag: string | undefined;
@@ -353,9 +363,39 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
     }
     return curlResponse(result.stdout);
   } catch (error) {
-    const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
-    throw new TransientFetchError(`Transient transport failure (${code})`);
+    throw new TransientFetchError(`Transient ${curlTransportFailure(error)}`);
   }
+}
+
+function curlTransportFailure(error: unknown): string {
+  const rawCode = error instanceof Error && "code" in error ? String(error.code) : "";
+  const code = /^(?:[1-9]\d{0,2}|ERR_CHILD_PROCESS_STDIO_MAXBUFFER)$/.test(rawCode)
+    ? rawCode
+    : "unknown";
+  const stderr =
+    error instanceof Error && "stderr" in error && typeof error.stderr === "string"
+      ? error.stderr
+      : "";
+  const reasons = new Map([
+    ["5", "proxy DNS resolution failed"],
+    ["6", "DNS resolution failed"],
+    ["7", "connection failed"],
+    [
+      "28",
+      /SSL connection timeout/i.test(stderr)
+        ? "TLS handshake timed out"
+        : /Resolving timed out/i.test(stderr)
+          ? "DNS resolution timed out"
+          : "request timed out",
+    ],
+    ["35", "TLS handshake failed"],
+    ["56", "response receive failed"],
+    ["60", "TLS certificate validation failed"],
+    ["92", "HTTP/2 stream failed"],
+    ["ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "response exceeded byte limit"],
+  ]);
+  const reason = reasons.get(code);
+  return `transport failure (curl ${code}${reason === undefined ? "" : `: ${reason}`})`;
 }
 
 function environment(name: string): string {
@@ -398,8 +438,8 @@ async function cloudJson(
         maxBuffer: maxResponseBytes + 64 * 1024,
       });
       response = curlResponse(result.stdout);
-    } catch {
-      throw new TransientFetchError(`${label} transport failure`);
+    } catch (error) {
+      throw new TransientFetchError(`${label} ${curlTransportFailure(error)}`);
     }
     const body = await response.text();
     if (Buffer.byteLength(body) > maxResponseBytes)
@@ -876,7 +916,20 @@ function unique<T>(values: T[]): T[] {
 async function request(source: SourceManifest, json?: string): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
-    const response = await curlRequest(url, source, json);
+    // JumpStart has hundreds of small public specs on one reviewed S3 origin.
+    // Native fetch reuses connections instead of starting a curl/TLS connection per spec.
+    const pooledSageMaker =
+      source.auth === undefined &&
+      json === undefined &&
+      url.hostname === "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com" &&
+      ["sagemaker-sdk", "sagemaker-pricing", "aws-sagemaker"].includes(
+        source.transport?.kind ?? "",
+      );
+    const response = pooledSageMaker
+      ? await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(60_000) }).catch(() => {
+          throw new TransientFetchError("SageMaker public cache request failed");
+        })
+      : await curlRequest(url, source, json);
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (location === null) throw new Error("Redirect response omitted Location");
@@ -2037,15 +2090,24 @@ export function normalizeVercelPricingScript(body: string): string | undefined {
     setVercelPricingDetail(models, slug, "video_generation", items);
   }
 
-  const imageRegistry = new RegExp(
-    String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{imageCost:"(${vercelDecimalPattern})",imageDimensionQualityPricing:\[([^\]]+)\]\}`,
-    "gu",
+  const imageRegistries = [false, true].map(
+    (wrapped) =>
+      new RegExp(
+        String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{${wrapped ? "model:\\{" : ""}imageCost:"(${vercelDecimalPattern})",imageDimensionQualityPricing:\[([^\]]+)\]\}${wrapped ? "\\}" : ""}`,
+        "gu",
+      ),
   );
   const imageItem = new RegExp(
     String.raw`\{size:"([^"]+)",quality:"([^"]+)",cost:"(${vercelDecimalPattern})"\}`,
     "gu",
   );
-  for (const registry of body.matchAll(imageRegistry)) {
+  const imageRegistryMatches = imageRegistries
+    .flatMap((pattern) => [...body.matchAll(pattern)])
+    .sort((left, right) => left.index - right.index);
+  let imageRegistryEnd = 0;
+  for (const registry of imageRegistryMatches) {
+    if (registry.index < imageRegistryEnd) continue;
+    imageRegistryEnd = registry.index + registry[0].length;
     const slug = registry[1] ?? registry[2];
     const primary = registry[3];
     const rawItems = registry[4];
@@ -2372,6 +2434,52 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
 }
 
 export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
+  if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, fetchPayload);
+  if (source.transport?.kind === "aws-sagemaker") {
+    const { auth: _auth, ...publicSource } = source;
+    const catalog = await fetchPayload({
+      ...publicSource,
+      url: sagemakerCatalogUrl,
+      access: "public",
+      format: "html",
+      maxResponseBytes: 4 * 1024 * 1024,
+    });
+    const openManifest = await fetchPayload({
+      ...publicSource,
+      url: sagemakerOpenManifestUrl,
+      access: "public",
+      format: "json",
+      maxResponseBytes: 32 * 1024 * 1024,
+    });
+    const rows = sagemakerRows(catalog.body);
+    const proprietary = await fetchPayload({
+      ...publicSource,
+      url: sagemakerManifestUrl,
+      access: "public",
+      format: "json",
+      maxResponseBytes: 4 * 1024 * 1024,
+    });
+    const ids = new Set([
+      ...rows.map((row) => row.id),
+      ...sagemakerOpenSpecs(openManifest.body, rows).map((header) => header.model_id),
+      ...sagemakerPricingSpecs(proprietary.body, rows, true).map((header) => header.model_id),
+    ]);
+    const body = await fetchSagemakerInventory(
+      source.transport.region,
+      ids,
+      source.maxResponseBytes,
+    );
+    return {
+      ...generatedFetchResult(body),
+      dependencies: [
+        observation(`${source.id}/catalog`, catalog),
+        observation(`${source.id}/open-manifest`, openManifest),
+        observation(`${source.id}/proprietary-manifest`, proprietary),
+      ],
+    };
+  }
+  if (source.transport?.kind === "sagemaker-pricing")
+    return fetchSagemakerPricing(source, fetchPayload);
   if (source.transport?.kind === "aws-bedrock") {
     const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
     return generatedFetchResult(body);

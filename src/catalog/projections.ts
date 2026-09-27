@@ -19,7 +19,7 @@ export interface PairProjections {
 }
 
 export function websiteDataVersion(catalogVersion: string, pricingDataVersion: string): string {
-  return sha256(`${catalogVersion}\u0000${pricingDataVersion}`);
+  return sha256(`website-core-v3\u0000${catalogVersion}\u0000${pricingDataVersion}`);
 }
 
 export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {

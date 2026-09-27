@@ -31,7 +31,9 @@ import search from "lucide-static/icons/search.svg?raw";
 import sun from "lucide-static/icons/sun.svg?raw";
 import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
+import sagemaker from "../assets/provider-icons/amazon-sagemaker.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
+import typesafe from "../assets/provider-icons/typesafe.svg?raw";
 import type { DarkProviderIconId, ProviderIconId, UiIconName } from "./manifest.ts";
 import { svgSymbol } from "./svg.ts";
 
@@ -55,6 +57,7 @@ const uiSources = {
 
 const providerSources = {
   "amazon-bedrock": bedrock,
+  "amazon-sagemaker": sagemaker,
   anthropic,
   azure: microsoftFoundry,
   cerebras,
@@ -69,6 +72,7 @@ const providerSources = {
   mistral,
   ollama,
   openai: openAi,
+  typesafe,
   vercel,
   vertex: googleCloud,
   xai,

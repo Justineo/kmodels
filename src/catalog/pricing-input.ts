@@ -1,4 +1,9 @@
-import { compareCanonicalValues, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
+import {
+  canonicalJsonKey,
+  compareCanonicalValues,
+  compareUtf8,
+  uniqueCanonicalValues,
+} from "./canonical-value.ts";
 import type { AtomicPricingBook } from "./pricing-assembly.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
@@ -23,8 +28,19 @@ export function emptyQuantityMethods(): BoundQuantityMethods {
 export function mergeQuantityMethods(
   values: readonly BoundQuantityMethods[],
 ): BoundQuantityMethods {
+  const methods = uniqueCanonicalValues(values.flatMap(({ methods }) => methods));
+  const mappedCalculations = new Set<string>();
+  for (const { calculation, input_sources } of methods) {
+    if (calculation !== undefined && input_sources !== undefined)
+      mappedCalculations.add(canonicalJsonKey(calculation));
+  }
   return {
-    methods: uniqueCanonicalValues(values.flatMap(({ methods }) => methods)),
+    methods: methods.filter(
+      (method) =>
+        method.input_sources !== undefined ||
+        method.calculation === undefined ||
+        !mappedCalculations.has(canonicalJsonKey(method.calculation)),
+    ),
     facts: uniquePricingInputFacts(values.flatMap(({ facts }) => facts)),
   };
 }
@@ -73,6 +89,24 @@ export function directQuantityMethods(
     : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
 }
 
+export function calculatedQuantityMethods(
+  calculation: NonNullable<UsageQuantityMethod["calculation"]>,
+  inputs: ReadonlyArray<{ signal: UsageSignal; facts: readonly SourcePricingInputFact[] }>,
+): BoundQuantityMethods {
+  const sources = uniqueCanonicalValues(
+    inputs.flatMap(({ signal, facts }) => usageInputSources(signal, facts)),
+  );
+  return {
+    methods: [
+      {
+        calculation,
+        ...(sources.length === 0 ? {} : { input_sources: sources }),
+      },
+    ],
+    facts: uniquePricingInputFacts(inputs.flatMap(({ facts }) => facts)),
+  };
+}
+
 export function subtractQuantityMethods(
   totalSignal: UsageSignal,
   totalKeys: readonly string[],
@@ -82,26 +116,20 @@ export function subtractQuantityMethods(
 ): BoundQuantityMethods {
   const total = pricingInputFacts(inputIndex, totalKeys);
   const excluded = pricingInputFacts(inputIndex, excludedKeys);
-  if (total.length === 0 || excluded.length === 0) return emptyQuantityMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: totalSignal },
-            { op: "signal", signal: excludedSignal },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          ],
-          result: 2,
-        },
-        input_sources: uniqueCanonicalValues([
-          ...usageInputSources(totalSignal, total),
-          ...usageInputSources(excludedSignal, excluded),
-        ]),
-      },
+  return calculatedQuantityMethods(
+    {
+      nodes: [
+        { op: "signal", signal: totalSignal },
+        { op: "signal", signal: excludedSignal },
+        { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+      ],
+      result: 2,
+    },
+    [
+      { signal: totalSignal, facts: total },
+      { signal: excludedSignal, facts: excluded },
     ],
-    facts: [...total, ...excluded],
-  };
+  );
 }
 
 export function sumQuantityMethods(
@@ -112,24 +140,16 @@ export function sumQuantityMethods(
     signal,
     facts: pricingInputFacts(inputIndex, keys),
   }));
-  if (mapped.some(({ facts }) => facts.length === 0)) return emptyQuantityMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            ...mapped.map(({ signal }) => ({ op: "signal" as const, signal })),
-            { op: "sum", inputs: mapped.map((_value, index) => index) },
-          ],
-          result: mapped.length,
-        },
-        input_sources: uniqueCanonicalValues(
-          mapped.flatMap(({ signal, facts }) => usageInputSources(signal, facts)),
-        ),
-      },
-    ],
-    facts: mapped.flatMap(({ facts }) => facts),
-  };
+  return calculatedQuantityMethods(
+    {
+      nodes: [
+        ...mapped.map(({ signal }) => ({ op: "signal" as const, signal })),
+        { op: "sum", inputs: mapped.map((_value, index) => index) },
+      ],
+      result: mapped.length,
+    },
+    mapped,
+  );
 }
 
 export function pricingInputObservation(fact: SourcePricingInputFact): RawPriceObservation {

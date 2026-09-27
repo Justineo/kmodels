@@ -62,6 +62,10 @@ catalog presence, and repository creation time is not treated as model release t
 - Featherless's unauthenticated active-model API and pricing documentation provide an exact native
   rate overlay only for already admitted models with a live `featherless-ai` route. Native models
   without such a route are discarded before merge.
+  Its pricing-reference claim is read as rendered text, accepting the current statement that every
+  model page shows its current prices as well as the earlier exact-model-price wording. The token
+  formula, million-token unit and machine-readable USD price contract remain mandatory; character
+  pricing for speech models does not alter the admitted token-route unit.
 - The public Fireworks model catalog, Z.ai pricing table, Groq model card, and Cohere pricing page
   provide paid token-rate overlays only after an exact live Hugging Face route and provider model ID
   have already been established. These sources cannot create catalog presence or cross provider

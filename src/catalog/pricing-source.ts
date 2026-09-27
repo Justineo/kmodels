@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalJson } from "./canonical-value.ts";
 import {
   priceSourceLocatorSchema,
   rawPriceFactSchema,
@@ -15,6 +16,9 @@ const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 const resolutionPolicySchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 
 export const sourcePriceMeters = [
+  "input_data",
+  "output_data",
+  "inference",
   "input_text",
   "output_text",
   "cache_read_text",
@@ -42,6 +46,7 @@ export const sourcePriceMeters = [
   "realtime_session_duration",
   "session_runtime",
   "gpu_hour",
+  "instance_hour",
   "provisioned_throughput",
   "batch_inference",
   "web_search",
@@ -66,7 +71,7 @@ export const sourcePriceMeters = [
   "subscription",
 ] as const;
 
-const sourcePriceConditionsInputSchema = z.object({
+const sourcePriceConditionsInputSchema = z.strictObject({
   region: z.string().optional(),
   endpoint: z.string().optional(),
   deployment_scope: z.string().optional(),
@@ -77,17 +82,20 @@ const sourcePriceConditionsInputSchema = z.object({
   context_min_tokens: z.number().int().nonnegative().optional(),
   context_max_tokens: z.number().int().nonnegative().optional(),
   context_tier: z.string().optional(),
+  cache_retention: z.string().optional(),
   cache_ttl_seconds: z.number().int().nonnegative().optional(),
   capacity: z.string().optional(),
   modality: z.string().optional(),
   operation: z.string().optional(),
   resolution: z.string().optional(),
+  billing_unit: z.enum(["token", "second"]).optional(),
   quality: z.string().optional(),
   search_effort: z.string().optional(),
   style: z.string().optional(),
   billing_period: z.string().optional(),
   billing_currency: z.string().optional(),
   account_eligibility: z.string().optional(),
+  eu_data_residency: z.boolean().optional(),
   audio: z.boolean().optional(),
   voice_control: z.boolean().optional(),
   video_input: z.boolean().optional(),
@@ -103,7 +111,7 @@ const sourcePriceConditionsSchema = sourcePriceConditionsInputSchema.transform((
 );
 
 export const sourcePriceFactSchema = z
-  .object({
+  .strictObject({
     meter: z.enum(sourcePriceMeters),
     price: decimal,
     currency: z.string().min(1),
@@ -128,6 +136,7 @@ export const sourcePriceFactSchema = z
       "search_unit",
       "video",
       "gpu_hour",
+      "instance_hour",
       "unit_hour",
       "unit_week",
       "unit_month",
@@ -144,6 +153,7 @@ export const sourcePriceFactSchema = z
       "gigabyte_day",
       "gibibyte_day",
       "gigabyte",
+      "sagemaker_data_gb",
       "gibibyte",
       "container_session",
       "session",
@@ -263,11 +273,22 @@ export type ParsedProviderModel = ProviderModel & {
 };
 
 export function sourcePriceFactKey(fact: SourcePriceFact): string {
-  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
+  return canonicalJson([fact.meter, fact.currency, fact.unit, definedProperties(fact.conditions)]);
 }
 
 export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
-  return `${fact.term_key}\0${fact.impact}\0${fact.reason}\0${fact.resolution_policy ?? ""}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`;
+  return canonicalJson([
+    fact.term_key,
+    fact.impact,
+    fact.reason,
+    fact.resolution_policy ?? "",
+    definedProperties(fact.conditions),
+    definedProperties(fact.raw),
+  ]);
+}
+
+function definedProperties(value: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {

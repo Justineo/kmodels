@@ -14,8 +14,8 @@ Kmodels publishes one canonical pricing resource. The model catalog does not
 contain a second flat-price projection, and the website never falls back to
 one.
 
-The resource models the request-attributable part of a provider's current public pricing snapshot
-as:
+The resource models public inference request charges and directly serving capacity charges from a
+provider's current pricing snapshot as:
 
 ```text
 provider snapshot
@@ -48,6 +48,21 @@ envelope. A separate [calculation export and pure package](pricing-calculator.md
 commercial semantics without observation fragments. Their versioned portable schema is independent
 of canonical audit delivery and price refreshes do not require npm releases.
 
+The same small core covers the principal strategies:
+
+| Strategy                                             | Representation                                                       |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Input, output, cache read/write                      | Separate rate terms, exact units, distinct billable signals          |
+| Batch or another invocation mechanism                | A separate offer with its own aggregation boundary                   |
+| Context tiers, region, quality, modality, currency   | Applicability-qualified variants, with selector mappings where known |
+| Included quantity, minimum runtime, count × duration | A bounded exact quantity calculation beside the rate                 |
+| Separately billed search, tools, media               | Service or model rate terms with their own measured quantity         |
+| Unsupported formula or unknown billing rule          | A localized raw fact retaining the published parameters and evidence |
+
+Selectors choose the applicable rule; signals supply its measured inputs; the calculation produces
+the billable quantity. They remain distinct parts of one rate contract. A parameter changes neither
+model identity nor the logical term merely because its value changes.
+
 ## Local compilation
 
 Canonical pricing is compiled from a bounded intermediate input, not owned by
@@ -67,12 +82,18 @@ When one source describes the same exact model identity in several
 operation-specific records, compilation coalesces those records and preserves
 the union of distinct normalized rate facts and bounded source-native raw
 facts; conflicting non-unknown pricing states abort capture.
+Replay takes published model metadata from the bound catalog. Minimal pricing or accounting carriers
+cannot overwrite the catalog's endpoints, capabilities, or lifecycle. Complete public inputs are
+captured before assembly so a failed normalization can still be repaired offline.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted
 partition is carried through unchanged. Binding, source, extractor, ownership,
-provenance, completeness, or validation failures abort the compilation rather
-than publishing a partial result.
+provenance, completeness, or structural validation failures abort compilation. Each replayed
+partition must also pass the provider's adopted-topology gate before publication. A topology failure
+for an already-retained provider preserves its valid accepted partition and is reported separately
+in the compilation result; it does not erase admitted services or reset the observation time. The
+captured input remains available for repair. The same failure for a fresh provider aborts compilation.
 
 Source manifests distinguish rate authority from accounting authority. `pricing`
 means that a source publishes price facts and therefore requires reviewed pricing
@@ -126,8 +147,8 @@ The following are deliberately outside this contract:
 - execution of imprecise validity labels as a time query;
 - a provider default, cheapest offer, or automatic offer recommendation;
 - a lossless model for every possible commercial contract.
-- training, retained storage, capacity procurement, subscriptions, plans, and
-  account settlement that cannot be attributed to one proxied request or result item.
+- training, retained storage, prepaid capacity commitments, subscriptions, plans, and
+  account settlement; running inference capacity with a public unit-time rate is admitted separately.
 
 An unsupported public fact remains visible as bounded raw pricing. A fact
 outside the public boundary is discarded or quarantined, never serialized as
@@ -221,6 +242,8 @@ Newly reviewed provider partitions normalize:
 
 - on-demand, Batch, realtime, and other directly callable inference offer identities;
 - request-attributable model and provider-service rates with exact denomination and compound unit;
+- public unit-time rates for inference-hosting resources, with resource-level billing signals and
+  exact model compatibility evidence when linked to model details;
 - applicability over reviewed request, outcome, and publication dimensions;
 - numeric, free, included, externally billed, custom-quote, and not-published states for admitted
   operations;
@@ -231,7 +254,7 @@ Newly reviewed provider partitions normalize:
 - optional dimensionally checked charge and contribution bindings; and
 - exact bounded adapter calculations whose result and provenance are first-party evidenced.
 
-Training, retained storage, capacity commitments, subscriptions, account-resource templates,
+Training, retained storage, prepaid capacity commitments, subscriptions, account-resource templates,
 settlement, invoices, private prices, and workload-amortization formulas are outside the publication
 boundary. The shared decoder retains its closed broader vocabulary while older provider partitions
 converge; provider adapters must not use those fields merely because they remain representable.
@@ -252,9 +275,10 @@ Raw variants carry a commercial impact:
 - `allowance`: may change benefits and blocks a complete allowance summary;
 - `informational`: retained for audit but excluded from commercial equality.
 
-Only an explicit offer state, a normalized rate, or a `base_price` raw fact establishes an offer.
-Allowance and informational raw facts may annotate an established offer, but cannot create an
-otherwise empty offer or imply that an unknown price is available.
+An explicit offer state, a normalized rate, a normalized allowance or contribution, or a
+`base_price` raw fact establishes an offer. Normalized benefits and contributions must reference
+valid targets. Allowance and informational **raw** facts may annotate an established offer, but
+cannot create an otherwise empty offer or imply that an unknown price is available.
 
 ## Public semantics
 
@@ -367,7 +391,8 @@ States are applicability-qualified and may retain source-published validity:
 - `included`: another exact public entitlement covers the marginal charge;
 - `externally_billed`: the provider does not own the economic charge;
 - `custom_quote`: a public offer exists but requires a quote;
-- `not_published`: a public offer exists but no public price is published.
+- `not_published`: a public offer exists but no public price is published;
+- `not_supported`: first-party evidence explicitly prohibits this applicability combination.
 
 An offer state is not inferred from absence. Conflicting possibly overlapping
 states are downgraded with the affected commercial facts rather than allowing a
@@ -453,6 +478,8 @@ It accepts caller-supplied signal quantities, evaluates every satisfiable method
 rejects inconsistent results from two simultaneously available methods, and
 returns either a resolved quantity/cost, the exact alternative missing-signal
 sets, or `unbound`. It does not collect, persist, or reconcile request usage.
+Caller quantities must be bounded, non-negative reduced rationals; malformed values are rejected
+before evaluation, including on the direct-signal path.
 
 `input_sources`, when present inside a quantity method, is that method's
 machine-readable acquisition contract. Each entry identifies one required signal,
@@ -460,7 +487,9 @@ its request/response/stream/result/account-report/invocation-log/telemetry chann
 a JSON Pointer, provider field, or versioned OpenTelemetry attribute, and whether
 that value is always, terminal-only, success-only, conditional, or
 reconciliation-only. Several entries for one signal are alternative provider
-locations; every distinct signal required by the method must have at least one.
+locations. A calculation may retain mappings for only a subset of its inputs; the graph remains the
+complete list of required signals. Unmapped inputs require caller-supplied authoritative quantities
+and never default to zero. The presence of `input_sources` is not a completeness claim.
 Source observations separately prove why Kmodels published the mapping.
 
 A source may apply one closed collection reduction: array length, count of unique non-empty
@@ -476,6 +505,11 @@ that acquisition path; it does not create an informational raw price, erase the
 rate, or suppress another valid path. A method without `input_sources` means the
 calculation is known but the downstream calculator must supply its inputs. A
 binding without methods means only the final semantic quantity is known.
+An independently established calculation survives partial or entirely missing field mappings, along
+with every mapping and observation that remains valid. A formula whose counter semantics themselves
+depend on missing evidence is withheld; adapters do not invent interchangeable meanings for different
+protocols. A missing required source makes the provider bundle incomplete and retains the accepted
+partition, while a fetched source with a drifted individual field loses only that field mapping.
 
 `selector_sources` on a rate variant performs the corresponding job for
 applicability dimensions. It maps an already-present selector such as served tier,
@@ -512,7 +546,9 @@ Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
 denominator is dimensional: storage stated per token-hour is
 `token × second`, not token throughput per second. Calendar months remain
-non-convertible.
+non-convertible. Inference hosting stated per instance-hour is `instance × second` in the
+canonical rate and keeps its source hourly amount for display; this conversion does not
+assert a provider's billing minimum or granularity.
 
 A usage allowance references exact normalized rate-term IDs whose units are
 compatible with the allowance quantity. A credit allowance targets the whole
@@ -562,6 +598,11 @@ every other time, including days outside that set. A scheduled categorical parti
 recurrence kind and requires at least one window value and exactly one remainder value. This records
 rules such as Peak and Off-peak without selecting a value from collection time or the viewer's
 clock.
+
+Rules with holiday exceptions that cannot be expressed by this bounded schedule retain categorical
+choices, exact definitions and source evidence without schedule metadata. The caller supplies the
+applicable category. Publishing a price book does not require maintaining a holiday calendar or
+evaluating a request timestamp.
 
 Partial UI evaluation is three-valued:
 
@@ -696,6 +737,14 @@ only the connected affected component falls back to raw, while disjoint
 variants in the same logical term remain normalized. Equivalent source
 grouping therefore does not cause ID churn or duplicate UI rows.
 
+For rate compaction, equality includes the charge signal, aggregation, scale, calculation methods,
+and selector mappings, excluding their audit observations. Equal amounts do not justify dropping
+different contracts or extending a binding into an unbound region. Matching contracts still merge
+their evidence; distinct contracts retain their original applicability. Variants of one logical
+term are alternative assertions about the same charge, never additional charges to sum. A cost
+consumer must resolve the applicable contract and reject inconsistent available calculations before
+adding that term once. The rate-only website may compact equivalent display rows independently.
+
 Adapters may fill a missing applicability dimension only through a reviewed
 provider rule that identifies the source's unqualified base row against an
 explicit unequal alternative, such as standard versus long-context or
@@ -805,7 +854,8 @@ all three price columns and exposes its explanation through the shared tooltip:
 - a base-rate count for one exact offer that cannot fit the three summary columns. Exact
   provider-credit rates and transcription duration are projected directly; a count remains for
   genuinely composite pricing such as simultaneous realtime message and session-duration charges;
-- `No model offer` when pricing detail exists but no model offer applies;
+- `Capacity` when a linked running-resource rate exists without a model inference offer;
+- `Service charges` when only separate service prices relate to the model;
 - `No offer`: an exact `not_applicable` disposition establishes that no public
   hosted pricing offer applies;
 - `Unknown`: no reliable public book or disposition exists.
@@ -819,11 +869,12 @@ representative number exists, unavailable sibling cells use an em dash.
 
 For a converged provider, the order is:
 
-1. Run mode, when more than one model invocation mechanism exists;
-2. the selected mechanism's model-rate block;
-3. one collapsed group for related add-ons, automatic charges, included features, and standalone
-   services; and
-4. each expanded offer's price-changing options and plain-language pricing notes.
+1. Capacity charges linked to the model, when present;
+2. Run mode, when more than one model invocation mechanism exists;
+3. the selected mechanism's model-rate block;
+4. one collapsed group for related service charges, automatic charges, included features, and
+   standalone services; and
+5. each expanded offer's price-changing options and plain-language pricing notes.
 
 The first mechanism in presentation order is the initial browsing focus, not a provider default.
 Alternative mechanisms use radio controls; a sole mechanism is explicitly named as the Run mode in
@@ -832,10 +883,11 @@ The website projection emits offers in the presentation order above and retains 
 references so changing Run mode also filters its related costs.
 
 The model-rate block never merges meters. Related services are closed by default and use the
-user-facing kinds `Usage add-on`, `Included feature`, `Automatic charge`, and `Separate service`.
+user-facing kinds `Service charge`, `Included feature`, `Automatic charge`, and `Separate service`.
 Expanding that group shows each offer without merging its meters. These are prices, not request
-controls: Kmodels does not configure a request, accept quantities, or calculate a total. Account
-plans and capacity procurement do not appear in model details.
+controls: Kmodels does not configure a request, accept quantities, or calculate a total. Public
+running-capacity rates appear in their own block when exact model compatibility is established;
+account plans and prepaid commitments do not appear in model details.
 
 Each offer owns its pricing-context controls; a related offer never consumes or resets another
 offer's context. Controls include only dimensions needed to resolve unequal or partially covered
@@ -859,8 +911,8 @@ allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
 inclusive singleton ranges become discrete choices. When the distinct range
-predicates are mutually exclusive and together cover the dimension's complete
-non-negative domain, the detail projection emits ordered range choices instead
+predicates form a contiguous domain, including a finite published domain,
+the detail projection emits ordered range choices instead
 of asking for an arbitrary representative number. Token counts and cache TTLs
 are partitioned over whole numbers; other numeric dimensions are partitioned
 over continuous decimals. Range-choice labels preserve the exact mathematical
@@ -868,8 +920,12 @@ operators (`<`, `≤`, `>`, and `≥`) rather than paraphrasing their boundary
 semantics. A selected range retains its exact bounds. The
 applicability evaluator resolves a predicate only when that full selected range
 is contained in or disjoint from it, while a partial overlap stays unresolved.
-Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
-values. The UI never widens an exact price condition into a neighboring interval.
+Overlapping integer predicates (including bands from different regions) are split
+at every lower bound and immediately after every upper bound. Each resulting
+choice is contained in or disjoint from every original predicate; shared inclusive
+endpoints remain separate singleton choices. Gaps and overlapping continuous
+decimal ranges remain exact-value inputs and reject out-of-range values. The UI
+never widens an exact price condition into a neighboring interval.
 
 The compact detail and shared-offer payloads contain display-ready values, selectors, charge drivers,
 and invocation billing context, not audit observations.
@@ -916,9 +972,15 @@ until that value reappears. Generated-data tests require every projected label
 to agree with its matching configuration and reject duplicate labels inside a
 selector so distinct canonical choices remain distinguishable.
 
-The shared projection still decodes broader plan, capacity, enrollment, allowance, and settlement
-fields while older provider partitions converge. Newly reviewed adapters do not populate those
-groups, and the UI removes them provider by provider with the underlying data.
+The shared projection decodes plan, capacity, enrollment, allowance, and settlement fields.
+Running inference capacity uses the existing `capacity` resource and billing mode; the website
+shows those offers separately from per-request mechanisms. Other broad commercial fields remain
+subject to the admission boundary above.
+When several capacity books have the same offer identity and charge signal, and each has one fixed
+`capacity` selector value, the website presents their choices under one capacity heading. This is a
+selection among exact resource books, not a merged rate or an allocation of instance-time to
+requests. The model's exact book links determine the available choices; no choice is implied by
+list order. The selected resource retains its own Region and other price selectors.
 
 ## Validation and bounded work
 
@@ -960,7 +1022,12 @@ For each provider:
   records the current attempt and reviewed failure category plus its sanitized diagnostic reason in
   the refresh summary; an independently
   valid fresh catalog slice may still advance
-  when the retained pricing partition remains compatible with it;
+  when the retained pricing partition remains compatible with it. If the fresh slice removes a
+  provider, model, or source referenced by retained pricing, publication also retains that
+  provider's accepted catalog slice, including its source records. Coverage is stale with the
+  current attempt time, the previous successful sync time, and the exact unresolved reference;
+  the refresh report preserves the rejected candidate delta and original pricing failure.
+  Unreferenced catalog removals and other providers continue to advance;
 - a validated fresh-empty transition removes pricing while keeping the
   provider;
 - intentional provider removal removes both sides;

@@ -34,9 +34,10 @@ are fact-local: drift removes only that endpoint and its dependent calculation m
 Each regional pricing collector fetches its K3 price page plus 18 fixed companions in one bounded
 bundle. The reviewed current price set contains K2.7, K2.6, and web-search prices; the remaining
 documents cover the model-pricing overview, Files operations, built-in web search, Formula official
-tools, and the regional `llms.txt` index. Retired K2.5, Moonshot V1, and Batch URLs remain fixed
-inputs so a future restored price document is visible, but their current redirects to the model
-catalog are rejected as pricing claims. The index completeness check is limited to this price-book
+tools, and the regional `llms.txt` index. Current K3, K2.7 and K2.6 price URLs resolve to the same
+combined overview: extraction deduplicates identical documents and reads each labeled table
+independently. Retired K2.5 and Moonshot V1 redirects to the model catalog are rejected as pricing
+claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
 boundary. Account balances, quotas, budgets, invoices, consumer subscriptions, and organization
 controls are intentionally not collected as model-pricing reconciliation facts.
 
@@ -56,8 +57,13 @@ Standard rates per one million tokens are:
 | `kimi-k2.7-code-highspeed` | CNY 2.60 / 13 / 54           | USD 0.38 / 1.90 / 8                  |
 | `kimi-k2.6`                | CNY 1.10 / 6.50 / 27         | USD 0.16 / 0.95 / 4                  |
 
+K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
+CNY 40 / USD 6 for a 3,600-second TTL. Cache hits do not incur another write charge. These are
+separate `cache_write_text` rates with `cache_ttl_seconds` applicability; callers supply the write
+quantity and applicable TTL until a reviewed acquisition contract is available.
+
 The catalog marks K2.5 and every Moonshot V1 variant as retired on August 31, 2026. Their former
-price and Batch pages no longer publish rate tables, so they have no current offers.
+price pages no longer publish rate tables, so they have no current offers.
 
 Web search costs CNY 0.03 or USD 0.005 per billed event. Two route-distinct offers use that amount:
 
@@ -65,6 +71,12 @@ Web search costs CNY 0.03 or USD 0.005 per billed event. Two route-distinct offe
   `finish_reason=tool_calls`; declaration and `finish_reason=stop` do not incur the event charge.
 - Formula `moonshot/web-search:latest` is billed at Fiber creation. The dedicated pricing prose
   still describes the built-in route, so failed-Fiber charging remains unknown.
+
+Independent REST tools have their own resource books and no invented model relationships:
+`POST /v1/tools/search` and `/v1/tools/fetch` cost CNY 0.01 / USD 0.002 per qualifying call;
+`/v1/tools/search_pro` costs CNY 0.015 / USD 0.003. Search requires HTTP 200 and non-empty
+`search_results`; Fetch requires HTTP 200 and non-blank `markdown`. Their provider signals retain
+those exact semantics; no response locator is invented. The legacy built-in fee remains separate.
 
 The other 11 official Formula tools and the Files service are published as temporary `free` states,
 not numeric zero rates. Their promotion end and post-promotion pricing are unknown. Ordinary
@@ -78,24 +90,26 @@ additional inputs: the priced web-search count and two Batch result totals. `pro
 quantity is a provider-defined reduction over several response fields; it is not an arbitrary raw
 payload escape hatch.
 
-| Offer / route                    | Canonical quantity                    | Required acquisition input                                    | Calculation and completeness rule                                                                                                                 |
-| -------------------------------- | ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Regional selection               | `region`                              | Request `HttpRequest.api_origin`                              | Map `.cn` to China and `.ai` to International. Every regional rate variant carries this selector source.                                          |
-| Chat cache hit                   | `cached_input_tokens`                 | Response or terminal stream `/usage/cached_tokens`            | Direct quantity. A complete stream requires the final usage chunk.                                                                                |
-| Chat cache miss                  | `uncached_input_tokens`               | Response or stream prompt and cached usage                    | Closed graph `max(prompt_tokens - cached_tokens, 0)`.                                                                                             |
-| Chat output                      | `output_tokens`                       | Response or terminal stream `/usage/completion_tokens`        | Direct quantity. Thinking is already included in output.                                                                                          |
-| K3 Responses cache hit           | `cached_input_tokens`                 | Response `/usage/input_tokens_details/cached_tokens`          | Direct quantity.                                                                                                                                  |
-| K3 Responses cache miss          | `uncached_input_tokens`               | Response total input and cached detail                        | Closed graph `max(input_tokens - cached_tokens, 0)`. The OpenAPI has no typed terminal SSE payload, so no Responses-stream locator is invented.   |
-| K3 Responses output              | `output_tokens`                       | Response `/usage/output_tokens`                               | Direct quantity; the field explicitly includes reasoning tokens.                                                                                  |
-| K3 Anthropic Messages cache hit  | `cached_input_tokens`                 | Response or terminal `message_delta` cache-read usage         | Direct quantity.                                                                                                                                  |
-| K3 Anthropic Messages cache miss | `uncached_input_tokens`               | Response or terminal `message_delta` `/usage/input_tokens`    | Direct quantity because Kimi describes this field as input excluding cache hits.                                                                  |
-| K3 Anthropic Messages output     | `output_tokens`                       | Response or terminal `message_delta` `/usage/output_tokens`   | Direct quantity; output includes thinking. Cache-creation and thinking details are explanatory because Kimi publishes no separate rates for them. |
-| Built-in Chat web search         | exact billed `$web_search` call count | Response `KimiChatResponse.billable_builtin_web_search_calls` | Count calls satisfying the documented finish reason and exact function name. This provider field avoids an unsafe unfiltered array-length rule.   |
-| Formula web search               | successful created web-search Fibers  | Response `KimiFormulaFiber.created_web_search_fibers`         | One per successful creation of the exact Formula URI. Failed-call billing remains unbound.                                                        |
+| Offer / route                    | Canonical quantity                    | Required acquisition input                                    | Calculation and completeness rule                                                                                                               |
+| -------------------------------- | ------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Regional selection               | `region`                              | Request `HttpRequest.api_origin`                              | Map `.cn` to China and `.ai` to International. Every regional rate variant carries this selector source.                                        |
+| Chat cache hit                   | `cached_input_tokens`                 | Response or terminal stream `/usage/cached_tokens`            | Direct quantity. A complete stream requires the final usage chunk.                                                                              |
+| Chat cache miss                  | `uncached_input_tokens`               | Response or stream prompt and cached usage                    | Closed graph `max(prompt_tokens - cached_tokens, 0)`.                                                                                           |
+| Chat output                      | `output_tokens`                       | Response or terminal stream `/usage/completion_tokens`        | Direct quantity. Thinking is already included in output.                                                                                        |
+| K3 Responses cache hit           | `cached_input_tokens`                 | Response `/usage/input_tokens_details/cached_tokens`          | Direct quantity.                                                                                                                                |
+| K3 Responses cache miss          | `uncached_input_tokens`               | Response total input and cached detail                        | Closed graph `max(input_tokens - cached_tokens, 0)`. The OpenAPI has no typed terminal SSE payload, so no Responses-stream locator is invented. |
+| K3 Responses output              | `output_tokens`                       | Response `/usage/output_tokens`                               | Direct quantity; the field explicitly includes reasoning tokens.                                                                                |
+| K3 Anthropic Messages cache hit  | `cached_input_tokens`                 | Response or terminal `message_delta` cache-read usage         | Direct quantity.                                                                                                                                |
+| K3 Anthropic Messages cache miss | `uncached_input_tokens`               | Response or terminal `message_delta` `/usage/input_tokens`    | Direct quantity because Kimi describes this field as input excluding cache hits.                                                                |
+| K3 Anthropic Messages output     | `output_tokens`                       | Response or terminal `message_delta` `/usage/output_tokens`   | Direct quantity; output includes thinking. Cache-write accounting requires its own verified input and TTL selection.                            |
+| Built-in Chat web search         | exact billed `$web_search` call count | Response `KimiChatResponse.billable_builtin_web_search_calls` | Count calls satisfying the documented finish reason and exact function name. This provider field avoids an unsafe unfiltered array-length rule. |
+| Formula web search               | successful created web-search Fibers  | Response `KimiFormulaFiber.created_web_search_fibers`         | One per successful creation of the exact Formula URI. Failed-call billing remains unbound.                                                      |
 
-The Batch API still documents result-level prompt and completion totals, so those two acquisition
-inputs remain available. They do not bind to a current price term while the public Batch price page
-publishes no rate table.
+The Batch API documents result-level prompt and completion totals. Current K2.7 Code and K2.6
+Batch offers bind output to the completion total. Cache-hit and cache-miss inputs remain caller
+signals because the Batch result does not document the cached-token split. A price/guide model
+scope disagreement withholds only that source's affected binding, rather than hard-coding a model
+exclusion after the guide changes.
 
 Search-result tokens reported inside built-in tool arguments are explanatory. They are billed only
 when submitted in the next Chat request, whose authoritative prompt usage already includes them;
@@ -108,8 +122,9 @@ semantics; the provider JSON and normalized-field locators remain canonical.
 
 ## Missing evidence and raw policy
 
-Absence of an acquisition path does not turn a valid rate into raw pricing. The current structured
-partial cases are:
+Absence of an acquisition path does not turn a valid rate into raw pricing. Chat and Responses
+cache-subtraction equations retain their known signals and surviving locators after field drift;
+the caller must supply missing inputs. The current structured partial cases are:
 
 - Responses streaming has no typed terminal usage envelope in the OpenAPI contract.
 - The Responses `web_search` tool is documented operationally, but the current price prose binds an
@@ -126,6 +141,21 @@ selected quantity method. Kmodels does not prescribe storage or request orchestr
 the required information and the consequence of absence explicit.
 
 ## Refresh and comparator policy
+
+The release-date overlay is optional and retains its last verified dates if its source bundle
+fails. A research or changelog link failure cannot freeze the independent current model catalogs
+or regional price books. Its old observation time and failure remain visible in source diagnostics.
+
+The research companion is `https://www.kimi.ai/blog/`. The [Moonshot company homepage](https://www.moonshot.ai/)
+Research link independently establishes this successor to the redirecting `www.kimi.com/blog/` URL.
+The reviewed transport admits `www.kimi.ai`; research cards retain exact catalog/display-ID joins
+and accept slash- or hyphen-separated calendar dates. A research product without an exact API
+catalog identity cannot create a release fact.
+
+The optional regional inventories use separate credentials: `MOONSHOT_API_KEY` for the
+international endpoint and `MOONSHOT_CN_API_KEY` for China. The refresh workflow injects both
+secrets independently. Missing keys skip only their inventories; an HTTP 401 remains an
+authentication failure rather than a parser-repair candidate.
 
 Regional OpenAPI, catalogs, model-price pages, Batch, web search, Formula, Files, lifecycle sources,
 and `llms.txt` discovery are independent claim groups. A missing page, changed field, malformed row,

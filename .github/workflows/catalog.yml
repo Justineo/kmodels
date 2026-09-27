@@ -50,6 +50,7 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          MOONSHOT_CN_API_KEY: ${{ secrets.MOONSHOT_CN_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -94,7 +95,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(data): refresh provider catalog" -m "Kmodels-Refresh-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          git push
+          if ! git push origin HEAD:refs/heads/main; then
+            git fetch --no-tags origin main
+            if [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD^)" ]; then
+              echo "::warning::main advanced during collection; skipping this stale refresh. The next scheduled refresh will use the latest main."
+              echo "### Publication skipped" >> "$GITHUB_STEP_SUMMARY"
+              echo "main advanced during collection. This run's generated data was not published; the next scheduled refresh will use the latest main." >> "$GITHUB_STEP_SUMMARY"
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit 1
+          fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy refreshed catalog

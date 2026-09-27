@@ -1,0 +1,161 @@
+<article>
+  <p>
+    Either way, the last chunk before the <code>data: [DONE]</code> message carries the token usage
+    statistics for the entire request in its <code>usage</code> field. Note that no separate
+    usage-only chunk is emitted: the statistics ride on the last content chunk, whose
+    <code>choices</code> array always contains exactly one element that carries no new content and a
+    non-null <code>finish_reason</code>.
+  </p>
+  <div class="openapi-schema__list-item">
+    <details
+      class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+      data-collapsed="true"
+    >
+      <summary>
+        <span class="openapi-schema__container"
+          ><strong class="openapi-schema__property"><p>usage</p></strong
+          ><span class="openapi-schema__name"><p>object</p></span></span
+        >
+      </summary>
+      <div>
+        <div class="collapsibleContent_gaFD">
+          <div style="margin-left: 1rem">
+            <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+              <p>Usage statistics for the completion request.</p>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">completion_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Number of tokens in the generated completion.</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">prompt_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div>
+                  <p>
+                    Number of tokens in the prompt. It equals prompt_cache_hit_tokens +
+                    prompt_cache_miss_tokens.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <details
+                class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+                data-collapsed="true"
+              >
+                <summary>
+                  <span class="openapi-schema__container"
+                    ><strong class="openapi-schema__property"><p>prompt_tokens_details</p></strong
+                    ><span class="openapi-schema__name"><p>object</p></span
+                    ><span class="openapi-schema__divider"></span
+                    ><span class="openapi-schema__required"><p>required</p></span></span
+                  >
+                </summary>
+                <div>
+                  <div class="collapsibleContent_gaFD">
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>Breakdown of tokens used in the prompt.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">cached_tokens</strong
+                            ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                          >
+                          <div>
+                            <p>
+                              Number of tokens in the prompt that hit the context cache. Same as
+                              <code>prompt_cache_hit_tokens</code>.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">prompt_cache_hit_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Number of tokens in the prompt that hits the context cache.</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">prompt_cache_miss_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Number of tokens in the prompt that misses the context cache.</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <div>
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property">total_tokens</strong
+                  ><span class="openapi-schema__name"> <!-- -->integer</span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required">required</span></span
+                >
+                <div><p>Total number of tokens used in the request (prompt + completion).</p></div>
+              </div>
+            </div>
+            <div class="openapi-schema__list-item">
+              <details
+                class="details_TgBV alert alert--info details_wn4R openapi-markdown__details"
+                data-collapsed="true"
+              >
+                <summary>
+                  <span class="openapi-schema__container"
+                    ><strong class="openapi-schema__property"
+                      ><p>completion_tokens_details</p></strong
+                    ><span class="openapi-schema__name"><p>object</p></span></span
+                  >
+                </summary>
+                <div>
+                  <div class="collapsibleContent_gaFD">
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>Breakdown of tokens used in a completion.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">reasoning_tokens</strong
+                            ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                          >
+                          <div><p>Tokens generated by the model for reasoning.</p></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+</article>

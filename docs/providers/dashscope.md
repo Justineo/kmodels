@@ -46,7 +46,9 @@ Production collection uses only Alibaba Cloud first-party sources:
 - the official [recommended-model page](https://www.alibabacloud.com/help/en/model-studio/models.md)
   and nine task catalogs discover public model identities and capabilities;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
-  current public invocation prices;
+  current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
+  scoped by the table's region and deployment column. The same price parser accepts explicit
+  `USD/million tokens` suffixes and currency-bearing headers for audio token rates;
 - the [context-cache guide](https://www.alibabacloud.com/help/en/model-studio/context-cache.md) owns
   cache eligibility and multipliers;
 - the [web-search guide](https://www.alibabacloud.com/help/en/model-studio/web-search.md) owns its
@@ -104,7 +106,11 @@ remain available.
 
 The recommendation page adds only exact region and endpoint evidence. Detailed cards provide exact
 request routes and regions. Compact listings provide exact model IDs in console links and the
-console path's reviewed region, but no request route; repeated links are merged by exact ID. A
+console path's reviewed region, but no request route; repeated links are merged by exact ID.
+Listings may use either the original hash route or `/<region>/model/market/detail/<encoded-id>`.
+Decode the exact final path segment, including encoded publisher slashes; do not take identity
+from the display label or infer an API endpoint from a console URL. Both forms retain the same
+host, region, model-ID, and 15–60-model collection guards. A
 malformed card or link, unknown route or console region, or route/region contradiction suppresses
 only that item and records a contract finding; valid siblings survive.
 
@@ -131,6 +137,8 @@ exact applicability rather than expanding a Cartesian product or choosing a defa
 
 For token-priced models, total request input selects the published context band and the selected
 band applies to the request. Input, output, cache-read, and cache-write terms retain separate meters.
+Published `L<Token≤U` bands use inclusive integer bounds `L + 1` through `U`;
+the strict lower bound must not overlap the preceding tier, including at zero.
 Published Batch rows are moved to the Batch offer and lose the source-native `service_tier=batch`
 condition because the offer identity already carries that distinction.
 
@@ -176,6 +184,13 @@ Token rate bindings use those observable counters:
 - cache writes → cache-creation input tokens; and
 - output → output tokens.
 
+The subtraction paths remain gated on their protocol contracts: Chat/native totals include an
+explicit cache-creation partition, while some Responses counters use a different partition.
+Those paths currently reuse shared token signals, so publishing an unevidenced subtraction path
+could produce conflicting quantities from the same inputs. The collector therefore withholds an
+incomplete subtraction path until that protocol's field semantics are established. Known modality
+sums retain their calculation and any surviving locators when an accounting field drifts.
+
 Batch has no cache discount, so Batch input binds directly to each successful result item's total
 input counter. Thinking tokens remain a separately observable diagnostic signal but are not added a
 second time when Alibaba bills them inside output tokens. Character-priced TTS binds directly to
@@ -202,6 +217,11 @@ when Alibaba publishes both an exact rate and a countable trigger.
 
 ## Conflicts and unknowns
 
+Explicit Busy hours / Idle hours pairs retain both operation labels even when one amount omits
+its dollar sign inside a currency-qualified pricing table. Recognizing that complete two-price
+shape prevents the remaining amount from becoming an unconditional rate that conflicts with other
+regions or time bands. Arbitrary unlabeled numbers are not treated as prices.
+
 The current public price book owns public PAYG amounts and applicability. A more specific official
 operation guide may own its exact meter or eligibility, but account-scoped API observations without
 complete currency and conditions cannot replace the public row.
@@ -221,7 +241,9 @@ All public DashScope sources are independently optional and retain their last ve
 facts when temporarily unavailable or non-exhaustively omitted. The pricing page is nevertheless a
 required dependency for adopting a fresh DashScope pricing partition. Cache, tool, protocol, media,
 and regional companions are optional fetches. A missing price-bearing companion is reported for
-source-fact retention; a missing accounting field suppresses only that input contract and leaves its
+source-fact retention. Fixed accounting and base-URL companions are explicitly claim-local, so
+losing a whole accounting document has the same boundary as losing one field: it suppresses only
+the dependent input or selector contract and leaves its
 rate and verified siblings intact.
 
 Within a fetched source, table/card/row/plan failures are localized. Unknown object fields and new

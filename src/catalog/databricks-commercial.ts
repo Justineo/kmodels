@@ -8,19 +8,21 @@ import type {
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import {
+  addAtom,
   isStandardUnit,
   rawEvidence,
   standardSignal,
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import {
+  calculatedQuantityMethods,
+  directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
   pricingInputFacts,
   pricingInputObservation,
   uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -50,7 +52,7 @@ export function applyDatabricksCommercialTopology(
   return {
     ...input,
     books: input.books
-      .flatMap((book) => modelBook(book, modelByRef, inputIndex))
+      .flatMap((book) => modelBook(book, modelByRef, inputIndex, input))
       .map(includePricingInputSourceRefs),
   };
 }
@@ -59,6 +61,7 @@ function modelBook(
   book: AtomicPricingBook,
   models: ReadonlyMap<string, PublishedModel>,
   inputIndex: PricingInputIndex,
+  input: AtomicProviderPricing,
 ): AtomicPricingBook[] {
   if (book.scope.kind !== "models") return [];
   const model =
@@ -78,7 +81,9 @@ function modelBook(
           ];
     });
     const rateMeters = offer.terms.flatMap((term) => (term.kind === "rate" ? [term.meter] : []));
-    const terms = offer.terms.flatMap((term) => inferenceTerm(term, model, inputIndex, rateMeters));
+    const terms = offer.terms.flatMap((term) =>
+      inferenceTerm(term, model, inputIndex, rateMeters, input),
+    );
     if (states.length + terms.length === 0) return [];
     return [
       {
@@ -99,6 +104,7 @@ function inferenceTerm(
   model: PublishedModel | undefined,
   inputIndex: PricingInputIndex,
   rateMeters: readonly PriceMeter[],
+  input: AtomicProviderPricing,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     if (term.term_key === "batch_inference") return [];
@@ -121,6 +127,7 @@ function inferenceTerm(
       model,
       inputIndex,
       rateMeters,
+      input,
     );
     const selector_sources = selectorSources(applicability, inputIndex);
     return [
@@ -171,8 +178,40 @@ function tokenBinding(
   model: PublishedModel | undefined,
   inputIndex: PricingInputIndex,
   rateMeters: readonly PriceMeter[],
+  input: AtomicProviderPricing,
 ): ChargeBinding | undefined {
-  if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
+  if (!isStandardUnit(variant.price.per, "token")) return;
+  const parts = variant.applicability.any_of
+    .flatMap(({ all_of }) => all_of)
+    .filter(
+      (condition) =>
+        (condition.dimension.namespace === "kmodels" && condition.dimension.value === "modality") ||
+        (condition.dimension.namespace === "provider" &&
+          condition.dimension.value === "cache_retention"),
+    );
+  if (parts.length > 0) {
+    const labels = [
+      ...new Set(
+        parts.flatMap((condition) =>
+          condition.kind === "categorical" ? condition.values.map(({ value }) => value) : [],
+        ),
+      ),
+    ].sort();
+    const key = `${meter.value}_${labels.join("_")}_tokens`;
+    addAtom(input, {
+      kind: "usage_signal",
+      key,
+      definition: `Tokens for ${meter.value} in the published ${labels.join(" / ")} partition; aggregate response usage cannot establish this subset`,
+      unit: variant.price.per,
+      resolution_phase: "outcome",
+    });
+    return {
+      signal: { namespace: "provider", provider_id: "databricks", value: key },
+      aggregation: "attempt",
+      observations: [rawEvidence(observation)],
+    };
+  }
+  if (meter.namespace !== "kmodels") return;
   const signal = meterSignal(meter.value);
   if (signal === undefined) return;
   const mapped = quantityMethods(signal, meter.value, model, inputIndex, rateMeters);
@@ -204,14 +243,14 @@ function quantityMethods(
   if (meter === "input_text") return inputMethods(signal, model, inputIndex, rateMeters);
   if (meter === "output_text" && hasMeter(rateMeters, "output_image")) return emptyMethods();
   if (meter === "embedding")
-    return directMethods(signal, "response.usage.input_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.input_tokens"], inputIndex);
   if (meter === "output_text")
-    return directMethods(signal, "response.usage.output_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.output_tokens"], inputIndex);
   if (!isClaude(model)) return emptyMethods();
   if (meter === "cache_read_text")
-    return directMethods(signal, "response.usage.claude.cache_read_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.claude.cache_read_tokens"], inputIndex);
   if (meter === "cache_write_text")
-    return directMethods(signal, "response.usage.claude.cache_write_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.claude.cache_write_tokens"], inputIndex);
   return emptyMethods();
 }
 
@@ -241,13 +280,14 @@ function inputMethods(
       : []),
   ];
   if (partitions.length === 0)
-    return directMethods(signal, "response.usage.input_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.input_tokens"], inputIndex);
   if (!isClaude(model)) return emptyMethods();
 
   const total = pricingInputFacts(inputIndex, ["response.usage.input_tokens"]);
-  const partitionFacts = partitions.map(({ key }) => pricingInputFacts(inputIndex, [key]));
-  if (total.length === 0 || partitionFacts.some((facts) => facts.length === 0))
-    return emptyMethods();
+  const partitionInputs = partitions.map(({ signal: partition, key }) => ({
+    signal: partition,
+    facts: pricingInputFacts(inputIndex, [key]),
+  }));
   const totalSignal = standardSignal("input_tokens");
   const nodes: UsageQuantityNode[] = [{ op: "signal", signal: totalSignal }];
   let result = 0;
@@ -257,32 +297,10 @@ function inputMethods(
     nodes.push({ op: "subtract_floor_zero", minuend: result, subtrahend });
     result = nodes.length - 1;
   }
-  const facts = uniquePricingInputFacts([...total, ...partitionFacts.flat()]);
-  return {
-    methods: [
-      {
-        calculation: { nodes, result },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...partitions.flatMap(({ signal: partition }, index) =>
-            usageInputSources(partition, partitionFacts[index] ?? []),
-          ),
-        ].sort(compareCanonicalValues),
-      },
-    ],
-    facts,
-  };
-}
-
-function directMethods(
-  signal: UsageSignal,
-  key: string,
-  inputIndex: PricingInputIndex,
-): MethodsAndFacts {
-  const facts = pricingInputFacts(inputIndex, [key]);
-  return facts.length === 0
-    ? emptyMethods()
-    : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
+  return calculatedQuantityMethods({ nodes, result }, [
+    { signal: totalSignal, facts: total },
+    ...partitionInputs,
+  ]);
 }
 
 function isClaude(model: PublishedModel | undefined): boolean {

@@ -15,12 +15,13 @@ interface Input {
 const searchPath = "/docs/ai-gateway/models-and-providers/web-search.md";
 
 export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact[] {
-  const body = input.documents.get(searchPath);
-  if (body === undefined) {
+  const source = input.documents.get(searchPath);
+  if (source === undefined) {
     report(input, "unsupported", "generic_search_guide_not_observed");
     return [];
   }
 
+  const body = source.replace(/^\s*>[ \t]?/gm, "").replace(/\s+/g, " ");
   const facts = [
     ...perplexityFacts(input, body),
     ...exaFacts(input, body),

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import { canonicalJsonKey, compareUtf8 } from "../src/catalog/canonical-value.ts";
@@ -15,15 +15,12 @@ import {
   websitePublication,
   type WebsitePublication,
 } from "../src/catalog/website-data.ts";
-import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
+import { loadWebsiteCatalog, parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
+import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreAssets } from "../src/catalog/website-core.ts";
 import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 const websiteDataBudgets = {
-  catalogBytes: 320 * 1024,
-  pricingBytes: 112 * 1024,
-  compressedCatalogBytes: 48 * 1024,
-  compressedPricingBytes: 10 * 1024,
   modelDetailBytes: 80 * 1024 * 1024,
 };
 
@@ -142,14 +139,15 @@ describe("website data", () => {
     const catalogSource = JSON.stringify(publication.catalog);
     const pricingSource = JSON.stringify(publication.pricing);
 
-    expect(Buffer.byteLength(catalogSource)).toBeLessThan(websiteDataBudgets.catalogBytes);
-    expect(Buffer.byteLength(pricingSource)).toBeLessThan(websiteDataBudgets.pricingBytes);
-    expect(gzipSync(catalogSource).byteLength).toBeLessThan(
-      websiteDataBudgets.compressedCatalogBytes,
-    );
-    expect(gzipSync(pricingSource).byteLength).toBeLessThan(
-      websiteDataBudgets.compressedPricingBytes,
-    );
+    const coreAssets = websiteCoreAssets(publication.catalog, publication.pricing);
+    for (const asset of coreAssets)
+      expect(Buffer.byteLength(asset.source)).toBeLessThanOrEqual(WEBSITE_CORE_CHUNK_MAX_BYTES);
+    const loaded = await loadWebsiteCatalog(async (path) => {
+      const asset = coreAssets.find(({ fileName }) => `/${fileName}` === path);
+      if (asset === undefined) throw new Error(`Missing core asset ${path}`);
+      return JSON.parse(asset.source);
+    });
+    expect(loaded).toEqual(parseWebsiteCatalog(publication.catalog, publication.pricing));
     expect(foundAuditFields(JSON.parse(catalogSource))).toEqual([]);
     expect(foundAuditFields(JSON.parse(pricingSource))).toEqual([]);
     for (const model of publication.catalog.models) {
