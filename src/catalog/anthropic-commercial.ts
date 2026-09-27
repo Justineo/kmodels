@@ -139,7 +139,52 @@ function partitionTerm(
     ];
   });
   const raw_variants = term.raw_variants.flatMap((variant) => partitionRaw(variant, mechanism));
+  if (term.meter.namespace === "kmodels" && term.meter.value === "cache_write_text") {
+    return partitionCacheWriteTerms(term, variants, raw_variants);
+  }
   return variants.length + raw_variants.length === 0 ? [] : [{ ...term, variants, raw_variants }];
+}
+
+function partitionCacheWriteTerms(
+  term: Extract<AtomicPricingTerm, { kind: "rate" }>,
+  variants: AtomicRateVariant[],
+  raw_variants: AtomicRawVariant[],
+): AtomicPricingTerm[] {
+  const ttlTerms: AtomicPricingTerm[] = [];
+  for (const ttl of [300, 3600] as const) {
+    const bucket = variants
+      .filter((variant) => exactCacheTtl(variant.applicability) === ttl)
+      .map(removeCacheTtlSelector);
+    if (bucket.length > 0)
+      ttlTerms.push({
+        ...term,
+        term_key: `${term.term_key}:${ttl === 300 ? "5m" : "1h"}`,
+        variants: bucket,
+        raw_variants: [],
+      });
+  }
+  const remaining = variants.filter(
+    (variant) => exactCacheTtl(variant.applicability) === undefined,
+  );
+  if (remaining.length + raw_variants.length > 0)
+    ttlTerms.push({ ...term, variants: remaining, raw_variants });
+  return ttlTerms;
+}
+
+function removeCacheTtlSelector(variant: AtomicRateVariant): AtomicRateVariant {
+  const clauses = variant.applicability.any_of.map(({ all_of }) => ({
+    all_of: all_of.filter(
+      (condition) =>
+        condition.dimension.namespace !== "kmodels" ||
+        condition.dimension.value !== "cache_ttl_seconds",
+    ),
+  }));
+  const applicability = canonicalizeApplicability({ any_of: clauses });
+  return {
+    ...variant,
+    applicability,
+    observation: withApplicability(variant.observation, applicability),
+  };
 }
 
 function partitionRaw(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {

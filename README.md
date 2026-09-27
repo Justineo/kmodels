@@ -10,20 +10,23 @@ Kmodels collects reviewed official sources into one versioned, static dataset. M
 
 Every profile is generated from the same validated catalog snapshot and carries its version and generation time.
 
-| Profile          | Best for                                                                      | JSON                                                                    |
-| ---------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **IDs**          | Small provider → model ID lookup                                              | [`catalog/ids.json`](https://kmodels.void.app/catalog/ids.json)         |
-| **Summary**      | Flat rows with provider, ID, version, tasks, and status                       | [`catalog/summary.json`](https://kmodels.void.app/catalog/summary.json) |
-| **Models**       | Default semantic catalog, grouped by provider and model ID with every version | [`catalog/models.json`](https://kmodels.void.app/catalog/models.json)   |
-| **Full catalog** | Audit-rich model, source, coverage, warning, and provenance data              | [`catalog/index.json`](https://kmodels.void.app/catalog/index.json)     |
-| **Providers**    | Provider metadata and provider-scoped coverage                                | [`providers/index.json`](https://kmodels.void.app/providers/index.json) |
-| **Pricing**      | Canonical price books, conditions, validity, and source observations          | [`pricing/index.json`](https://kmodels.void.app/pricing/index.json)     |
+| Profile          | Best for                                                                               | JSON                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **IDs**          | Small provider → model ID lookup                                                       | [`catalog/ids.json`](https://kmodels.void.app/catalog/ids.json)                                   |
+| **Summary**      | Flat rows with provider, ID, version, tasks, and status                                | [`catalog/summary.json`](https://kmodels.void.app/catalog/summary.json)                           |
+| **Models**       | Default semantic catalog, grouped by provider and model ID with every version          | [`catalog/models.json`](https://kmodels.void.app/catalog/models.json)                             |
+| **Full catalog** | Audit-rich model, source, coverage, warning, and provenance data                       | [`catalog/index.json`](https://kmodels.void.app/catalog/index.json)                               |
+| **Providers**    | Provider metadata and provider-scoped coverage                                         | [`providers/index.json`](https://kmodels.void.app/providers/index.json)                           |
+| **Pricing**      | Canonical price books, conditions, validity, and source observations                   | [`pricing/index.json`](https://kmodels.void.app/pricing/index.json)                               |
+| **Calculation**  | Complete provider partitions for the [portable calculator](docs/pricing-calculator.md) | [`pricing/calculation/index.json`](https://kmodels.void.app/pricing/calculation/index.json)       |
+| **Coverage**     | Calculation coverage by offer, operation, and charge component                         | [`pricing/calculation/coverage.json`](https://kmodels.void.app/pricing/calculation/coverage.json) |
 
 Provider-specific exports are available at:
 
 ```text
 https://kmodels.void.app/providers/<provider>/index.json
 https://kmodels.void.app/providers/<provider>/models/index.json
+https://kmodels.void.app/pricing/calculation/providers/<provider>.json
 ```
 
 Profiles never guess a “latest” version. Pricing is bound to the exact catalog snapshot; an absent price is unknown, not free.

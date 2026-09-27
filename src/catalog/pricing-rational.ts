@@ -1,6 +1,13 @@
 import { isNonNegativeDecimal, pricingLimits } from "./pricing-constants.ts";
 import type { Rational } from "./pricing-schema.ts";
 
+export class ExactIntegerLimitError extends Error {
+  constructor() {
+    super("Exact-integer digit limit exceeded");
+    this.name = "ExactIntegerLimitError";
+  }
+}
+
 export function normalizeRational(numerator: bigint, denominator = 1n): Rational {
   if (numerator < 0n || denominator <= 0n) throw new Error("Pricing rationals are non-negative");
   if (numerator === 0n) return { numerator: "0", denominator: "1" };
@@ -13,7 +20,7 @@ export function normalizeRational(numerator: bigint, denominator = 1n): Rational
     normalized.numerator.length > pricingLimits.exactIntegerDigits ||
     normalized.denominator.length > pricingLimits.exactIntegerDigits
   )
-    throw new Error("Exact-integer digit limit exceeded");
+    throw new ExactIntegerLimitError();
   return normalized;
 }
 
@@ -60,6 +67,17 @@ export function compareRationals(left: Rational, right: Rational): -1 | 0 | 1 {
     BigInt(left.numerator) * BigInt(right.denominator) -
     BigInt(right.numerator) * BigInt(left.denominator);
   return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+}
+
+export function roundUpRational(value: Rational, increment: Rational): Rational {
+  if (increment.numerator === "0") throw new Error("Billing increment must be positive");
+  const scaledValue = BigInt(value.numerator) * BigInt(increment.denominator);
+  const scaledIncrement = BigInt(value.denominator) * BigInt(increment.numerator);
+  const incrementCount = (scaledValue + scaledIncrement - 1n) / scaledIncrement;
+  return normalizeRational(
+    incrementCount * BigInt(increment.numerator),
+    BigInt(increment.denominator),
+  );
 }
 
 export function rationalToFiniteDecimal(value: Rational): string | undefined {

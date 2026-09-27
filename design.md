@@ -33,6 +33,8 @@ This index points to the repository's current decisions. Detailed documents are 
   request and inference-capacity rates, scoped usage signals, selector inputs and exact calculations, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
+- [Portable pricing calculator](docs/pricing-calculator.md): caller-owned calculation exports, pure ESM package, exact evaluation, and language-neutral conformance.
+- [Request-charge audit](docs/pricing-audit.md): dated mechanism coverage and gaps for the 18 providers assessed on 2026-09-05.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
   inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;

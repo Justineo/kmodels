@@ -2,7 +2,8 @@
 
 Status: implemented
 
-- GitHub Actions checks every push and pull request.
+- GitHub Actions checks every push and pull request, including the portable pricing package build
+  and packed Node/browser conformance checks. Package preparation never publishes to npm.
 - A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
   alone never starts Copilot: code-repair inference begins when the latest committed refresh report contains
   a parser failure, a changed source-contract finding, known unrecognized public pricing-card
