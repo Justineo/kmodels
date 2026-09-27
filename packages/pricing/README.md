@@ -45,6 +45,12 @@ Use the standalone `/pricing/calculation/index.json` export or one or more whole
 
 Results are `calculated`, `estimated`, `partial`, or `unknown`. Assumptions need an explanation and cannot overwrite measurements. Amounts use reduced integer-string fractions, retain currencies and provider credits separately, and receive no intermediate monetary rounding. Freshness is reported independently of calculation completeness.
 
+`CalculationComponent` is an input type: defaulted arrays may be omitted. Checking `result.status` for `calculated` or `estimated` makes `result.totals` available without an assertion. Charges retain their `unitPrice`, applied `binding`, and contribution/rate/binding evidence for auditing.
+
+Rate requirements include scoped `selectorSources`; contribution requirements include scoped `referencedRates`. Allowance requirements expose `benefit`, `target`, and `reset`, with known unsupported mechanisms in `gaps`. An empty discovery gap list does not guarantee that calculation will resolve usage, validity or linked-component requirements.
+
+Version `0.2.0` retains schema `1.0` for valid data and requests. It tightens invalid selector mapping rejection and adds output metadata. The TypeScript result/requirement unions and optional component arrays may require changes to custom mocks, interface extensions and helpers that read those arrays; strict output decoders must accept the new fields. See the contract's compatibility section.
+
 The [language-neutral contract](CONTRACT.md), exported `schema.json`, `request.schema.json`, and synthetic `conformance.json` specify the portable evaluator. The conformance data uses a fictional `example` provider and is not a price catalog. Only Zod is a runtime dependency; frontend, collection, filesystem, and network dependencies are excluded.
 
 This package reconstructs public request charges supported by the supplied evidence. Training, retained storage, provisioned capacity, subscriptions, private discounts, and invoice reconciliation are outside its contract. Registry publication is a separate release operation.

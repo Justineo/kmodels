@@ -4,8 +4,11 @@ import {
   normalizeRational,
   subtractRationalsFloorZero,
 } from "../catalog/pricing-rational.ts";
-import type { CalculationAllowance, CalculationComponent } from "./schema.ts";
-import type { EvaluatedCharge } from "./component-evaluation.ts";
+import type {
+  CalculationAllowance,
+  ParsedCalculationComponent as CalculationComponent,
+} from "./schema.ts";
+import type { Charge } from "./types.ts";
 import type { Gap } from "./selection.ts";
 
 export interface PendingAllowance {
@@ -15,13 +18,13 @@ export interface PendingAllowance {
 }
 
 interface AllowanceAllocation extends PendingAllowance {
-  charges: EvaluatedCharge[];
+  charges: Charge[];
   componentIds: Set<string>;
 }
 
 export function applyAllowances(
   allowances: PendingAllowance[],
-  charges: EvaluatedCharge[],
+  charges: Charge[],
   gaps: Gap[],
 ): void {
   const unresolvedComponents = new Set(
@@ -48,10 +51,7 @@ export function applyAllowances(
   }
 }
 
-function allocateAllowance(
-  allowance: PendingAllowance,
-  charges: EvaluatedCharge[],
-): AllowanceAllocation {
+function allocateAllowance(allowance: PendingAllowance, charges: Charge[]): AllowanceAllocation {
   const componentIds = new Set([allowance.component.id, ...allowance.component.relatedComponents]);
   const target = allowance.variant.target;
   const matchingCharges = charges.filter((charge) => {
@@ -95,11 +95,11 @@ function applyBenefit(allocation: AllowanceAllocation): string | undefined {
     return "Allowance allocation across multiple charges is not established";
   }
   if (benefit.kind === "quantity") {
-    if (canonicalJson(charge.price.per) !== canonicalJson(benefit.quantity.unit)) {
+    if (canonicalJson(charge.unitPrice.per) !== canonicalJson(benefit.quantity.unit)) {
       return "Allowance quantity unit does not match its target charge";
     }
     const billableQuantity = subtractRationalsFloorZero(charge.quantity, benefit.quantity.value);
-    charge.amount = multiplyRationals(billableQuantity, charge.price.value);
+    charge.amount = multiplyRationals(billableQuantity, charge.unitPrice.value);
     return undefined;
   }
   if (

@@ -7,14 +7,14 @@ import type {
 } from "../catalog/pricing-schema.ts";
 import type {
   CalculationBinding,
+  CalculationAllowance,
   CalculationBook,
-  CalculationComponent,
+  ParsedCalculationComponent,
   CalculationEnvelope,
   CalculationOffer,
   CalculationProvider,
   CalculationRate,
   CalculationRequest,
-  CalculationTerm,
   Evidence,
   SelectionRequest,
 } from "./schema.ts";
@@ -32,6 +32,8 @@ export interface Charge {
   termRef: string;
   rateTermRef: string;
   quantity: Rational;
+  unitPrice: CalculationRate["price"];
+  binding: CalculationBinding;
   grossAmount: Rational;
   amount: Rational;
   denomination: PriceDenomination;
@@ -42,33 +44,60 @@ export interface Subtotal {
   denomination: PriceDenomination;
   amount: Rational;
 }
-export interface CalculationResult {
-  status: "calculated" | "estimated" | "partial" | "unknown";
+interface CalculationResultDetails {
   evaluatedAt: string;
   snapshot: CalculationEnvelope["snapshot"];
   freshness: CalculationProvider["snapshot"][];
   charges: Charge[];
   subtotals: Subtotal[];
-  totals?: Subtotal[];
   assumptions: Array<{
     componentId: string;
-    assumption: CalculationComponent["assumptions"][number];
+    assumption: ParsedCalculationComponent["assumptions"][number];
   }>;
   unresolved: Gap[];
 }
+export type CalculationResult = CalculationResultDetails &
+  (
+    | { status: "calculated"; totals: Subtotal[] }
+    | { status: "estimated"; totals: Subtotal[] }
+    | { status: "partial"; totals?: never }
+    | { status: "unknown"; totals?: never }
+  );
+
+interface ChargeRequirementBase {
+  termRef: string;
+  applicability: PriceApplicability;
+  validity?: CalculationRate["validity"];
+  binding?: CalculationBinding;
+  targetRateRefs?: string[];
+  alternatives: UsageSignal[][];
+}
+export interface ReferencedRateRequirement {
+  rateTermRef: string;
+  applicability: PriceApplicability;
+  validity?: CalculationRate["validity"];
+  selectorSources: NonNullable<CalculationRate["selector_sources"]>;
+}
+export type ChargeRequirement = ChargeRequirementBase &
+  (
+    | { kind: "rate"; selectorSources: NonNullable<CalculationRate["selector_sources"]> }
+    | {
+        kind: "contribution";
+        targetRateRefs: string[];
+        referencedRates: ReferencedRateRequirement[];
+      }
+    | {
+        kind: "allowance";
+        benefit: CalculationAllowance["benefit"];
+        target: CalculationAllowance["target"];
+        reset: CalculationAllowance["reset"];
+      }
+  );
 export interface Requirements {
   offerRef: string;
   states: CalculationOffer["states"];
   selectors: PriceDimension[];
-  charges: Array<{
-    termRef: string;
-    kind: CalculationTerm["kind"];
-    applicability: PriceApplicability;
-    validity?: CalculationRate["validity"];
-    binding?: CalculationBinding;
-    targetRateRefs?: string[];
-    alternatives: UsageSignal[][];
-  }>;
+  charges: ChargeRequirement[];
   aggregationBoundaries: CalculationBinding["aggregation"][];
   relatedCharges: CalculationOffer["relations"];
   resourceEdges: CalculationBook["resource_edges"];

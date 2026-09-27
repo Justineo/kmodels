@@ -3,11 +3,7 @@ import { addRationals, normalizeRational } from "../catalog/pricing-rational.ts"
 import type { CalculationRequest } from "./schema.ts";
 import type { CalculationResult, Charge, Subtotal } from "./types.ts";
 import { applyAllowances, type PendingAllowance } from "./allowances.ts";
-import {
-  evaluateComponent,
-  type DeferredCharge,
-  type EvaluatedCharge,
-} from "./component-evaluation.ts";
+import { evaluateComponent, type DeferredCharge } from "./component-evaluation.ts";
 import { rejectDuplicateContributions } from "./composition.ts";
 import { prepareCalculationRequest } from "./request.ts";
 import { getOffer, type PricingSnapshot } from "./snapshot.ts";
@@ -17,8 +13,7 @@ export function evaluateRequest(
   input: CalculationRequest,
 ): CalculationResult {
   const { evaluatedAt, components } = prepareCalculationRequest(snapshot, input);
-  const result: CalculationResult = {
-    status: "unknown",
+  const result: Omit<CalculationResult, "status" | "totals"> = {
     evaluatedAt,
     snapshot: snapshot.data.snapshot,
     freshness: [],
@@ -27,7 +22,7 @@ export function evaluateRequest(
     assumptions: [],
     unresolved: [],
   };
-  const charges: EvaluatedCharge[] = [];
+  const charges = result.charges;
   const allowances: PendingAllowance[] = [];
   const deferred: DeferredCharge[] = [];
   let hasKnownAmount = false;
@@ -46,18 +41,22 @@ export function evaluateRequest(
   result.unresolved.push(...unpricedDeferredCharges(deferred, charges));
   rejectDuplicateContributions(charges, components);
   applyAllowances(allowances, charges, result.unresolved);
-  result.charges = charges.map(({ price: _price, ...charge }) => charge);
   result.freshness = uniqueCanonicalValues(result.freshness);
   result.unresolved = uniqueCanonicalValues(result.unresolved);
   result.subtotals = denominationSubtotals(result.charges);
-  result.status = calculationStatus(result, hasKnownAmount);
-  if (result.unresolved.length === 0) result.totals = structuredClone(result.subtotals);
-  return structuredClone(result);
+  if (result.unresolved.length > 0) {
+    return structuredClone({ ...result, status: hasKnownAmount ? "partial" : "unknown" });
+  }
+  return structuredClone({
+    ...result,
+    status: result.assumptions.length > 0 ? "estimated" : "calculated",
+    totals: structuredClone(result.subtotals),
+  });
 }
 
 function unpricedDeferredCharges(
   deferred: readonly DeferredCharge[],
-  charges: readonly EvaluatedCharge[],
+  charges: readonly Charge[],
 ): CalculationResult["unresolved"] {
   const gaps: CalculationResult["unresolved"] = [];
   for (const item of deferred) {
@@ -70,7 +69,7 @@ function unpricedDeferredCharges(
     const reason =
       linkedCharges.length === 0
         ? "No linked component prices this charge at its aggregation boundary"
-        : linkedCharges.every((charge) => canonicalJson(charge.price) === priceKey)
+        : linkedCharges.every((charge) => canonicalJson(charge.unitPrice) === priceKey)
           ? undefined
           : "A linked component prices this charge at a different rate";
     if (reason === undefined) continue;
@@ -98,12 +97,4 @@ function denominationSubtotals(charges: Charge[]): Subtotal[] {
   return [...subtotals.entries()]
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     .map(([, subtotal]) => subtotal);
-}
-
-function calculationStatus(
-  result: CalculationResult,
-  hasKnownAmount: boolean,
-): CalculationResult["status"] {
-  if (result.unresolved.length > 0) return hasKnownAmount ? "partial" : "unknown";
-  return result.assumptions.length > 0 ? "estimated" : "calculated";
 }

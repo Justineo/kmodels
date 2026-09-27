@@ -10,6 +10,10 @@ The npm package contains no provider price data. Applications obtain and retain 
 
 One component represents one billing aggregation instance. Exact offers are selected by the application. Requirements discovery exposes selectors, alternative input sets, source locators, aggregation boundaries, related charges, and known gaps. Missing measurements remain missing, and assumptions require explanations. Results separate known subtotals from complete totals and freshness from completeness.
 
+Rate selector sources remain qualified by their variant's applicability and validity. Contribution discovery carries referenced rate contracts within the contribution scope. Allowance discovery retains benefit, target and reset, and reports statically unsupported mechanisms. Charges retain the applied binding, unit price and combined contribution/rate/binding evidence. Public component types describe input; parsed components stay internal. Results and requirements use discriminated unions so consumers can safely narrow complete totals and term-specific metadata.
+
+Package `0.2.0` records these pre-1.0 API type changes and additive result metadata. Data/request schema `1.0` and monetary evaluation remain unchanged; malformed selector mappings now fail initialization. The package contract documents migration implications for mocks, type extensions, optional arrays and strict output decoders.
+
 ## Calculation export
 
 Pair publication and `vp run prepare:assets` generate these separate export-pack assets:
@@ -17,6 +21,8 @@ Pair publication and `vp run prepare:assets` generate these separate export-pack
 - `/pricing/calculation/index.json`: all complete provider partitions;
 - `/pricing/calculation/providers/{provider}.json`: one complete provider partition;
 - `/pricing/calculation/coverage.json`: calculation coverage by offer, operation selector, and logical charge component, with source and freshness references.
+
+The checked-in export pack must include these endpoints. After a projection change, regenerate it from the accepted local pair with `vp run prepare:assets`; this does not collect live prices. `vp run build` verifies the materialized calculation index, matching coverage and every provider partition, including calculator initialization. A stale pack missing the endpoints fails the build.
 
 The calculation envelope has its own `schemaVersion` and the canonical pair identity. It preserves vocabulary, models and explicit dispositions, source hashes, provider freshness, books/offers/terms/variants, bindings, applicability, validity, relations, enrollment/settlement context, raw reasons, and evidence locators. It omits bulky observation fragments. The canonical `/pricing/index.json` remains the audit resource and cannot initialize the npm package directly.
 
@@ -36,4 +42,4 @@ The package entry point `src/pricing/index.ts` re-exports the public surface; `s
 
 `evaluation.ts` assembles request results. `component-evaluation.ts` handles one billing instance, `composition.ts` checks component relationships, and `allowances.ts` applies supported benefits. `selection.ts` resolves applicability and validity. Public result/interface types live in `types.ts`; wire schemas remain in `schema.ts`.
 
-The package checker runs explicit stages: pack and inspect the artifact, load synthetic conformance data, and verify Node and browser runtimes through the same conformance runner. Helpers are named for those stages so the execution order and boundaries are visible in the code.
+The package checker runs explicit stages: pack and inspect the artifact, compile a consumer against the packed declarations in NodeNext and bundler-compatible module modes, load synthetic conformance data, and verify Node and browser runtimes through the same conformance runner. Consumer checks cover optional component inputs, complete/incomplete result narrowing and term-specific requirement fields. Helpers are named for those stages so the execution order and boundaries are visible in the code.

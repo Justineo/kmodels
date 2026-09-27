@@ -105,3 +105,9 @@ checks pack an allowlisted artifact, reject frontend/collection/transport depend
 provider data, and execute the same vectors in Node and a browser-like ESM context with network
 access blocked. `tests/pricing-calculator-data.test.ts` belongs to the generated project and verifies
 all provider exports against the canonical pair. `vp run test:data` runs that project explicitly.
+
+The package checker also compiles consumer fixtures against the packed declarations using NodeNext
+and bundler-compatible module modes. These assertions cover optional input arrays and discriminated
+result/requirement types, including invalid complete and incomplete result mocks. Production builds
+verify the materialized calculation endpoints, coverage parity and initialization of every provider
+partition, so checking the exporter in memory cannot hide a stale checked-in export pack.

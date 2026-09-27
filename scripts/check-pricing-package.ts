@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -51,6 +51,7 @@ async function checkPricingPackage(): Promise<void> {
   try {
     const packageDirectory = await packAndExtractPackage(temporaryDirectory);
     await checkPackageContents(packageDirectory);
+    await checkConsumerTypes(packageDirectory);
     const suite = await readConformanceSuite(packageDirectory);
     const entryPath = join(packageDirectory, "dist/index.js");
 
@@ -60,10 +61,39 @@ async function checkPricingPackage(): Promise<void> {
     console.log(
       `Packed package: ${expectedPackageFiles.length} expected files; ` +
         `${suite.cases.length} calculations and ${suite.errors.length} errors verified in Node and browser; ` +
-        "synthetic conformance data only; no transport or Node dependency in the runtime.",
+        "consumer types verified; synthetic conformance data only; no transport or Node dependency in the runtime.",
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+async function checkConsumerTypes(packageDirectory: string): Promise<void> {
+  const consumer = join(packageDirectory, "consumer.mts");
+  await copyFile(
+    new URL("../tests/fixtures/calculator/consumer.ts.txt", import.meta.url),
+    consumer,
+  );
+  for (const module of ["nodenext", "preserve"]) {
+    execFileSync(
+      "vp",
+      [
+        "exec",
+        "tsc",
+        "--ignoreConfig",
+        "--noEmit",
+        "--strict",
+        "--exactOptionalPropertyTypes",
+        "--noUncheckedIndexedAccess",
+        "--skipLibCheck",
+        "--target",
+        "es2023",
+        "--module",
+        module,
+        consumer,
+      ],
+      { stdio: "inherit" },
+    );
   }
 }
 

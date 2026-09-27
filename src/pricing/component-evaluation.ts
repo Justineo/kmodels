@@ -9,7 +9,7 @@ import { multiplyRationals } from "../catalog/pricing-rational.ts";
 import type { PriceApplicability } from "../catalog/pricing-schema.ts";
 import type {
   CalculationBinding,
-  CalculationComponent,
+  ParsedCalculationComponent as CalculationComponent,
   CalculationContributionTerm,
   CalculationOffer,
   CalculationRate,
@@ -18,6 +18,7 @@ import type {
   NormalizedVariant,
   Quantity,
   Selector,
+  Evidence,
 } from "./schema.ts";
 import type { Charge } from "./types.ts";
 import type { PendingAllowance } from "./allowances.ts";
@@ -41,10 +42,6 @@ import {
 import { componentInputs, validateOfferQuantities, validateSelectorVocabulary } from "./request.ts";
 import { componentsAreLinked, relatedComponents } from "./composition.ts";
 
-export interface EvaluatedCharge extends Charge {
-  price: CalculationRate["price"];
-}
-
 export interface DeferredCharge {
   componentId: string;
   offerRef: string;
@@ -55,7 +52,7 @@ export interface DeferredCharge {
 }
 
 export interface ComponentResult {
-  charges: EvaluatedCharge[];
+  charges: Charge[];
   gaps: Gap[];
   allowances: PendingAllowance[];
   deferred: DeferredCharge[];
@@ -217,7 +214,7 @@ class ComponentEvaluator {
         this.recordGap("unknown_price", term.id);
       } else {
         for (const binding of contribution.charge_bindings) {
-          this.recordCharge(term.id, rateRef, selectedRate.variant, binding);
+          this.recordCharge(term.id, rateRef, selectedRate.variant, binding, contribution.evidence);
         }
       }
     }
@@ -228,6 +225,7 @@ class ComponentEvaluator {
     rateTermRef: string,
     rate: CalculationRate,
     binding?: CalculationBinding,
+    evidence: Evidence[] = [],
   ): void {
     if (binding === undefined) {
       this.recordGap("unbound_charge", termRef);
@@ -276,9 +274,10 @@ class ComponentEvaluator {
       grossAmount: amount,
       amount,
       denomination: rate.price.denomination,
-      evidence: uniqueCanonicalValues([...rate.evidence, ...binding.evidence]),
+      evidence: uniqueCanonicalValues([...rate.evidence, ...binding.evidence, ...evidence]),
       allowances: [],
-      price: rate.price,
+      unitPrice: rate.price,
+      binding,
     });
     this.result.hasKnownAmount = true;
   }

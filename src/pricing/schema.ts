@@ -203,7 +203,8 @@ export type CalculationRaw = z.infer<typeof calculationRawSchema>;
 export type Selector = z.infer<typeof selectorSchema>;
 export type Quantity = z.infer<typeof quantitySchema>;
 export type CalculationRequest = z.input<typeof calculationRequestSchema>;
-export type CalculationComponent = z.infer<typeof componentSchema>;
+export type CalculationComponent = z.input<typeof componentSchema>;
+export type ParsedCalculationComponent = z.output<typeof componentSchema>;
 export type SelectionRequest = z.input<typeof selectionRequestSchema>;
 export type Evidence = z.infer<typeof evidenceSchema>;
 
