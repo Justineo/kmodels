@@ -1,8 +1,8 @@
 # Request-charge evidence audit
 
-Status: reviewed against the configured first-party source bundles; live sources refreshed on 2026-09-05.
+Status: assessment of the 18-provider scope reviewed on 2026-09-05.
 
-This register covers all 18 configured providers and the request-charge mechanisms admitted by their current guides. The linked provider guides define exact source ownership, joins, protocol fields, exclusions, and claim-local drift behavior. Reviewed provider inputs live under `tests/fixtures/`; `tests/adapters.test.ts` and `tests/pricing-adapter.test.ts` exercise numeric, missing-field, unsupported, and conflicting cases. The calculation export retains evidence references and explicit gaps instead of claiming that token-rate coverage completes an operation.
+This register covers the 18 providers reviewed on 2026-09-05. Later provider additions and source-contract repairs are outside this dated assessment; the linked provider guides and calculation coverage export define the current scope and remaining gaps. Reviewed provider inputs live under `tests/fixtures/`; `tests/adapters.test.ts` and `tests/pricing-adapter.test.ts` exercise numeric, missing-field, unsupported, and conflicting cases. The calculation export retains evidence references and explicit gaps instead of claiming that token-rate coverage completes an operation.
 
 A normalized rate establishes a public amount. A semantic binding additionally establishes a quantity and aggregation boundary. Acquisition additionally identifies a first-party field for every input of at least one method. Each level can exist without the next. Rows below distinguish supported mechanisms from remaining missing prices, measurements, selectors, or unsupported structures. “No separate charge” applies only where the reviewed provider contract establishes that disposition; absence of a published price remains unknown.
 
