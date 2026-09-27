@@ -71,6 +71,9 @@ Status: implemented
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.
 - Only native dependencies allowlisted in `pnpm-workspace.yaml` may run install scripts.
+- The pnpm 12 toolchain declares `node-gyp` as a development dependency so clean installs can
+  compile the allowlisted `better-sqlite3` dependency without relying on a package-manager-bundled
+  executable or a warm native build cache.
 - The scheduled refresh runs hourly with jitter and commits the validated
   catalog, public-only parsed pricing compiler input, canonical pricing,
   derived UI/export asset indexes and packs, fetch state, quarantine, and
