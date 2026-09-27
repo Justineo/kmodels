@@ -74,6 +74,13 @@ Status: implemented
 - The pnpm 12 toolchain declares `node-gyp` as a development dependency so clean installs can
   compile the allowlisted `better-sqlite3` dependency without relying on a package-manager-bundled
   executable or a warm native build cache.
+- TypeScript resolves to the exactly pinned `typescript-native-bridge` alias, with a workspace
+  override keeping every consumer on the same package. Its tsgo 7 checker preserves the classic
+  compiler API required by `vue-tsc` and the collectors' AST parsers; the upstream `typescript@7`
+  package is not a compatible replacement for those consumers. Keep the alias and override pins
+  synchronized. Native binaries arrive as optional platform packages, without install scripts.
+  Local macOS and glibc-based Linux CI are supported; Alpine/musl is not. Editors must select
+  `node_modules/typescript/lib` as the workspace TypeScript SDK to use the same bridge.
 - The scheduled refresh runs hourly with jitter and commits the validated
   catalog, public-only parsed pricing compiler input, canonical pricing,
   derived UI/export asset indexes and packs, fetch state, quarantine, and
