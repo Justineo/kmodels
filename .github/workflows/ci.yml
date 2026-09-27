@@ -35,3 +35,9 @@ jobs:
 
       - name: Build
         run: vp run build
+
+      - name: Build and verify portable pricing package
+        run: |
+          vp run package:build
+          git diff --exit-code -- packages/pricing
+          vp run package:check

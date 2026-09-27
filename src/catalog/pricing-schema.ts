@@ -113,22 +113,31 @@ export const unitExpressionSchema = z.strictObject({
     .max(pricingLimits.unitFactors),
 });
 
-export const rationalSchema = z
-  .strictObject({
-    numerator: canonicalInteger,
-    denominator: z
-      .string()
-      .regex(/^[1-9]\d*$/)
-      .max(pricingLimits.exactIntegerDigits),
-  })
-  .superRefine(({ numerator, denominator }, context) => {
-    if (numerator === "0" && denominator !== "1") {
-      context.addIssue({ code: "custom", message: "Zero must use denominator 1" });
-      return;
-    }
-    if (greatestCommonDivisor(BigInt(numerator), BigInt(denominator)) !== 1n)
-      context.addIssue({ code: "custom", message: "Rational must be reduced" });
-  });
+const positiveCanonicalInteger = z
+  .string()
+  .regex(/^[1-9]\d*$/)
+  .max(pricingLimits.exactIntegerDigits);
+
+function rationalObjectSchema(numerator: typeof canonicalInteger) {
+  return z
+    .strictObject({ numerator, denominator: positiveCanonicalInteger })
+    .superRefine(({ numerator, denominator }, context) => {
+      if (
+        !canonicalInteger.safeParse(numerator).success ||
+        !positiveCanonicalInteger.safeParse(denominator).success
+      )
+        return;
+      if (numerator === "0" && denominator !== "1") {
+        context.addIssue({ code: "custom", message: "Zero must use denominator 1" });
+        return;
+      }
+      if (greatestCommonDivisor(BigInt(numerator), BigInt(denominator)) !== 1n)
+        context.addIssue({ code: "custom", message: "Rational must be reduced" });
+    });
+}
+
+export const rationalSchema = rationalObjectSchema(canonicalInteger);
+export const positiveRationalSchema = rationalObjectSchema(positiveCanonicalInteger);
 
 export const priceDenominationSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -372,6 +381,11 @@ export const usageQuantityNodeSchema = z.discriminatedUnion("op", [
     op: z.literal("minimum"),
     input: z.number().int().nonnegative(),
     value: rationalSchema,
+  }),
+  z.strictObject({
+    op: z.literal("round_up"),
+    input: z.number().int().nonnegative(),
+    increment: positiveRationalSchema,
   }),
 ]);
 

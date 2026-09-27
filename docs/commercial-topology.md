@@ -13,6 +13,11 @@ provider-hosted capacity that directly runs an admitted model. Request charges a
 charges remain separate: no instance-hour fee is allocated across calls. Kmodels does not observe
 a request lifecycle, store a usage ledger, or reconcile an invoice.
 
+The [portable calculator](pricing-calculator.md) implements the stateless public handoff. It owns
+no price retrieval or usage lifecycle; applications initialize it with a complete versioned provider
+export and replace instances when data changes. The [provider audit](pricing-audit.md) records
+mechanism-level coverage and explicit evidence gaps.
+
 The handoff to a calculator is explicit. For each applicable rate variant, Kmodels publishes:
 
 - the exact rate, denominator, applicability, and validity;

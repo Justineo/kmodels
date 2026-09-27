@@ -129,6 +129,14 @@ function buildCatalog(): Plugin {
 }
 
 export default defineConfig({
+  pack: {
+    entry: ["src/pricing/index.ts"],
+    outDir: "packages/pricing/dist",
+    format: "esm",
+    target: "es2023",
+    platform: "neutral",
+    dts: true,
+  },
   plugins: [buildCatalog(), serveCatalog(), vue()],
   define: {
     __KMODELS_CATALOG_UPDATE_URL__: JSON.stringify(updatedUrl),
