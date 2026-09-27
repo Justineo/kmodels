@@ -79,7 +79,11 @@ const contracts: readonly Contract[] = [
   {
     key: "image.generated_images",
     document: imagePath,
-    markers: [/experimental_generateImage/, /result\.images/, /Image-only models/i],
+    markers: [
+      /experimental_generateImage|generateImage\s*\(/,
+      /result\.images|const\s*\{\s*images\b/,
+      /image-only(?:\s+or\s+multimodal)?\s+models/i,
+    ],
     channel: "result",
     locator: { kind: "provider_field", value: "AiSdkGenerateImageResult.images" },
     reduction: { kind: "array_length" },
