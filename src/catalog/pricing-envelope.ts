@@ -97,7 +97,18 @@ export function pricingCatalogJsonFromValidatedData(
   envelope: PricingCatalogEnvelope,
   canonicalDataSource: string,
 ): string {
-  return `{"core_catalog_version":${JSON.stringify(envelope.core_catalog_version)},"core_data_sha256":${JSON.stringify(envelope.core_data_sha256)},"data":${canonicalDataSource},"generated_at":${JSON.stringify(envelope.generated_at)},"pricing_data_version":${JSON.stringify(envelope.pricing_data_version)}}`;
+  return pricingCatalogJsonChunks(envelope, [canonicalDataSource]).join("");
+}
+
+export function pricingCatalogJsonChunks(
+  envelope: PricingCatalogEnvelope,
+  canonicalDataSource: readonly string[],
+): string[] {
+  return [
+    `{"core_catalog_version":${JSON.stringify(envelope.core_catalog_version)},"core_data_sha256":${JSON.stringify(envelope.core_data_sha256)},"data":`,
+    ...canonicalDataSource,
+    `,"generated_at":${JSON.stringify(envelope.generated_at)},"pricing_data_version":${JSON.stringify(envelope.pricing_data_version)}}`,
+  ];
 }
 
 export function decodePricingCatalog(input: Uint8Array, catalog: Catalog): PricingCatalogEnvelope {

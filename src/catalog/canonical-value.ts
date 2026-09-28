@@ -62,9 +62,9 @@ export function canonicalValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 export function uniqueCanonicalValues<T>(values: readonly T[]): T[] {
-  return [...new Map(values.map((value) => [canonicalJson(value), value])).values()].sort(
-    compareCanonicalValues,
-  );
+  return [...new Map(values.map((value) => [canonicalJson(value), value]))]
+    .sort(([left], [right]) => compareUtf8(left, right))
+    .map(([, value]) => value);
 }
 
 function canonicalValueKey(value: unknown): string {
@@ -85,7 +85,7 @@ export function assertIJsonValue(value: unknown): void {
       continue;
     }
     if (Array.isArray(current)) {
-      pending.push(...current);
+      for (const item of current) pending.push(item);
       continue;
     }
     if (typeof current !== "object") throw new Error("Value is not valid JSON");
@@ -93,9 +93,9 @@ export function assertIJsonValue(value: unknown): void {
     const isPlainObject = prototype === null || Object.getPrototypeOf(prototype) === null;
     if (!isPlainObject || Object.getOwnPropertySymbols(current).length > 0)
       throw new Error("Value is not valid JSON");
-    for (const [key, item] of Object.entries(current)) {
+    for (const key of Object.keys(current)) {
       assertIJsonString(key);
-      pending.push(item);
+      pending.push(Reflect.get(current, key));
     }
   }
 }
@@ -123,14 +123,60 @@ function assertIJsonString(value: string): void {
 }
 
 function serialize(value: unknown): string {
-  if (value === null || typeof value === "boolean" || typeof value === "number")
-    return JSON.stringify(value);
-  if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`;
+  const chunks: string[] = [];
+  writeCanonicalJsonFromValidated(value, (chunk) => chunks.push(chunk));
+  return chunks.join("");
+}
 
-  const object = value as Record<string, unknown>;
-  return `{${Object.keys(object)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${serialize(object[key])}`)
-    .join(",")}}`;
+// Callers publishing large graphs can hash these chunks and frame the envelope
+// without allocating both a complete data string and a complete envelope string.
+export function writeCanonicalJsonFromValidated(
+  value: unknown,
+  consume: (chunk: string) => void,
+): void {
+  // Joining each subtree retains large intermediate strings at every nesting level.
+  // Flatten bounded fragments once, then assemble the complete canonical source.
+  const fragments: string[] = [];
+  let length = 0;
+  function append(source: string): void {
+    fragments.push(source);
+    length += source.length;
+    if (length >= 65_536) {
+      consume(fragments.join(""));
+      fragments.length = 0;
+      length = 0;
+    }
+  }
+  function write(current: unknown): void {
+    if (
+      current === null ||
+      typeof current === "boolean" ||
+      typeof current === "number" ||
+      typeof current === "string"
+    ) {
+      append(JSON.stringify(current));
+    } else if (Array.isArray(current)) {
+      append("[");
+      let separator = "";
+      for (const item of current) {
+        append(separator);
+        write(item);
+        separator = ",";
+      }
+      append("]");
+    } else if (typeof current === "object") {
+      append("{");
+      let separator = "";
+      for (const key of Object.keys(current).sort()) {
+        append(`${separator}${JSON.stringify(key)}:`);
+        write(Reflect.get(current, key));
+        separator = ",";
+      }
+      append("}");
+    } else {
+      throw new Error("Value is not valid JSON");
+    }
+  }
+  write(value);
+  if (fragments.length > 0) consume(fragments.join(""));
 }

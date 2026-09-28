@@ -9,19 +9,20 @@ import {
   type EncodedAssetPack,
 } from "./asset-pack.ts";
 import { assertCanonicalJson, canonicalJson, parseIJson } from "./canonical-json.ts";
-import { assertIJsonValue, canonicalJsonFromValidated } from "./canonical-value.ts";
+import { assertIJsonValue, writeCanonicalJsonFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
-import { atomicWrite, rootDirectory, sha256, stableJson } from "./io.ts";
+import { atomicWrite, rootDirectory, sha256, sha256Chunks, stableJson } from "./io.ts";
 import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
 import {
   createPricingCatalogEnvelope,
   createPricingCatalogEnvelopeFromValidatedData,
-  pricingCatalogJsonFromValidatedData,
+  pricingCatalogJsonChunks,
   validatePricingCatalogEnvelopeMetadata,
 } from "./pricing-envelope.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import {
   emptyPricingCatalog,
+  pricingBookSchema,
   pricingCatalogSchema,
   pricingCatalogEnvelopeSchema,
   type PricingCatalog,
@@ -70,6 +71,7 @@ const defaultCatalogPairPaths: CatalogPairPaths = {
   projections: defaultProjectionPaths,
 };
 const preparedCandidates = new WeakSet<CatalogPairCandidate>();
+const pricingHeaderSchema = pricingCatalogSchema.extend({ books: z.array(z.unknown()) });
 
 export function prepareCatalogPair(
   catalog: Catalog,
@@ -80,8 +82,8 @@ export function prepareCatalogPair(
   assertIJsonValue(parsedCatalog);
   const data = pricingData(pricing);
   validatePricingCatalog(data, parsedCatalog);
-  const canonicalDataSource = canonicalJsonFromValidated(data);
-  const canonicalDataHash = sha256(canonicalDataSource);
+  const canonicalDataSource = pricingDataChunks(data);
+  const canonicalDataHash = sha256Chunks(canonicalDataSource);
   const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
   return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
 }
@@ -95,15 +97,35 @@ export async function prepareCatalogPairInParallel(
   assertIJsonValue(parsedCatalog);
   const data = pricingData(pricing);
   const validation = validatePricingCatalogInParallel(data, parsedCatalog);
-  const canonicalDataSource = canonicalJsonFromValidated(data);
-  const canonicalDataHash = sha256(canonicalDataSource);
+  const canonicalDataSource = pricingDataChunks(data);
+  const canonicalDataHash = sha256Chunks(canonicalDataSource);
   await validation;
   const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
   return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
 }
 
 function pricingData(pricing: PricingCatalog | PricingCatalogEnvelope): PricingCatalog {
-  return pricingCatalogSchema.parse("pricing_data_version" in pricing ? pricing.data : pricing);
+  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  // Keep Zod's temporary deep clones bounded to one book. Global semantic
+  // validation still sees the complete graph before publication freezes it.
+  const header = pricingHeaderSchema.parse(data);
+  for (const [index, book] of header.books.entries()) {
+    const parsed = pricingBookSchema.safeParse(book);
+    if (!parsed.success)
+      throw new z.ZodError(
+        parsed.error.issues.map((issue) => ({
+          ...issue,
+          path: ["books", index, ...issue.path],
+        })),
+      );
+  }
+  return data;
+}
+
+function pricingDataChunks(data: PricingCatalog): string[] {
+  const chunks: string[] = [];
+  writeCanonicalJsonFromValidated(data, (source) => chunks.push(source));
+  return chunks;
 }
 
 function pricingEnvelope(
@@ -121,20 +143,26 @@ function catalogPairCandidate(
   parsedCatalog: Catalog,
   envelope: PricingCatalogEnvelope,
   catalogStorageSource: string,
-  canonicalDataSource: string,
+  canonicalDataSource: readonly string[],
 ): CatalogPairCandidate {
   const catalogAssetSource = catalogJson(parsedCatalog);
-  const pricingAssetSource = pricingCatalogJsonFromValidatedData(envelope, canonicalDataSource);
+  const pricingChunks = pricingCatalogJsonChunks(envelope, canonicalDataSource);
+  let pricingAssetSource = "";
+  let pricingBytes = 0;
+  for (const chunk of pricingChunks) {
+    pricingAssetSource += chunk;
+    pricingBytes += Buffer.byteLength(chunk);
+  }
   if (
     Buffer.byteLength(catalogStorageSource) > pricingLimits.coreInputBytes ||
     Buffer.byteLength(catalogAssetSource) > pricingLimits.coreInputBytes
   )
     throw new Error("catalog asset exceeds its encoded-input limit");
-  if (Buffer.byteLength(pricingAssetSource) > pricingLimits.pricingInputBytes)
+  if (pricingBytes > pricingLimits.pricingInputBytes)
     throw new Error("canonical pricing asset exceeds its encoded-input limit");
   const identity = {
     catalog_asset_sha256: sha256(catalogAssetSource),
-    pricing_asset_sha256: sha256(pricingAssetSource),
+    pricing_asset_sha256: sha256Chunks(pricingChunks),
   };
   const candidate = {
     catalog: parsedCatalog,

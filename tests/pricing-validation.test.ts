@@ -130,6 +130,46 @@ describe("canonical pricing serialized catalog validation", () => {
     expect(() => validatePricingCatalog(catalog(), core)).not.toThrow();
   });
 
+  it.each([1, 2])("enforces the exact UTF-8 catalog budget with %i books", (count) => {
+    const data = catalog();
+    const template = data.books[0];
+    if (template === undefined) throw new Error("Missing test book");
+    data.books = Array.from({ length: count }, (_, index) => {
+      const book = structuredClone(template);
+      book.book_key = `public-${index}`;
+      book.id = pricingBookId(providerId, book.book_key);
+      for (const offer of book.offers) {
+        offer.id = pricingOfferId(book.id, offer.offer_key);
+        for (const term of offer.terms) term.id = pricingTermId(offer.id, term.kind, term.term_key);
+      }
+      for (const evidence of book.scope_observations) evidence.raw = { label: "价格 😀" };
+      return book;
+    }).sort((left, right) => left.id.localeCompare(right.id));
+    data.provider_snapshots = [
+      {
+        provider_id: providerId,
+        observed_at: "2026-07-28T00:00:00.000Z",
+        publication: "retained",
+        refresh_failure: {
+          attempted_at: "2026-07-28T00:00:00.000Z",
+          code: "pricing_validation_failed",
+        },
+      },
+    ];
+    const bytes = Buffer.byteLength(JSON.stringify(data));
+    const originalLimit = pricingLimits.pricingCatalogBytes;
+    try {
+      Reflect.set(pricingLimits, "pricingCatalogBytes", bytes);
+      expect(() => validatePricingCatalog(data, core)).not.toThrow();
+      Reflect.set(pricingLimits, "pricingCatalogBytes", bytes - 1);
+      expect(() => validatePricingCatalog(data, core)).toThrow(
+        "pricing catalog byte limit exceeded",
+      );
+    } finally {
+      Reflect.set(pricingLimits, "pricingCatalogBytes", originalLimit);
+    }
+  });
+
   it("requires a complete non-overlapping daily categorical partition", () => {
     const valid = catalog();
     valid.provider_vocabularies[0]!.atoms = [
