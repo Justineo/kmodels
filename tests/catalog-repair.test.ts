@@ -18,8 +18,8 @@ it("fails incomplete repair outputs even when the agent exits successfully", () 
   ])
     expect(() => assertCatalogRepairOutcome(output)).toThrow();
   const noop = JSON.stringify({ type: "noop", message: "All candidates independently resolved" });
-  expect(() => assertCatalogRepairOutcome(noop)).not.toThrow();
-  expect(() =>
+  expect(assertCatalogRepairOutcome(noop)).toBe("noop");
+  expect(
     assertCatalogRepairOutcome(
       JSON.stringify({
         type: "create_pull_request",
@@ -27,11 +27,31 @@ it("fails incomplete repair outputs even when the agent exits successfully", () 
         body: "Reproduced and validated",
       }),
     ),
-  ).not.toThrow();
+  ).toBe("create_pull_request");
   expect(() => assertCatalogRepairOutcome(`${noop}\n${noop}`)).toThrow("exactly one");
   expect(() =>
     assertCatalogRepairOutcome(`${noop}\n${JSON.stringify({ type: "missing_data" })}`),
   ).toThrow("incomplete");
+});
+
+it("rejects issue creation and other side effects even alongside a completed repair", () => {
+  const repair = JSON.stringify({
+    type: "create_pull_request",
+    title: "Fix the parser",
+    body: "Reproduced with a reviewed fixture",
+  });
+  for (const type of ["create_issue", "add_comment", "update_issue", "unknown"]) {
+    const unsupported = JSON.stringify({ type, title: "Follow up", body: "Investigate later" });
+    expect(() => assertCatalogRepairOutcome(unsupported)).toThrow(`cannot emit ${type}`);
+    expect(() => assertCatalogRepairOutcome(`${repair}\n${unsupported}`)).toThrow(
+      `cannot emit ${type}`,
+    );
+  }
+  expect(() =>
+    assertCatalogRepairOutcome(
+      `${repair}\n${JSON.stringify({ type: "noop", message: "Nothing left to do" })}`,
+    ),
+  ).toThrow("exactly one");
 });
 
 const provider = (overrides: Record<string, unknown>): Record<string, unknown> => ({

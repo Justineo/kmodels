@@ -87,16 +87,67 @@ tools:
     - "vp:*"
 
 safe-outputs:
+  report-failure-as-issue: false
+  report-failed-jobs: false
+  noop:
+    report-as-issue: false
+  missing-tool:
+    create-issue: false
+  missing-data:
+    create-issue: false
+  threat-detection:
+    report-as-issue: false
   create-pull-request:
     title-prefix: "[catalog-repair] "
     labels: [catalog-repair]
     draft: true
     max: 1
-    if-no-changes: ignore
+    if-no-changes: error
     fallback-as-issue: false
   report-incomplete:
     max: 1
     create-issue: false
+
+jobs:
+  safe_outputs:
+    if: needs.agent.result == 'success'
+  conclusion:
+    permissions:
+      issues: none
+  verify_delivery:
+    needs: [agent, safe_outputs]
+    if: always() && needs.agent.result == 'success'
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+      - name: Verify the repair was delivered
+        env:
+          REPAIR_OUTCOME: ${{ needs.agent.outputs.output_types }}
+          DELIVERY_RESULT: ${{ needs.safe_outputs.result }}
+          REPAIR_PR_URL: ${{ needs.safe_outputs.outputs.created_pr_url }}
+        run: |
+          set -euo pipefail
+          if [ "$DELIVERY_RESULT" != 'success' ]; then
+            echo '::error::Catalog repair delivery did not complete. See the failed job; the next daily run retries against the latest refresh.'
+            exit 1
+          fi
+          case "$REPAIR_OUTCOME" in
+            create_pull_request)
+              if [ -z "$REPAIR_PR_URL" ]; then
+                echo '::error::Catalog repair requested a pull request but none was created.'
+                exit 1
+              fi
+              echo "Repair proposed for review: $REPAIR_PR_URL" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            noop)
+              echo 'No new repair PR required; see the candidate review or existing repair PR.' >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo '::error::Catalog repair has no verified outcome.'
+              exit 1
+              ;;
+          esac
 
 steps:
   - name: Check for an existing repair
@@ -136,14 +187,26 @@ steps:
     run: vp node scripts/catalog-repair.ts
 
 post-steps:
-  - name: Verify the repair completed
+  - name: Verify the repair outcome
+    id: repair_outcome
     if: always() && steps.repair_dedupe.outputs.blocked != 'true'
     env:
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/check-catalog-repair-outcome.ts
+  - name: Validate the proposed repair
+    if: success() && steps.repair_outcome.outputs.outcome == 'create_pull_request'
+    run: |
+      vp check
+      vp test --run
+      vp run collect:fixtures
+      vp run build
 ---
 
 # Review and repair a catalog collection problem
+
+Resolve reproducible problems with validated code changes and a draft pull request. Never create
+an issue as a repair result or fallback. Keep blocked or incomplete investigations in the workflow
+summary and artifacts via `report_incomplete`; reporting a problem is not a completed repair.
 
 Read `design.md`, `AGENTS.md`, `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 `data/refresh-summary.json`, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.
@@ -229,18 +292,20 @@ a code-repairable problem. If one or more candidates share one coherent root cau
 4. Add or update a reviewed deterministic fixture and regression test, increment the affected
    extractor version, and update the relevant provider guide with the current rule and rationale.
 5. Do not run the live collector and do not modify anything under `data/`.
-6. Review the diff, then run `vp check`, `vp test --run`, `vp run collect:fixtures`, and
-   `vp run build`. Keep one validation run active at a time. Reuse completed results during final
-   review; rerun a check only after a relevant code change or a diagnosed failure has been fixed.
-   If validation is blocked by the environment, report the exact failed command and reason with
-   `report_incomplete` and stop. All required checks must pass before creating a pull request.
+6. Review the diff and run the focused regression tests needed to demonstrate the repair. Fix
+   diagnosed failures before requesting a PR. The deterministic post-execution step owns the full
+   `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build` sequence, so leave that
+   full sequence to it instead of duplicating it during inference. A request to create a PR is only
+   an intent: the workflow publishes it after these checks pass and verifies the resulting PR URL.
+   If focused validation is blocked by the environment, report the exact failed command and reason
+   with `report_incomplete` and stop. Never claim that checks passed without running them.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
 unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not create a pull
 request. A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
 `noop`. Only use `noop` after adequate evidence positively establishes that no repair is needed.
-Otherwise create one small draft
-pull request describing the source change, repair, and validation results.
+Otherwise request one small draft pull request describing the source change, repair, focused
+validation results, and the full validation that the workflow must complete before publication.
 List unresolved candidates separately in that PR rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
 it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing
