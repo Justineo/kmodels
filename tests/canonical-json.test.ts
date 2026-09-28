@@ -9,7 +9,10 @@ import {
   canonicalValuesEqual,
   compareCanonicalValues,
   compareUtf8,
+  uniqueCanonicalValues,
+  writeCanonicalJsonFromValidated,
 } from "../src/catalog/canonical-value.ts";
+import { sha256, sha256Chunks } from "../src/catalog/io.ts";
 
 const encoder = new TextEncoder();
 
@@ -54,6 +57,31 @@ describe("RFC 8785 JSON", () => {
         );
     expect(canonicalValuesEqual({ b: [1, -0], a: "x" }, { a: "x", b: [1, 0] })).toBe(true);
     expect(canonicalValuesEqual({ a: [1] }, { a: [1, 2] })).toBe(false);
+  });
+
+  it("preserves canonical bytes across large nested arrays and numeric object keys", () => {
+    const text = '😀€\\\"\n'.repeat(100);
+    const rows = Array.from({ length: 2_000 }, (_, index) => ({
+      z: { "2": text, "10": index },
+      a: [true, null, 0, 1e30],
+    }));
+    const expected = `[${rows
+      .map(
+        (_, index) => `{"a":[true,null,0,1e+30],"z":{"10":${index},"2":${JSON.stringify(text)}}}`,
+      )
+      .join(",")}]`;
+    expect(canonicalJson(rows)).toBe(expected);
+    const chunks: Uint8Array[] = [];
+    writeCanonicalJsonFromValidated(rows, (chunk) => chunks.push(encoded(chunk)));
+    expect(sha256Chunks(chunks)).toBe(sha256(encoded(expected)));
+    expect(assertCanonicalJson(encoded(expected), encoded(expected).byteLength)).toEqual(rows);
+  });
+
+  it("deduplicates by canonical bytes and retains the last equal value", () => {
+    const last = { a: 2, b: 1 };
+    const result = uniqueCanonicalValues([{ b: 1, a: 2 }, ["x"], null, ["x"], last]);
+    expect(result).toEqual([["x"], null, { a: 2, b: 1 }]);
+    expect(result[2]).toBe(last);
   });
 
   it("rejects duplicate decoded member names", () => {

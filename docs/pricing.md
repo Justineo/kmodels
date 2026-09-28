@@ -711,9 +711,20 @@ sequences retain source order only where order is itself evidence.
 Validation checks the complete graph for I-JSON once. Canonical object keys and
 immutable applicability relations are identity-cached across validation and
 projection, while repeated equal applicability values share one canonicality
-check within the catalog. Resource limits use ordinary JSON byte length because
+check within the catalog. Canonical deduplication reuses its computed keys for
+sorting. Serialization flattens bounded fragments before joining the final
+source, avoiding a complete intermediate string for every nested subtree.
+Publication frames the source incrementally and computes its hash and UTF-8 size
+from those fragments, without flattening separate complete data and envelope
+strings or allocating full-size encoding buffers. Strict schema validation
+checks the header and each book separately, bounding temporary deep clones to one
+book; global semantic validation still sees the complete graph, and publication
+freezes the same input graph it validates.
+Resource limits use ordinary JSON byte length because
 member ordering changes byte order, not UTF-8 byte count. Canonical
-serialization remains authoritative for hashes and published bytes.
+serialization remains authoritative for hashes and published bytes. Catalog and
+provider byte budgets count complete books and their separators independently,
+without allocating a second complete serialized catalog just to measure it.
 
 Stable resource IDs are SHA-256 hashes of domain-separated canonical identity:
 

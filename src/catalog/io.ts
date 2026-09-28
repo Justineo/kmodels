@@ -9,6 +9,12 @@ export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function sha256Chunks(chunks: Iterable<string | Uint8Array>): string {
+  const hash = createHash("sha256");
+  for (const chunk of chunks) hash.update(chunk);
+  return hash.digest("hex");
+}
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === "object") {

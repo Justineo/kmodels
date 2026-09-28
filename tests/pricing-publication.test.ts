@@ -91,6 +91,16 @@ describe("crash-consistent catalog pair publication", () => {
     );
   });
 
+  it("preserves the full path when a book fails structural validation", async () => {
+    const invalid = structuredClone(pricing);
+    Reflect.set(invalid, "books", [{}]);
+    const error = expect.objectContaining({
+      issues: expect.arrayContaining([expect.objectContaining({ path: ["books", 0, "id"] })]),
+    });
+    expect(() => prepareCatalogPair(catalog(), invalid)).toThrow(error);
+    await expect(prepareCatalogPairInParallel(catalog(), invalid)).rejects.toEqual(error);
+  });
+
   it("commits only the exact immutable object returned by preparation", async () => {
     const output = await paths();
     const candidate = prepareCatalogPair(catalog(), pricing);

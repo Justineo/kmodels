@@ -26,6 +26,13 @@ configuration and the test-boundary guard. Adding a test that reads durable gene
 requires adding it to that list. The boundary guard follows test helpers, static imports,
 re-exports, dynamic imports, and URL paths recursively, including nested test directories.
 
+For replay performance changes, compare the same committed data and pinned Node version with
+the same heap limit. Measure elapsed time and peak process RSS, including worker threads;
+JavaScript heap usage alone misses encoding buffers and worker memory. Verify the replayed
+pricing hash and pair identity remain unchanged. Also exercise the generated-data project with
+`NODE_OPTIONS=--max-old-space-size=2048 vp run test:data` to expose temporary full-graph copies
+that a larger local heap would hide. Keep schema, byte-budget and global semantic checks intact.
+
 Both test projects block unmocked Fetch, Node HTTP(S), and child-process transports. Transport
 tests provide local responses explicitly; a fixture containing an official URL does not authorize
 a request to that URL. Unit-test filesystem reads also reject the repository's generated `data/`

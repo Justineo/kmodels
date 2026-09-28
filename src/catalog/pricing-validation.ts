@@ -180,7 +180,7 @@ function validatePricingCatalogSize(data: PricingCatalog): void {
     ...data,
     provider_snapshots: data.provider_snapshots.map(conservativeSnapshot),
   };
-  if (jsonByteLength(conservativeCatalog) > pricingLimits.pricingCatalogBytes)
+  if (pricingByteLength(conservativeCatalog) > pricingLimits.pricingCatalogBytes)
     fail("catalog", "pricing catalog byte limit exceeded");
 }
 
@@ -1415,7 +1415,7 @@ function validateProviderTotals(
     model_dispositions: dispositions,
     books,
   };
-  if (jsonByteLength(partition) > pricingLimits.providerPricingBytes)
+  if (pricingByteLength(partition) > pricingLimits.providerPricingBytes)
     fail(context.providerId, "provider pricing byte limit exceeded");
 }
 
@@ -1552,6 +1552,14 @@ function compareRawObservations(
 function jsonByteLength(value: unknown): number {
   // Canonical key ordering changes byte order, not the encoded byte count.
   return Buffer.byteLength(jsonSource(value));
+}
+
+function pricingByteLength(value: { books: PricingBook[] }): number {
+  // Count complete books independently, including their separating commas.
+  // Measuring a catalog must not allocate another complete catalog-sized string.
+  let bytes = jsonByteLength({ ...value, books: [] }) + Math.max(0, value.books.length - 1);
+  for (const book of value.books) bytes += jsonByteLength(book);
+  return bytes;
 }
 
 function jsonSource(value: unknown): string {
