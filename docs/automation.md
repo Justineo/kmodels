@@ -24,8 +24,18 @@ Status: implemented
   establishes its successor. The public evidence CLI reports omitted companions explicitly even
   when the main bundle succeeds.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
-  `gh workflow run catalog-repair.lock.yml`. Manual runs use the same issue gate and deduplication
+  `gh workflow run catalog-repair.lock.yml`. Manual runs use the same repair-candidate gate and deduplication
   rules as scheduled runs.
+- Refresh and repair never create GitHub issues. A completed repair produces a validated draft
+  pull request; unavailable evidence, tool failures, timeouts, and incomplete investigation remain
+  visible in Actions summaries, logs, artifacts, and failed job status. Every framework issue
+  reporting path is explicitly disabled: agent/job failure reports, no-op reports, missing tools/data,
+  incomplete reports, threat-detection reports, and pull-request fallback. Threat detection and
+  the incomplete-outcome check still run. The conclusion job has no issue permission, and the
+  agent outcome gate rejects issue/comment requests even when accompanied by a repair PR intent.
+  The repository must enable **Settings → Actions →
+  General → Allow GitHub Actions to create and approve pull requests** for the workflow token to
+  deliver repairs; a denied PR creation fails the run rather than substituting an issue.
 - Neither hourly refresh nor daily repair runs Jev. The [manual semantic experiment](semantic-audit.md)
   remains available, but has not demonstrated incremental production defect discovery. Follow the
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
@@ -44,13 +54,23 @@ Status: implemented
   reproduction, while independently reproduced current-source defects remain repairable. One
   unresolved candidate does not prevent a validated independent repair PR; unresolved candidates
   are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
-  empty, or contradictory final outputs even when the model process exits successfully.
+  empty, unsupported, or contradictory final outputs even when the model process exits successfully.
+  A PR intent then runs all four required validations in deterministic post-execution steps.
+  Safe outputs run only after the complete agent job succeeds. Empty patches fail instead of
+  being ignored, and a final delivery job requires successful safe-output processing and a created
+  PR URL for every PR intent. A passing inference process or a textual repair report is not delivery.
+  Failed or incomplete runs leave their diagnostics in Actions; the next daily run re-evaluates
+  the latest committed refresh and retries remaining candidates. There is no issue-based queue,
+  automatic success disposition, or immediate unbounded retry loop. An open repair PR remains the
+  explicit human-review wait state.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
   direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
   fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
   ordinary GitHub CLI OAuth token is not an acceptable substitute.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
-  `.lock.yml`; generated lock files are not reformatted or edited by hand.
+  `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
+  for compilation, including its supported `threat-detection.report-as-issue` switch. Keep the
+  generated action pins synchronized with that compiler; v0.87.10 cannot express this policy.
 - Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
   `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
   stays outside the framework's log-redaction and artifact directories.
@@ -58,8 +78,9 @@ Status: implemented
   Vite+ installs the Node.js version from `.node-version` and the frozen dependency graph before
   inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's
   tool-cache PATH scan cannot select a different Node.js version for project commands.
-  The agent checks its prepared environment before diagnosis, runs validation sequentially after
-  reviewing the diff, and reuses results unless a relevant change requires another check. An
+  The agent checks its prepared environment before diagnosis and uses focused regression tests
+  while repairing. The deterministic post-execution gate owns the full sequential validation
+  sequence; the agent does not duplicate it during inference. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   pull request. A repair pull request requires every repository validation command to pass.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`

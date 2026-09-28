@@ -109,9 +109,12 @@ The CLI now reports this comparison automatically, including fixed companion has
 timestamps. Hash mismatch limits historical attribution, not independently reproducible current
 repairs. A parser replay, rather than a text-link count, establishes each candidate's outcome.
 The workflow completes independent validated fixes and lists unresolved candidates separately.
-A deterministic post-execution check rejects incomplete, missing-data, missing-tool, or absent
-final outcomes even if the agent process exits successfully. Remote execution of this new outcome
-check remains a CI verification.
+A deterministic post-execution check rejects incomplete, missing-data, missing-tool, unsupported,
+or absent final outcomes even if the agent process exits successfully. PR intents must pass the
+four repository validations before safe outputs can publish them; empty patches and missing PR
+delivery fail the run. Failure diagnostics remain in Actions and remaining candidates are reviewed
+again against the latest refresh on the next daily run. Neither investigation nor framework failure
+handling creates issues. Remote execution of these gates remains a CI verification.
 
 ## Remaining boundaries
 

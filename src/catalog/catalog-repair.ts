@@ -2,7 +2,7 @@ import { z } from "zod";
 import { manifests, type SourceManifest } from "./manifests.ts";
 
 /** A successful agent process is not sufficient evidence of completed repair work. */
-export function assertCatalogRepairOutcome(output: string): void {
+export function assertCatalogRepairOutcome(output: string): "noop" | "create_pull_request" {
   const items = output
     .split(/\r?\n/)
     .filter((line) => line.trim() !== "")
@@ -24,13 +24,17 @@ export function assertCatalogRepairOutcome(output: string): void {
     throw new Error(
       `Catalog repair incomplete (${incomplete.type}): ${incomplete.reason ?? "Required evidence or tools are unavailable"}`,
     );
-  const outcomes = items.filter(({ type }) => ["noop", "create_pull_request"].includes(type));
-  if (outcomes.length !== 1)
+  const unsupported = items.find(({ type }) => !["noop", "create_pull_request"].includes(type));
+  if (unsupported)
+    throw new Error(
+      `Catalog repair cannot emit ${unsupported.type}; deliver a repair pull request`,
+    );
+  if (items.length !== 1)
     throw new Error("Catalog repair must report exactly one completed outcome");
-  const outcome = outcomes[0];
-  if (outcome?.type === "noop" && outcome.message?.trim()) return;
+  const outcome = items[0];
+  if (outcome?.type === "noop" && outcome.message?.trim()) return "noop";
   if (outcome?.type === "create_pull_request" && outcome.title?.trim() && outcome.body?.trim())
-    return;
+    return "create_pull_request";
   throw new Error("Catalog repair outcome is missing its explanation");
 }
 
