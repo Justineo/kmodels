@@ -9,7 +9,7 @@ import {
   type EncodedAssetPack,
 } from "./asset-pack.ts";
 import { assertCanonicalJson, canonicalJson, parseIJson } from "./canonical-json.ts";
-import { assertIJsonValue, writeCanonicalJsonFromValidated } from "./canonical-value.ts";
+import { assertIJsonValue, canonicalJsonChunksFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
 import { atomicWrite, rootDirectory, sha256, sha256Chunks, stableJson } from "./io.ts";
 import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
@@ -82,10 +82,10 @@ export function prepareCatalogPair(
   assertIJsonValue(parsedCatalog);
   const data = pricingData(pricing);
   validatePricingCatalog(data, parsedCatalog);
-  const canonicalDataSource = pricingDataChunks(data);
-  const canonicalDataHash = sha256Chunks(canonicalDataSource);
+  const canonicalDataChunks = canonicalJsonChunksFromValidated(data);
+  const canonicalDataHash = sha256Chunks(canonicalDataChunks);
   const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
-  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
+  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataChunks);
 }
 
 export async function prepareCatalogPairInParallel(
@@ -97,11 +97,11 @@ export async function prepareCatalogPairInParallel(
   assertIJsonValue(parsedCatalog);
   const data = pricingData(pricing);
   const validation = validatePricingCatalogInParallel(data, parsedCatalog);
-  const canonicalDataSource = pricingDataChunks(data);
-  const canonicalDataHash = sha256Chunks(canonicalDataSource);
+  const canonicalDataChunks = canonicalJsonChunksFromValidated(data);
+  const canonicalDataHash = sha256Chunks(canonicalDataChunks);
   await validation;
   const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
-  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
+  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataChunks);
 }
 
 function pricingData(pricing: PricingCatalog | PricingCatalogEnvelope): PricingCatalog {
@@ -122,12 +122,6 @@ function pricingData(pricing: PricingCatalog | PricingCatalogEnvelope): PricingC
   return data;
 }
 
-function pricingDataChunks(data: PricingCatalog): string[] {
-  const chunks: string[] = [];
-  writeCanonicalJsonFromValidated(data, (source) => chunks.push(source));
-  return chunks;
-}
-
 function pricingEnvelope(
   pricing: PricingCatalog | PricingCatalogEnvelope,
   catalog: Catalog,
@@ -143,10 +137,12 @@ function catalogPairCandidate(
   parsedCatalog: Catalog,
   envelope: PricingCatalogEnvelope,
   catalogStorageSource: string,
-  canonicalDataSource: readonly string[],
+  canonicalDataChunks: readonly string[],
 ): CatalogPairCandidate {
   const catalogAssetSource = catalogJson(parsedCatalog);
-  const pricingChunks = pricingCatalogJsonChunks(envelope, canonicalDataSource);
+  const pricingChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
+  // Keep the full source as a rope; joining the chunks or passing the source to
+  // Buffer.byteLength would flatten a catalog-sized string. Measure and hash chunks.
   let pricingAssetSource = "";
   let pricingBytes = 0;
   for (const chunk of pricingChunks) {

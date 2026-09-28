@@ -3,7 +3,7 @@ const canonicalKeys = new WeakMap<object, string>();
 
 export function canonicalJson(value: unknown): string {
   assertIJsonValue(value);
-  return serialize(value);
+  return canonicalJsonFromValidated(value);
 }
 
 export function canonicalJsonBytes(value: unknown): Uint8Array {
@@ -12,7 +12,7 @@ export function canonicalJsonBytes(value: unknown): Uint8Array {
 
 // Use only inside typed graphs that are validated as I-JSON before publication.
 export function canonicalJsonFromValidated(value: unknown): string {
-  return serialize(value);
+  return canonicalJsonChunksFromValidated(value).join("");
 }
 
 // Canonical catalog graphs are immutable after boundary validation.
@@ -68,7 +68,9 @@ export function uniqueCanonicalValues<T>(values: readonly T[]): T[] {
 }
 
 function canonicalValueKey(value: unknown): string {
-  return value !== null && typeof value === "object" ? canonicalJsonKey(value) : serialize(value);
+  return value !== null && typeof value === "object"
+    ? canonicalJsonKey(value)
+    : canonicalJsonFromValidated(value);
 }
 
 export function assertIJsonValue(value: unknown): void {
@@ -122,27 +124,19 @@ function assertIJsonString(value: string): void {
   }
 }
 
-function serialize(value: unknown): string {
-  const chunks: string[] = [];
-  writeCanonicalJsonFromValidated(value, (chunk) => chunks.push(chunk));
-  return chunks.join("");
-}
-
 // Callers publishing large graphs can hash these chunks and frame the envelope
 // without allocating both a complete data string and a complete envelope string.
-export function writeCanonicalJsonFromValidated(
-  value: unknown,
-  consume: (chunk: string) => void,
-): void {
+export function canonicalJsonChunksFromValidated(value: unknown): string[] {
   // Joining each subtree retains large intermediate strings at every nesting level.
-  // Flatten bounded fragments once, then assemble the complete canonical source.
+  // Flatten bounded fragments once, leaving final assembly to the caller.
+  const chunks: string[] = [];
   const fragments: string[] = [];
   let length = 0;
   function append(source: string): void {
     fragments.push(source);
     length += source.length;
     if (length >= 65_536) {
-      consume(fragments.join(""));
+      chunks.push(fragments.join(""));
       fragments.length = 0;
       length = 0;
     }
@@ -178,5 +172,6 @@ export function writeCanonicalJsonFromValidated(
     }
   }
   write(value);
-  if (fragments.length > 0) consume(fragments.join(""));
+  if (fragments.length > 0) chunks.push(fragments.join(""));
+  return chunks;
 }
