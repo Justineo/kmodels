@@ -193,7 +193,10 @@ Status: implemented
 - Provider secrets are optional. Missing secrets skip only their scoped inventories. Azure uses the
   same subscription Reader service principal locally and in Actions and discovers every applicable
   region from subscription metadata.
-- Deployment uses the pinned `void` dependency and GitHub OIDC. `void.json` deploys static `dist/`; `VOID_PROJECT` is the only repository variable.
+- Deployment uses the pinned `void` dependency, the Node.js version in `.node-version`, and GitHub
+  OIDC. The workflow explicitly selects Void Cloud with `VOID_API_URL=https://api.void.cloud` before
+  exchanging the GitHub token; a fresh runner has no local platform selection. `void.json` deploys
+  static `dist/`; `VOID_PROJECT` is the only repository variable.
 - Renovate uses the Shanghai timezone, a seven-day minimum release age, grouped automerge for
   non-major updates, and isolated manual major updates. Its custom package-manager matcher keeps
   the strict `devEngines.packageManager.version` pin synchronized with the standard

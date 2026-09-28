@@ -17,6 +17,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
+      VOID_API_URL: https://api.void.cloud
       VOID_PROJECT: ${{ vars.VOID_PROJECT }}
     steps:
       - name: Checkout
@@ -47,7 +48,7 @@ jobs:
       - name: Set up Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 24.18.0
+          node-version-file: .node-version
           cache: true
 
       - name: Install dependencies
