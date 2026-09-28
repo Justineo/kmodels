@@ -6,11 +6,11 @@ import {
   parseIJson,
 } from "../src/catalog/canonical-json.ts";
 import {
+  canonicalJsonChunksFromValidated,
   canonicalValuesEqual,
   compareCanonicalValues,
   compareUtf8,
   uniqueCanonicalValues,
-  writeCanonicalJsonFromValidated,
 } from "../src/catalog/canonical-value.ts";
 import { sha256, sha256Chunks } from "../src/catalog/io.ts";
 
@@ -71,8 +71,7 @@ describe("RFC 8785 JSON", () => {
       )
       .join(",")}]`;
     expect(canonicalJson(rows)).toBe(expected);
-    const chunks: Uint8Array[] = [];
-    writeCanonicalJsonFromValidated(rows, (chunk) => chunks.push(encoded(chunk)));
+    const chunks = canonicalJsonChunksFromValidated(rows).map(encoded);
     expect(sha256Chunks(chunks)).toBe(sha256(encoded(expected)));
     expect(assertCanonicalJson(encoded(expected), encoded(expected).byteLength)).toEqual(rows);
   });

@@ -102,11 +102,11 @@ export function pricingCatalogJsonFromValidatedData(
 
 export function pricingCatalogJsonChunks(
   envelope: PricingCatalogEnvelope,
-  canonicalDataSource: readonly string[],
+  canonicalDataChunks: readonly string[],
 ): string[] {
   return [
     `{"core_catalog_version":${JSON.stringify(envelope.core_catalog_version)},"core_data_sha256":${JSON.stringify(envelope.core_data_sha256)},"data":`,
-    ...canonicalDataSource,
+    ...canonicalDataChunks,
     `,"generated_at":${JSON.stringify(envelope.generated_at)},"pricing_data_version":${JSON.stringify(envelope.pricing_data_version)}}`,
   ];
 }

@@ -712,8 +712,9 @@ Validation checks the complete graph for I-JSON once. Canonical object keys and
 immutable applicability relations are identity-cached across validation and
 projection, while repeated equal applicability values share one canonicality
 check within the catalog. Canonical deduplication reuses its computed keys for
-sorting. Serialization flattens bounded fragments before joining the final
-source, avoiding a complete intermediate string for every nested subtree.
+sorting. Serialization returns bounded canonical chunks, avoiding a complete
+intermediate string for every nested subtree. Callers join them when they need
+a contiguous string.
 Publication frames the source incrementally and computes its hash and UTF-8 size
 from those fragments, without flattening separate complete data and envelope
 strings or allocating full-size encoding buffers. Strict schema validation
