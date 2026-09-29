@@ -37,6 +37,11 @@ a freshness warning.
 
 - Preserve Azure's case-sensitive model ID and explicit version. A versionless public row and a
   versioned row remain distinct identities unless Microsoft publishes an exact relation.
+- Exclude the superseded `claude-sonnet-5.5` spelling from retained catalog facts. Microsoft
+  [corrected that documentation typo to `claude-sonnet-5-5`](https://github.com/MicrosoftDocs/azure-ai-docs/commit/7fead43dc377b21792e30269412f903a62e376c6).
+  The corrected ID binds to the delegated Claude Sonnet 5.5 price row; the typo is neither a
+  separate model nor a documented callable alias. Other omitted IDs retain the normal
+  non-exhaustive-source behavior.
 - Merge repeated exact tuples across catalog tables, deployment matrices, the optional portal, and
   authenticated inventory. Known public lifecycle wins over portal lifecycle; fill-only supplements
   cannot replace a known scalar.
@@ -167,6 +172,11 @@ sibling rates survive.
 
 ## Resilient refresh
 
+- Retail Prices retries honor both `Retry-After` and
+  `x-ms-ratelimit-retailPrices-retry-after`, taking the longer valid wait when both are present.
+  These cooldowns also apply to the reviewed `Too many requests` response body returned with
+  HTTP 200. A cooldown that exceeds the shared request retry budget fails the refresh rather
+  than causing an early retry; the accepted pricing partition remains stale.
 - A local Retail Prices failure can occur before any HTTP response: the observed local proxy
   path timed out during TLS, while the same public request completed directly. Diagnose curl exit
   code and phase before changing an extractor. Where direct access is verified and intended, add

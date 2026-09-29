@@ -111,8 +111,13 @@ Status: implemented
 - Every response is size-limited, time-limited, fetched in full, and redirected only to reviewed hosts.
 - Invoke `curl` without a shell for HTTP transport. One shared retry policy handles transient HTTP
   failures and reviewed cloud throttling responses, including rate-limit bodies returned with a
-  successful status. It makes at most three attempts, honors bounded `Retry-After`, and otherwise
-  uses exponential backoff with full jitter. Transports do not add an independent retry loop.
+  successful status. It makes at most three attempts and honors the full `Retry-After` delay in
+  seconds or HTTP-date form, including delays longer than 30 seconds. The reviewed Azure Retail
+  Prices seconds header `x-ms-ratelimit-retailPrices-retry-after` is also recognized; when both
+  headers apply, the longer delay wins. Missing, malformed, or expired delays use exponential
+  backoff with full jitter. Each request has a five-minute retry budget: if the required wait
+  would exceed the remaining budget, the request fails without another attempt instead of
+  shortening the cooldown. Transports do not add an independent retry loop.
 - Transport diagnostics retain a bounded curl exit code and reviewed failure category, including
   TLS-handshake timeouts, for both ordinary and cloud requests. Never publish the raw command,
   stderr, headers, URLs or credential-bearing error message. Local proxy routing is an operator

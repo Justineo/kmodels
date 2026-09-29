@@ -6990,7 +6990,7 @@ describe("Azure adapters", () => {
       throw new Error("Missing Azure Claude pricing source");
     const source: SourceManifest = {
       ...configured,
-      extractor: { kind: "azure-claude-pricing", minModels: 3, maxModels: 3 },
+      extractor: { kind: "azure-claude-pricing", minModels: 4, maxModels: 4 },
     };
     const claude = (id: string, dataZone = false): ProviderModel => ({
       ...azurePricingModel(id),
@@ -7009,13 +7009,22 @@ describe("Azure adapters", () => {
       catalogModels: [
         claude("claude-opus-4-8", true),
         claude("claude-sonnet-5", true),
+        claude("claude-sonnet-5-5", true),
+        claude("claude-sonnet-5.5", true),
         claude("claude-opus-5-5", true),
       ],
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
     const opus = models.find(({ model_id }) => model_id === "claude-opus-4-8");
     const sonnet = models.find(({ model_id }) => model_id === "claude-sonnet-5");
+    const sonnet55 = models.find(({ model_id }) => model_id === "claude-sonnet-5-5");
     const opus55 = models.find(({ model_id }) => model_id === "claude-opus-5-5");
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "claude-opus-4-8",
+      "claude-opus-5-5",
+      "claude-sonnet-5",
+      "claude-sonnet-5-5",
+    ]);
     expect(opus?.price_facts).toHaveLength(10);
     expect(
       opus?.price_facts.find(
@@ -7028,6 +7037,29 @@ describe("Azure adapters", () => {
       conditions: { inference_geo: "us" },
     });
     expect(sonnet?.price_facts).toHaveLength(10);
+    expect(sonnet55?.price_facts).toHaveLength(10);
+    expect(
+      sonnet55?.price_facts
+        .filter(({ conditions }) => conditions.deployment_scope === "GlobalStandard")
+        .map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["input_text", "2"],
+      ["cache_write_text", "2.50"],
+      ["cache_write_text", "4"],
+      ["cache_read_text", "0.20"],
+      ["output_text", "10"],
+    ]);
+    expect(sonnet55?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "2.2",
+        derived: true,
+        conditions: expect.objectContaining({
+          deployment_scope: "DataZoneStandard",
+          inference_geo: "us",
+        }),
+      }),
+    );
     expect(opus55?.price_facts).toHaveLength(10);
     expect(
       opus55?.price_facts.find(
@@ -7051,6 +7083,7 @@ describe("Azure adapters", () => {
         sample: "claude-opus-4-8",
       }),
       expect.objectContaining({ sample: "claude-sonnet-5" }),
+      expect.objectContaining({ sample: "claude-sonnet-5-5" }),
       expect.objectContaining({ sample: "claude-opus-5-5" }),
       {
         disposition: "excluded",

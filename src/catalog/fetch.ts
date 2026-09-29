@@ -214,6 +214,7 @@ class TransientFetchError extends Error {
 }
 
 async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + 5 * 60_000;
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -222,6 +223,7 @@ async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
       lastError = error instanceof Error ? error : new Error("Unknown source fetch failure");
       if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
       const delay = lastError.retryAfter || Math.floor(Math.random() * (500 * 2 ** attempt));
+      if (Date.now() + delay > deadline) break;
       await wait(delay);
     }
   }
@@ -229,12 +231,18 @@ async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function retryDelay(response: Response): number {
-  const raw = response.headers.get("retry-after");
-  if (raw === null) return 0;
-  const seconds = Number(raw);
-  if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 30_000);
-  const date = Date.parse(raw);
-  return Number.isNaN(date) ? 0 : Math.min(Math.max(date - Date.now(), 0), 30_000);
+  let delay = 0;
+  for (const header of ["retry-after", "x-ms-ratelimit-retailprices-retry-after"]) {
+    const raw = response.headers.get(header)?.trim();
+    if (raw === undefined) continue;
+    if (/^\d+$/.test(raw)) {
+      delay = Math.max(delay, Number(raw) * 1000);
+    } else if (header === "retry-after" && /^[A-Za-z]/.test(raw)) {
+      const date = Date.parse(raw);
+      if (Number.isFinite(date)) delay = Math.max(delay, date - Date.now());
+    }
+  }
+  return delay;
 }
 
 function checkedUrl(raw: string, source: SourceManifest): URL {
@@ -463,7 +471,7 @@ async function cloudJson(
       return JSON.parse(body);
     } catch {
       if (/^Too many requests\b/i.test(body.trim()))
-        throw new TransientFetchError(`${label} was throttled`);
+        throw new TransientFetchError(`${label} was throttled`, retryDelay(response));
       throw new Error(`${label} returned invalid JSON`);
     }
   });
