@@ -71,6 +71,13 @@ Status: implemented
   `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
   for compilation, including its supported `threat-detection.report-as-issue` switch. Keep the
   generated action pins synchronized with that compiler; v0.87.10 cannot express this policy.
+  Pin `sandbox.agent.version` to v0.28.27 so the Copilot Responses adapter normalizes replayed
+  `apply_patch` item IDs from `ctc_` to `fc_` ([upstream fix](https://github.com/github/gh-aw-firewall/pull/8944)).
+  Regenerate the lock file so the AWF binary, configuration schema, and container digests advance
+  together; the compiler's default v0.28.23 retains invalid IDs and fails after the first patch.
+  `.github/aw/actions-lock.json` supplies the v0.28.27 image digests from gh-aw v0.90.0's
+  [published pins](https://github.com/github/gh-aw/blob/v0.90.0/pkg/actionpins/data/action_pins.json),
+  keeping recompilation reproducible with the stable compiler.
 - Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
   `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
   stays outside the framework's log-redaction and artifact directories.

@@ -15,6 +15,11 @@ engine:
   model: gpt-5.6-luna
   args: ["--effort=high"]
 
+sandbox:
+  agent:
+    id: awf
+    version: v0.28.27
+
 env:
   VP_HOME: /tmp/kmodels-vite-plus
 

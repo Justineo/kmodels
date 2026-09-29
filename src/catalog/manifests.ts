@@ -1994,7 +1994,12 @@ export const manifests = [
       },
     ],
     supersededIdKinds: ["display_name"],
-    supersededModelIds: ["Cohere-command-a", "Mistral-medium-2505", "Mistral-small-2503"],
+    supersededModelIds: [
+      "Cohere-command-a",
+      "Mistral-medium-2505",
+      "Mistral-small-2503",
+      "claude-sonnet-5.5",
+    ],
     warnOnMissing: {
       sourceId: "azure-models",
       fields: ["limits.context_tokens", "pricing", "release_date"],
