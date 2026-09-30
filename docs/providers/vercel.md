@@ -71,6 +71,11 @@ token display prices while retaining the original decimal and unit as evidence. 
 non-overlapping inclusive ranges. Route prices add `route_provider`; endpoint rates override only
 inside that exact route-qualified scope.
 
+Service-tier `long_context.threshold` is the inclusive start of the long-context band, just like
+the token-tier `min`. The preceding band ends at `threshold - 1`. Apply this interpretation to
+both model-list and endpoint prices; adding one to the threshold creates a false singleton
+context choice when Standard, Flex, and Priority share the same published boundary.
+
 Fast mode uses the `speed` dimension. Named Flex or Priority prices use
 `served_service_tier`, because Vercel bills the tier actually served rather than the requested tier.
 Regional prices use `region`. This separation prevents a Fast rate from being misrepresented as a

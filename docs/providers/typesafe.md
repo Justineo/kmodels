@@ -9,6 +9,8 @@ one exact callable model ID and its separate display name. The alias table attac
 alternate request names to that model; aliases do not create duplicate catalog rows. The
 stable-release alias establishes maturity only for its current target. Version strings and
 release dates are not inferred from IDs or the provider launch date.
+Markdown delimiter cells accept one or more hyphens with optional alignment colons, including
+the compact `:-` form. Header and row column counts and labeled fields remain strict.
 
 The catalog is collected atomically with the bounded
 [documentation index](https://docs.typesafe.ai/llms.txt). Newly indexed commercial paths

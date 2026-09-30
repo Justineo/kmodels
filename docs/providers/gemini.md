@@ -138,6 +138,9 @@ Model cards own current callable IDs, aliases, modalities, limits, capabilities,
 Lifecycle rows may add historical or deprecated IDs with exact dates and replacements. Changelog
 dates require an exact code in a dated release item. Interactions endpoints require an exact row in
 the official supported-model table and the reviewed create route.
+The create operation may be headed `Creating an interaction` or `CreateInteraction`; either layout
+must contain exactly one recognized create heading and publish `POST` to the exact
+`https://generativelanguage.googleapis.com/v1beta/interactions` URL.
 
 The model catalog, pricing page, Discovery schema, and authenticated inventory have independent
 freshness. Drift in one surface must not erase independently verified facts from another.

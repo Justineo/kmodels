@@ -7240,6 +7240,23 @@ describe("Azure adapters", () => {
 });
 
 describe("Gemini adapters", () => {
+  it("accepts the operation-name heading while still validating the Interactions route", async () => {
+    const body = (await fixture("gemini/interactions-api.html")).replace(
+      "<h2>Creating an interaction</h2>",
+      '<h2 id="CreateInteraction">CreateInteraction</h2>',
+    );
+    expect(await geminiCatalog({ "interactions-api.html": body })).toEqual(await geminiCatalog());
+    for (const changed of [
+      body.replace("/v1beta/interactions", "/v1/interactions"),
+      body.replace('class="http-method post">post', 'class="http-method get">get'),
+      body.replace("CreateInteraction</h2>", "UnknownOperation</h2>"),
+    ]) {
+      await expect(geminiCatalog({ "interactions-api.html": changed })).rejects.toThrow(
+        "create endpoint changed",
+      );
+    }
+  });
+
   it("pins the machine-readable API contract and paginates authenticated inventory", () => {
     const value = manifest("gemini");
     const pricing = value.sources.find(({ id }) => id === "gemini-pricing");
@@ -10463,9 +10480,52 @@ describe("Anthropic adapters", () => {
 });
 
 describe("Databricks adapters", () => {
+  it("keeps batch support unknown when the overview no longer publishes the regional matrix", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const models = await databricksCatalog(
+      {
+        "overview.html": await fixture("databricks/overview-without-matrix.html"),
+      },
+      undefined,
+      [],
+      (finding) => findings.push(finding),
+    );
+    expect(models.map(({ model_id }) => model_id)).toEqual(
+      (await databricksCatalog()).map(({ model_id }) => model_id),
+    );
+    expect(new Set(models.map(({ capabilities }) => capabilities.batch))).toEqual(
+      new Set(["unknown"]),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        disposition: "accept_with_signal",
+        diagnostics: [expect.objectContaining({ path: "/regional-model-support" })],
+      }),
+    );
+  });
+
+  it("retains an endpoint with unpublished input modalities and its independent facts", async () => {
+    const body = (await fixture("databricks/models.html")).replace(
+      "<p>Supported inputs: text, image</p>",
+      "",
+    );
+    const models = await databricksCatalog({ "models.html": body });
+    const model = models.find(({ model_id }) => model_id === "databricks-gpt-5-6-sol");
+    if (model === undefined) throw new Error("Missing Databricks fixture model");
+    expect(model.modalities.input).toEqual([]);
+    expect(model.description).toContain("GPT-5.6 Sol is a reasoning model");
+    expect(model.api_endpoints).toEqual([
+      { name: "Invocations", path: "/serving-endpoints/databricks-gpt-5-6-sol/invocations" },
+    ]);
+    expect(model.price_facts.length).toBeGreaterThan(0);
+    expect(models.map(({ model_id }) => model_id)).toEqual(
+      (await databricksCatalog()).map(({ model_id }) => model_id),
+    );
+  });
+
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v14");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v15");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -10987,11 +11047,17 @@ describe("Databricks adapters", () => {
         "model-types.html": tasks.replace("databricks-gpt-5-6-sol", "databricks-unknown-model"),
       }),
     ).rejects.toThrow("unknown catalog model");
-    await expect(
-      databricksCatalog({
-        "model-types.html": tasks.replace("<code>databricks-gpt-5-6-sol</code>", ""),
-      }),
-    ).rejects.toThrow("omitted catalog models");
+    const incomplete = await databricksCatalog({
+      "model-types.html": tasks.replace("<code>databricks-gpt-5-6-sol</code>", ""),
+    });
+    const omitted = incomplete.find(({ model_id }) => model_id === "databricks-gpt-5-6-sol");
+    if (omitted === undefined) throw new Error("Missing Databricks fixture model");
+    expect(omitted.api_endpoints).toBeUndefined();
+    expect(omitted.capabilities.streaming).toBe("unknown");
+    expect(omitted.price_facts.length).toBeGreaterThan(0);
+    expect(incomplete.map(({ model_id }) => model_id)).toEqual(
+      (await databricksCatalog()).map(({ model_id }) => model_id),
+    );
     await expect(
       databricksCatalog({
         "model-types.html": tasks.replace(
@@ -14101,6 +14167,52 @@ describe("OpenAI fixed search content", () => {
 });
 
 describe("Vercel adapter", () => {
+  it.each(["flex", "priority"])(
+    "aligns %s long-context boundaries with standard prices in model lists and endpoints",
+    async (serviceTier) => {
+      const models = await vercelCatalog("vercel/price-boundaries.json", (body) =>
+        body.replaceAll("272000", "272001").replaceAll("flex", serviceTier),
+      );
+      for (const modelId of ["openai/gpt-5.4", "openai/gpt-5.4-fast"]) {
+        const model = models.find(({ model_id }) => model_id === modelId);
+        if (model === undefined) throw new Error(`Missing fixture model ${modelId}`);
+        const rates = model.price_facts.filter(
+          ({ conditions }) => conditions.service_tier === serviceTier,
+        );
+        for (const meter of ["input_text", "output_text", "cache_read_text"]) {
+          const metered = rates.filter((rate) => rate.meter === meter);
+          expect(
+            metered.map(({ conditions }) => [
+              conditions.context_min_tokens,
+              conditions.context_max_tokens,
+            ]),
+          ).toEqual([
+            [undefined, 272_000],
+            [272_001, undefined],
+          ]);
+          for (const tokens of [272_000, 272_001, 272_002]) {
+            expect(
+              metered.filter(
+                ({ conditions }) =>
+                  tokens >= (conditions.context_min_tokens ?? 0) &&
+                  tokens <= (conditions.context_max_tokens ?? Infinity),
+              ),
+            ).toHaveLength(1);
+          }
+        }
+        const boundaries = model.price_facts.flatMap(({ conditions }) => [
+          ...(conditions.context_min_tokens === undefined || conditions.context_min_tokens === 0
+            ? []
+            : [conditions.context_min_tokens]),
+          ...(conditions.context_max_tokens === undefined
+            ? []
+            : [conditions.context_max_tokens + 1]),
+        ]);
+        expect(new Set(boundaries)).toEqual(new Set([272_001]));
+      }
+    },
+  );
+
   it("reads the reviewed nested image-price registry without executing JavaScript", () => {
     const direct =
       '"flux-fast-schnell":{imageCost:"0.001",imageDimensionQualityPricing:[{size:"≤640px",quality:"Up to 2 steps",cost:"0.001"},{size:"≤640px",quality:"Up to 4 steps",cost:"0.0015"}]}';
@@ -14820,10 +14932,10 @@ describe("Vercel adapter", () => {
       effort: true,
       structuredOutput: true,
       services: [
-        { meter: "input_text", min: undefined, max: 200000 },
-        { meter: "output_text", min: undefined, max: 200000 },
-        { meter: "input_text", min: 200001, max: undefined },
-        { meter: "output_text", min: 200001, max: undefined },
+        { meter: "input_text", min: undefined, max: 199999 },
+        { meter: "output_text", min: undefined, max: 199999 },
+        { meter: "input_text", min: 200000, max: undefined },
+        { meter: "output_text", min: 200000, max: undefined },
       ],
       cacheTiers: [
         { min: 0, max: 31999 },
@@ -15495,6 +15607,19 @@ describe("Cerebras adapter", () => {
     expect(model?.release_date).toBeUndefined();
   });
 
+  it("accepts compact and aligned catalog delimiters but rejects missing hyphens", async () => {
+    const body = await fixture("cerebras/catalog.md");
+    const expected = await catalog();
+    for (const delimiter of ["-", "--", ":-", "-:", ":-:"])
+      expect(
+        await catalog({ overrides: { index: body.replace(/:?-{3,}:?/g, delimiter) } }),
+        delimiter,
+      ).toEqual(expected);
+    await expect(
+      catalog({ overrides: { index: body.replace(/:?-{3,}:?/g, ":") } }),
+    ).rejects.toThrow("count_outside_bounds");
+  });
+
   it("normalizes native public rates", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await parse("cerebras-models", "cerebras/public.json", (item) =>
@@ -15701,7 +15826,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v14",
+      extractorVersion: "cerebras-catalog-v15",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const models = await catalog();
@@ -19829,13 +19954,13 @@ describe("Kimi adapters", () => {
     });
     expect(source("kimi-international-catalog")).toMatchObject({
       url: "https://platform.kimi.ai/docs/models",
-      extractorVersion: "kimi-catalog-v4",
+      extractorVersion: "kimi-catalog-v5",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v8",
+      extractorVersion: "kimi-pricing-v9",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -20308,6 +20433,21 @@ describe("Kimi adapters", () => {
       international.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits
         .context_tokens,
     ).toBeUndefined();
+  });
+
+  it.each([
+    ["kimi-catalog", "models.md"],
+    ["kimi-international-catalog", "models-global.md"],
+  ])("accepts compact Markdown tables for %s", async (sourceId, file) => {
+    const body = await fixture(`kimi/${file}`);
+    const expectedModels = parse(source(sourceId), body);
+    for (const delimiter of ["-", "--", ":-", "-:", ":-:"])
+      expect(parse(source(sourceId), body.replace(/:?-{3,}:?/g, delimiter))).toEqual(
+        expectedModels,
+      );
+    expect(() => parse(source(sourceId), body.replace(/:?-{3,}:?/g, ":"))).toThrow(
+      "table structure",
+    );
   });
 
   it("keeps model rates separate from provider services", async () => {
