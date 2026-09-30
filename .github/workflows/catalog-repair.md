@@ -297,13 +297,20 @@ a code-repairable problem. If one or more candidates share one coherent root cau
 4. Add or update a reviewed deterministic fixture and regression test, increment the affected
    extractor version, and update the relevant provider guide with the current rule and rationale.
 5. Do not run the live collector and do not modify anything under `data/`.
-6. Review the diff and run the focused regression tests needed to demonstrate the repair. Fix
-   diagnosed failures before requesting a PR. The deterministic post-execution step owns the full
-   `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build` sequence, so leave that
-   full sequence to it instead of duplicating it during inference. A request to create a PR is only
-   an intent: the workflow publishes it after these checks pass and verifies the resulting PR URL.
-   If focused validation is blocked by the environment, report the exact failed command and reason
-   with `report_incomplete` and stop. Never claim that checks passed without running them.
+6. Review the diff and run the focused regression tests needed to demonstrate the repair. After
+   the final edit, run `vp fmt` with the explicit changed file paths, then run `vp check` and fix
+   every reported failure before committing or requesting a PR. Use the Vite+ built-in formatter:
+   `vp exec oxfmt --write` invokes an IDE-only wrapper and fails. Check every command's exit status;
+   a failed formatting or validation command remains unresolved until its corrected rerun succeeds.
+   Include all formatting changes in the repair commit before calling `create_pull_request`, which
+   captures the committed patch and bundle. Post-execution fixes cannot update that captured repair.
+   The deterministic post-execution step independently runs the full `vp check`, `vp test --run`,
+   `vp run collect:fixtures`, and `vp run build` sequence. Leave the full test and build sequence to
+   it; the pre-commit `vp check` lets you correct format, lint, and type errors while still editing.
+   A request to create a PR is only an intent: the workflow publishes it after these checks pass
+   and verifies the resulting PR URL. If validation is blocked by the environment, report the exact
+   failed command and reason with `report_incomplete` and stop. Never claim that checks passed
+   without running them or that a recorded PR intent is an already-created PR.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
 unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not create a pull

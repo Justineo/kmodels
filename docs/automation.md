@@ -86,8 +86,13 @@ Status: implemented
   inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's
   tool-cache PATH scan cannot select a different Node.js version for project commands.
   The agent checks its prepared environment before diagnosis and uses focused regression tests
-  while repairing. The deterministic post-execution gate owns the full sequential validation
-  sequence; the agent does not duplicate it during inference. An
+  while repairing. After its final edit it formats explicit changed paths with `vp fmt` and runs
+  `vp check`, resolving every failed command before committing and requesting a PR. The standalone
+  `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting. Safe-output PR
+  requests capture the committed patch and bundle, so formatting must be committed before that
+  call, not applied in post-execution steps. The deterministic post-execution gate independently
+  repeats `vp check` and owns the full sequential test and build validation; the agent does not
+  duplicate the full test and build sequence during inference. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   pull request. A repair pull request requires every repository validation command to pass.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
