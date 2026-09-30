@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b2a7e2103e674ccdfb73aeb6d09ee51429e0ade23fbefb3320cc698479f087e7",
-  "generated_at": "2026-09-30T06:23:47.559Z",
+  "catalog_version": "928433c88c34b52fe0cb667cb32a74688b49e4a00d2aad79646861e4513f9db3",
+  "generated_at": "2026-09-30T07:11:37.303Z",
   "outcome": "changed",
-  "previous_catalog_version": "f99a784bdc8a4b81b0a37d7da53f1abfb80ad9479ef0ed1654a8133b0fe9cd11",
+  "previous_catalog_version": "b2a7e2103e674ccdfb73aeb6d09ee51429e0ade23fbefb3320cc698479f087e7",
   "providers": [
     {
       "attempt": {
@@ -20,7 +20,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 139,
-              "normalized_facts": 13833,
+              "normalized_facts": 13697,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 137,
@@ -30,7 +30,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1908,
+              "diagnostic_count": 2044,
               "diagnostics": [
                 {
                   "disposition": "unsupported",
@@ -77,9 +77,9 @@
                 "ambiguous": 0,
                 "excluded": 4085,
                 "explicit_non_numeric": 0,
-                "normalized": 14051,
+                "normalized": 13915,
                 "raw": 0,
-                "unbound": 1906,
+                "unbound": 2042,
                 "unresolved": 0,
                 "unsupported": 2
               },
@@ -91,9 +91,9 @@
                 "model_card_public_rate": 5,
                 "model_card_unsupported": 5,
                 "optional_pricing_source_drifted": 1,
-                "price_dimension_bound": 13769,
+                "price_dimension_bound": 13633,
                 "price_dimension_outside_invocation_scope": 1874,
-                "price_dimension_target_unbound": 1905,
+                "price_dimension_target_unbound": 2041,
                 "price_product_absent_from_current_catalog": 2206,
                 "pricing_input_contract_partial": 1,
                 "pricing_page_cell_bound": 13
@@ -111,21 +111,178 @@
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 2286,
+          "field": "availability",
+          "previous": 2302
+        }
+      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "aliases": 1,
+          "availability": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "us.openai.gpt-6-astra"
+                ],
+                "path": "aliases",
+                "previous": [
+                  "global.openai.gpt-6-astra",
+                  "us.openai.gpt-6-astra"
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "aliases",
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-6-astra"
+          }
+        ],
         "current": 139,
         "previous": 139,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 139
+        "unchanged": 138
       },
       "pricing": {
-        "commercial_hash": "ddda6cd21bb39385ebca3b0e2c8f57e612df28dd1ba00c3a406e9bce7eda40f5",
-        "outcome": "provenance_only",
+        "commercial_hash": "d546f1e0e7860354bfe85d7097dad2761e96718fdf43a36ccb94b7ba55c0766d",
+        "outcome": "commercial",
         "previous_commercial_hash": "ddda6cd21bb39385ebca3b0e2c8f57e612df28dd1ba00c3a406e9bce7eda40f5"
       },
       "pricing_coverage": {
@@ -148,7 +305,9 @@
       "pricing_publication": "accepted",
       "provider_id": "amazon-bedrock",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -176,9 +335,15 @@
     },
     {
       "attempt": {
-        "outcome": "accepted",
+        "failure": {
+          "code": "source_unavailable",
+          "message": "The operation was aborted due to timeout"
+        },
+        "outcome": "rejected",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_unavailable",
+          "message": "The operation was aborted due to timeout",
+          "outcome": "failed"
         },
         "sources": [
           {
@@ -189,97 +354,11 @@
             "source_id": "sagemaker-models"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 628,
-            "source_id": "sagemaker-sdk"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 628,
-            "pricing_extraction": {
-              "custom_quote_models": 0,
-              "free_models": 0,
-              "model_records": 628,
-              "normalized_facts": 0,
-              "not_applicable_models": 0,
-              "not_published_models": 0,
-              "numeric_models": 0,
-              "raw_facts": 0,
-              "raw_models": 0,
-              "unknown_models": 628
-            },
-            "pricing_reconciliation": {
-              "basis": "source_item",
-              "diagnostic_count": 20,
-              "diagnostics": [
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
-                }
-              ],
-              "disposition_counts": {
-                "ambiguous": 0,
-                "excluded": 38029,
-                "explicit_non_numeric": 0,
-                "normalized": 4982,
-                "raw": 0,
-                "unbound": 0,
-                "unresolved": 20,
-                "unsupported": 0
-              },
-              "observed_items": 43031,
-              "reason_counts": {
-                "sagemaker_marketplace_batch_or_training": 265,
-                "sagemaker_marketplace_billable_inference": 3,
-                "sagemaker_marketplace_non_usage_term": 254,
-                "sagemaker_marketplace_public_pricing_unavailable": 20,
-                "sagemaker_marketplace_realtime_software_capacity": 652,
-                "sagemaker_outside_request_pricing": 37510,
-                "sagemaker_public_hosting_capacity": 4003,
-                "sagemaker_public_invocation_meter": 324
-              },
-              "unit": "reviewed source pricing item"
-            },
-            "source_id": "sagemaker-pricing"
-          },
-          {
             "consecutive_failures": 1,
-            "last_success_at": "2026-09-30T03:42:06.877Z",
-            "message": "Request aborted",
+            "last_success_at": "2026-09-30T06:23:47.559Z",
+            "message": "The operation was aborted due to timeout",
             "outcome": "fetch_failed",
-            "source_id": "sagemaker-api-us-west-2"
+            "source_id": "sagemaker-sdk"
           }
         ]
       },
@@ -320,9 +399,9 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 5
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "amazon-sagemaker",
-      "publication": "accepted",
+      "publication": "retained",
       "signals": [],
       "sources": {
         "added": 0,
@@ -335,9 +414,8 @@
         "removed_source_ids": [],
         "unchanged": 4
       },
-      "status": "fresh",
+      "status": "stale",
       "warning_codes": {
-        "inventory_fallback": 1,
         "source_fetch_failed": 1
       }
     },
@@ -493,32 +571,52 @@
             "source_id": "azure-models"
           },
           {
-            "consecutive_failures": 2,
-            "last_success_at": "2026-09-30T02:12:25.447Z",
-            "message": "Transient transport failure (curl 28: TLS handshake timed out)",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "contract_finding": {
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "affected_items": 5,
+                  "expected": "array",
+                  "fingerprint": "72c1f693d3a7acce",
+                  "kind": "type_mismatch",
+                  "observed": "null",
+                  "path": "/annotations/systemCatalogData/deploymentSku/*/locations",
+                  "sample_model_ids": [
+                    "Cohere-command-a-plus-05-2026",
+                    "Cohere-rerank-v4.0-pro",
+                    "Mistral-Large-3"
+                  ]
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 98
+            },
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 89,
             "source_id": "azure-portal-models"
           },
           {
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 125,
+            "parsed_models": 117,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 125,
-              "normalized_facts": 22239,
+              "model_records": 117,
+              "normalized_facts": 21587,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 125,
+              "numeric_models": 117,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 7773,
+              "diagnostic_count": 8425,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -541,6 +639,11 @@
                   "sample": "Azure Kimi / K2 Thinking Inp DZ / K2 Thinking Inp DZ Tokens"
                 },
                 {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit"
+                },
+                {
                   "disposition": "unbound",
                   "reason_code": "retail_identity_not_unique",
                   "sample": "MAI Models / Code 1.1 Flash Cd Input glbl / Code 1.1 Flash Cd Input glbl 1M Tokens"
@@ -554,18 +657,13 @@
                   "disposition": "ambiguous",
                   "reason_code": "retail_version_not_unique",
                   "sample": "Azure OpenAI / gpt-4-8K-Inp-glbl / gpt-4-8K-Inp-glbl Tokens"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "retail_identity_not_unique",
-                  "sample": "Azure Grok Models / 4.3 Outp DZ L / 4.3 Outp DZ L Tokens"
                 }
               ],
               "disposition_counts": {
-                "ambiguous": 1632,
+                "ambiguous": 2284,
                 "excluded": 5024,
                 "explicit_non_numeric": 0,
-                "normalized": 22415,
+                "normalized": 21763,
                 "raw": 0,
                 "unbound": 6127,
                 "unresolved": 0,
@@ -576,8 +674,8 @@
                 "non_base_consumption_row": 5024,
                 "retail_identity_not_unique": 6127,
                 "retail_meter_or_unit_unsupported": 14,
-                "retail_row_bound": 22415,
-                "retail_version_not_unique": 1632
+                "retail_row_bound": 21763,
+                "retail_version_not_unique": 2284
               },
               "unit": "reviewed source pricing item"
             },
@@ -757,12 +855,22 @@
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 11737,
+          "field": "availability",
+          "previous": 11766
+        }
+      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
+        "changed": 2,
         "changed_fields": {
-          "availability": 1
+          "availability": 1,
+          "description": 1,
+          "name": 1,
+          "source_refs": 1
         },
         "changed_models": [
           {
@@ -770,87 +878,59 @@
               {
                 "current": [
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "centralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "eastus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "eastus2"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "francecentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "germanywestcentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "italynorth"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "northcentralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "polandcentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "southcentralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "spaincentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "swedencentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westeurope"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westus3"
                   },
                   {
@@ -867,11 +947,39 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "francecentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "germanywestcentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "italynorth"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "northcentralus"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "spaincentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "swedencentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westeurope"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
@@ -882,87 +990,119 @@
                     "region": "westus3"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "australiaeast"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "brazilsouth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "canadaeast"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "centralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "eastus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "eastus2"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "francecentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "germanywestcentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "italynorth"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "japaneast"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "koreacentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "northcentralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "northeurope"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "norwayeast"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "polandcentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "southafricanorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "southcentralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "southeastasia"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "southindia"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "spaincentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "swedencentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "switzerlandnorth"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "switzerlandwest"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "uaenorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "westeurope"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "westus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "westus3"
                   },
                   {
@@ -1095,7 +1235,15 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "centralindia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastasia"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -1128,6 +1276,10 @@
                   {
                     "deployment_type": "GlobalProvisionedManaged",
                     "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "northeurope"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -1235,6 +1387,10 @@
                   },
                   {
                     "deployment_type": "GlobalStandard",
+                    "region": "japanwest"
+                  },
+                  {
+                    "deployment_type": "GlobalStandard",
                     "region": "koreacentral"
                   },
                   {
@@ -1288,6 +1444,10 @@
                   {
                     "deployment_type": "GlobalStandard",
                     "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "GlobalStandard",
+                    "region": "westcentralus"
                   },
                   {
                     "deployment_type": "GlobalStandard",
@@ -1305,171 +1465,231 @@
                 "path": "availability",
                 "previous": [
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "centralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "eastus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "eastus2"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "francecentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "germanywestcentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "italynorth"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "northcentralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "polandcentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "southcentralus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "spaincentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "swedencentral"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westeurope"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westus"
                   },
                   {
-                    "deployment_type": "Data Zone Standard",
+                    "deployment_type": "Data Zone Provisioned Managed",
                     "region": "westus3"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "australiaeast"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "centralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "eastus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "eastus2"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "francecentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "germanywestcentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "italynorth"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "japaneast"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "koreacentral"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "northcentralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "norwayeast"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "polandcentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "southcentralus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "southeastasia"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "southindia"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "spaincentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "swedencentral"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
-                    "region": "switzerlandnorth"
-                  },
-                  {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "westeurope"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "westus"
                   },
                   {
-                    "deployment_type": "DataZoneStandard",
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus3"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "australiaeast"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "brazilsouth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "canadaeast"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "francecentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "germanywestcentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "italynorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "japaneast"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "koreacentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "northeurope"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "norwayeast"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "southafricanorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "southeastasia"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "southindia"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "spaincentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "swedencentral"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "switzerlandnorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "switzerlandwest"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "uaenorth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "Global Provisioned Managed",
                     "region": "westus3"
                   },
                   {
@@ -1585,6 +1805,130 @@
                     "region": "westus3"
                   },
                   {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "australiaeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "brazilsouth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "canadaeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "centralindia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastasia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "francecentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "germanywestcentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "italynorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "japaneast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "koreacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "northeurope"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "norwayeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southafricanorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southeastasia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southindia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "spaincentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "swedencentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "switzerlandnorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "switzerlandwest"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "uaenorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westus3"
+                  },
+                  {
                     "deployment_type": "GlobalStandard",
                     "region": "australiaeast"
                   },
@@ -1627,6 +1971,10 @@
                   {
                     "deployment_type": "GlobalStandard",
                     "region": "japaneast"
+                  },
+                  {
+                    "deployment_type": "GlobalStandard",
+                    "region": "japanwest"
                   },
                   {
                     "deployment_type": "GlobalStandard",
@@ -1686,6 +2034,10 @@
                   },
                   {
                     "deployment_type": "GlobalStandard",
+                    "region": "westcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalStandard",
                     "region": "westeurope"
                   },
                   {
@@ -1694,6 +2046,122 @@
                   },
                   {
                     "deployment_type": "GlobalStandard",
+                    "region": "westus3"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "australiaeast"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "brazilsouth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "canadaeast"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "francecentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "germanywestcentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "italynorth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "japaneast"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "japanwest"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "koreacentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "norwayeast"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "southafricanorth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "southindia"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "spaincentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "swedencentral"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "switzerlandnorth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "switzerlandwest"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "uaenorth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "westcentralus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
                     "region": "westus3"
                   }
                 ]
@@ -1702,6 +2170,37 @@
             "fields": [
               "availability"
             ],
+            "model_ref": "azure/gpt-5.1-codex@2025-11-13"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "OpenAI gpt-6.1-sol",
+                "path": "name",
+                "previous": "gpt-6.1-sol"
+              },
+              {
+                "current": "GPT‑6.1 Sol is OpenAI’s efficient frontier reasoning model, designed for complex professional and enterprise workloads.",
+                "path": "description"
+              },
+              {
+                "current": [
+                  "azure-models",
+                  "azure-api",
+                  "azure-portal-models"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "azure-models",
+                  "azure-api"
+                ]
+              }
+            ],
+            "fields": [
+              "name",
+              "description",
+              "source_refs"
+            ],
             "model_ref": "azure/gpt-6.1-sol@2026-09-29"
           }
         ],
@@ -1709,22 +2208,22 @@
         "previous": 281,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 280
+        "unchanged": 279
       },
       "pricing": {
-        "commercial_hash": "29c519b1210168525a4843bba2a4d784e3239f1a95ec79a7feea2e2951882a14",
-        "outcome": "provenance_only",
+        "commercial_hash": "4b456bf1b57e8fff8c6d46fa60f0a8a88487550e02184e3232645ed25696ba7b",
+        "outcome": "commercial",
         "previous_commercial_hash": "29c519b1210168525a4843bba2a4d784e3239f1a95ec79a7feea2e2951882a14"
       },
       "pricing_coverage": {
         "current_models": 232,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": 1,
+          "unknown_models": -1
         },
-        "normalized_rate_models": 163,
+        "normalized_rate_models": 164,
         "not_applicable_models": 0,
-        "offer_models": 163,
+        "offer_models": 164,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "azure/Cohere-embed-v3-english@1",
@@ -1748,25 +2247,32 @@
           "azure/claude-haiku-4-5@1",
           "azure/claude-haiku-4-5@2"
         ],
-        "unknown_model_refs_omitted": 49,
-        "unknown_models": 69
+        "unknown_model_refs_omitted": 48,
+        "unknown_models": 68
       },
       "pricing_publication": "accepted",
       "provider_id": "azure",
       "publication": "accepted",
       "signals": [
-        "persistent_source_failure"
+        "catalog_count_decrease",
+        "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "azure-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-portal-models"
           },
           {
             "content_changed": true,
@@ -1779,14 +2285,14 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
         "missing_field": 3,
         "scope_limited": 1,
-        "source_fetch_failed": 1,
+        "source_contract_extension": 1,
         "source_partial_retention": 1
       }
     },
@@ -1798,9 +2304,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1879,16 +2385,16 @@
             "source_id": "cerebras-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 13,
             "source_id": "cerebras-lifecycle"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "cerebras-releases"
           },
@@ -1953,38 +2459,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "cerebras-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "cerebras-catalog"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-lifecycle"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-releases"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -2001,7 +2489,7 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -2018,7 +2506,7 @@
               "observed_items": 1
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 47,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2177,13 +2665,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cohere-models"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2594,9 +3089,9 @@
             "source_id": "dashscope-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 21,
             "source_id": "dashscope-deployable-api"
           }
@@ -2663,14 +3158,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-deployable-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2688,7 +3177,7 @@
         "previous": 13,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 10
+        "unchanged": 11
       },
       "status": "fresh",
       "warning_codes": {
@@ -2723,7 +3212,7 @@
               "disposition": "accept_with_signal",
               "observed_items": 1
             },
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 66,
             "pricing_extraction": {
@@ -2767,1239 +3256,84 @@
             "source_id": "databricks-models"
           },
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-09-24T17:04:06.738Z",
-            "message": "Transient transport failure (curl 28: TLS handshake timed out)",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 56,
             "source_id": "databricks-api"
           }
         ]
       },
       "models": {
-        "added": 3,
-        "added_model_refs": [
-          "databricks/databricks-claude-sonnet-5-5",
-          "databricks/databricks-gpt-6-1-sol",
-          "databricks/databricks-grok-4-7"
-        ],
-        "changed": 62,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 2,
         "changed_fields": {
-          "capabilities": 62,
-          "delivery_modes": 32,
-          "replacement_model_ids": 2,
-          "retired_at": 2,
-          "status": 2
+          "modalities": 1,
+          "source_refs": 2
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-fable-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-fable-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-haiku-4-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-5"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
-                  "streaming"
+                  "databricks-models",
+                  "databricks-api"
                 ],
-                "path": "delivery_modes",
+                "path": "source_refs",
                 "previous": [
-                  "streaming",
-                  "batch"
+                  "databricks-models"
                 ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
               }
             ],
             "fields": [
-              "delivery_modes",
-              "capabilities"
+              "source_refs"
             ],
-            "model_ref": "databricks/databricks-claude-opus-4-6"
+            "model_ref": "databricks/databricks-gpt-6-1-sol"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  "streaming"
+                  "text"
                 ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-8"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-4"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-4-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-1-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-flash-0731"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              },
-              {
-                "current": "2026-10-30",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "databricks-deepseek-v4-1-flash"
-                ],
-                "path": "replacement_model_ids",
+                "path": "modalities.input",
                 "previous": []
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-pro-0813",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-2-5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-2-5-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-flash-image"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-5-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-7-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-8-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-pro-image"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemma-3-12b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-3-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-3-codex"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-5-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-luna"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-sol"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-terra"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-astra"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-luna"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-sol"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-oss-120b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-oss-20b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-grok-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "delivery_modes",
-                "previous": [
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gte-large-en"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              },
-              {
-                "current": "2026-10-30",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
               },
               {
                 "current": [
-                  "databricks-glm-5-3"
+                  "databricks-models",
+                  "databricks-api"
                 ],
-                "path": "replacement_model_ids",
-                "previous": []
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "databricks/databricks-inkling",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-kimi-k3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
+                "path": "source_refs",
                 "previous": [
-                  "streaming",
-                  "batch"
+                  "databricks-models"
                 ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
               }
             ],
             "fields": [
-              "delivery_modes",
-              "capabilities"
+              "modalities",
+              "source_refs"
             ],
-            "model_ref": "databricks/databricks-llama-4-maverick"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-meta-llama-3-1-8b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-meta-llama-3-3-70b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "delivery_modes",
-                "previous": [
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen3-embedding-0-6b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen3-next-80b-a3b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming",
-                  "batch"
-                ]
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.batch",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen35-122b-a10b"
+            "model_ref": "databricks/databricks-grok-4-7"
           }
         ],
         "current": 66,
-        "previous": 63,
+        "previous": 66,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1
+        "unchanged": 64
       },
       "pricing": {
         "commercial_hash": "87986bd1f3df8c42d093273ddb4f47e56904edce232c2bb813d42dbacd1a0001",
-        "outcome": "commercial",
-        "previous_commercial_hash": "ae99545a178922a4ce6b9bcd0bc6f350b450526eb0ffe0221a7ddc9df34012c8"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "87986bd1f3df8c42d093273ddb4f47e56904edce232c2bb813d42dbacd1a0001"
       },
       "pricing_coverage": {
         "current_models": 66,
         "delta": {
-          "resolved_models": 2,
-          "unknown_models": 1
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 64,
         "not_applicable_models": 0,
@@ -4020,11 +3354,17 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "databricks-models"
           }
@@ -4033,14 +3373,14 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 3,
-        "source_contract_extension": 1,
-        "source_fetch_failed": 1
+        "scope_limited": 1,
+        "source_contract_extension": 1
       }
     },
     {
@@ -4182,7 +3522,7 @@
         "sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 85,
             "source_id": "gemini-models"
@@ -4248,250 +3588,28 @@
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 85,
-          "field": "models",
-          "previous": 86
-        }
-      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 9,
-        "changed_fields": {
-          "aliases": 1,
-          "api_endpoints": 1,
-          "replacement_model_ids": 3,
-          "retired_at": 3,
-          "status": 8
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "gemini-omni-flash-preview"
-                ],
-                "path": "aliases",
-                "previous": []
-              },
-              {
-                "current": [
-                  {
-                    "name": "countTokens",
-                    "path": "/v1beta/models/gemini-omni-1.1-flash:countTokens"
-                  },
-                  {
-                    "name": "generateContent",
-                    "path": "/v1beta/models/gemini-omni-1.1-flash:generateContent"
-                  },
-                  {
-                    "name": "countTokens",
-                    "path": "/v1beta/models/gemini-omni-flash-preview:countTokens"
-                  },
-                  {
-                    "name": "generateContent",
-                    "path": "/v1beta/models/gemini-omni-flash-preview:generateContent"
-                  }
-                ],
-                "path": "api_endpoints",
-                "previous": [
-                  {
-                    "name": "countTokens",
-                    "path": "/v1beta/models/gemini-omni-1.1-flash:countTokens"
-                  },
-                  {
-                    "name": "generateContent",
-                    "path": "/v1beta/models/gemini-omni-1.1-flash:generateContent"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "aliases",
-              "api_endpoints"
-            ],
-            "model_ref": "gemini/gemini-omni-1.1-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "gemini/imagen-4.0-fast-generate-001",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "gemini/imagen-4.0-generate-001",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "gemini/imagen-4.0-ultra-generate-001",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "gemini/veo-3.0-fast-generate-001",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "gemini/veo-3.0-generate-001",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-10-22",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gemini-omni-1.1-flash"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/veo-3.1-fast-generate-preview",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-10-22",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gemini-omni-1.1-flash"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/veo-3.1-generate-preview",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-10-22",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gemini-omni-1.1-flash"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/veo-3.1-lite-generate-preview",
-            "previous_status": "active",
-            "status": "deprecated"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 85,
-        "previous": 86,
-        "removed": 1,
-        "removed_model_refs": [
-          "gemini/gemini-omni-flash-preview"
-        ],
-        "unchanged": 76
+        "previous": 85,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 85
       },
       "pricing": {
         "commercial_hash": "8b0c98636db6df7d304699345039a7ab94e7d3bdff16ee002cf8ff0f0875da8e",
-        "outcome": "commercial",
-        "previous_commercial_hash": "3fbf101c1d8bedb3acdaa854dfa54956fb2b5785626aa1e86139f76de25e94d4"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "8b0c98636db6df7d304699345039a7ab94e7d3bdff16ee002cf8ff0f0875da8e"
       },
       "pricing_coverage": {
         "current_models": 48,
         "delta": {
-          "resolved_models": -1,
-          "unknown_models": -5
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 39,
         "not_applicable_models": 0,
@@ -4514,9 +3632,7 @@
       "pricing_publication": "accepted",
       "provider_id": "gemini",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -4524,7 +3640,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "gemini-models"
           },
@@ -4559,23 +3675,48 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1549,
+            "parsed_models": 1551,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1549,
+              "model_records": 1551,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1549
+              "unknown_models": 1551
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1794,
+              "diagnostic_count": 1796,
               "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:baseten:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:deepinfra:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:featherless-ai:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:novita:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
+                  "sample": "zai-org/GLM-4.7:zai-org:conversational"
+                },
                 {
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
@@ -4590,49 +3731,24 @@
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
                   "sample": "moonshotai/Kimi-K3:featherless-ai:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "moonshotai/Kimi-K3:together:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "zai-org/GLM-5.2:baseten:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "zai-org/GLM-5.2:deepinfra:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "zai-org/GLM-5.2:featherless-ai:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "zai-org/GLM-5.2:novita:conversational"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6825,
+                "excluded": 6823,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1794,
+                "unbound": 1796,
                 "unresolved": 0,
                 "unsupported": 0
               },
               "observed_items": 8619,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1405,
+                "hf_inference_compute_price_unbound": 1407,
                 "partner_route_price_not_published": 389,
-                "single_partner_inventory_without_product_evidence": 6754
+                "single_partner_inventory_without_product_evidence": 6752
               },
               "unit": "reviewed source pricing item"
             },
@@ -4642,22 +3758,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 137,
+            "parsed_models": 133,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 137,
+              "model_records": 133,
               "normalized_facts": 408,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 114,
-              "raw_facts": 116,
-              "raw_models": 104,
-              "unknown_models": 23
+              "numeric_models": 112,
+              "raw_facts": 111,
+              "raw_models": 100,
+              "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 117,
+              "diagnostic_count": 112,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -4706,17 +3822,17 @@
                 "explicit_non_numeric": 0,
                 "normalized": 205,
                 "raw": 0,
-                "unbound": 116,
+                "unbound": 111,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 323,
+              "observed_items": 318,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
                 "route_price_normalized": 204,
-                "route_price_not_published": 116
+                "route_price_not_published": 111
               },
               "unit": "reviewed source pricing item"
             },
@@ -4726,15 +3842,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 79,
+            "parsed_models": 78,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 79,
-              "normalized_facts": 161,
+              "model_records": 78,
+              "normalized_facts": 159,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 79,
+              "numeric_models": 78,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -4761,9 +3877,9 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 21999,
+                "excluded": 22000,
                 "explicit_non_numeric": 0,
-                "normalized": 76,
+                "normalized": 75,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
@@ -4771,8 +3887,8 @@
               },
               "observed_items": 22078,
               "reason_counts": {
-                "featherless_model_not_hf_route": 21998,
-                "featherless_price_normalized": 76,
+                "featherless_model_not_hf_route": 21999,
+                "featherless_price_normalized": 75,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
               },
@@ -4784,15 +3900,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 29,
+            "parsed_models": 25,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 29,
-              "normalized_facts": 62,
+              "model_records": 25,
+              "normalized_facts": 54,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 29,
+              "numeric_models": 25,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -4846,16 +3962,16 @@
                 "ambiguous": 1,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 31,
+                "normalized": 27,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 9,
                 "unsupported": 0
               },
-              "observed_items": 41,
+              "observed_items": 37,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
-                "native_route_price_normalized": 31,
+                "native_route_price_normalized": 27,
                 "native_route_price_not_exactly_joinable": 9
               },
               "unit": "reviewed source pricing item"
@@ -4866,29 +3982,36 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1406,
+            "parsed_models": 1407,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "count_decreases": [
         {
-          "current": 1794,
-          "field": "routes",
-          "previous": 1796
+          "current": 1587,
+          "field": "models",
+          "previous": 1588
+        },
+        {
+          "current": 266,
+          "field": "api_endpoints",
+          "previous": 274
         }
       ],
       "models": {
         "added": 3,
         "added_model_refs": [
-          "huggingface/HiDream-ai/HiDream-I1-Full",
-          "huggingface/aisingapore/Qwen-SEA-LION-v4-32B-IT",
-          "huggingface/facebook/mbart-large-cc25"
+          "huggingface/google/bigbird-roberta-large",
+          "huggingface/openai/privacy-filter",
+          "huggingface/staka/fugumt-ja-en"
         ],
-        "changed": 13,
+        "changed": 9,
         "changed_fields": {
-          "capabilities": 5,
-          "routes": 8,
+          "api_endpoints": 1,
+          "capabilities": 4,
+          "delivery_modes": 1,
+          "routes": 6,
           "source_refs": 2,
           "task_evidence": 1
         },
@@ -4896,65 +4019,83 @@
           {
             "field_changes": [
               {
-                "current": [
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming"
+                ]
+              },
+              {
+                "path": "api_endpoints",
+                "previous": [
                   {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/qwen-image-edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
                   },
                   {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
+                    "name": "Responses",
+                    "path": "/v1/responses"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/qwen-image-edit",
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "replicate",
-                    "provider_model_id": "qwen/qwen-image-edit",
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3-coder-480b-a35b-instruct",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
+                    "task": "conversational"
                   }
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.tool_call",
+                "previous": true
+              },
+              {
+                "current": [
+                  "huggingface-hf-inference",
+                  "huggingface-featherless"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-hf-inference",
+                  "huggingface-featherless",
+                  "huggingface-router"
                 ]
               }
             ],
             "fields": [
-              "routes"
+              "delivery_modes",
+              "api_endpoints",
+              "routes",
+              "capabilities",
+              "source_refs"
             ],
-            "model_ref": "huggingface/Qwen/Qwen-Image-Edit"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
           },
           {
             "field_changes": [
@@ -4963,6 +4104,13 @@
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
@@ -4980,13 +4128,6 @@
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
@@ -5011,131 +4152,18 @@
               {
                 "current": true,
                 "path": "capabilities.structured_output",
-                "previous": false
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
                 "previous": "unknown"
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "google/gemma-4-31B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "google/gemma-4-31B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "google/gemma-4-31B-it",
@@ -5153,6 +4181,23 @@
                   {
                     "provider": "novita",
                     "provider_model_id": "google/gemma-4-31b-it",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "google/gemma-4-31B-it",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "google/gemma-4-31B-it",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5191,6 +4236,13 @@
                     "task": "conversational"
                   },
                   {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
                     "provider": "together",
                     "provider_model_id": "moonshotai/Kimi-K3",
                     "source_ref": "huggingface-hf-inference",
@@ -5222,13 +4274,6 @@
                     "task": "conversational"
                   },
                   {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
                     "provider": "together",
                     "provider_model_id": "moonshotai/Kimi-K3",
                     "source_ref": "huggingface-hf-inference",
@@ -5236,32 +4281,30 @@
                     "task": "conversational"
                   }
                 ]
-              },
-              {
-                "current": [
-                  "huggingface-hf-inference",
-                  "huggingface-router",
-                  "huggingface-featherless",
-                  "huggingface-native-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-hf-inference",
-                  "huggingface-router",
-                  "huggingface-featherless"
-                ]
               }
             ],
             "fields": [
-              "routes",
-              "source_refs"
+              "routes"
             ],
             "model_ref": "huggingface/moonshotai/Kimi-K3"
           },
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
                 "path": "capabilities.tool_call",
                 "previous": true
               }
@@ -5269,13 +4312,12 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
           },
           {
             "field_changes": [
               {
-                "path": "task_evidence",
-                "previous": [
+                "current": [
                   {
                     "kind": "provider_task",
                     "namespace": "huggingface.task",
@@ -5283,11 +4325,11 @@
                     "source_ref": "huggingface-hf-inference",
                     "task": "text_generation"
                   }
-                ]
+                ],
+                "path": "task_evidence"
               },
               {
-                "path": "routes",
-                "previous": [
+                "current": [
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "tencent/Hy4-preview",
@@ -5302,16 +4344,17 @@
                     "status": "live",
                     "task": "conversational"
                   }
-                ]
+                ],
+                "path": "routes"
               },
               {
                 "current": [
-                  "huggingface-router"
+                  "huggingface-router",
+                  "huggingface-hf-inference"
                 ],
                 "path": "source_refs",
                 "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
+                  "huggingface-router"
                 ]
               }
             ],
@@ -5328,28 +4371,14 @@
                 "current": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.6",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.6",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5359,21 +4388,21 @@
                 "previous": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.6",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -5384,123 +4413,34 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
+            "model_ref": "huggingface/zai-org/GLM-5.1"
           }
         ],
-        "current": 1588,
-        "previous": 1587,
-        "removed": 2,
+        "current": 1587,
+        "previous": 1588,
+        "removed": 4,
         "removed_model_refs": [
-          "huggingface/google/bigbird-roberta-large",
-          "huggingface/staka/fugumt-ja-en"
+          "huggingface/Qwen/Qwen2.5-72B-Instruct",
+          "huggingface/facebook/mbart-large-cc25",
+          "huggingface/zai-org/GLM-4.6-FP8",
+          "huggingface/zai-org/GLM-5.1-FP8"
         ],
-        "unchanged": 1572
+        "unchanged": 1575
       },
       "pricing": {
-        "commercial_hash": "2bceb4803efe1546350f61485792fff8e8c3dd3c716e1a916a27d247fa25d55a",
+        "commercial_hash": "c37fdd40fd801902c9975d6953a1b116bfd95ab544c3e527a14901479564cb68",
         "outcome": "commercial",
-        "previous_commercial_hash": "84c071828cf183f50c1148a6494f79aef8c39bcfd0d5262c4b237fc55c2e8bbb"
+        "previous_commercial_hash": "2bceb4803efe1546350f61485792fff8e8c3dd3c716e1a916a27d247fa25d55a"
       },
       "pricing_coverage": {
-        "current_models": 1588,
+        "current_models": 1587,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": 0
+          "resolved_models": -3,
+          "unknown_models": 2
         },
-        "normalized_rate_models": 133,
+        "normalized_rate_models": 130,
         "not_applicable_models": 0,
-        "offer_models": 140,
+        "offer_models": 137,
         "raw_fact_models": 13,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -5524,8 +4464,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1428,
-        "unknown_models": 1448
+        "unknown_model_refs_omitted": 1430,
+        "unknown_models": 1450
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -5667,21 +4607,21 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 19,
             "source_id": "kimi-catalog"
           },
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 19,
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5697,8 +4637,8 @@
               "disposition": "accept_with_signal",
               "observed_items": 1
             },
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -5767,7 +4707,7 @@
             "source_id": "kimi-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5783,8 +4723,8 @@
               "disposition": "accept_with_signal",
               "observed_items": 1
             },
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -5854,7 +4794,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 12,
             "source_id": "kimi-releases"
@@ -5907,7 +4847,7 @@
             "source_id": "kimi-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -5949,7 +4889,7 @@
               "observed_items": 2
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "kimi-china-api"
           }
@@ -5995,7 +4935,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 6,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
@@ -6005,31 +4945,13 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "kimi-catalog"
+            "source_id": "kimi-china-api"
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "kimi-international-catalog"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "kimi-international-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "kimi-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-releases"
           }
@@ -6038,7 +4960,7 @@
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -6483,14 +5405,30 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "capabilities": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.reasoning",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "ollama/ornith"
+          }
+        ],
         "current": 248,
         "previous": 248,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 248
+        "unchanged": 247
       },
       "pricing": {
         "commercial_hash": "3db7dbaf06cccaed220efb92d6df3471824e5e8d75789ea4c2c927b981748ad6",
@@ -6905,9 +5843,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 1,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -6984,20 +5922,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "typesafe-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {}
@@ -7603,24 +6534,24 @@
       }
     }
   ],
-  "publication": "complete",
+  "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 20,
-    "added_models": 6,
+    "accepted": 19,
+    "added_models": 3,
     "added_sources": 0,
-    "changed_models": 85,
-    "changed_sources": 36,
-    "models": 4275,
-    "pricing_accepted": 20,
+    "changed_models": 15,
+    "changed_sources": 31,
+    "models": 4274,
+    "pricing_accepted": 19,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 0,
+    "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 3,
+    "removed_models": 4,
     "removed_sources": 0,
-    "retained": 0,
+    "retained": 1,
     "withheld": 0
   }
 }
