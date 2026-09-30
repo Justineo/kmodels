@@ -45,6 +45,9 @@ Extraction is bilingual and deterministic. Exact IDs, labeled tables, reviewed J
 and bounded semantic markers are accepted; an LLM is never used during refresh. Identity
 contradictions fail the source. Price rows and calculation inputs are claim-local: one malformed row
 or field suppresses only that fact while valid siblings remain.
+Markdown tables accept one or more hyphens in each delimiter cell, with optional alignment colons.
+Compact separators preserve catalog, official-tool and release identities; header and row widths
+and the semantic labels remain validated.
 
 ## Current public price book
 

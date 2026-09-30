@@ -44,6 +44,18 @@ async function parse(overrides: { models?: string; api?: string | null; index?: 
 }
 
 describe("TypeSafe AI", () => {
+  it("accepts compact and aligned Markdown delimiters but rejects missing hyphens", async () => {
+    const models = await fixture("models.md");
+    const expected = await parse({ models });
+    for (const delimiter of ["-", "--", ":-", "-:", ":-:"])
+      expect(await parse({ models: models.replace(/:?-{3,}:?/g, delimiter) }), delimiter).toEqual(
+        expected,
+      );
+    await expect(parse({ models: models.replace(/:?-{3,}:?/g, ":") })).rejects.toThrow(
+      "table header",
+    );
+  });
+
   it("publishes the exact current model, aliases and typed evaluation facts", async () => {
     const { models, findings, reconciliation } = await parse();
     expect(models).toHaveLength(1);

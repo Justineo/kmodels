@@ -13,7 +13,12 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
@@ -133,18 +138,16 @@ function modalities(value: string): Modality[] {
   ];
 }
 
-function description($: Document, section: Selection): string | undefined {
-  const paragraphs = section
-    .filter("p")
-    .map((_index, element) => text($(element).text()))
-    .get();
+function description(paragraphs: readonly string[]): string | undefined {
   const supported = paragraphs.findIndex((value) => value.startsWith("Supported inputs:"));
   return paragraphs
     .slice(supported + 1)
     .find(
       (value) =>
         value !== "" &&
-        !/^(?:AI models|As with other large language models|This endpoint is hosted)/.test(value),
+        !/^(?:Endpoint name:|Supported inputs:|AI models|As with other large language models|This endpoint is hosted)/.test(
+          value,
+        ),
     );
 }
 
@@ -183,12 +186,11 @@ function parseModels(input: Input): ProviderModel[] {
       .find((value) => value.startsWith("Supported inputs:"))
       ?.slice("Supported inputs:".length)
       .trim();
-    if (name === "" || inputText === undefined)
-      throw new Error(`Databricks model section omitted labeled fields for ${id}`);
-    const inputModalities = modalities(inputText);
-    if (inputModalities.length === 0)
+    if (name === "") throw new Error(`Databricks model section omitted labeled fields for ${id}`);
+    const inputModalities = inputText === undefined ? [] : modalities(inputText);
+    if (inputText !== undefined && inputModalities.length === 0)
       throw new Error(`Databricks model section omitted modalities for ${id}`);
-    const summary = description($, section);
+    const summary = description(paragraphs);
     const outputModalities: Modality[] = /generated images alongside text|image output/i.test(
       content,
     )
@@ -341,17 +343,10 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
   for (const id of assigned)
     if (!catalog.has(id))
       throw new Error(`Databricks task matrix named unknown catalog model ${id}`);
-  const omitted = models.filter((model) => !assigned.has(model.model_id));
-  if (omitted.length > 0)
-    throw new Error(
-      `Databricks task matrix omitted catalog models: ${omitted
-        .map((model) => model.model_id)
-        .join(", ")}`,
-    );
-
   const generalIds = new Set(general);
   const embeddingIds = new Set(embeddings);
   for (const model of models) {
+    if (!assigned.has(model.model_id)) continue;
     const taskOperations: ProviderModel["tasks"] = [];
     if (generalIds.has(model.model_id)) taskOperations.push("text_generation");
     if (embeddingIds.has(model.model_id)) taskOperations.push("embeddings");
@@ -369,10 +364,11 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
   }
 }
 
-function applyBatch(models: ProviderModel[], body: string): void {
+function applyBatch(models: ProviderModel[], body: string, input: Input): void {
   const $ = load(body);
   const payPerToken = new Set<string>();
   const batch = new Set<string>();
+  let hasMatrix = false;
   $("main table").each((_tableIndex, table) => {
     const headers = $(table)
       .find("thead th")
@@ -381,6 +377,7 @@ function applyBatch(models: ProviderModel[], body: string): void {
     const pay = headers.findIndex((value) => value.includes("pay-per-token"));
     const aiFunctions = headers.findIndex((value) => value.includes("AI Functions"));
     if (headers[0] !== "Region" || pay < 0 || aiFunctions < 0) return;
+    hasMatrix = true;
     $(table)
       .find("tbody tr")
       .each((_rowIndex, row) => {
@@ -391,6 +388,10 @@ function applyBatch(models: ProviderModel[], body: string): void {
         for (const id of endpointIds($, batchCell)) batch.add(id);
       });
   });
+  if (!hasMatrix) {
+    input.onContractFinding?.(contractExtensionEvidence(["/regional-model-support"]));
+    return;
+  }
   assertItemCount(
     "Databricks regional model IDs",
     payPerToken.size,
@@ -1555,7 +1556,7 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     bundle,
     "/aws/en/machine-learning/model-serving/foundation-model-overview",
   );
-  if (overview !== undefined) applyBatch(models, overview);
+  if (overview !== undefined) applyBatch(models, overview, input);
   const lifecycle = document(bundle, "/aws/en/machine-learning/retired-models-policy");
   if (lifecycle !== undefined) applyLifecycle(models, lifecycle, input.observedAt);
   const limits = document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits");

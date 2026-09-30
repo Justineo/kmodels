@@ -52,7 +52,7 @@ function tables(body: string): Table[] {
     if (!line.trim().startsWith("|")) continue;
     const header = cells(line);
     const separator = cells(lines[++index] ?? "");
-    if (header.length !== separator.length || !separator.every((cell) => /^:?-{3,}:?$/.test(cell)))
+    if (header.length !== separator.length || !separator.every((cell) => /^:?-+:?$/.test(cell)))
       throw new Error("TypeSafe table header changed");
     const rows: string[][] = [];
     while ((lines[index + 1] ?? "").trim().startsWith("|")) {

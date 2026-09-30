@@ -497,7 +497,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v8",
+  extractorVersion: "kimi-pricing-v9",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -570,7 +570,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
-        extractorVersion: "typesafe-catalog-v1",
+        extractorVersion: "typesafe-catalog-v2",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -1360,7 +1360,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v14",
+        extractorVersion: "databricks-catalog-v15",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1500,7 +1500,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v23",
+        extractorVersion: "vercel-catalog-v24",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -2031,7 +2031,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v9",
+        extractorVersion: "gemini-catalog-v10",
         fields: [
           "model_id",
           "name",
@@ -3882,7 +3882,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v14",
+        extractorVersion: "cerebras-catalog-v15",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -4349,7 +4349,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v4",
+        extractorVersion: "kimi-catalog-v5",
         fields: [
           "model_id",
           "description",
@@ -4376,7 +4376,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v4",
+        extractorVersion: "kimi-catalog-v5",
         fields: [
           "model_id",
           "description",
@@ -4411,7 +4411,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "kimi-releases", minModels: 8, maxModels: 25 },
-        extractorVersion: "kimi-releases-v3",
+        extractorVersion: "kimi-releases-v4",
         fields: ["release_date"],
         optional: true,
         retainOmittedFacts: true,

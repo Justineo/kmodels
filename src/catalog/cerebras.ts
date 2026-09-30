@@ -345,7 +345,9 @@ function tables(body: string): MarkdownTable[] {
     const separator = lines[index + 1];
     if (!line.trim().startsWith("|") || separator === undefined) continue;
     const headers = cells(line);
-    if (!cells(separator).every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
+    const delimiters = cells(separator);
+    if (delimiters.length !== headers.length || !delimiters.every((cell) => /^:?-+:?$/.test(cell)))
+      continue;
     const rows: string[][] = [];
     index += 2;
     while ((lines[index] ?? "").trim().startsWith("|")) {

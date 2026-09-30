@@ -655,7 +655,7 @@ function endpointRates(
     rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId, baseConditions));
 
   for (const [serviceTier, tier] of Object.entries(value.service_tiers ?? {})) {
-    const contextMax = tier.long_context?.threshold;
+    const contextMin = tier.long_context?.threshold;
     addServiceRates(
       rates,
       serviceTier,
@@ -669,7 +669,7 @@ function endpointRates(
       {
         route_provider: endpoint.provider_name,
         region: hasRegionalPricing ? "default" : undefined,
-        ...(contextMax === undefined ? {} : { context_max_tokens: contextMax }),
+        ...(contextMin === undefined ? {} : { context_max_tokens: contextMin - 1 }),
       },
     );
     if (tier.long_context !== undefined)
@@ -686,7 +686,7 @@ function endpointRates(
         {
           route_provider: endpoint.provider_name,
           region: hasRegionalPricing ? "default" : undefined,
-          context_min_tokens: tier.long_context.threshold + 1,
+          context_min_tokens: tier.long_context.threshold,
         },
       );
   }
@@ -1007,17 +1007,17 @@ function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFac
   }
 
   for (const [serviceTier, tier] of Object.entries(value.service_tiers ?? {})) {
-    const contextMax = tier.long_context?.threshold;
+    const contextMin = tier.long_context?.threshold;
     addServiceRates(
       rates,
       serviceTier,
       tier,
       sourceId,
-      contextMax === undefined ? {} : { context_max_tokens: contextMax },
+      contextMin === undefined ? {} : { context_max_tokens: contextMin - 1 },
     );
     if (tier.long_context !== undefined)
       addServiceRates(rates, serviceTier, tier.long_context, sourceId, {
-        context_min_tokens: tier.long_context.threshold + 1,
+        context_min_tokens: tier.long_context.threshold,
       });
   }
 

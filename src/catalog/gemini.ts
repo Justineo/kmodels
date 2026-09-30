@@ -1763,7 +1763,10 @@ function videoPricingInputs(body: string, sourceRef: string): SourcePricingInput
 
 function interactionPath(body: string): string {
   const $ = load(body);
-  const heading = exactHeading($, "h2", "Creating an interaction");
+  const heading = $("h2").filter((_index, element) =>
+    ["Creating an interaction", "CreateInteraction"].includes(text($(element).text())),
+  );
+  if (heading.length !== 1) throw new Error("Gemini Interactions create endpoint changed");
   const section = heading.nextUntil("h2");
   const method = text(section.find(".http-method").first().text()).toLowerCase();
   const raw = text(section.find(".endpoint-url").first().text());

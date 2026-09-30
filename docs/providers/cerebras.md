@@ -90,6 +90,8 @@ calculated and the synchronous rate is not copied into Batch.
 ## Resilience
 
 - Unknown additive API fields are accepted with a contract signal.
+- Catalog Markdown tables accept compact delimiter cells such as `:-`; delimiter and data rows
+  must still match the header width, and model identity still requires exact IDs and model links.
 - Malformed inventory rows, rate components, model cards, usage fields, and lifecycle references are
   isolated to the affected claim.
 - Missing model cards retain exact catalog identities. Missing usage companions retain numeric rates

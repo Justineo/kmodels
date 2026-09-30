@@ -67,9 +67,17 @@ dependency.
 
 - Callable identity comes only from a labeled `Endpoint name:` in the official supported-model
   page. Pricing cannot create model rows.
+- An omitted `Supported inputs:` field leaves input modalities unknown without discarding the
+  endpoint or independent description and price evidence. An unrecognized published modality
+  label still fails the catalog contract.
 - General-purpose and Embeddings route rows retain the exact
   `POST /serving-endpoints/{name}/invocations` API contract. Repeated IDs, ambiguous joins, or an
   unknown ID in an exhaustive catalog-support table reject that catalog claim.
+  The route matrix may lag a newly listed endpoint: an omitted model keeps its catalog identity
+  and prices, but gets no route or streaming claim from that matrix.
+- The overview may describe serving capacity without a regional model matrix. That omission
+  signals a missing Batch-support claim and leaves Batch capability unknown; it does not reject
+  independent model or pricing evidence. A present matrix still validates its completeness and IDs.
 - Lifecycle affects this catalog only when the official row publishes a pay-per-token date. A
   provisioned-throughput-only retirement does not retire the callable pay-per-token endpoint.
   Documented redirects keep the old ID deprecated through the redirect interval.
