@@ -115,3 +115,31 @@ it("recognizes Cohere billed image tokens only under the documented response pat
   const sibling = body.replace("    - `image_tokens`", "  - `image_tokens`");
   expect(parse(sibling).some(({ key }) => key === "embed.v2.image_tokens")).toBe(false);
 });
+
+it("resolves Cohere Embed billed fields through named response types", async () => {
+  const body = await fixture("cohere/embed-response-type-definitions.md");
+  const inputs = extractCoherePricingInputs(
+    [{ url: "https://docs.cohere.com/reference/embed.md", body }],
+    "cohere-models",
+  );
+  expect(inputs).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ key: "embed.v2.input_tokens" }),
+      expect.objectContaining({ key: "embed.v2.image_tokens" }),
+    ]),
+  );
+  expect(
+    extractCoherePricingInputs(
+      [
+        {
+          url: "https://docs.cohere.com/reference/embed.md",
+          body: body.replace(
+            "- `billed_units` (ApiMetaBilledUnits",
+            "- `billed_units` (OtherUnits",
+          ),
+        },
+      ],
+      "cohere-models",
+    ).some(({ key }) => key === "embed.v2.image_tokens"),
+  ).toBe(false);
+});
