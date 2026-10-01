@@ -106,6 +106,12 @@ Run `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build` b
 scheduled refresh may run only the generated-data project because code-only behavior and reviewed
 fixtures are validated on pushes and pull requests.
 
+Automatic catalog repair runs these checks and the portable-package checks before admitting its
+candidate for publication, then repeats them against latest `main` after applying the exact patch.
+Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
+validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
+a successful test process alone does not authorize publishing a different patch.
+
 For calculator or package changes, also run `vp run package:build` and `vp run package:check`.
 Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
 checks pack an allowlisted artifact, reject frontend/collection/transport dependencies and real

@@ -24,25 +24,24 @@ Status: implemented
   establishes its successor. The public evidence CLI reports omitted companions explicitly even
   when the main bundle succeeds.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
-  `gh workflow run catalog-repair.lock.yml`. Manual runs use the same repair-candidate gate and deduplication
+  `gh workflow run catalog-repair.lock.yml`. Manual runs use the same repair-candidate gate and publication
   rules as scheduled runs.
-- Refresh and repair never create GitHub issues. A completed repair produces a validated draft
-  pull request; unavailable evidence, tool failures, timeouts, and incomplete investigation remain
+- Refresh and repair never create GitHub issues or require a repair pull request. A completed
+  repair commits validated code directly to `main`; unavailable evidence, tool failures, timeouts, and incomplete investigation remain
   visible in Actions summaries, logs, artifacts, and failed job status. Every framework issue
   reporting path is explicitly disabled: agent/job failure reports, no-op reports, missing tools/data,
-  incomplete reports, threat-detection reports, and pull-request fallback. Threat detection and
+  incomplete reports and threat-detection reports. Threat detection and
   the incomplete-outcome check still run. The conclusion job has no issue permission, and the
-  agent outcome gate rejects issue/comment requests even when accompanied by a repair PR intent.
-  The repository must enable **Settings → Actions →
-  General → Allow GitHub Actions to create and approve pull requests** for the workflow token to
-  deliver repairs; a denied PR creation fails the run rather than substituting an issue.
+  agent outcome gate rejects issue/comment/PR requests even when accompanied by a repair intent.
+  The agent has only read permissions. A custom `commit_repair` safe-output job receives the
+  write permissions required for direct publication and deployment dispatch; it runs only after
+  successful agent validation, safe-output processing, and successful threat detection.
 - Neither hourly refresh nor daily repair runs Jev. The [manual semantic experiment](semantic-audit.md)
   remains available, but has not demonstrated incremental production defect discovery. Follow the
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
   repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
   supplies no semantic-audit directory, key, or cache.
-- Repair runs are serialized. After an active run finishes, any queued run checks for an open pull
-  request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
+- Repair runs are serialized and do not wait on existing pull requests. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
   Code-repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
@@ -52,19 +51,31 @@ Status: implemented
   older hash. The refresh summary does not duplicate those hashes. Review runs the
   actual parser before comparing output counts. Historical-byte identity establishes historical
   reproduction, while independently reproduced current-source defects remain repairable. One
-  unresolved candidate does not prevent a validated independent repair PR; unresolved candidates
+  unresolved candidate does not prevent a validated independent repair commit; unresolved candidates
   are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
   empty, unsupported, or contradictory final outputs even when the model process exits successfully.
-  A PR intent then runs all four required validations in deterministic post-execution steps.
+  A `commit_repair` intent runs all four required validations and the portable package checks in
+  deterministic post-execution steps. The actual working-tree patch is bounded to 100 files and
+  4 MiB and admitted only for catalog TypeScript, unit-test files, reviewed fixtures, provider
+  guides, and the manual semantic-disposition file. Repair infrastructure, scripts, dependencies,
+  workflows, generated data, executables, symlinks, and submodules cannot enter automatic repairs.
+  New source hosts that require a network-policy change remain incomplete.
   Safe outputs run only after the complete agent job succeeds. Empty patches fail instead of
-  being ignored, and a final delivery job requires successful safe-output processing and a created
-  PR URL for every PR intent. A passing inference process or a textual repair report is not delivery.
+  being ignored. A trusted publication script is restored from the workflow's original commit;
+  the candidate cannot edit that script. It binds the candidate artifact to its base commit and
+  SHA-256 patch hash and rejects any change during validation.
+  The publication job checks out latest `main`, applies that exact patch with Git's three-way
+  conflict check, repeats complete validation against current data, and commits only the exact
+  validated tree. Credentials are not persisted during checkout or exposed to validation steps.
+  Only the final push and deployment steps receive the workflow token. A normal, non-force push
+  rejects any concurrent update after validation; conflicts and rejected pushes fail the run and
+  retry from current evidence on the next daily schedule. Repair commits record the Actions run
+  in a `Kmodels-Repair-Run` trailer and explicitly dispatch `void-deploy.yml`, since the workflow
+  token does not trigger push workflows. A final delivery job requires successful publication
+  and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.
   Failed or incomplete runs leave their diagnostics in Actions; the next daily run re-evaluates
   the latest committed refresh and retries remaining candidates. There is no issue-based queue,
-  automatic success disposition, or immediate unbounded retry loop. An open repair PR remains the
-  explicit human-review wait state.
-  Successful repairs are proposed as one labeled draft pull request for human review; there is no
-  direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
+  automatic success disposition, or immediate unbounded retry loop. Because this is a personal repository, Copilot inference uses a
   fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
   ordinary GitHub CLI OAuth token is not an acceptable substitute.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
@@ -87,14 +98,16 @@ Status: implemented
   tool-cache PATH scan cannot select a different Node.js version for project commands.
   The agent checks its prepared environment before diagnosis and uses focused regression tests
   while repairing. After its final edit it formats explicit changed paths with `vp fmt` and runs
-  `vp check`, resolving every failed command before committing and requesting a PR. The standalone
-  `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting. Safe-output PR
-  requests capture the committed patch and bundle, so formatting must be committed before that
-  call, not applied in post-execution steps. The deterministic post-execution gate independently
-  repeats `vp check` and owns the full sequential test and build validation; the agent does not
+  `vp check`, resolving every failed command before staging its patch and requesting publication.
+  The standalone `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting.
+  `vp node scripts/catalog-repair-publication.ts stage` captures the actual patch for framework
+  threat detection before the agent requests `commit_repair`. The post-execution gate verifies
+  that patch against the final working tree and uploads a separate validated candidate artifact
+  only after all checks pass. It independently repeats `vp check` and owns the full sequential
+  test, build, and portable-package validation; the agent does not
   duplicate the full test and build sequence during inference. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
-  pull request. A repair pull request requires every repository validation command to pass.
+  publication request. Automatic repair publication requires every repository validation command to pass.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
   (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
   Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
