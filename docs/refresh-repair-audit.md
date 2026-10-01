@@ -110,9 +110,11 @@ timestamps. Hash mismatch limits historical attribution, not independently repro
 repairs. A parser replay, rather than a text-link count, establishes each candidate's outcome.
 The workflow completes independent validated fixes and lists unresolved candidates separately.
 A deterministic post-execution check rejects incomplete, missing-data, missing-tool, unsupported,
-or absent final outcomes even if the agent process exits successfully. PR intents must pass the
-four repository validations before safe outputs can publish them; empty patches and missing PR
-delivery fail the run. Failure diagnostics remain in Actions and remaining candidates are reviewed
+or absent final outcomes even if the agent process exits successfully. Repair intents must pass the
+four repository validations and portable-package checks before publication. The independent
+publication job applies the admitted patch to latest `main`, repeats validation, and directly
+commits the exact validated tree. Empty patches, conflicts, rejected pushes, and missing delivery
+fail the run. Existing pull requests do not block daily repair. Failure diagnostics remain in Actions and remaining candidates are reviewed
 again against the latest refresh on the next daily run. Neither investigation nor framework failure
 handling creates issues. Remote execution of these gates remains a CI verification.
 

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import { parseRepairOutcome } from "../scripts/catalog-repair-publication.ts";
 import {
-  assertCatalogRepairOutcome,
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
 } from "../src/catalog/catalog-repair.ts";
+
+const assertCatalogRepairOutcome = (output: string) => parseRepairOutcome(output).type;
 
 it("fails incomplete repair outputs even when the agent exits successfully", () => {
   for (const type of ["missing_data", "missing_tool", "report_incomplete"])
@@ -14,7 +16,7 @@ it("fails incomplete repair outputs even when the agent exits successfully", () 
     "",
     "{}",
     JSON.stringify({ type: "noop" }),
-    JSON.stringify({ type: "create_pull_request", title: "Repair" }),
+    JSON.stringify({ type: "commit_repair", title: "Repair" }),
   ])
     expect(() => assertCatalogRepairOutcome(output)).toThrow();
   const noop = JSON.stringify({ type: "noop", message: "All candidates independently resolved" });
@@ -22,12 +24,12 @@ it("fails incomplete repair outputs even when the agent exits successfully", () 
   expect(
     assertCatalogRepairOutcome(
       JSON.stringify({
-        type: "create_pull_request",
+        type: "commit_repair",
         title: "Repair",
         body: "Reproduced and validated",
       }),
     ),
-  ).toBe("create_pull_request");
+  ).toBe("commit_repair");
   expect(() => assertCatalogRepairOutcome(`${noop}\n${noop}`)).toThrow("exactly one");
   expect(() =>
     assertCatalogRepairOutcome(`${noop}\n${JSON.stringify({ type: "missing_data" })}`),
@@ -36,11 +38,17 @@ it("fails incomplete repair outputs even when the agent exits successfully", () 
 
 it("rejects issue creation and other side effects even alongside a completed repair", () => {
   const repair = JSON.stringify({
-    type: "create_pull_request",
+    type: "commit_repair",
     title: "Fix the parser",
     body: "Reproduced with a reviewed fixture",
   });
-  for (const type of ["create_issue", "add_comment", "update_issue", "unknown"]) {
+  for (const type of [
+    "create_issue",
+    "create_pull_request",
+    "add_comment",
+    "update_issue",
+    "unknown",
+  ]) {
     const unsupported = JSON.stringify({ type, title: "Follow up", body: "Investigate later" });
     expect(() => assertCatalogRepairOutcome(unsupported)).toThrow(`cannot emit ${type}`);
     expect(() => assertCatalogRepairOutcome(`${repair}\n${unsupported}`)).toThrow(

@@ -1,6 +1,6 @@
 ---
 name: Catalog repair
-description: Review new catalog collection problems and repair reproducible source drift in a pull request.
+description: Repair reproducible catalog source drift and publish validated code automatically to main.
 
 on:
   schedule: daily
@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 engine:
   id: copilot
@@ -22,6 +21,7 @@ sandbox:
 
 env:
   VP_HOME: /tmp/kmodels-vite-plus
+  REPAIR_BASE_SHA: ${{ github.sha }}
 
 concurrency:
   group: catalog-repair
@@ -102,16 +102,83 @@ safe-outputs:
     create-issue: false
   threat-detection:
     report-as-issue: false
-  create-pull-request:
-    title-prefix: "[catalog-repair] "
-    labels: [catalog-repair]
-    draft: true
-    max: 1
-    if-no-changes: error
-    fallback-as-issue: false
   report-incomplete:
     max: 1
     create-issue: false
+  jobs:
+    commit-repair:
+      description: Publish the current working-tree repair to main after deterministic validation. Call once with a commit title and an evidence-backed repair report; do not commit or push from the agent.
+      needs: [safe_outputs]
+      if: needs.agent.result == 'success' && needs.safe_outputs.result == 'success' && needs.detection.result == 'success' && needs.detection.outputs.detection_success == 'true'
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+        actions: write
+      max: 1
+      env:
+        REPAIR_BASE_SHA: ${{ github.sha }}
+        REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
+      inputs:
+        title:
+          description: One-line conventional commit title for the repair.
+          required: true
+          type: string
+        body:
+          description: Source evidence, reproduced defect, repair, focused validation, and unresolved candidates.
+          required: true
+          type: string
+      steps:
+        - name: Download the validated repair
+          uses: actions/download-artifact@v8
+          with:
+            name: validated-catalog-repair
+            path: ${{ runner.temp }}/catalog-repair-validation
+        - name: Checkout latest main
+          uses: actions/checkout@v7
+          with:
+            ref: main
+            fetch-depth: 0
+            filter: blob:none
+            persist-credentials: false
+        - name: Install the pinned toolchain
+          run: |
+            set -euo pipefail
+            VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
+            export VP_VERSION
+            curl --fail --silent --show-error --location --retry 3 https://viteplus.dev/install.sh | bash
+            echo "$VP_HOME/bin" >> "$GITHUB_PATH"
+            "$VP_HOME/bin/vp" env install
+            "$VP_HOME/bin/vp" install --frozen-lockfile
+        - name: Apply the validated repair
+          id: apply_repair
+          env:
+            REPAIR_BASE_SHA: ${{ github.sha }}
+          run: |
+            set -euo pipefail
+            git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
+            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
+        - name: Validate against latest main
+          run: |
+            set -euo pipefail
+            vp check
+            vp test --run
+            vp run collect:fixtures
+            vp run build
+            vp run package:build
+            git diff --exit-code -- packages/pricing
+            vp run package:check
+        - name: Commit the exact validated tree
+          env:
+            REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
+        - name: Publish without overwriting concurrent changes
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
+        - name: Deploy the repaired site
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: gh workflow run void-deploy.yml --ref main
 
 jobs:
   safe_outputs:
@@ -120,7 +187,7 @@ jobs:
     permissions:
       issues: none
   verify_delivery:
-    needs: [agent, safe_outputs]
+    needs: [agent, safe_outputs, commit_repair]
     if: always() && needs.agent.result == 'success'
     runs-on: ubuntu-slim
     permissions:
@@ -130,7 +197,7 @@ jobs:
         env:
           REPAIR_OUTCOME: ${{ needs.agent.outputs.output_types }}
           DELIVERY_RESULT: ${{ needs.safe_outputs.result }}
-          REPAIR_PR_URL: ${{ needs.safe_outputs.outputs.created_pr_url }}
+          PUBLICATION_RESULT: ${{ needs.commit_repair.result }}
         run: |
           set -euo pipefail
           if [ "$DELIVERY_RESULT" != 'success' ]; then
@@ -138,15 +205,15 @@ jobs:
             exit 1
           fi
           case "$REPAIR_OUTCOME" in
-            create_pull_request)
-              if [ -z "$REPAIR_PR_URL" ]; then
-                echo '::error::Catalog repair requested a pull request but none was created.'
+            commit_repair)
+              if [ "$PUBLICATION_RESULT" != 'success' ]; then
+                echo '::error::Catalog repair was not committed and deployed. The next daily run retries against latest main.'
                 exit 1
               fi
-              echo "Repair proposed for review: $REPAIR_PR_URL" >> "$GITHUB_STEP_SUMMARY"
+              echo 'Validated repair committed to main and deployment dispatched.' >> "$GITHUB_STEP_SUMMARY"
               ;;
             noop)
-              echo 'No new repair PR required; see the candidate review or existing repair PR.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'No catalog code repair required; see the candidate review.' >> "$GITHUB_STEP_SUMMARY"
               ;;
             *)
               echo '::error::Catalog repair has no verified outcome.'
@@ -155,21 +222,7 @@ jobs:
           esac
 
 steps:
-  - name: Check for an existing repair
-    id: repair_dedupe
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
-    run: |
-      if [ "$(gh pr list --state open --label catalog-repair --json number --jq length)" -gt 0 ]; then
-        echo '{"type":"noop","message":"An open catalog-repair pull request already exists"}' >> "$GH_AW_SAFE_OUTPUTS"
-        echo "blocked=true" >> "$GITHUB_OUTPUT"
-      else
-        echo "blocked=false" >> "$GITHUB_OUTPUT"
-      fi
-
   - name: Install Vite+ in the shared sandbox directory
-    if: steps.repair_dedupe.outputs.blocked != 'true'
     run: |
       set -euo pipefail
       VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
@@ -178,38 +231,59 @@ steps:
       echo "$VP_HOME/bin" >> "$GITHUB_PATH"
 
   - name: Install the project runtime and dependencies
-    if: steps.repair_dedupe.outputs.blocked != 'true'
     run: |
       vp env install
       vp install --frozen-lockfile
       vp env doctor
 
   - name: Check whether repair work is needed
-    if: steps.repair_dedupe.outputs.blocked != 'true'
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/catalog-repair.ts
 
 post-steps:
-  - name: Verify the repair outcome
+  - name: Capture and admit the repair outcome
     id: repair_outcome
-    if: always() && steps.repair_dedupe.outputs.blocked != 'true'
+    if: always()
     env:
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
-    run: vp node scripts/check-catalog-repair-outcome.ts
-  - name: Validate the proposed repair
-    if: success() && steps.repair_outcome.outputs.outcome == 'create_pull_request'
+      REPAIR_BASE_SHA: ${{ github.sha }}
+      REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
     run: |
+      set -euo pipefail
+      git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
+      vp node "$RUNNER_TEMP/catalog-repair-publication.ts" capture
+  - name: Validate the proposed repair
+    if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
+    run: |
+      set -euo pipefail
       vp check
       vp test --run
       vp run collect:fixtures
       vp run build
+      vp run package:build
+      git diff --exit-code -- packages/pricing
+      vp run package:check
+  - name: Verify that validation did not change the repair
+    if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
+    env:
+      REPAIR_BASE_SHA: ${{ github.sha }}
+      REPAIR_PATCH_SHA256: ${{ steps.repair_outcome.outputs.patch_sha256 }}
+    run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" verify
+  - name: Upload the validated repair
+    if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
+    uses: actions/upload-artifact@v7
+    with:
+      name: validated-catalog-repair
+      path: ${{ runner.temp }}/catalog-repair-validation/
+      if-no-files-found: error
+      retention-days: 30
 ---
 
 # Review and repair a catalog collection problem
 
-Resolve reproducible problems with validated code changes and a draft pull request. Never create
+Resolve reproducible problems with validated code changes automatically committed to main. Never create
 an issue as a repair result or fallback. Keep blocked or incomplete investigations in the workflow
 summary and artifacts via `report_incomplete`; reporting a problem is not a completed repair.
 
@@ -263,8 +337,8 @@ precedence, propose an exact finding-ID disposition with a source-grounded ratio
 `docs/semantic-audit-decisions.json`, plus an appropriate deterministic assertion if a new semantic
 claim is made. Do not dismiss unsupported in-scope terms just because the current schema cannot
 express them. New ontology requirements, unresolved source conflicts, and insufficient evidence
-require an incomplete report, not a guessed parser repair. Dispositions are reviewed in the draft
-PR; IDs expire when evidence, parser output, extractor version, or question semantics change.
+require an incomplete report, not a guessed parser repair. Include dispositions in the repair report;
+IDs expire when evidence, parser output, extractor version, or question semantics change.
 
 Inspect every deterministic candidate regardless of Jev availability or scores. Missing/failed or
 partial audits do not establish complete coverage and do not cancel ordinary repairs. All existing
@@ -288,8 +362,12 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    structural findings and regressions rather than trying to prove their root cause in advance. A
    transient transport failure, missing credential, ordinary unknown pricing coverage, or a price the provider
    does not publish is not repairable.
-3. Make the smallest source-manifest or parser change. Keep the public network allowlist synchronized
-   with reviewed source hosts. Preserve strict identity joins, scope boundaries, source-integrity validation,
+3. Make the smallest source-manifest or parser change. Automatic repairs may change only
+   `src/catalog/*.ts` (excluding repair infrastructure), `tests/*.test.ts` (excluding repair infrastructure),
+   reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
+   Workflow, script, dependency, generated-data, executable, symlink, and submodule changes are rejected.
+   If a new source host requires a workflow allowlist change, report it as incomplete.
+   Preserve strict identity joins, scope boundaries, source-integrity validation,
    and exact decimal price handling. Never infer a price from another model, family, provider, region,
    or service; never convert missing pricing to free or not-applicable; never weaken a source-coverage
    contract merely to admit the new source. A published count decrease alone is diagnostic and does
@@ -299,26 +377,30 @@ a code-repairable problem. If one or more candidates share one coherent root cau
 5. Do not run the live collector and do not modify anything under `data/`.
 6. Review the diff and run the focused regression tests needed to demonstrate the repair. After
    the final edit, run `vp fmt` with the explicit changed file paths, then run `vp check` and fix
-   every reported failure before committing or requesting a PR. Use the Vite+ built-in formatter:
+   every reported failure before requesting publication. Use the Vite+ built-in formatter:
    `vp exec oxfmt --write` invokes an IDE-only wrapper and fails. Check every command's exit status;
    a failed formatting or validation command remains unresolved until its corrected rerun succeeds.
-   Include all formatting changes in the repair commit before calling `create_pull_request`, which
-   captures the committed patch and bundle. Post-execution fixes cannot update that captured repair.
-   The deterministic post-execution step independently runs the full `vp check`, `vp test --run`,
-   `vp run collect:fixtures`, and `vp run build` sequence. Leave the full test and build sequence to
-   it; the pre-commit `vp check` lets you correct format, lint, and type errors while still editing.
-   A request to create a PR is only an intent: the workflow publishes it after these checks pass
-   and verifies the resulting PR URL. If validation is blocked by the environment, report the exact
+   Leave the complete repair in the working tree, including new fixtures. Do not commit or push.
+   Run `vp node scripts/catalog-repair-publication.ts stage` after all edits and checks, so threat
+   detection receives the actual patch. Then call `commit_repair` once with a conventional commit
+   title and an evidence-backed report. Make no further edits after staging the patch.
+   The deterministic post-execution step captures and admits the actual working-tree patch, then
+   runs all four required validations and the portable package checks. Leave the full test and
+   build sequence to it; `vp check` lets you correct format, lint, and type errors while still editing.
+   The publication job applies that exact patch to latest main, repeats complete validation, then
+   commits and pushes without force. Concurrent updates or conflicts fail publication and are
+   retried from current evidence by the next daily run. A publication request is only an intent.
+   If validation is blocked by the environment, report the exact
    failed command and reason with `report_incomplete` and stop. Never claim that checks passed
-   without running them or that a recorded PR intent is an already-created PR.
+   without running them or that a recorded publication intent is an already-pushed commit.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
-unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not create a pull
-request. A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
+unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not request publication.
+A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
 `noop`. Only use `noop` after adequate evidence positively establishes that no repair is needed.
-Otherwise request one small draft pull request describing the source change, repair, focused
+Otherwise request one small `commit_repair` describing the source change, repair, focused
 validation results, and the full validation that the workflow must complete before publication.
-List unresolved candidates separately in that PR rather than claiming complete coverage. Use
+List unresolved candidates separately in the commit report rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
 it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing
 completed outcome, even if the model process exits successfully.

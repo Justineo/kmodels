@@ -38,35 +38,53 @@ it("keeps issue creation unavailable in both the source policy and generated wor
     .record(z.string(), z.unknown())
     .parse(JSON.parse(z.string().parse(JSON.parse(encoded))));
   expect(Object.keys(config).sort()).toEqual([
-    "create_pull_request",
     "missing_data",
     "missing_tool",
     "noop",
     "report_incomplete",
   ]);
-  expect(config.create_pull_request).toMatchObject({
-    draft: true,
-    fallback_as_issue: false,
-    if_no_changes: "error",
-    max: 1,
-  });
+  expect(workflow).not.toContain('"create_pull_request"');
+  expect(workflow).not.toMatch(/^\s+pull-requests: write$/m);
+  expect(markdown).not.toContain("gh pr list");
 });
 
-it("gates PR publication on validation and checks the delivered result", async () => {
+it("gates automatic publication on exact-patch validation and threat detection", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
   const publish = job(workflow, "safe_outputs");
+  const commit = job(workflow, "commit_repair");
   const delivery = job(workflow, "verify_delivery");
-  expect(agent).toContain("scripts/check-catalog-repair-outcome.ts");
-  expect(agent).toContain(
-    "success() && steps.repair_outcome.outputs.outcome == 'create_pull_request'",
-  );
-  for (const command of ["vp check", "vp test --run", "vp run collect:fixtures", "vp run build"])
+  expect(agent).toContain("scripts/catalog-repair-publication.ts");
+  expect(agent).toContain('git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts"');
+  expect(agent).toContain("success() && steps.repair_outcome.outputs.outcome == 'commit_repair'");
+  for (const command of [
+    "vp check",
+    "vp test --run",
+    "vp run collect:fixtures",
+    "vp run build",
+    "vp run package:build",
+    "vp run package:check",
+  ]) {
     expect(agent).toContain(command);
+    expect(commit).toContain(command);
+  }
+  expect(agent).toContain("validated-catalog-repair");
+  expect(agent).toContain('catalog-repair-publication.ts" verify');
+  expect(commit).toContain("validated-catalog-repair");
+  expect(commit).toContain("needs.safe_outputs.result == 'success'");
+  expect(commit).toContain("needs.detection.outputs.detection_success == 'true'");
+  expect(commit).toContain("persist-credentials: false");
+  expect(commit).toContain("ref: main");
+  expect(commit).toContain('catalog-repair-publication.ts" apply');
+  expect(commit).toContain('catalog-repair-publication.ts" commit');
+  expect(commit).toContain("${{ steps.apply_repair.outputs.tree_sha }}");
+  expect(commit).toContain('catalog-repair-publication.ts" push');
+  expect(commit).toContain("gh workflow run void-deploy.yml --ref main");
+  expect(agent).not.toMatch(/^\s+(?:contents|actions): write$/m);
   expect(publish).toContain("needs.agent.result == 'success'");
   expect(delivery).toContain("always() && needs.agent.result == 'success'");
   expect(delivery).toContain("${{ needs.safe_outputs.result }}");
-  expect(delivery).toContain("${{ needs.safe_outputs.outputs.created_pr_url }}");
+  expect(delivery).toContain("${{ needs.commit_repair.result }}");
   expect(delivery).toContain("${{ needs.agent.outputs.output_types }}");
   expect(agent).toContain("output_types: ${{ steps.collect_output.outputs.output_types }}");
 });
