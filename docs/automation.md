@@ -100,14 +100,23 @@ Status: implemented
   while repairing. After its final edit it formats explicit changed paths with `vp fmt` and runs
   `vp check`, resolving every failed command before staging its patch and requesting publication.
   The standalone `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting.
-  `vp node scripts/catalog-repair-publication.ts stage` captures the actual patch for framework
-  threat detection before the agent requests `commit_repair`. The post-execution gate verifies
+  `vp node scripts/catalog-repair-publication.ts stage` runs the complete sequential check, test,
+  fixture, build, and portable-package suite before capturing the actual patch for framework
+  threat detection. A failed command returns control to the agent, which diagnoses and corrects
+  allowed changes and retries the complete gate, up to three attempts per run. Apparently
+  transient failures get one diagnostic rerun; deterministic failures require a correction.
+  Staging removes any stale detection patch first and rejects mutations during validation.
+  The agent requests `commit_repair` only after staging succeeds. The post-execution gate verifies
   that patch against the final working tree and uploads a separate validated candidate artifact
-  only after all checks pass. It independently repeats `vp check` and owns the full sequential
-  test, build, and portable-package validation; the agent does not
-  duplicate the full test and build sequence during inference. An
+  only after all checks pass. Staging, post-execution, and latest-main publication share the same
+  `validate` implementation; each independently runs the full suite. Repair infrastructure tests
+  also run before inference so a broken harness does not consume a model run. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   publication request. Automatic repair publication requires every repository validation command to pass.
+  Publication unit tests use a private in-memory environment, never host credentials or native
+  token mutation. AWF v0.28.27's [one-shot token cache](https://github.com/github/gh-aw-firewall/blob/v0.28.27/containers/agent/one-shot-token/src/lib.rs)
+  caches the first `GH_TOKEN` read even when absent, so `vi.stubEnv` cannot reliably replace it
+  inside the sandbox. A missing fake token must not strand an otherwise valid source repair.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
   (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
   Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
