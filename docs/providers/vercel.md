@@ -101,6 +101,9 @@ are unambiguous. A page is free only when every non-empty price column is `Free`
 retain quality, resolution, and video-input conditions; image rows retain quality and resolution;
 native web-search rows retain context tier. A missing or disagreeing detail registry leaves only the
 affected term raw.
+An otherwise valid model page may publish no usable pricing at all, including when the catalog and
+its endpoint expose only empty or zero-valued meters. That absence remains `not_published`; it does
+not reject the complete catalog, become a free rate, or borrow a tariff from a sibling model.
 The reviewed image-detail registry may put the price object directly under the model slug or
 inside its `model` property. Both literal structures are parsed without executing JavaScript;
 the wrapper cannot create a fictitious model named `model`.

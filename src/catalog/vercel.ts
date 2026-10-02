@@ -906,8 +906,6 @@ function modelPageRates(
     }
     throw new Error(`Vercel model page price could not be normalized for ${item.id}: ${header}`);
   }
-  if (rates.length === 0 && raw.length === 0 && !free)
-    throw new Error(`Vercel model page contained no usable pricing for ${item.id}`);
   return { rates, raw, free };
 }
 
