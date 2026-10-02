@@ -193,6 +193,66 @@ it("fails closed without a publication credential, independently of the host env
   expect(git).not.toHaveBeenCalled();
 });
 
+it("requests one fully revalidated retry only for a concurrent main push rejection", async () => {
+  process.env.REPAIR_RETRY_ON_RACE = "true";
+  for (const reason of ["fetch first", "non-fast-forward"]) {
+    files.clear();
+    git.mockReturnValueOnce({
+      status: 1,
+      stdout: "",
+      stderr: ` ! [rejected] HEAD -> main (${reason})`,
+    });
+    await runRepairPublication("push");
+    expect(files.get("/tmp/repair-test-output")).toBe("retry=true\n");
+  }
+  files.clear();
+  git.mockReturnValueOnce({ status: 1, stdout: "", stderr: "permission denied" });
+  await expect(runRepairPublication("push")).rejects.toThrow("permission denied");
+  expect(files.size).toBe(0);
+  delete process.env.REPAIR_RETRY_ON_RACE;
+  git.mockReturnValueOnce({
+    status: 1,
+    stdout: "",
+    stderr: " ! [rejected] HEAD -> main (fetch first)",
+  });
+  await expect(runRepairPublication("push")).rejects.toThrow("fetch first");
+  expect(files.size).toBe(0);
+});
+
+it("reapplies the admitted patch to current main and returns a new tree for validation", async () => {
+  artifact();
+  git.mockImplementation((_command: string, args: string[]) => {
+    if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
+    if (args.includes("--binary")) return success("patch");
+    if (args[0] === "write-tree") return success("3".repeat(40));
+    return success("");
+  });
+  await runRepairPublication("retry-apply");
+  expect(git.mock.calls.slice(0, 6).map(([, args]) => args)).toEqual([
+    ["status", "--porcelain"],
+    ["fetch", "--no-tags", "origin", "main"],
+    ["merge-base", "--is-ancestor", "1".repeat(40), "FETCH_HEAD"],
+    ["reset", "--hard", "FETCH_HEAD"],
+    ["merge-base", "--is-ancestor", "1".repeat(40), "HEAD"],
+    ["apply", "--3way", "--index", "/tmp/repair-test/repair.patch"],
+  ]);
+  expect(files.get("/tmp/repair-test-output")).toBe(`tree_sha=${"3".repeat(40)}\n`);
+  expect(git.mock.calls.some(([, args]) => args.includes("push"))).toBe(false);
+});
+
+it("does not discard a dirty checkout or continue a conflicted retry", async () => {
+  artifact();
+  git.mockReturnValueOnce(success(" M src/catalog/cohere.ts"));
+  await expect(runRepairPublication("retry-apply")).rejects.toThrow("clean publication checkout");
+  expect(git).toHaveBeenCalledTimes(1);
+  git.mockReset();
+  git.mockImplementation((_command: string, args: string[]) =>
+    args[0] === "apply" ? { status: 1, stdout: "", stderr: "patch conflict" } : success(""),
+  );
+  await expect(runRepairPublication("retry-apply")).rejects.toThrow("patch conflict");
+  expect(files.has("/tmp/repair-test-output")).toBe(false);
+});
+
 it("returns failed validation to the agent and stages only a successful unchanged retry", async () => {
   const patch = "reviewed patch";
   files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");

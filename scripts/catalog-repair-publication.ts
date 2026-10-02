@@ -234,8 +234,16 @@ export async function runRepairPublication(operation: string | undefined): Promi
         throw new Error("Catalog repair changed during validation");
       break;
     }
-    case "apply": {
+    case "apply":
+    case "retry-apply": {
       const { base } = await publication();
+      if (operation === "retry-apply") {
+        if (git(["status", "--porcelain"]).trim() !== "")
+          throw new Error("Catalog repair retry requires a clean publication checkout");
+        git(["fetch", "--no-tags", "origin", "main"]);
+        git(["merge-base", "--is-ancestor", base, "FETCH_HEAD"]);
+        git(["reset", "--hard", "FETCH_HEAD"]);
+      }
       git(["merge-base", "--is-ancestor", base, "HEAD"]);
       git(["apply", "--3way", "--index", join(environment("REPAIR_ARTIFACT_DIR"), "repair.patch")]);
       admitStagedPatch("HEAD", stagedPatch("HEAD"));
@@ -272,13 +280,28 @@ export async function runRepairPublication(operation: string | undefined): Promi
       const authorization = Buffer.from(`x-access-token:${environment("GH_TOKEN")}`).toString(
         "base64",
       );
-      git([
-        "-c",
-        `http.${server}/.extraheader=AUTHORIZATION: basic ${authorization}`,
-        "push",
-        "origin",
-        "HEAD:refs/heads/main",
-      ]);
+      try {
+        git([
+          "-c",
+          `http.${server}/.extraheader=AUTHORIZATION: basic ${authorization}`,
+          "push",
+          "origin",
+          "HEAD:refs/heads/main",
+        ]);
+      } catch (error) {
+        if (
+          process.env.REPAIR_RETRY_ON_RACE === "true" &&
+          error instanceof Error &&
+          /!\s+\[rejected\].*\((?:fetch first|non-fast-forward)\)/.test(error.message)
+        ) {
+          await output("retry", "true");
+          console.log(
+            "Main advanced during validation; reapply and fully validate once before retrying.",
+          );
+          break;
+        }
+        throw error;
+      }
       const sha = git(["rev-parse", "HEAD"]).trim();
       if (process.env.GITHUB_STEP_SUMMARY !== undefined)
         await appendFile(
@@ -288,7 +311,9 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     default:
-      throw new Error("Expected validate, stage, capture, verify, apply, commit, or push");
+      throw new Error(
+        "Expected validate, stage, capture, verify, apply, retry-apply, commit, or push",
+      );
   }
 }
 
