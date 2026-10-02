@@ -158,15 +158,7 @@ safe-outputs:
             git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
             vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
         - name: Validate against latest main
-          run: |
-            set -euo pipefail
-            vp check
-            vp test --run
-            vp run collect:fixtures
-            vp run build
-            vp run package:build
-            git diff --exit-code -- packages/pricing
-            vp run package:check
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
         - name: Commit the exact validated tree
           env:
             REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
@@ -242,6 +234,9 @@ steps:
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/catalog-repair.ts
 
+  - name: Check repair infrastructure before inference
+    run: vp test --run tests/catalog-repair-publication.test.ts tests/catalog-repair-workflow.test.ts
+
 post-steps:
   - name: Capture and admit the repair outcome
     id: repair_outcome
@@ -256,15 +251,7 @@ post-steps:
       vp node "$RUNNER_TEMP/catalog-repair-publication.ts" capture
   - name: Validate the proposed repair
     if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
-    run: |
-      set -euo pipefail
-      vp check
-      vp test --run
-      vp run collect:fixtures
-      vp run build
-      vp run package:build
-      git diff --exit-code -- packages/pricing
-      vp run package:check
+    run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
   - name: Verify that validation did not change the repair
     if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
     env:
@@ -381,12 +368,24 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    `vp exec oxfmt --write` invokes an IDE-only wrapper and fails. Check every command's exit status;
    a failed formatting or validation command remains unresolved until its corrected rerun succeeds.
    Leave the complete repair in the working tree, including new fixtures. Do not commit or push.
-   Run `vp node scripts/catalog-repair-publication.ts stage` after all edits and checks, so threat
-   detection receives the actual patch. Then call `commit_repair` once with a conventional commit
-   title and an evidence-backed report. Make no further edits after staging the patch.
+   Run `vp node scripts/catalog-repair-publication.ts stage`. This command runs the complete
+   sequential `vp check`, `vp test --run`, `vp run collect:fixtures`, `vp run build`,
+   `vp run package:build`, and `vp run package:check` suite and checks package artifacts before
+   writing the detection patch. Wait for the command to finish and inspect its exit status.
+   If it fails, diagnose the specific error, fix the allowed repair files, format them, and rerun
+   `stage`. Make up to three repair/validation attempts within this run. For an apparently
+   transient failure, rerun the failing command once to establish whether it persists, then rerun
+   the complete `stage` gate. Do not simply repeat an unchanged deterministic failure. Never
+   request publication after a failed check, skip a test, supply real credentials to tests, or
+   weaken validation. A persistent infrastructure failure outside the allowed edit scope remains
+   incomplete; record the command and concrete cause. A recoverable first failure is not a reason
+   to abandon an otherwise reproducible repair.
+   Only after `stage` succeeds, call `commit_repair` once with a conventional commit title and
+   an evidence-backed report. Make no further edits after staging the patch; if an edit is needed,
+   rerun `stage` before requesting publication.
    The deterministic post-execution step captures and admits the actual working-tree patch, then
-   runs all four required validations and the portable package checks. Leave the full test and
-   build sequence to it; `vp check` lets you correct format, lint, and type errors while still editing.
+   independently repeats the same validation suite. This second gate does not replace the
+   in-agent gate: failures must be discovered while you can still correct the repair.
    The publication job applies that exact patch to latest main, repeats complete validation, then
    commits and pushes without force. Concurrent updates or conflicts fail publication and are
    retried from current evidence by the next daily run. A publication request is only an intent.
@@ -399,7 +398,7 @@ unpublished price, and no independent validated repair is ready, report the unre
 A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
 `noop`. Only use `noop` after adequate evidence positively establishes that no repair is needed.
 Otherwise request one small `commit_repair` describing the source change, repair, focused
-validation results, and the full validation that the workflow must complete before publication.
+regression results, and the successful full `stage` validation.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
 it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing

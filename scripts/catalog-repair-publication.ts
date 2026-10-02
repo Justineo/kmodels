@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -93,6 +93,28 @@ export function repairPatchHash(patch: string): string {
   return createHash("sha256").update(patch).digest("hex");
 }
 
+/** Also runs inside the agent so failed checks can be repaired before final output. */
+export function validateRepair(): void {
+  for (const arguments_ of [
+    ["check"],
+    ["test", "--run"],
+    ["run", "collect:fixtures"],
+    ["run", "build"],
+    ["run", "package:build"],
+    ["run", "package:check"],
+  ]) {
+    const command = `vp ${arguments_.join(" ")}`;
+    console.log(`Catalog repair validation: ${command}`);
+    const result = spawnSync("vp", arguments_, { stdio: "inherit" });
+    if (result.error !== undefined) throw result.error;
+    if (result.status !== 0)
+      throw new Error(
+        `${command} failed (${result.signal ?? result.status}). Fix the failure and rerun stage before requesting publication.`,
+      );
+    if (arguments_[1] === "package:build") git(["diff", "--exit-code", "--", "packages/pricing"]);
+  }
+}
+
 function environment(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing ${name}`);
@@ -159,10 +181,22 @@ async function publication(): Promise<{ outcome: RepairOutcome; patch: string; b
 
 export async function runRepairPublication(operation: string | undefined): Promise<void> {
   switch (operation) {
+    case "validate": {
+      validateRepair();
+      break;
+    }
     case "stage": {
+      // A failed retry must not leave a previously approved detection patch behind.
+      await rm(patchPath, { force: true });
       git(["add", "--all"]);
       const patch = stagedPatch(baseSha());
       admitStagedPatch(baseSha(), patch);
+      validateRepair();
+      git(["add", "--all"]);
+      if (stagedPatch(baseSha()) !== patch)
+        throw new Error(
+          "Catalog repair changed during validation; review the changes and rerun stage",
+        );
       await writeFile(patchPath, patch);
       break;
     }
@@ -254,7 +288,7 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     default:
-      throw new Error("Expected stage, capture, verify, apply, commit, or push");
+      throw new Error("Expected validate, stage, capture, verify, apply, commit, or push");
   }
 }
 

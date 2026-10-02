@@ -57,17 +57,11 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(agent).toContain("scripts/catalog-repair-publication.ts");
   expect(agent).toContain('git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts"');
   expect(agent).toContain("success() && steps.repair_outcome.outputs.outcome == 'commit_repair'");
-  for (const command of [
-    "vp check",
-    "vp test --run",
-    "vp run collect:fixtures",
-    "vp run build",
-    "vp run package:build",
-    "vp run package:check",
-  ]) {
-    expect(agent).toContain(command);
-    expect(commit).toContain(command);
-  }
+  expect(agent).toContain('catalog-repair-publication.ts" validate');
+  expect(commit).toContain('catalog-repair-publication.ts" validate');
+  expect(agent.indexOf("Check repair infrastructure before inference")).toBeLessThan(
+    agent.indexOf("Execute GitHub Copilot CLI"),
+  );
   expect(agent).toContain("validated-catalog-repair");
   expect(agent).toContain('catalog-repair-publication.ts" verify');
   expect(commit).toContain("validated-catalog-repair");

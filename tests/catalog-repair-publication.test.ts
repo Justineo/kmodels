@@ -4,6 +4,7 @@ import {
   parseRepairOutcome,
   repairPatchHash,
   runRepairPublication,
+  validateRepair,
 } from "../scripts/catalog-repair-publication.ts";
 
 const { files, git } = vi.hoisted(() => ({ files: new Map<string, string>(), git: vi.fn() }));
@@ -21,20 +22,30 @@ vi.mock("node:fs/promises", () => ({
     files.set(path, (files.get(path) ?? "") + value);
   },
   mkdir: async () => {},
+  rm: async (path: string) => {
+    files.delete(path);
+  },
 }));
 
 beforeEach(() => {
   files.clear();
   git.mockReset();
-  vi.stubEnv("REPAIR_BASE_SHA", "1".repeat(40));
-  vi.stubEnv("REPAIR_ARTIFACT_DIR", "/tmp/repair-test");
-  vi.stubEnv("REPAIR_TREE_SHA", "2".repeat(40));
-  vi.stubEnv("GH_AW_SAFE_OUTPUTS", "/tmp/repair-output.jsonl");
-  vi.stubEnv("GITHUB_OUTPUT", "/tmp/repair-test-output");
-  vi.stubEnv("GITHUB_SERVER_URL", "https://github.com");
-  vi.stubEnv("GH_TOKEN", "test-token");
+  // AWF caches native token reads, including absence. Use an in-memory environment:
+  // vi.stubEnv cannot replace a GH_TOKEN value already cached by the sandbox.
+  vi.stubGlobal("process", {
+    ...process,
+    env: {
+      REPAIR_BASE_SHA: "1".repeat(40),
+      REPAIR_ARTIFACT_DIR: "/tmp/repair-test",
+      REPAIR_TREE_SHA: "2".repeat(40),
+      GH_AW_SAFE_OUTPUTS: "/tmp/repair-output.jsonl",
+      GITHUB_OUTPUT: "/tmp/repair-test-output",
+      GITHUB_SERVER_URL: "https://github.com",
+      GH_TOKEN: "test-token",
+    },
+  });
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => vi.unstubAllGlobals());
 
 const repair = {
   type: "commit_repair",
@@ -127,7 +138,7 @@ it("rejects changed artifacts and wrong base commits before running Git", async 
   await expect(runRepairPublication("apply")).rejects.toThrow("does not match");
   expect(git).not.toHaveBeenCalled();
   artifact();
-  vi.stubEnv("REPAIR_BASE_SHA", "3".repeat(40));
+  process.env.REPAIR_BASE_SHA = "3".repeat(40);
   await expect(runRepairPublication("apply")).rejects.toThrow("invalid validation record");
   expect(git).not.toHaveBeenCalled();
 });
@@ -141,7 +152,7 @@ it("requires the prepared detection patch and rejects changes introduced by vali
     .mockReturnValueOnce(success(diff("src/catalog/cohere.ts")));
   await expect(runRepairPublication("capture")).rejects.toThrow("after staging");
   expect(files.has("/tmp/repair-test/repair.json")).toBe(false);
-  vi.stubEnv("REPAIR_PATCH_SHA256", repairPatchHash("old patch"));
+  process.env.REPAIR_PATCH_SHA256 = repairPatchHash("old patch");
   git
     .mockReturnValueOnce(success(""))
     .mockReturnValueOnce(success("patch"))
@@ -174,4 +185,63 @@ it("applies through three-way conflict checks and never overwrites concurrent ma
   const args: unknown = git.mock.calls[0]?.[1];
   expect(args).toEqual(expect.arrayContaining(["push", "origin", "HEAD:refs/heads/main"]));
   expect(args).not.toEqual(expect.arrayContaining(["--force", "--force-with-lease"]));
+});
+
+it("fails closed without a publication credential, independently of the host environment", async () => {
+  delete process.env.GH_TOKEN;
+  await expect(runRepairPublication("push")).rejects.toThrow("Missing GH_TOKEN");
+  expect(git).not.toHaveBeenCalled();
+});
+
+it("returns failed validation to the agent and stages only a successful unchanged retry", async () => {
+  const patch = "reviewed patch";
+  files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");
+  let failTests = true;
+  let changeDuringValidation = false;
+  let validated = false;
+  git.mockImplementation((command: string, args: string[]) => {
+    if (command === "vp") {
+      if (args[0] === "test" && failTests) return { status: 1 };
+      if (args[1] === "package:check") validated = true;
+      return success("");
+    }
+    if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
+    if (args.includes("--binary"))
+      return success(changeDuringValidation && validated ? "changed patch" : patch);
+    return success("");
+  });
+  await expect(runRepairPublication("stage")).rejects.toThrow("vp test --run failed");
+  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
+  expect(git.mock.calls.some(([command, args]) => command === "vp" && args[1] === "build")).toBe(
+    false,
+  );
+
+  failTests = false;
+  await runRepairPublication("stage");
+  expect(files.get("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(patch);
+  expect(
+    git.mock.calls
+      .filter(([command]) => command === "vp")
+      .slice(-6)
+      .map(([, args]) => args),
+  ).toEqual([
+    ["check"],
+    ["test", "--run"],
+    ["run", "collect:fixtures"],
+    ["run", "build"],
+    ["run", "package:build"],
+    ["run", "package:check"],
+  ]);
+
+  changeDuringValidation = true;
+  validated = false;
+  await expect(runRepairPublication("stage")).rejects.toThrow("changed during validation");
+  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
+});
+
+it("does not accept a killed or unavailable validation process", () => {
+  git.mockReturnValueOnce({ status: null, signal: "SIGTERM" });
+  expect(validateRepair).toThrow("vp check failed (SIGTERM)");
+  git.mockReturnValueOnce({ error: new Error("vp unavailable") });
+  expect(validateRepair).toThrow("vp unavailable");
 });
