@@ -11,7 +11,10 @@ Status: implemented
   pricing validation. The gate excludes operational states such as fetch failures and missing
   credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
-  safe code repair exists. A provider simply not publishing a price is never a repair candidate.
+  safe code repair exists. A provider simply not publishing a price is never a repair candidate,
+  but a parser that rejects the whole catalog because one model lacks a price is repairable.
+  Repair preserves that model's `not_published` state and valid sibling models without inventing
+  prices or relaxing checks on malformed non-empty values or source identity.
 - Missing owned mappings and unrecognized pricing cards remain candidates on unchanged source bytes;
   accepted publication or fallback does not resolve them. The gate includes their reason counts and
   bounded diagnostic samples. Source candidates do not hide separate pricing validation failures

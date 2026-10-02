@@ -348,7 +348,16 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    a successfully fetched bundle can still be incomplete. The gate deliberately presents all new
    structural findings and regressions rather than trying to prove their root cause in advance. A
    transient transport failure, missing credential, ordinary unknown pricing coverage, or a price the provider
-   does not publish is not repairable.
+   does not publish is not itself repairable. Distinguish missing provider data from a parser that
+   mishandles that absence: rejecting an entire otherwise valid catalog because one model has no
+   published price is a reproducible code defect. Preserve that model with the existing
+   `not_published` pricing state and retain independently published prices for other models. For
+   example, a Vercel model with empty index pricing and empty visible price cells must not abort
+   collection or acquire a free price from unrelated zero-valued endpoint meters. Keep title,
+   provider, malformed non-empty price, and source-integrity checks intact. Add a fixture covering
+   the observed absence and a regression that proves valid sibling models survive. A verified
+   defect of this kind is repairable without inventing the missing tariff; do not classify it as
+   an unrepairable provider omission.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
    `src/catalog/*.ts` (excluding repair infrastructure), `tests/*.test.ts` (excluding repair infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
