@@ -49,6 +49,12 @@ Production collection uses only Alibaba Cloud first-party sources:
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
   `USD/million tokens` suffixes and currency-bearing headers for audio token rates;
+- the new realtime modality table may declare `Prices in USD per million tokens.` in the paragraph
+  immediately before the table. Only that local declaration supplies the otherwise missing currency
+  and denominator. Text/image/video input expands into its three exact modality meters; audio input,
+  text output, and audio output remain independent. The declaration never propagates into an
+  unrelated neighboring table. Qwen3.8 Omni Realtime publishes both text and audio output charges;
+  the older model's audio-only rule is not inherited;
 - the [context-cache guide](https://www.alibabacloud.com/help/en/model-studio/context-cache.md) owns
   cache eligibility and multipliers;
 - the [web-search guide](https://www.alibabacloud.com/help/en/model-studio/web-search.md) owns its

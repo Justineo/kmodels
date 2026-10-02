@@ -42,11 +42,13 @@ and an exact request/result trigger. The existence of an API alone does not crea
   terminal `include_usage` chunks, and Responses usage events. The tag is deliberately pinned so a
   moving branch cannot silently change a calculation input; a provider review bumps it.
 
-Collection deliberately does not scan `llms.txt` for commercial-looking pages or dynamically fetch
-pricing, terms, authentication, capability, and subscription pages. Those surfaces either duplicate
-stronger inputs or describe facts outside the rate-book boundary. The reviewed compatibility page
-is a fixed input. This source graph keeps refresh deterministic without a brittle content-keyword
-allowlist.
+The current collector does not include the fixed [pricing page](https://ollama.com/pricing).
+This is a known source-coverage gap: the page contains an independent model token-price table and
+an explicit Off-Peak schedule, alongside out-of-scope subscription content. The model table must
+not be excluded merely because the same page also describes plans. Adding it requires exact Cloud
+identity binding, local extraction of invocation rates, and reconciliation with family-page cards.
+Collection still does not scan `llms.txt` for arbitrary commercial-looking pages. The reviewed
+compatibility page remains a fixed input.
 
 ## Catalog and identity rules
 
@@ -73,11 +75,13 @@ offer. A simple card has up to three shared rate terms; for example, Kimi K3 pub
 - cached input text: USD 0.30 per million tokens;
 - output text: USD 15 per million tokens.
 
-Some pages publish separate `Base` and `Peak` amounts. Kmodels preserves both as exact
-`billing_period` variants. Ollama does not currently publish a first-party schedule or response
-field that says which period applies, so Kmodels does not invent a clock rule or selector source.
-Consumers can display both variants and may select one only when they possess an independently
-authoritative period value. This is a selector gap, not a reason to discard either rate.
+Some family pages publish separate `Base` and `Peak` amounts. Kmodels currently preserves both as
+exact `billing_period` variants without an automatic selector. The official pricing page does
+publish an Off-Peak schedule: outside 12:00–18:00 UTC on weekdays and all day on weekends.
+The remaining work is to bind its exact model/period rows to the family-card variants and model
+the schedule, including the provider's boundary semantics. This is unimplemented source/selector
+coverage, not an absence of a first-party schedule. Existing consumers still need to supply the
+period until that contract is implemented.
 
 The Pro/Max access gate and extra-usage-credit settlement do not qualify list rates and are not price
 dimensions. An ordinal Low/Medium/High usage class is an allowance-consumption label, not a currency

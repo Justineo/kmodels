@@ -1396,22 +1396,26 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
   if (!azureClaudeFoundryContract(input.body, parsedTables))
     throw new Error("Azure Claude delegated-pricing contract drifted");
   const priceColumns = [
-    /^Base input tokens$/i,
-    /^5m cache writes$/i,
-    /^1h cache writes$/i,
-    /^Cache hits (?:&|and) refreshes$/i,
-    /^Output tokens$/i,
-  ];
+    [/^Base input tokens$/i, "input_text", undefined],
+    [/^5m cache writes$/i, "cache_write_text", 300],
+    [/^1h cache writes$/i, "cache_write_text", 3_600],
+    [/^Cache hits (?:&|and) refreshes$/i, "cache_read_text", undefined],
+    [/^Output tokens$/i, "output_text", undefined],
+  ] as const;
   const table = parsedTables.find(
     (candidate) =>
       candidate.section === "Model pricing" &&
       headerIndex(candidate, /^Model$/i) >= 0 &&
-      priceColumns.every((header) => headerIndex(candidate, header) >= 0),
+      priceColumns.every(([header]) => headerIndex(candidate, header) >= 0),
   );
   if (table === undefined || table.rows.length === 0)
     throw new Error("Azure Claude pricing page omitted the model price table");
   const modelColumn = headerIndex(table, /^Model$/i);
-  const priceColumnIndexes = priceColumns.map((header) => headerIndex(table, header));
+  const columns = priceColumns.map(([header, meter, ttl]) => ({
+    index: headerIndex(table, header),
+    meter,
+    ttl,
+  }));
 
   const models = new Map<string, ProviderModel>();
   for (const row of table.rows) {
@@ -1427,12 +1431,10 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
     const candidates = catalogModels.filter(
       (model) =>
         model.model_id === identity.id &&
-        model.version === undefined &&
         model.status !== "retired" &&
         model.service_families?.includes(serviceFamilies.partner) === true,
     );
-    const candidate = candidates.length === 1 ? candidates[0] : undefined;
-    if (candidate === undefined) {
+    if (candidates.length === 0) {
       input.onPricingReconciliation?.({
         disposition: "excluded",
         reason_code: "claude_price_model_not_offered",
@@ -1440,51 +1442,30 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
       });
       continue;
     }
-    const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] =
-      priceColumnIndexes.map((index) => azureClaudeAmount(row[index] ?? ""));
-    if (
-      inputPrice === undefined ||
-      fiveMinuteWrite === undefined ||
-      oneHourWrite === undefined ||
-      cacheRead === undefined ||
-      outputPrice === undefined
-    ) {
+    const rates = columns.flatMap(({ index, meter, ttl }) => {
+      const price = azureClaudeAmount(row[index] ?? "");
+      if (price !== undefined)
+        return [azureClaudeRate(meter, price, identity.conditions, input.source.id, ttl)];
       input.onPricingReconciliation?.({
         disposition: "unsupported",
-        reason_code: "claude_price_row_unreadable",
-        sample: identity.id,
+        reason_code: "claude_price_cell_unreadable",
+        sample: `${identity.id}: ${meter}${ttl === undefined ? "" : `:${ttl}`}`,
       });
-      continue;
-    }
-    const rates = [
-      azureClaudeRate("input_text", inputPrice, identity.conditions, input.source.id),
-      azureClaudeRate(
-        "cache_write_text",
-        fiveMinuteWrite,
-        identity.conditions,
-        input.source.id,
-        300,
-      ),
-      azureClaudeRate(
-        "cache_write_text",
-        oneHourWrite,
-        identity.conditions,
-        input.source.id,
-        3_600,
-      ),
-      azureClaudeRate("cache_read_text", cacheRead, identity.conditions, input.source.id),
-      azureClaudeRate("output_text", outputPrice, identity.conditions, input.source.id),
-    ];
+      return [];
+    });
+    if (rates.length === 0) continue;
     if (
-      azureClaudeSupportsDataZone(candidate.model_id) &&
-      candidate.availability?.some(({ deployment_type }) => /data ?zone/i.test(deployment_type))
+      azureClaudeSupportsDataZone(identity.id) &&
+      candidates.every((candidate) =>
+        candidate.availability?.some(({ deployment_type }) => /data ?zone/i.test(deployment_type)),
+      )
     )
       rates.push(...azureClaudeDataZoneRates(rates));
-    const uid = modelUid(input.provider.id, candidate.model_id);
+    const uid = modelUid(input.provider.id, identity.id);
     const current =
       models.get(uid) ??
       ({
-        ...base(input, candidate.model_id),
+        ...base(input, identity.id),
         pricing_state: "numeric",
         price_facts: [],
       } satisfies ProviderModel);
@@ -1493,7 +1474,7 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "claude_public_rate_row",
-      sample: candidate.model_id,
+      sample: identity.id,
     });
   }
 

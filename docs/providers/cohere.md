@@ -25,9 +25,13 @@ General trial-key usage does not create a second free offer for every model. A M
 contact-sales alternative does not turn an otherwise unknown hosted inference price into
 `custom_quote`.
 
-Prices published only for “existing customers” are account-entitlement facts, not globally
-selectable request rates. They are excluded rather than attached unconditionally to legacy model
-IDs. A separately published public model rate, such as the Aya Expanse API rate, remains in scope.
+Public legacy token prices in the FAQ are admitted with `account_eligibility=existing_customer`.
+They remain request rates, qualified by the provider's explicit access restriction; collecting
+these amounts does not collect account enrollment, private contracts, or settlement. The local FAQ
+container must establish the existing-customer condition, and the exact dated model label must
+resolve uniquely. Missing eligibility, ambiguous aliases, nightly variants, and retired models
+never inherit these rates. A separately published public model rate, such as the Aya Expanse API
+rate, remains independent.
 “Free until rate limits” is an exact zero request rate for the named API path: reaching the service
 limit rejects further requests rather than selecting a paid fallback. The limit itself is not a
 price-book allowance.

@@ -1,267 +1,398 @@
 # Price-book completeness assessment
 
-Status: assessment of the retained provider scope from the 2026-09-11 snapshot
+Status: 2026-09-30 baseline assessment, implemented parser repairs, and remaining evidence gaps.
 
-## Evaluation boundary
+## Evidence and interpretation
 
-This assessment asks whether the **collected price book**, supplied with accurate quantities and
-the selected model, route, region, tier, modality, time, and other applicability values, can
-reconstruct the public cost. Where an allowance applies, its already-consumed quantity is also an
-input. Missing response fields, telemetry mappings, streaming usage, log correlation, and runtime
-capture are not pricing gaps in this assessment. A missing amount, component, applicability rule,
-or published allowance remains a gap even when all quantities are known.
+The accepted pair was generated at `2026-09-30T06:23:47.559Z` (14:23 China time).
+All 20 catalog and pricing partitions were accepted. None retained or withheld an entire
+pricing partition. This is publication success, not complete price coverage.
 
-Amounts are evaluated in their published denomination. Databricks DBU is not silently converted
-to USD. Private discounts, taxes, account settlement, capacity procurement, retained storage, and
-local model deployment remain outside the request-rate boundary in
-[Commercial topology](commercial-topology.md).
+This assessment compared `data/catalog.json`, `data/pricing.json.gz`, and
+`data/refresh-summary.json` with provider guides, adapter code, and current first-party pages.
+Eight provider adapters were repaired and exercised against freshly fetched first-party pages
+without publishing their output. These focused probes did not fetch every optional companion
+and are not a replacement collection run. Generated `data/` remains unchanged: all coverage
+counts below describe the pre-repair accepted snapshot, not a new published catalog.
 
-This assessment covers the providers retained from the 2026-09-11 live collection. Counts below
-are scoped to those providers; later additions and refreshes are outside this dated assessment.
-The assessed snapshot includes the session, geography, search, and grounding parser corrections
-documented in the [pricing research](pricing-research.md).
+Counts include every catalog status except `retired`, including deprecated models and artifacts.
+“Numeric” means at least one applicable numeric rate, including linked hosting capacity for
+SageMaker. It does not establish all meters, routes, tiers, or components. “Offers” includes
+free, unpublished, and raw-only states. “Unknown” means Kmodels has no resolved pricing offer;
+it is not proof that the provider has no published price.
 
-## Accepted result
+The snapshot has 4,275 catalog identities, 4,067 non-retired identities, 2,053 books
+(1,590 model books and 463 provider-resource books), and 1,887 pricing-unknown current models.
+There are 74 blocking raw variants across 27 current model identities and two service books,
+plus 145 informational raw variants. Missing books and silently omitted tiers are additional
+gaps not measured by raw counts.
 
-- Snapshot: `2026-09-11T05:50:05.136Z`.
-- All 18 in-scope catalog and pricing partitions were accepted; none retained old pricing or withheld pricing.
-- 3,625 catalog models, including 3,433 non-retired models.
-- 1,585 books: 1,528 model books and 57 provider-resource books.
-- 12 allowance variants and two quantity contributions.
-- 39 raw variants affect base prices or allowances; 144 more are informational.
+## Implemented repairs
 
-The refresh report's `publication: complete` means every provider publication succeeded. It does
-not mean every model, route, or service has a complete price. The result remains an incomplete
-universal request-cost book, with both explicit raw gaps and omissions outside canonical raw.
+| Provider       | Repair and focused live-source result                                                                                                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI         | Recognize Fast and Ultrafast; obtain geography restrictions from their official guides. Missing scope evidence preserves raw amounts instead of publishing unrestricted numeric rates.                                                                                 |
+| Gemini API     | Exclude illustrative per-10-second equivalences from token tariffs. Both Gemini 3.8 TTS models now parse 30 scoped numeric facts with no raw facts in the focused replay.                                                                                              |
+| xAI            | Accept the current Voice cost-cell wording; Voice Think Fast 2.0 produces six facts across three regions.                                                                                                                                                              |
+| Vertex         | Bind the exact Live API label and avoid duplicate interpretation of abbreviated token headers. Gemini 3.8 Live produces 14 facts; each of three GLM models produces three, with no raw duplicates.                                                                     |
+| DashScope      | Read table-local currency/denominator and combined modality headers. Qwen 3.8 Omni Flash Realtime produces 12 facts across Singapore and Beijing.                                                                                                                      |
+| Amazon Bedrock | Use exact Runtime model-card tariffs when bulk SKUs cannot bind; retain valid sibling cells. Grok 4.7 includes Standard/Priority/Flex. Kimi K3 adds API-qualified Priority/Flex without Converse accounting assumptions.                                               |
+| Azure          | Bind delegated Claude tariffs to the exact base model across offered versions, retaining exact-version precedence. Fifteen base IDs cover 29 catalog identities, including 22 previously without numeric pricing. A malformed component no longer drops the whole row. |
+| Cohere         | Collect five explicitly named legacy Command tariffs from the public FAQ with `account_eligibility=existing_customer`; four previously lacked numeric offers. Missing eligibility evidence does not become an unrestricted price.                                      |
 
-## Model coverage
+These are source-fact counts and exact binding checks, not post-publication coverage totals.
+Fixtures cover layout drift, missing companion scope, malformed sibling cells, identity/version
+boundaries, and API/account eligibility. No third-party amount or inferred successor tariff is used.
 
-Counts use exact non-retired catalog identities, not model families or pricing rows. “Book” includes
-numeric, free, unpublished, and raw-only offers. “Numeric” means at least one numeric rate, not
-complete coverage of every route or component. “Blocking raw” counts models, not raw variants,
-and can overlap Numeric. “Unknown” excludes explicit `not_applicable` dispositions.
+## Confirmed recoverable gaps from the follow-up recheck
 
-| Provider       | Current models |      Book |   Numeric |   Unknown | Blocking raw models |
-| -------------- | -------------: | --------: | --------: | --------: | ------------------: |
-| amazon-bedrock |            115 |       111 |       111 |         4 |                   0 |
-| anthropic      |             14 |        13 |        13 |         1 |                   0 |
-| azure          |            229 |       159 |       159 |        70 |                   0 |
-| cerebras       |             15 |         2 |         2 |        13 |                   0 |
-| cohere         |             37 |        16 |         8 |        21 |                   0 |
-| dashscope      |            375 |       355 |       355 |        20 |                   0 |
-| databricks     |             59 |        59 |        59 |         0 |                   3 |
-| deepseek       |              4 |         4 |         4 |         0 |                   0 |
-| gemini         |             49 |        38 |        38 |        11 |                   0 |
-| huggingface    |          1,640 |       142 |       134 |     1,498 |                  11 |
-| kimi           |              4 |         4 |         4 |         0 |                   0 |
-| llama          |             48 |         3 |         0 |        45 |                   0 |
-| mistral        |             39 |        39 |        38 |         0 |                   0 |
-| ollama         |            248 |        14 |        14 |       234 |                   0 |
-| openai         |             92 |        85 |        84 |         5 |                   0 |
-| vercel         |            369 |       369 |       361 |         0 |                   0 |
-| vertex         |             74 |        70 |        70 |         4 |                   1 |
-| xai            |             22 |        22 |        22 |         0 |                   0 |
-| **Total**      |      **3,433** | **1,505** | **1,476** | **1,926** |              **15** |
+Remaining unknowns must not be interpreted as exhausted research. The follow-up found additional
+first-party price sources that the current adapters do not collect:
 
-OpenAI has two additional `not_applicable` models. The 1,505 models with books partition into
-1,476 with numeric rates, 17 free-only models, four unpublished-only models, and eight raw-only
-models. A numeric model can still contain an incomplete sibling route.
+- [Ollama's central pricing page](https://ollama.com/pricing) explicitly prices five still-unpriced
+  exact Cloud IDs: `gemma4`, `gpt-oss:120b`, `gpt-oss:20b`, `nemotron-3-nano`, and
+  `nemotron-3-super`. It also publishes an Off-Peak schedule. The current source graph omits this
+  page; its subscription content is not a reason to exclude the independent invocation-rate table.
+  Family/tag aliases still require separate proof and are not included in this five-ID count.
+- Alibaba's independent cards for
+  [paraformer-realtime-v1](https://help.aliyun.com/en/model-studio/paraformer-realtime-v1) and
+  [paraformer-realtime-8k-v1](https://help.aliyun.com/en/model-studio/paraformer-realtime-8k-v1)
+  each publish CNY 0.00024 per audio second for China (Beijing). The international aggregate price
+  page omits these rows. These are viable model-card supplements, with their original currency and
+  domestic billing scope; they must not be converted into guessed international USD tariffs.
 
-The unknown denominator needs product context:
+These seven exact identities have verified additional public price evidence, but the new sources
+are not yet integrated. They are not a claim of seven newly published price books.
 
-- Hugging Face: 1,459 of the 1,498 unpriced models have an `hf-inference` route; 39 have other
-  unpriced media or specialized routes. Even with exact compute duration, the snapshot lacks a
-  bound hardware price for `hf-inference`. This is a rate-book gap, independent of runtime capture.
-- Ollama: 221 unpriced identities are Library-only local models outside hosted pricing. The other
-  13 are Cloud identities without a bound rate card, including exact tagged variants.
-- Meta: 45 identities are model artifacts outside Meta-operated request pricing. Its three
-  admitted hosted identities explicitly have unpublished rates.
-- The aggregate 1,926 unknown count is not a hosted-price completeness percentage. At least the
-  266 Library-only / artifact identities above are outside provider-billed inference pricing.
+Microsoft's [official GPT-6.1 Sol launch article](https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-gpt-6-1-sol-in-microsoft-foundry-advanced-intelligence-optimized-for/4560811)
+also publishes Standard input/cache-read/cache-write/output rates for Global and US/EU/APAC
+Data Zones, with short/long context rows. Fresh HTML contains the full article in JSON-LD and
+`__NEXT_DATA__` even though the basic page-text reader returns no article. Both structured copies
+were read and agree. This is a confirmed additional first-party source, not merely an indexed
+snippet. Integration still needs exact offered-version/context-band binding and precedence against
+the current retail price book; the announcement itself points to the central page for current terms.
 
-## Coverage of pricing dimensions
+Gemini Embedding 001 has an exact amount in Google's older launch article; a dated announcement
+alone does not settle current applicability. It deserves continued first-party investigation
+rather than an assertion that no price exists.
 
-“Present” means actual accepted variants or rules, not schema capacity. The model coverage and
-omissions apply independently; support does not imply every model has an offer.
+## Baseline provider coverage
 
-| Dimension or component             | Accepted support                                                                                               | Remaining limitation                                                                                     |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Input / output tokens              | Present across 17 providers with numeric token books                                                           | Exact model gaps in the coverage table                                                                   |
-| Cache read                         | Present across 14 providers                                                                                    | HF routed cache prices are not published in this book; some source scopes remain unresolved              |
-| Cache write and retention          | Seven providers; explicit Anthropic 300/3,600-second TTLs and Databricks default/1h alternatives               | Do not infer a default TTL from a named option                                                           |
-| Long context                       | Numeric bands in OpenAI, Gemini, Vertex and others; Databricks named short/long bands                          | Current Claude 4.6+ uses the same rate across its full context window; absence of a premium is not a gap |
-| Service tier / Batch               | Standard, Priority/Fast, Flex and Batch where published                                                        | Cerebras Batch is explicitly unpublished; availability is provider-specific                              |
-| Anthropic Fast                     | Opus 5 and Opus 4.8 Fast rates, cache modifiers and US geography multiplier                                    | Respect model-specific availability                                                                      |
-| Regional prices                    | Anthropic geography; OpenAI regional-processing uplift; Vertex global/non-global; Azure and Bedrock regions    | Explicit Fast × EU `not_supported`; other provider/model availability remains scoped                     |
-| Text / image / audio / video       | Separate rates and units where published; Gemini image-output tokens present                                   | Databricks image conflicts; unpriced media IDs and routes                                                |
-| Document input / OCR               | Image-input billing or page rates where published; Vertex Mistral OCR equivalence resolved                     | Vertex DeepSeek-OCR page alternative remains raw                                                         |
-| Thinking / reasoning               | Ordinary output rates include reasoning where specified                                                        | No duplicate surcharge is invented for reasoning already included in output                              |
-| Web search                         | Native provider services plus Vercel Perplexity, Exa, Tako and Parallel                                        | Tako export depends on the result card’s variable price                                                  |
-| File search / retrieval            | OpenAI and Azure File Search, xAI collection/attachment search, Mistral retrieval                              | Retained storage is outside request-rate scope                                                           |
-| Code execution                     | Anthropic standalone/included modes, minimum and allowance; OpenAI containers; Azure, Mistral and xAI services | No general claim for unpriced orchestration products                                                     |
-| Grounding                          | Gemini and Vertex Search/Maps with shared allowances; Vertex enterprise, data and Claude search                | Respect query versus grounded-prompt units and shared consumption                                        |
-| Reranking                          | Cohere, Bedrock, Azure and Vercel rates                                                                        | Exact Cohere model coverage is partial                                                                   |
-| Audio duration / TTS characters    | Second-based rates across nine providers; character rates across six                                           | GPT-Live active time is priced separately from backend model/tool usage                                  |
-| Images / searches / container time | Image, pixel, request, search-unit, event, second and session prices                                           | No universal image or search unit is assumed                                                             |
-| Shared allowances / minimums       | Gemini and Vertex grounding pools; Anthropic container allowance; OpenAI and Anthropic minimum rules           | Unrecognized sharing rules remain raw; shared pools are not per-model grants                             |
-| Bedrock logs / interrupted streams | Excluded from this evaluation                                                                                  | No price-book gap when correct quantities are supplied                                                   |
+| Provider                                  |   Current |   Numeric |    Offers |   Unknown | Blocking raw models |
+| ----------------------------------------- | --------: | --------: | --------: | --------: | ------------------: |
+| Amazon Bedrock                            |       128 |       126 |       126 |         2 |                   0 |
+| Amazon SageMaker AI                       |       628 |       623 |       623 |         5 |                   0 |
+| Anthropic                                 |        16 |        15 |        15 |         1 |                   0 |
+| Microsoft Foundry / Azure                 |       232 |       163 |       163 |        69 |                   0 |
+| Cerebras                                  |        15 |         2 |         2 |        13 |                   0 |
+| Cohere                                    |        40 |         9 |        17 |        23 |                   0 |
+| Alibaba Cloud Model Studio                |       377 |       355 |       355 |        22 |                   0 |
+| Databricks                                |        66 |        64 |        65 |         1 |                   4 |
+| DeepSeek                                  |         4 |         4 |         4 |         0 |                   0 |
+| Gemini API                                |        48 |        39 |        39 |         9 |                   2 |
+| Hugging Face                              |     1,588 |       133 |       140 |     1,448 |                  10 |
+| Kimi                                      |         4 |         4 |         4 |         0 |                   0 |
+| Meta Llama                                |        48 |         0 |         3 |        45 |                   0 |
+| Mistral                                   |        40 |        39 |        40 |         0 |                   0 |
+| Ollama                                    |       248 |        12 |        12 |       236 |                   0 |
+| OpenAI                                    |        89 |        78 |        79 |         8 |                   0 |
+| TypeSafe AI                               |         1 |         1 |         1 |         0 |                   0 |
+| Vercel AI Gateway                         |       395 |       395 |       395 |         0 |                   0 |
+| Vertex / Gemini Enterprise Agent Platform |        78 |        70 |        74 |         4 |                  11 |
+| xAI                                       |        22 |        21 |        21 |         1 |                   0 |
+| **Total**                                 | **4,067** | **2,153** | **2,178** | **1,887** |              **27** |
 
-Anthropic's current [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
-confirms standard pricing across the 1M context window and the two supported Fast models. The
-accepted Fable 5.1 cache-read amount is correct: its model-specific 0.025× multiplier is not a
-missing price, despite a redundant generic-multiplier diagnostic.
+OpenAI additionally has two explicit `not_applicable` identities. SageMaker's linked capacity
+explains why resolved-model coverage is larger than the number of model-scoped books.
 
-## Remaining canonical raw prices
+## Findings by provider
 
-| Provider / family                         | Variants |                         Affected current models | Effect                                                              |
-| ----------------------------------------- | -------: | ----------------------------------------------: | ------------------------------------------------------------------- |
-| Databricks Gemini image DBU / USD overlap |       24 |                                               2 | Conflicting denomination and applicability                          |
-| Databricks Grok 4.6 Priority              |        1 |                                               1 | Exact DBU amount unpublished                                        |
-| Hugging Face exact route amounts          |       11 |                                              11 | Exact route price or denomination unresolved                        |
-| Vertex DeepSeek-OCR                       |        1 |                                               1 | Page alternative lacks independent billing-token equivalence        |
-| Vercel Tako export                        |        1 |                                               — | Result-specific variable surcharge; applies when exporting contents |
-| Vertex Live grounding allowance           |        1 |                          1 service-scoped model | Published Flash allowance does not explicitly bind the Live variant |
-| **Total**                                 |   **39** | **15 model-book gaps plus shared-service gaps** | Includes one unresolved allowance                                   |
+### Amazon Bedrock
 
-### Databricks image overlap
+The two unknown IDs are `amazon.titan-embed-g1-text-02` and `xai.grok-4.7`.
+The latter was a confirmed collection gap: its
+[official model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html)
+publishes Standard Geo/Global CRIS prices and Priority/Flex multipliers.
+The accepted bulk-price diagnostics instead contain Mantle-labeled dimensions, while the card
+establishes Runtime CRIS access and explicitly excludes Mantle. Those rows cannot simply be
+attached to the Runtime route. The repaired fallback extracts the exact card table, resolves Geo
+from published profile aliases, and derives the explicit service-tier multipliers. Kimi K3's
+Priority/Flex rates additionally require a Responses or Chat Completions operation; missing
+scope evidence retains Standard and reports the unresolved tier scope.
+The Titan identity still lacks an exact binding in the accepted source set; this audit did not
+establish a safe substitute.
 
-The models are `databricks-gemini-3-1-flash-image` and `databricks-gemini-3-pro-image`. Each has
-four affected meters: input text, input image, output text and output image. For each meter the
-conflict contains two post-promotion DBU variants and one delegated USD variant: 2 × 4 × 3 = 24.
+There are 1,905 `price_dimension_target_unbound` source items, including Kimi K3 as well as Grok;
+this is a route/tier coverage issue beyond the two entirely unknown models, not 1,905 missing
+models. Three canonical raw variants are superseded-value provenance only.
 
-The [partner pricing table](https://www.databricks.com/product/pricing/proprietary-foundation-model-serving)
-publishes DBU prices and a regional uplift. The
-[model documentation](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models)
-also delegates these exact global endpoints to Google pass-through prices. Both paths enter the
-same `pay-per-token` offer without a reviewed precedence rule or disjoint billing choice. The
-connected overlap is correctly downgraded instead of summing DBU and USD.
+### Amazon SageMaker AI
 
-Promotional DBU variants remain numeric. Sixteen raw variants start on `2027-02-01`; eight USD
-observations have no date bound and have `promotion=false`. All 24 do not affect every request
-today, but the book cannot describe complete billing alternatives or the future schedule until
-this source interaction is resolved.
+623 models resolve to numeric offers, predominantly infrastructure capacity. This does not mean
+623 token price cards or complete deployment bills. The five Nova IDs
+(`nova-textgeneration-lite`, `lite-v2`, `micro`, `micro-v2`, and `pro`, with the common prefix)
+have no supported-instance list and no public per-inference rate from which to bind a model price.
+Twenty Marketplace listings expose no usable public pricing query. Missing software charges can
+therefore coexist with a known AWS instance price.
 
-The [research](pricing-research.md) establishes DBU-to-currency calculation and explains current
-promotional equivalence conditionally, but not future schedule precedence.
+The optional regional Hub API aborted in the latest run; public SDK, hosting, and Marketplace
+pricing were accepted independently. See the [provider guide](providers/amazon-sagemaker.md) and
+[AWS pricing](https://aws.amazon.com/sagemaker/ai/pricing/).
 
-`databricks-grok-4-6` separately has a Priority unknown: its support contract establishes a premium
-tier, but no exact DBU amount. Sibling premiums and xAI USD prices are insufficient evidence.
+### Anthropic
 
-### Hugging Face: each unresolved route
+Only `claude-mythos-preview` remains unknown. The current
+[lifecycle page](https://platform.claude.com/docs/en/about-claude/model-deprecations) still calls it
+deprecated with retirement to be announced; it must not be silently counted as retired.
+The current [price table](https://platform.claude.com/docs/en/about-claude/pricing) omits an exact
+Mythos Preview row. A successor's price is insufficient evidence.
 
-| Hub model                                    | Route        | Missing price evidence                                     |
-| -------------------------------------------- | ------------ | ---------------------------------------------------------- |
-| `CohereLabs/aya-vision-32b`                  | cohere       | Production input/output rates                              |
-| `CohereLabs/command-a-translate-08-2025`     | cohere       | Production input/output rates                              |
-| `CohereLabs/c4ai-command-r7b-arabic-02-2025` | cohere       | Exact Arabic variant rates                                 |
-| `CohereLabs/tiny-aya-water`                  | cohere       | Exact route input/output rates                             |
-| `CohereLabs/tiny-aya-global`                 | cohere       | Exact route input/output rates                             |
-| `CohereLabs/tiny-aya-earth`                  | cohere       | Exact route input/output rates                             |
-| `CohereLabs/tiny-aya-fire`                   | cohere       | Exact route input/output rates                             |
-| `CohereLabs/command-a-reasoning-08-2025`     | cohere       | Production input/output rates                              |
-| `Qwen/Qwen3.8-2.4T-A95B`                     | fireworks-ai | Exact on-demand-only backend has no serverless token price |
-| `deepseek-ai/DeepSeek-V4-Flash-0731`         | scaleway     | HF route denomination; native EUR cannot be relabeled USD  |
-| `zai-org/GLM-4.6V-Flash`                     | zai-org      | HF paid classification conflicts with native free pricing  |
+The tool-overhead table diagnostic concerns billing-input interpretation, not a missing base rate.
+No blocking canonical raw remains for the 15 priced models.
 
-Trial access is not a production zero price. A similarly named Fireworks backend is not an exact
-join. These gaps are independent of the ability to obtain usage.
+### Microsoft Foundry / Azure
 
-### Vertex DeepSeek-OCR
+The 69 unknown identities are a mixture of model/version joins, partner naming, unsupported meters,
+and unavailable public cells. Retail reconciliation contains 6,127 nonunique identity rows,
+1,632 ambiguous version rows, and 14 unsupported meter/unit rows. Public HTML adds 213 unbound
+identity rows, four unsupported rows, and five unavailable price cells. These are source-row
+counts, not disjoint model counts.
 
-`deepseek-ocr-maas` retains known token rates and one unresolved page alternative. Its
-[model page](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/deepseek/deepseek-ocr)
-does not provide the explicit page-to-billing-token relation supplied for Mistral OCR. Deriving
-that relation from the ratio of the two prices would be circular. The
-[research](pricing-research.md) also compares LiteLLM and Bifrost: their differing calculations
-do not establish a Google page-billing contract.
+Twenty-three baseline unknown identities are Claude variants. The repaired delegated parser uses
+Microsoft's explicit per-model Anthropic billing contract to bind an exact base ID to its offered
+versions; the live replay recovers 22 of these. Exact-version observations retain precedence,
+and a Data Zone uplift requires positive availability across every candidate in a shared book.
+This does not authorize cross-family or guessed-version joins. Other missing identities include
+new GPT-6.1 Sol, image/audio models, Fireworks-prefixed partner IDs, and older embedding versions.
 
-## Corrected source omissions
+The portal inventory timed out, but all pricing partitions were accepted. Treat the transport
+failure separately from these persistent joins. Sources:
+[Foundry pricing](https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/)
+and [binding rules](providers/azure.md).
 
-The live output now includes GPT-Live session time, the explicit GPT-6 Astra Fast × EU
-`not_supported` state, Tako/Parallel search rates and the Tako variable-export exception, and
-Vertex combined Search/Enterprise scope with reviewed shared grounding allowances. Regression
-fixtures cover the actual table/prose structures. Source evidence and calculation limits are
-recorded in the [pricing research](pricing-research.md).
+### Cerebras
 
-## Remaining omissions outside canonical raw
+All 13 unknown models are deprecated catalog identities. The current
+[Shared Inference catalog](https://inference-docs.cerebras.ai/models/overview) lists exactly the
+two models with numeric prices: GPT OSS 120B and Qwen 3.8 27B.
+The [deprecation feed](https://inference-docs.cerebras.ai/support/deprecation) explains the older
+identities. A deprecated model remains in the non-retired denominator without a current price.
+Separately, the admitted Batch offer has explicitly unpublished pricing; synchronous prices
+must not be reused for it.
 
-Raw count alone misses absent books and incomplete service scopes. These must also be considered
-when evaluating a total cost.
+### Cohere
 
-1. **Exact model-to-price binding.** Azure has 70 current unpriced models. Its Retail source
-   reports 5,786 unbound rows, 2,034 version ambiguities and 14 unsupported meter/unit rows;
-   these are source-row counts, not missing-model counts. Bedrock has four unpriced current
-   identities, Gemini API 11, and Vertex four. Vertex's current page publishes Gemini 3.7/3.8 Flash
-   rows, yet both exact catalog models lack a model book. Their dated promotion labels need a
-   binding review. Other identity gaps must not inherit sibling prices.
-2. **Published scope diagnostics.** DashScope reports two cache-model scope gaps and unbound
-   Beijing web/image-search prices. xAI reports Batch exclusion and image-generation-tool scope
-   drift. These do not erase known rates, but prevent exhaustive mechanism/component coverage
-   claims. Kimi's informational promotion/trigger notes do not prove future schedules.
+Nine models have numeric rates and eight additional models have free-only offers.
+The 23 unknowns mix older Command/Embed/Rerank models, new Embed 5 variants, and research models.
 
-Anthropic's `cache_price_conflict` is different: its accepted exact Fable 5.1 rate matches the
-model-specific official exception. Missing usage locators, source protocol capability drift and
-that redundant generic check are not counted as absent prices. Upstream router gaps resolved by
-exact native overlays are not counted twice.
+The [official FAQ](https://cohere.com/pricing) publishes five legacy Command tariffs for existing
+customers. The adapter now collects their ten components with explicit account eligibility,
+replacing the previous blanket exclusion. Each name must bind uniquely to an exact catalog
+identity, and the eligibility statement must be in the same FAQ block.
+Generic trial-key access must not become a production zero rate. Missing research-model
+prices and exact central-product joins remain unknown. One missing quantity contract
+(`11/12` inputs) does not erase the accepted rates.
 
-## Accepted provider-resource inventory
+### Alibaba Cloud Model Studio / DashScope
 
-These 57 books supplement model rates; their presence does not establish universal model/tool
-compatibility. Fine-tuned inference is distinct from excluded training jobs.
+22 baseline identities have no price. The parser gap for
+`qwen3.8-omni-flash-realtime`: the
+[pricing page](https://www.alibabacloud.com/help/en/model-studio/model-pricing) publishes exact
+Singapore and Beijing modality rates in a new header layout with currency declared above
+the table. The repaired parser combines that local declaration with each modality header,
+including text/image/video input, and recovers both regions. Without the currency declaration,
+it does not guess the denomination.
 
-| Provider       | Books | Components                                                                                                         |
-| -------------- | ----: | ------------------------------------------------------------------------------------------------------------------ |
-| Amazon Bedrock |     5 | Two Nova grounding books, Guardrails, web search, prompt routing                                                   |
-| Anthropic      |     2 | Web search, code execution                                                                                         |
-| Azure          |     3 | Computer use, Responses File Search, Responses Code Interpreter                                                    |
-| Cerebras       |     1 | Batch, explicitly `not_published`                                                                                  |
-| DashScope      |     3 | Web search, image search, text-to-image search                                                                     |
-| Gemini         |     2 | Google Search and Maps, with seven allowance pools                                                                 |
-| Kimi           |     3 | Web search, files, Formula                                                                                         |
-| Mistral        |     5 | Web search, premium news, code execution, image generation, library retrieval                                      |
-| OpenAI         |    14 | Nine fine-tuned inference books, search, File Search, containers, two fixed search-content contributions           |
-| Vercel         |     6 | Native web/Maps search, Perplexity Search, Exa Search, Tako Search, Parallel Search                                |
-| Vertex         |     5 | Google Search, Maps, Enterprise grounding, grounded generation, Claude search; four current shared allowance pools |
-| xAI            |     8 | Web/X/collection/attachment search, code execution, STT, TTS, response-policy charge                               |
+Other unknowns include Qwen 2.5 variants, Paraformer, MiniMax/GLM names, and Wan regional IDs;
+their exact identity and scope still require individual joins. The two Paraformer realtime v1
+identities now have confirmed first-party domestic CNY card prices, as described above.
+Source diagnostics also report
+11 unbound model-price items, nine unsupported units, eight unsupported identities, two cache
+scope gaps, and unbound Beijing web/image-search charges. Some unsupported rows concern
+products absent from the admitted catalog, so these counts must not be added to the 22 models.
 
-Meta's three hosted model books and Mistral `mistral-ocr-2503@25.03` are explicitly unpublished.
-They are represented price states but cannot produce numeric public totals, separate from
-Cerebras' unpublished provider-level Batch service.
+### Databricks
 
-## Arithmetic checks against accepted data
+The one entirely unknown model is `databricks-grok-4-7`: the
+[supported-model page](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models)
+lists it, while the reviewed
+[proprietary rate table](https://www.databricks.com/product/pricing/proprietary-foundation-model-serving)
+still lists Grok 4.6. Native xAI USD prices cannot establish Databricks DBU prices.
 
-These examples use rates read from the refreshed canonical file, independent of acquisition paths:
+Two Gemini image models retain 24 conflicting DBU/pass-through-USD variants. The future
+post-promotion DBU schedule and undated delegated USD observations lack an accepted precedence
+or separate billing choice. Priority amounts are additionally unknown for Grok 4.6 and
+GPT-6.1 Sol; the latter has a raw-only model offer. There are 26 blocking variants in total.
+The workspace API timeout affects optional inventory, not public pricing acceptance.
+See [DBU research](pricing-research.md) for the conversion boundary.
 
-- OpenAI eligible 1-GiB container: two billed minutes invoke the five-minute minimum, producing
-  **$0.0075**; eight billed minutes produce **$0.012**.
-- Vercel Exa: one search requesting 15 results costs $0.007 + 5 × $0.001 = **$0.012** for search,
-  before separately priced model tokens.
+### DeepSeek
 
-These positive cases do not imply omitted services or unpriced models are zero-cost.
+All four callable identities have numeric rates. Their four raw notes are informational:
+the [official peak schedule](https://api-docs.deepseek.com/quick_start/pricing/) depends on
+weekday, UTC windows, and Chinese public holidays. The rates exist, but the consumer must supply
+the applicable billing period; a general holiday-calendar selector is not compiled.
+Inventory/Anthropic-streaming contract drift affects metadata or usage acquisition, not amounts.
 
-## Informational raw inventory
+### Gemini API
 
-| Provider       | Variants | Purpose                                                                         |
-| -------------- | -------: | ------------------------------------------------------------------------------- |
-| amazon-bedrock |        3 | Price-list observations superseded by Marketplace rates                         |
-| huggingface    |        3 | Superseded Featherless snapshots                                                |
-| kimi           |       13 | Search/Formula trigger warnings and promotion-end information                   |
-| openai         |       93 | Superseded model-card observations                                              |
-| vertex         |       31 | Grounding billing clauses and malformed Claude suffix beside valid scoped rates |
-| xai            |        1 | Superseded image summary                                                        |
-| **Total**      |  **144** | Excluded from commercial equality and base-price completeness                   |
+Nine exact catalog identities lack a bound offer: two Antigravity previews, two Deep Research
+previews, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`,
+`gemini-embedding-001`, `gemini-robotics-er-1.6-preview`, and `lyria-realtime-exp`.
+Agent pricing may delegate to underlying model/tool usage; that is not an independent agent
+price. Preview and older IDs must not inherit successor rates merely by name.
 
-## Validation and reproduction
+A repaired adapter bug affected `gemini-3.8-flash-tts` and
+`gemini-3.8-flash-lite-tts`. The
+[official page](https://ai.google.dev/gemini-api/docs/pricing) gives token prices followed by
+equivalent per-10-second estimates. `priceUnit` recognizes minutes and seconds but not
+“per 10s”; it falls back to the table's million-token header. The fresh-page parser probe
+reproduced `0.001125` as USD per million tokens instead of an audio-duration equivalence.
+Canonical conflict handling then downgraded 16 scoped variants. The parser now separates these
+equivalences from actual token tariffs and preserves the dated tariff scopes. If the primary
+tariff is missing, the illustrative estimate remains unresolved raw evidence instead of
+inheriting the token denominator. This was our unit-recognition error, not contradictory prices.
 
-Current equivalents of the assessed artifacts are the accepted [catalog](../data/catalog.json),
-[canonical pricing envelope](../data/pricing.json.gz),
-[parsed pricing compilation inputs](../data/pricing-inputs.json.gz) and
-[refresh report](../data/refresh-summary.json). These files advance with later refreshes; the counts
-above describe the dated assessment. Model counts filter `status != retired`; raw counts
-sum raw-term variants and raw variants attached to normalized terms, rather than counting
-observations or source-extraction diagnostics. Source reconciliation and provider-resource scopes
-are inspected separately because omissions may never reach canonical raw.
+### Hugging Face
 
-Reproduce structural validation with `vp install --frozen-lockfile`, `vp check`, `vp test --run`,
-`vp run collect:fixtures`, and `vp run build`. Passing structural tests does not establish pricing
-completeness.
+Of 1,448 unknown models, 1,405 have an `hf-inference` route. The
+[official billing guide](https://huggingface.co/docs/inference-providers/en/pricing) charges
+compute time against hardware price, while the collected route evidence lacks an exact
+hardware-rate binding. The other 43 unknown identities have unpriced specialized/partner routes.
+
+Ten model books retain blocking route-specific unknown amounts: seven Cohere routes
+(Aya Vision, Command A Reasoning/Translate, and four Tiny Aya models), Qwen3.8 2.4T on Fireworks,
+DeepSeek V4 Flash 0731 on Scaleway, and GLM-4.6V-Flash on Z.ai.
+Their issues include missing exact paid native rates, non-serverless products, denomination,
+and native-free versus HF-paid disagreement. An amount for another route is insufficient.
+Three Featherless unit conflicts have deterministic winners and remain informational.
+Missing auto-routing observations are a separate calculation-input limitation.
+
+### Kimi
+
+All four current models have numeric China/international rates. The
+[current pricing page](https://platform.kimi.ai/docs/pricing/chat-k3) consolidates the current
+model families. A rejected K2.5 page concerns a retired model, not a current base-price outage.
+Remaining limits are Formula web-search failure charging, unpublished promotion end dates for
+temporary free tools/files, and missing Batch cached-token acquisition. Eleven raw variants
+are informational; these limits still matter for complete service-cost reconstruction.
+
+### Meta Llama
+
+45 unpriced identities are downloadable artifacts, not Meta-billed inference offers.
+Three exact SDK-established hosted identities have `not_published` offers and no numeric rate.
+The [official SDK](https://github.com/meta-llama/llama-api-python) establishes routes and examples,
+not a current public amount. Historical free-preview announcements do not establish a current
+zero price. The hosted documentation endpoint was unavailable in this recheck, so the
+unpublished-price conclusion remains based on the accepted source set and reviewed SDK boundary.
+
+### Mistral
+
+All 40 current models have offers: 39 numeric and one free-only. The accepted partition has no
+blocking raw. The [public API page](https://mistral.ai/pricing/api/) was rechecked; no new
+base-price gap was established. This is not a claim that every private deployment or
+enterprise contract is represented.
+
+### Ollama
+
+236 unknowns split into 224 Library-only local identities and 12 Cloud identities.
+The Cloud gaps are `deepseek-v4-flash`, `deepseek-v4-pro:0813`, `gemma4`, `gemma4:31b`,
+`glm-5.1`, `gpt-oss`, `gpt-oss:120b`, `gpt-oss:20b`, `mistral-large-3:675b`,
+`nemotron-3-nano`, `nemotron-3-nano:30b`, and `nemotron-3-super`.
+An unpriced exact tag cannot inherit a family card without an official equivalence.
+
+Two priced Cloud models have Base/Peak variants without a compiled selector schedule.
+The central pricing page supplies the previously missed Off-Peak rule and five exact missing-model
+rates. Family/tag binding and the schedule's canonical representation still need implementation.
+See [Ollama collection rules](providers/ollama.md). The earlier family-page-only recheck did not
+establish that no other official pricing source existed.
+
+### OpenAI
+
+Eight unknowns are four Daybreak aliases (with and without the `gpt-` prefix),
+`gpt-4-1106-preview`, `gpt-4o-tts`, `gpt-5.4-cyber`, and `sora-2`.
+The fresh [pricing Markdown](https://developers.openai.com/api/docs/pricing.md) no longer
+contains the exact alias-to-underlying-model sentence required by `openAiPricingAliases`.
+Those aliases therefore remain unresolved; their historical targets are not current proof.
+The other exact IDs lack current bound rows in the accepted source set.
+
+The former tier recognizer accepted `Fast mode` but skipped current `Fast` and new `Ultrafast`
+tables. Both are now collected, with optional first-party guide companions establishing the
+EU Fast exclusions and Ultrafast's US-residency/global-processing restriction. If those
+scope contracts are unavailable, the affected amounts remain raw while other tiers survive.
+Served-tier normalization accepts both historical `priority` and current `fast` values.
+Ninety baseline raw variants are resolved card-versus-page conflicts, not missing tiers.
+The exact GPT-Rosalind Research billing notice now bounds its prices from 2026-10-05 with
+approved-internal-research eligibility; no pre-start free rate is inferred.
+
+### TypeSafe AI
+
+The one current model has both numeric input and explicit zero output rates. The
+[official model page](https://docs.typesafe.ai/models) confirms USD 0.042 per million input
+tokens and free output. No missing base amount or blocking raw was found.
+
+### Vercel AI Gateway
+
+All 395 current models have numeric offers, with no model-scoped blocking raw.
+One service gap remains: Tako data-export cost depends on each result card's
+`content.export_pricing` and requested rows. A static book cannot supply a universal amount.
+The [provider/model documentation](https://vercel.com/docs/ai-gateway/models-and-providers)
+does not make one route's price a guarantee for every possible provider choice.
+
+### Vertex / Gemini Enterprise Agent Platform
+
+Four identities are unknown: Claude Opus 4, Opus 4.1, Sonnet 4, and Gemini 3.8 Live.
+The [live pricing page](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html)
+publishes “Gemini 3.8 Live API” rates. The repaired exact label normalization now binds
+`gemini-3.8-live` without changing model versions or broadening other names.
+
+The baseline has 21 blocking variants: nine Claude cache conflicts, eight raw embedding variants,
+three GLM raw variants, and one grounding allowance. The live HTML itself contains inconsistent
+cache labels, including Opus 4.5 regional “1h Cache Write” rows at both 11.00 and 5.50,
+and Batch Cache Hit labels with write-like amounts. The source needs a scoped clarification;
+do not resolve these by silently borrowing another region's rate.
+
+The four embedding books retain “Price / 1,000 count” as unknown applicability because “count”
+does not independently establish tokens versus characters. Three GLM models already have
+numeric token rates; the repaired abbreviated-header recognizer prevents the generic labeled
+pass from also emitting raw duplicates. The embedding units remain unresolved: older indexed
+snippets mention tokens/characters, but the current fetched page says only `count`, so those
+snippets cannot establish a current tariff denominator. One Live grounding allowance remains
+unbound to an exact model scope.
+The older DeepSeek-OCR gap from the previous assessment is not present in this snapshot.
+
+The web reader failed on this page; a direct HTTPS fetch succeeded and its HTML was inspected
+and replayed through the existing parser.
+
+### xAI
+
+Only `grok-voice-think-fast-2.0@1.0` lacked a model price in the baseline. The
+[official pricing page](https://docs.x.ai/developers/pricing) already lists the exact base name
+with audio-session and text-input charges. The new combined “Model or mode / Cost” layout
+previously failed the realtime Voice recognizer because its hourly equivalence no longer repeated
+the word `audio`. The repaired parser accepts both forms and retains the actual per-minute
+audio and per-request text rates for each published region.
+
+The image summary conflict has an accepted exact-resolution winner and is informational.
+Batch exclusions and quantity-contract drift remain separate partial-coverage diagnostics.
+
+## Remaining gaps and acceptance criteria
+
+1. Integrate the confirmed Ollama central table and DashScope domestic model-card supplements.
+   Keep subscription prose excluded locally; preserve each tariff's currency and billing scope.
+2. Seek or explicitly retain unresolved source semantics: Vertex cache labels/count units,
+   Databricks denomination and future schedule precedence, missing Priority amounts, and HF
+   exact routed prices.
+3. Require exact first-party evidence for still-unbound identities, including Titan's old
+   embedding ID, Azure partner/version rows, DashScope regional IDs, and Ollama Cloud tags.
+   Hardware-time billing without a model/hardware mapping and downloadable artifacts cannot
+   be repaired by inventing token prices.
+4. Report Library/artifact identities, deprecated identities, missing hosted amounts, and
+   missing selectors separately. Do not turn the aggregate unknown count into a hosted-service
+   failure percentage.
+
+A repair should verify the exact previously missing model/route/tier/component and retain safe
+siblings. Passing whole-provider publication or finding any numeric rate is insufficient.
+Rate-source failures, usage-input failures, and informational superseded values must remain
+distinguishable. The implemented repairs above have source replay and fixture coverage; a future
+explicit live collection is required to measure and publish the resulting full-catalog coverage.

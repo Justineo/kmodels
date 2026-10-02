@@ -73,10 +73,15 @@ entitlement or settlement.
 
 `Free Tier` and `Paid Tier` are account-eligibility dimensions. Only an exact official `Free of
 charge` cell becomes a zero rate. Standard/Flex/Priority and Batch remain execution dimensions. An
-adjacent per-image or per-minute amount is treated as a usage equivalence when the same cell already
+adjacent per-image, per-minute, or explicit `Equivalent to` amount (including per-10-second TTS
+estimates) is treated as a usage equivalence when the same cell already
 publishes a primary token price; it is not a second charge. When a paid cell publishes successive
 `through` and `starting` prices, those dates remain applicability boundaries; the adjacent undated
 Free Tier cell remains continuous rather than inheriting the paid schedule.
+
+An equivalence without a surviving primary token amount stays raw with an unknown unit; it must
+not acquire the table's token denominator by fallback. This isolates a damaged primary cell
+without converting an estimate into a published tariff.
 
 Gemini 3 Search is priced per executed search query. The same monthly Search allowance cell also
 establishes Robotics membership in that shared pool; a model-name prefix does not override the cell.

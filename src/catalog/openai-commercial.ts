@@ -76,7 +76,6 @@ export function applyOpenAiCommercialTopology(
 }
 
 function bindUnsupportedFastEu(book: AtomicPricingBook): void {
-  if (book.book_key !== "model:openai/gpt-6-astra") return;
   for (const offer of book.offers)
     offer.terms = offer.terms.filter((term) => {
       if (term.kind !== "raw" || term.term_key !== "fast_eu_not_supported") return true;
@@ -754,9 +753,9 @@ function optionalSelectorNormalization(
             ? value.value === "standard"
               ? ["default"]
               : value.value === "fast"
-                ? ["priority"]
-                : value.value === "flex"
-                  ? ["flex"]
+                ? ["priority", "fast"]
+                : value.value === "flex" || value.value === "ultrafast"
+                  ? [value.value]
                   : []
             : dimension.value === "resolution" && model?.tasks.includes("video_generation") === true
               ? videoResolutionSourceValues(value.value)

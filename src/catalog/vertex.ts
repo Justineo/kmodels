@@ -982,6 +982,7 @@ function priceName(value: string): string {
       "Gemini Live $1 Flash Native Audio",
     )
     .replace(/\bwith Gemini Live API\b/gi, "Live API")
+    .replace(/^Gemini (\d+(?:\.\d+)?) Live API$/i, "Gemini $1 Live")
     .replace(/\b(\d+)\.0\b/g, "$1")
     .replace(/[^a-z0-9]+/gi, "")
     .toLowerCase();
@@ -1321,6 +1322,15 @@ function excludedPricingTable(table: Selection, headers: string[]): boolean {
   );
 }
 
+function abbreviatedTokenTable(headers: string[], section: string): boolean {
+  return (
+    headers.join("|") === "Model|Type|Price /1M (USD)" &&
+    /^(?:Deepseek's|MiniMax's|Moonshot's|Qwen's|GLM's|OpenAI's|Meta's Llama|Mistral AI[’']s) models$/i.test(
+      section,
+    )
+  );
+}
+
 function tokenTables(
   models: Map<string, Evidence>,
   sourceId: string,
@@ -1333,11 +1343,7 @@ function tokenTables(
     const headers = tableHeaders($, table);
     const value = text(table.text());
     const section = text(table.prevAll("h2,h3,h4").first().text());
-    const abbreviatedTokenHeader =
-      headers.join("|") === "Model|Type|Price /1M (USD)" &&
-      /^(?:Deepseek's|MiniMax's|Moonshot's|Qwen's|GLM's|OpenAI's|Meta's Llama|Mistral AI[’']s) models$/i.test(
-        section,
-      );
+    const abbreviatedTokenHeader = abbreviatedTokenTable(headers, section);
     const geminiTokenHeader =
       section === "Gemini 2.5" &&
       headers.join("|") ===
@@ -1690,6 +1696,8 @@ function labeledTables(
     )
       return;
     const heading = text(table.prevAll("h2,h3,h4").first().text());
+    // These cells have an explicit token column and are already handled by tokenTables.
+    if (abbreviatedTokenTable(headers, heading)) return;
     const region = /^(?:Global|US Multi-Region|EU Multi-Region|[a-z]+-[a-z]+\d)$/i.test(heading)
       ? heading
       : undefined;

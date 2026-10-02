@@ -17,8 +17,8 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Pricing research](docs/pricing-research.md): DBU conversion, Grok Priority, OCR billing, and
   source evidence for session, geography, search, and grounding rules.
 
-- [Price-book completeness assessment](docs/pricing-raw-audit.md): accepted refresh coverage,
-  pricing dimensions, raw and omitted rules, and informational provenance.
+- [Price-book completeness assessment](docs/pricing-raw-audit.md): 2026-09-30 coverage of all 20
+  providers, first-party source rechecks, implemented parser repairs, and remaining evidence gaps.
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.

@@ -25,6 +25,12 @@ Kimi K3 is a multimodal reasoning model.
 
 _All prices are per 1 million tokens. Pricing shown is for the Standard tier._
 
+Priority is billed at **1.75x** the Standard per-token rate (a 75% premium) and Flex at **0.5x** the Standard rate (a 50% discount); apply these multipliers to whichever Standard base rate (Global or US CRIS) applies to your request.
+
+## Service Tiers
+
+Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.
+
 ## Programmatic Access
 
 | **Endpoint**    | **Model ID**       | **In-Region endpoint URL**                     | **Geo inference ID**  | **Global inference ID**   |
