@@ -73,6 +73,19 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(commit).toContain('catalog-repair-publication.ts" commit');
   expect(commit).toContain("${{ steps.apply_repair.outputs.tree_sha }}");
   expect(commit).toContain('catalog-repair-publication.ts" push');
+  expect(commit).toContain('catalog-repair-publication.ts" retry-apply');
+  expect(commit).toContain("${{ steps.retry_repair.outputs.tree_sha }}");
+  expect(commit.match(/REPAIR_RETRY_ON_RACE:/g)).toHaveLength(1);
+  const retry = commit.slice(commit.indexOf("- name: Reapply after a concurrent main update"));
+  expect(retry.indexOf('catalog-repair-publication.ts" validate')).toBeLessThan(
+    retry.indexOf('catalog-repair-publication.ts" commit'),
+  );
+  expect(retry.indexOf('catalog-repair-publication.ts" commit')).toBeLessThan(
+    retry.indexOf('catalog-repair-publication.ts" push'),
+  );
+  expect(retry.slice(0, retry.indexOf("- name: Publish the revalidated repair"))).not.toContain(
+    "GH_TOKEN",
+  );
   expect(commit).toContain("gh workflow run void-deploy.yml --ref main");
   expect(agent).not.toMatch(/^\s+(?:contents|actions): write$/m);
   expect(publish).toContain("needs.agent.result == 'success'");

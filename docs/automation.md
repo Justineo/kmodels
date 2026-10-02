@@ -71,8 +71,12 @@ Status: implemented
   conflict check, repeats complete validation against current data, and commits only the exact
   validated tree. Credentials are not persisted during checkout or exposed to validation steps.
   Only the final push and deployment steps receive the workflow token. A normal, non-force push
-  rejects any concurrent update after validation; conflicts and rejected pushes fail the run and
-  retry from current evidence on the next daily schedule. Repair commits record the Actions run
+  rejects any concurrent update after validation. On the first non-fast-forward rejection,
+  publication fetches current main into its clean disposable checkout, reapplies the same admitted
+  patch, reinstalls frozen dependencies, and repeats full validation and exact-tree commit checks
+  before retrying once. Validation never receives the push credential. Conflicts, validation
+  failures, other push failures, or a second race fail the run and retry from current evidence on
+  the next daily schedule. Repair commits record the Actions run
   in a `Kmodels-Repair-Run` trailer and explicitly dispatch `void-deploy.yml`, since the workflow
   token does not trigger push workflows. A final delivery job requires successful publication
   and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.

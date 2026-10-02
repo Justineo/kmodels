@@ -164,6 +164,28 @@ safe-outputs:
             REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
           run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
         - name: Publish without overwriting concurrent changes
+          id: publish_repair
+          env:
+            GH_TOKEN: ${{ github.token }}
+            REPAIR_RETRY_ON_RACE: "true"
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
+        - name: Reapply after a concurrent main update
+          id: retry_repair
+          if: steps.publish_repair.outputs.retry == 'true'
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" retry-apply
+        - name: Revalidate against the updated main
+          if: steps.publish_repair.outputs.retry == 'true'
+          run: |
+            vp env install
+            vp install --frozen-lockfile
+            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
+        - name: Commit the revalidated tree
+          if: steps.publish_repair.outputs.retry == 'true'
+          env:
+            REPAIR_TREE_SHA: ${{ steps.retry_repair.outputs.tree_sha }}
+          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
+        - name: Publish the revalidated repair
+          if: steps.publish_repair.outputs.retry == 'true'
           env:
             GH_TOKEN: ${{ github.token }}
           run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
@@ -396,8 +418,10 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    independently repeats the same validation suite. This second gate does not replace the
    in-agent gate: failures must be discovered while you can still correct the repair.
    The publication job applies that exact patch to latest main, repeats complete validation, then
-   commits and pushes without force. Concurrent updates or conflicts fail publication and are
-   retried from current evidence by the next daily run. A publication request is only an intent.
+   commits and pushes without force. If main advances before push, publication reapplies the
+   same admitted patch to current main and repeats full validation once before another push.
+   Conflicts, failed validation, or a second race fail publication and are retried from current
+   evidence by the next daily run. A publication request is only an intent.
    If validation is blocked by the environment, report the exact
    failed command and reason with `report_incomplete` and stop. Never claim that checks passed
    without running them or that a recorded publication intent is an already-pushed commit.
