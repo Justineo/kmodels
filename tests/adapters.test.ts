@@ -15244,6 +15244,23 @@ describe("Vercel adapter", () => {
     });
   });
 
+  it("preserves an unpriced model page and independently priced siblings", async () => {
+    const models = await vercelCatalog("vercel/unpriced-transcription.json");
+    const unpriced = models.find(
+      ({ model_id }) => model_id === "microsoft/mai-transcribe-2-streaming",
+    );
+    const priced = models.find(({ model_id }) => model_id === "microsoft/mai-transcribe-2");
+    expect(unpriced).toMatchObject({ pricing_state: "not_published", price_facts: [] });
+    expect(priced).toMatchObject({ pricing_state: "numeric" });
+    expect(priced?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_audio",
+        price: "0.00002778",
+        unit: "second",
+      }),
+    ]);
+  });
+
   it("preserves pricing tiers and normalizes token units", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     expect({
