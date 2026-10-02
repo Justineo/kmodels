@@ -64,8 +64,16 @@ Standard token rates if the card states the unit and identifies the matching inf
 aliases. Kimi K3 currently publishes Global and US cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
 These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Its
-Priority and Flex multipliers apply only to Responses and Chat Completions, so they are not broadened
-to the other APIs by this fallback.
+Priority and Flex multipliers produce rates explicitly qualified by the Responses or Chat Completions
+operation. They are not broadened to Converse/Invoke, nor bound to those APIs' usage/selector paths.
+If the API restriction cannot be recovered, Standard rates survive and tier scope drift is reported.
+The same fallback accepts cards without a cache-write column, including
+[Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
+Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is
+never inferred from the provider name. Explicit, unqualified Priority/Flex multipliers on the
+card derive separate tier rates from its Standard amounts. A bad price cell removes only that
+component, retaining the other meters in its row. Runtime card evidence does not authorize a
+join to a Mantle SKU.
 The OpenAI Bedrock model cards use a separate exact Standard table for Mantle In-Region pricing.
 Their short/long context bands are bounded at 272K input tokens, and an em dash cache-write cell
 does not become a numeric rate. The card already includes its stated commercial fee, so no extra

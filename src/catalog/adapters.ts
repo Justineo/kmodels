@@ -486,7 +486,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
   return rates;
 }
 
-type OpenAiPricingTier = "standard" | "batch" | "flex" | "fast";
+type OpenAiPricingTier = "standard" | "batch" | "flex" | "fast" | "ultrafast";
 
 interface OpenAiPricingTable {
   section: string;
@@ -513,6 +513,8 @@ const openAiPricingTiers = new Map<string, OpenAiPricingTier>([
   ["Batch", "batch"],
   ["Flex", "flex"],
   ["Fast mode", "fast"],
+  ["Fast", "fast"],
+  ["Ultrafast", "ultrafast"],
 ]);
 
 function markdownCells(line: string): string[] {
@@ -730,7 +732,7 @@ function openAiPricingTables(
       continue;
     }
     if (line === "Our latest models" || line === "Multimodal models") continue;
-    if (/^(?:Standard|Batch|Flex|Fast|Priority)\b/.test(line)) {
+    if (/^(?:Standard|Batch|Flex|Fast|Ultrafast|Priority)\b/.test(line)) {
       reviewedTier = false;
       onReconciliation?.({
         disposition: "unsupported",
@@ -1525,12 +1527,19 @@ function parseOpenAiAccounting(input: ParseInput): ProviderModel[] {
 
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   let containerChangelog = "";
+  let fastGuide = "";
+  let ultrafastGuide = "";
   if (input.body.trimStart().startsWith("{")) {
     const bundle = linkedBundleSchema.parse(parseJson(input.body));
-    const documents = bundle.documents.filter(
-      ({ url }) => url === "https://developers.openai.com/api/docs/changelog.md",
-    );
-    if (documents.length === 1) containerChangelog = documents[0]?.body ?? "";
+    const documentBody = (path: string): string => {
+      const documents = bundle.documents.filter(
+        ({ url }) => url === `https://developers.openai.com/api/docs/${path}.md`,
+      );
+      return documents.length === 1 ? (documents[0]?.body ?? "") : "";
+    };
+    containerChangelog = documentBody("changelog");
+    fastGuide = documentBody("guides/fast-mode");
+    ultrafastGuide = documentBody("guides/ultrafast-mode");
     input = { ...input, body: bundle.index.body };
   }
   if (input.catalogModels === undefined)
@@ -1796,7 +1805,39 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   const fastEuRestriction = input.body
     .replace(/\s+/g, " ")
     .match(/Fast mode is unavailable for GPT-6 Astra with EU data residency\./)?.[0];
+  const fastEuGuideRestriction = normalizedText(fastGuide).match(
+    /Fast mode is not available with EU data residency for (.+?)\.(?:\s|$)/,
+  );
+  const fastEuModels = new Set(
+    (fastEuGuideRestriction?.[1] ?? "")
+      .split(/,\s*(?:or\s+)?|\s+or\s+/)
+      .map((name) => name.trim().toLowerCase().replaceAll(" ", "-")),
+  );
+  const ultrafastRegionsKnown = normalizedText(ultrafastGuide).includes(
+    "Ultrafast supports US data residency and global processing only.",
+  );
+  const fastRegionsKnown =
+    fastEuGuideRestriction !== null ||
+    fastEuRestriction !== undefined ||
+    !/^\s*Fast\s*$/m.test(input.body);
   const hasRegionalUplift = /Regional processing .*10% uplift/i.test(input.body);
+  const billingStarts = new Map(
+    [...input.body.matchAll(/Billing for `([^`]+)` begins on ([^.\n]+)\.([^\n]*)/g)].flatMap(
+      (match) =>
+        match[1] === undefined || match[2] === undefined
+          ? []
+          : [
+              [
+                match[1],
+                {
+                  effectiveFrom: openAiShutdownDate(match[2]),
+                  restrictedResearch:
+                    match[3]?.includes("Access is limited to approved internal research") === true,
+                },
+              ] as const,
+            ],
+    ),
+  );
   const modelIds = new Set([
     ...rates.keys(),
     ...states.keys(),
@@ -1815,26 +1856,90 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       const target = exact.get(modelId);
       if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
       const modelRates = rates.get(modelId);
+      const billing = billingStarts.get(target.model_id);
       const rawPriceFacts = [...(conflicts.get(modelId)?.values() ?? [])];
-      const restricted = fastEuRestriction !== undefined && target.model_id === "gpt-6-astra";
-      if (restricted)
+      const restriction = fastEuModels.has(target.model_id)
+        ? fastEuGuideRestriction?.[0]
+        : target.model_id === "gpt-6-astra"
+          ? fastEuRestriction
+          : undefined;
+      if (restriction !== undefined)
         rawPriceFacts.push({
           term_key: "fast_eu_not_supported",
           impact: "informational",
           reason: "unsupported_structure",
           conditions: { service_tier: "fast", eu_data_residency: true },
           source_ref: input.source.id,
-          raw: { fragment: fastEuRestriction },
+          raw: { fragment: restriction },
         });
       const priceFacts = [...(modelRates?.values() ?? [])].map((rate) =>
-        restricted && rate.conditions.service_tier === "fast"
+        restriction !== undefined && rate.conditions.service_tier === "fast"
           ? { ...rate, conditions: { ...rate.conditions, eu_data_residency: false } }
           : rate,
       );
-      const publishedRates =
+      const scopedRates = priceFacts.flatMap((rate): SourcePriceFact[] => {
+        const tier = rate.conditions.service_tier;
+        if (
+          (tier !== "ultrafast" || ultrafastRegionsKnown) &&
+          (tier !== "fast" || fastRegionsKnown) &&
+          (billing === undefined || billing.effectiveFrom !== undefined)
+        )
+          return [
+            {
+              ...rate,
+              conditions: {
+                ...rate.conditions,
+                ...(billing?.effectiveFrom === undefined
+                  ? {}
+                  : { effective_from: billing.effectiveFrom }),
+                ...(billing?.restrictedResearch === true
+                  ? { account_eligibility: "approved_internal_research" }
+                  : {}),
+              },
+            },
+          ];
+        const unresolved =
+          billing !== undefined && billing.effectiveFrom === undefined
+            ? "billing_start_unresolved"
+            : `${tier}_region_scope_unresolved`;
+        rawPriceFacts.push({
+          term_key: rate.meter,
+          impact: "base_price",
+          reason: "unsupported_structure",
+          conditions: rate.conditions,
+          source_ref: input.source.id,
+          raw: {
+            label: unresolved,
+            amount: rate.price,
+            denomination: rate.currency,
+            unit: rate.unit,
+          },
+        });
+        input.onPricingReconciliation?.({
+          disposition: "raw",
+          reason_code: unresolved,
+          sample: modelId,
+        });
+        return [];
+      });
+      const publishedRates = (
         hasRegionalUplift && openAiRegionalUpliftEligible(target)
-          ? openAiRegionalProcessingRates(priceFacts)
-          : priceFacts;
+          ? openAiRegionalProcessingRates(scopedRates)
+          : scopedRates
+      ).map((rate) =>
+        rate.conditions.service_tier === "ultrafast"
+          ? {
+              ...rate,
+              conditions: {
+                ...rate.conditions,
+                deployment_scope: rate.conditions.deployment_scope ?? "global_processing",
+                ...(rate.conditions.deployment_scope === "regional_processing"
+                  ? { region: "United States" }
+                  : {}),
+              },
+            }
+          : rate,
+      );
       return {
         ...baseModel({
           providerId: input.provider.id,
@@ -1845,10 +1950,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         tasks: target.tasks,
-        pricing_state:
-          modelRates === undefined || modelRates.size === 0
-            ? (states.get(modelId) ?? "unknown")
-            : "numeric",
+        pricing_state: publishedRates.length === 0 ? (states.get(modelId) ?? "unknown") : "numeric",
         price_facts: publishedRates,
         raw_price_facts: rawPriceFacts,
       };

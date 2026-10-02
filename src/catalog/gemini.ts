@@ -901,7 +901,13 @@ function targets(codes: string[], row: string): string[] {
 function candidates(header: string, row: string, cell: Selection): PriceCandidates {
   const values: PriceCandidate[] = [];
   const unknownUnits: string[] = [];
+  const equivalences: string[] = [];
   for (const segment of segments(cell)) {
+    // Provider estimates are not an additional charge or a token-denominated price.
+    if (/^Equivalent to\s+\$/i.test(segment)) {
+      equivalences.push(segment);
+      continue;
+    }
     const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
     for (const [index, match] of matches.entries()) {
       const price = match[1];
@@ -913,6 +919,8 @@ function candidates(header: string, row: string, cell: Selection): PriceCandidat
       else values.push({ price, descriptor, segment, unit });
     }
   }
+  if (!values.some(({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour"))
+    unknownUnits.push(...equivalences);
   return { values, unknownUnits };
 }
 

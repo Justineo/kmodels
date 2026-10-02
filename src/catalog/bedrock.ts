@@ -6,7 +6,7 @@ import { modelIdSchema } from "./identity.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { decimalsEqual, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import { uniquePricingInputFacts } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
@@ -63,6 +63,7 @@ interface Card {
   tasks: ModelTask[];
   identityKeys: Set<string>;
   pricingSection: string | undefined;
+  serviceTierSection: string | undefined;
 }
 
 type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle" | "bedrock-agent-runtime";
@@ -679,6 +680,7 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
 
 function modelCardRates(
   content: string | undefined,
+  serviceTierContent: string | undefined,
   access: CardId,
   sourceId: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
@@ -688,57 +690,116 @@ function modelCardRates(
     !/All prices are per 1 million tokens\. Pricing shown is for the Standard tier\./.test(content)
   )
     return [];
-  const table = markdownTable(content, [
-    "Inference option",
-    "Input",
-    "Output",
-    "Cache read",
-    "Cache write (30 min)",
-  ]);
+  const table = markdownTable(content, ["Inference option", "Input", "Output", "Cache read"]);
   if (table === undefined || !access.endpoints.has("bedrock-runtime")) return [];
+  const geographies = new Set(
+    [...access.aliases].flatMap((alias) => alias.match(/^(us|eu|apac)\./)?.[1] ?? []),
+  );
+  const columns = [
+    ["Input", "input_text"],
+    ["Output", "output_text"],
+    ["Cache read", "cache_read_text"],
+    ["Cache write (30 min)", "cache_write_text"],
+  ] as const;
   const prices: SourcePriceFact[] = [];
   for (const row of table.rows) {
     const option = row[table.header.indexOf("Inference option")];
-    const scope = option === "Global CRIS" ? "global" : option === "US CRIS" ? "geo" : undefined;
+    const scope =
+      option === "Global CRIS"
+        ? "global"
+        : option === "US CRIS" || option === "Geo CRIS"
+          ? "geo"
+          : undefined;
     if (scope === undefined || !access.deploymentTypes.has(scope)) continue;
-    const columns = [
-      ["Input", "input_text"],
-      ["Output", "output_text"],
-      ["Cache read", "cache_read_text"],
-      ["Cache write (30 min)", "cache_write_text"],
-    ] as const;
-    const parsed = columns.map(([header, meter]) => {
-      const raw = row[table.header.indexOf(header)] ?? "";
-      const amount = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
-      return amount === undefined
-        ? undefined
-        : ({
-            meter,
-            price: amount,
-            currency: "USD",
-            unit: "million_tokens",
-            conditions: {
-              endpoint: "bedrock-runtime",
-              deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
-              service_tier: "standard",
-              ...(scope === "geo" ? { inference_geo: "us" } : {}),
-              ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
-            },
-            source_ref: sourceId,
-            derived: false,
-            raw_price: raw,
-            raw_unit: "1 million tokens",
-          } satisfies SourcePriceFact);
-    });
-    if (parsed.some((rate) => rate === undefined)) {
+    const geography =
+      option === "US CRIS" ? "us" : geographies.size === 1 ? [...geographies][0] : undefined;
+    if (scope === "geo" && geography === undefined) {
       onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "model_card_price_row_unreadable",
+        disposition: "unbound",
+        reason_code: "model_card_price_geo_ambiguous",
         sample: option,
       });
       continue;
     }
-    prices.push(...parsed.filter((rate) => rate !== undefined));
+    const parsed = columns.flatMap(([header, meter]): SourcePriceFact[] => {
+      const index = table.header.indexOf(header);
+      if (index < 0) return [];
+      const raw = row[index] ?? "";
+      const amount = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+      if (amount === undefined) {
+        onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "model_card_price_row_unreadable",
+          sample: `${option}: ${header}: ${raw}`,
+        });
+        return [];
+      }
+      return [
+        {
+          meter,
+          price: amount,
+          currency: "USD",
+          unit: "million_tokens",
+          conditions: {
+            endpoint: "bedrock-runtime",
+            deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
+            service_tier: "standard",
+            ...(scope === "geo" && geography !== undefined ? { inference_geo: geography } : {}),
+            ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+          },
+          source_ref: sourceId,
+          derived: false,
+          raw_price: raw,
+          raw_unit: "1 million tokens",
+        },
+      ];
+    });
+    prices.push(...parsed);
+  }
+  const prose = content.replaceAll("**", "").replace(/\s+/g, " ");
+  const unrestricted = prose.match(
+    /Priority is billed at (\d+(?:\.\d+)?) times the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?) times the Standard rate \([^)]*\)\. Apply these multipliers to the Standard rates shown above\./,
+  );
+  const apiScoped = prose.match(
+    /Priority is billed at (\d+(?:\.\d+)?)x the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?)x the Standard rate \([^)]*\); apply these multipliers to whichever Standard base rate \(Global or US CRIS\) applies to your request\./,
+  );
+  const restrictedApis =
+    serviceTierContent
+      ?.replace(/\s+/g, " ")
+      .includes(
+        "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.",
+      ) === true;
+  const multipliers = apiScoped === null ? unrestricted : restrictedApis ? apiScoped : null;
+  if (apiScoped !== null && !restrictedApis)
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_service_tier_scope_unresolved",
+      sample: "Priority/Flex API applicability",
+    });
+  if (multipliers?.[1] !== undefined && multipliers[2] !== undefined) {
+    const standard = [...prices];
+    const operations = restrictedApis ? ["responses", "chat_completions"] : [undefined];
+    for (const [tier, multiplier] of [
+      ["priority", multipliers[1]],
+      ["flex", multipliers[2]],
+    ] as const)
+      prices.push(
+        ...standard.flatMap((rate) =>
+          operations.map((operation) => ({
+            ...rate,
+            price: multiplyDecimal(rate.price, multiplier),
+            conditions: {
+              ...rate.conditions,
+              service_tier: tier,
+              ...(operation === undefined ? {} : { operation }),
+            },
+            derived: true,
+            derivation: `${multiplier} × model-card Standard rate`,
+            raw_price: undefined,
+            raw_unit: "published service-tier multiplier",
+          })),
+        ),
+      );
   }
   return prices;
 }
@@ -1127,6 +1188,7 @@ function parseCard(
     tasks,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
     pricingSection: section(body, "Pricing"),
+    serviceTierSection: section(body, "Service Tiers"),
   };
 }
 
@@ -1187,6 +1249,7 @@ function supplementalRerankCards(documents: BedrockDocuments): Card[] {
         tasks: ["reranking"],
         identityKeys: cardIdentityKeys(name, publisher, ids),
         pricingSection: undefined,
+        serviceTierSection: undefined,
       },
     ];
   });
@@ -3002,6 +3065,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
           : [
               ...modelCardRates(
                 card.pricingSection,
+                card.serviceTierSection,
                 access,
                 input.source.id,
                 input.onPricingReconciliation,

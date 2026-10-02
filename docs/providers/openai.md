@@ -79,11 +79,10 @@ rate it publishes. An exact valid model-ID row may create a minimal public row w
 does not list it. Non-ID labels bind only through a unique exact display name or documented alias;
 there is no family inheritance or fuzzy matching.
 
-The same page currently states that `gpt-daybreak-blue-latest` and `gpt-daybreak-red-latest` route to
-`gpt-5.6-sol` and `gpt-5.6-cyber`, respectively, with pricing adjusted to the underlying model.
-Kmodels therefore derives the aliases' current rates from those exact targets while preserving all
-four callable IDs as separate catalog identities. If that declaration disappears or stops binding
-uniquely, only the alias rates become unknown.
+Alias prices are derived only while the pricing page declares exact, unique target IDs. The current
+[Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak) says `latest` resolution
+depends on access and can change; the returned model identifies the actual target. That does not
+establish a universal static alias tariff, so the missing declaration leaves these rates unknown.
 
 Model-card prices are fallbacks. For the same meter, denomination, unit, and applicability:
 
@@ -101,13 +100,15 @@ partition from an unrecognizable whole-page rewrite.
 
 The normalized selectors are source-backed dimensions shared with other providers:
 
-- `service_tier`: `standard`, `batch`, `flex`, or `fast`;
+- `service_tier`: `standard`, `batch`, `flex`, `fast`, or `ultrafast`;
 - context min/max token bands;
 - modality, quality, resolution, and container capacity;
 - operation for Web Search variants; and
 - `account_eligibility=data_sharing` for the published fine-tuned inference discount.
 
-Batch is a separate result-item mechanism. Standard, Flex, and Fast remain variants of synchronous
+Both `Fast` and the older `Fast mode` heading select the same tier. `Ultrafast` has its own published
+table; it never inherits Fast amounts. Unknown tier/table/cell diagnostics remain local.
+Batch is a separate result-item mechanism. Standard, Flex, Fast, and Ultrafast remain variants of synchronous
 inference. Returned usage selects cache, modality, generated quantity, and served-tier rates; a
 request selector alone is not treated as final billed usage.
 
@@ -141,7 +142,8 @@ accounting response does not establish them at the needed scope. Organization Us
 marked reconciliation-only; they are an aggregate calculation path, not a request lifecycle or an
 invoice reconciliation feature inside Kmodels.
 The served-tier selector also publishes the response normalization proven by OpenAI's contract:
-`default` selects Standard, `flex` selects Flex, and returned `priority` selects Fast mode. Request
+`default` selects Standard, `flex` selects Flex, returned `priority` or `fast` selects Fast mode,
+and `ultrafast` selects the independently published Ultrafast schedule. Request
 `auto`, Scale Tier, and access-controlled tiers do not select a public-list variant unless the
 provider publishes and Kmodels admits a matching schedule.
 Video result sizes are likewise normalized to the pricing table's size classes: `1280x720` and
@@ -149,11 +151,16 @@ Video result sizes are likewise normalized to the pricing table's size classes: 
 `1920x1080` select `1080p`. An unreviewed size remains unmapped instead of being guessed from its
 dimensions.
 
-GPT-6 Astra Fast explicitly excludes EU data residency when the pricing page publishes that
-restriction. Its Fast numeric variants require the provider-owned boolean `eu_data_residency=false`;
-the same offer publishes `not_supported` for Fast with `eu_data_residency=true`. Standard is
-unaffected. This is independent of the regional-processing uplift and is not inferred for another
-model or when the declaration is absent.
+Optional first-party Fast and Ultrafast guides are claim-local pricing companions. The Fast guide's
+explicit EU exclusion list binds exact named models, including GPT-6 Astra, GPT-6.1 Sol, GPT-6 Sol,
+and GPT-6 Luna. Their Fast variants require `eu_data_residency=false`, with `not_supported` for
+the excluded combination. The older pricing-page Astra declaration is still recognized.
+Ultrafast admits global processing and US regional processing only when its guide establishes that
+scope; the regional variant carries the published uplift and `region=United States`. If the guide
+is absent or that claim drifts, Ultrafast amounts remain bounded raw evidence while other tiers
+survive. The renamed Fast table likewise retains amounts as raw when neither its guide nor the
+pricing page establishes the reviewed regional restriction. Preview access alone never supplies
+another model's Ultrafast price.
 
 ## Direct provider services
 
@@ -200,6 +207,12 @@ dimension. The requested private ID, training job, retained artifacts, and accou
 outside the public partition.
 
 ## Regional processing
+
+An exact `Billing for <model> begins on <date>` notice bounds that model's tariffs by
+`effective_from`; its explicitly stated approved-research eligibility remains a condition.
+An unreadable announced date preserves raw amounts instead of publishing an undated rate.
+In particular, GPT-Rosalind Research's published billing starts on 2026-10-05; the future
+tariff does not imply either a paid or a free rate before that date.
 
 The data-residency matrix supplies exact eligible endpoints, models/snapshots, regions, and listed
 snapshot exceptions. Unknown regions or endpoints are withheld without discarding known values in

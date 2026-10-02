@@ -2736,19 +2736,34 @@ describe("Cohere adapters", () => {
     });
   });
 
-  it("does not normalize account-scoped legacy prices", async () => {
-    const models = await cohereCatalog();
+  it("keeps public legacy prices conditional on existing-customer eligibility", async () => {
+    const pricing = (await fixture("cohere/pricing.html"))
+      .replace("<main>", "<main><ul><li><div>")
+      .replace("</main>", "</div></li></ul></main>");
+    const models = await cohereCatalog({ pricing });
     for (const id of [
       "command",
       "command-light",
       "command-r-03-2024",
       "command-r-plus-04-2024",
       "command-r-plus-08-2024",
-    ])
-      expect(models.find(({ model_id }) => model_id === id)?.price_facts).toHaveLength(0);
+    ]) {
+      const rates = models.find(({ model_id }) => model_id === id)?.price_facts;
+      expect(rates).toHaveLength(2);
+      expect(
+        rates?.every(({ conditions }) => conditions.account_eligibility === "existing_customer"),
+      ).toBe(true);
+    }
     expect(
       models.find(({ model_id }) => model_id === "c4ai-aya-expanse-32b")?.price_facts,
     ).toHaveLength(2);
+    const degraded = await cohereCatalog({
+      pricing: (await fixture("cohere/pricing.html")).replace(
+        "For existing customers:",
+        "Legacy models",
+      ),
+    });
+    expect(degraded.find(({ model_id }) => model_id === "command")?.price_facts).toHaveLength(0);
   });
 
   it("uses corroborated release evidence to bind the mislabeled Command A card", async () => {
@@ -5905,6 +5920,150 @@ describe("OpenAI adapters", () => {
     ).toBe(true);
   });
 
+  it("preserves an exact model's future billing start and research eligibility", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const body = [
+      "Specialized models",
+      "Standard",
+      "| Category | Model | Input | Cached input | Output |",
+      "| --- | --- | --- | --- | --- |",
+      "| Life Sciences | gpt-rosalind-research | $5.00 | $0.50 | $25.00 |",
+      "Billing for `gpt-rosalind-research` begins on October 5, 2026. Cache-write pricing does not apply to this model. Access is limited to approved internal research through the trusted-access program.",
+    ].join("\n");
+    const parse = (body: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body,
+        observedAt,
+        catalogModels: [openAiModel("gpt-rosalind-research", ["text_generation"])],
+      });
+    const model = parse(body)[0];
+    expect(model?.price_facts).toHaveLength(3);
+    expect(
+      model?.price_facts.every(
+        ({ conditions }) =>
+          conditions.effective_from === "2026-10-05" &&
+          conditions.account_eligibility === "approved_internal_research",
+      ),
+    ).toBe(true);
+    const unresolved = parse(body.replace("October 5, 2026", "a date to be announced"))[0];
+    expect(unresolved?.price_facts).toEqual([]);
+    expect(unresolved?.raw_price_facts).toHaveLength(3);
+  });
+
+  it("recovers renamed Fast and Ultrafast tables with first-party regional scopes", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const catalogModels = ["gpt-6-astra", "gpt-6.1-sol"].map((id) => ({
+      ...openAiModel(id, ["text_generation"]),
+      release_date: "2026-09-04",
+      availability: [{ region: "United States", deployment_type: "regional_processing" }],
+    }));
+    const index = {
+      url: source.url,
+      body: [
+        "Flagship models",
+        "Standard",
+        "| Model | Short context input | Short context output |",
+        "| --- | --- | --- |",
+        "| gpt-6-astra | $10 | $50 |",
+        "Fast",
+        "| Model | Short context input | Short context output |",
+        "| --- | --- | --- |",
+        "| gpt-6-astra | $20 | $100 |",
+        "| gpt-6.1-sol | $8 | $40 |",
+        "Ultrafast",
+        "| Model | Short context input | Short context output |",
+        "| --- | --- | --- |",
+        "| gpt-6-astra | $60 | $300 |",
+        "Regional processing (data residency) endpoints are charged a 10% uplift.",
+      ].join("\n"),
+    };
+    const documents = [
+      {
+        url: "https://developers.openai.com/api/docs/guides/fast-mode.md",
+        body: "Fast mode is not available with EU data residency for GPT-6 Astra, GPT-6.1 Sol, GPT-6 Sol, or GPT-6 Luna.",
+      },
+      {
+        url: "https://developers.openai.com/api/docs/guides/ultrafast-mode.md",
+        body: "Ultrafast supports US data residency and global processing only.",
+      },
+    ];
+    const parse = (companions: typeof documents) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels,
+        body: JSON.stringify({ index, documents: companions }),
+      });
+    const models = parse(documents);
+    const fast = models
+      .flatMap(({ price_facts }) => price_facts)
+      .filter(({ conditions }) => conditions.service_tier === "fast");
+    expect(fast).toHaveLength(8);
+    expect(fast.every(({ conditions }) => conditions.eu_data_residency === false)).toBe(true);
+    const ultrafast = models
+      .flatMap(({ price_facts }) => price_facts)
+      .filter(({ conditions }) => conditions.service_tier === "ultrafast");
+    expect(ultrafast.map(({ price, conditions }) => ({ price, conditions }))).toEqual([
+      {
+        price: "60",
+        conditions: { service_tier: "ultrafast", deployment_scope: "global_processing" },
+      },
+      {
+        price: "66",
+        conditions: {
+          service_tier: "ultrafast",
+          deployment_scope: "regional_processing",
+          region: "United States",
+        },
+      },
+      {
+        price: "300",
+        conditions: { service_tier: "ultrafast", deployment_scope: "global_processing" },
+      },
+      {
+        price: "330",
+        conditions: {
+          service_tier: "ultrafast",
+          deployment_scope: "regional_processing",
+          region: "United States",
+        },
+      },
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const degraded = parse(documents.slice(0, 1));
+    expect(
+      degraded
+        .flatMap(({ price_facts }) => price_facts)
+        .filter(({ conditions }) => conditions.service_tier === "fast"),
+    ).toEqual(fast);
+    expect(
+      degraded
+        .flatMap(({ raw_price_facts }) => raw_price_facts)
+        .filter(({ conditions }) => conditions.service_tier === "ultrafast"),
+    ).toHaveLength(2);
+    const noGuides = parse([]);
+    expect(
+      noGuides
+        .flatMap(({ price_facts }) => price_facts)
+        .every(({ conditions }) => conditions.service_tier === "standard"),
+    ).toBe(true);
+    expect(noGuides.flatMap(({ raw_price_facts }) => raw_price_facts)).toHaveLength(6);
+  });
+
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -7093,6 +7252,44 @@ describe("Azure adapters", () => {
     ]);
   });
 
+  it("shares delegated Claude base-model prices across offered versions and retains readable cells", async () => {
+    const value = manifest("azure");
+    const source = value.sources.find(({ id }) => id === "azure-claude-pricing");
+    if (source === undefined) throw new Error("Missing Azure Claude source");
+    const catalogModels = ["1", "2"].map((version): ProviderModel => ({
+      ...azurePricingModel("claude-sonnet-5", version),
+      service_families: ["Foundry Models from partners and community"],
+      status: "active",
+    }));
+    const body = (await fixture("azure/claude-pricing.md")).replaceAll("$2.50 / MTok", "Pending");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body,
+      catalogModels,
+    });
+    expect(models).toHaveLength(1);
+    expect(models[0]?.version).toBeUndefined();
+    expect(models[0]?.price_facts).toHaveLength(4);
+    expect(models[0]?.price_facts).toContainEqual(
+      expect.objectContaining({ meter: "output_text", price: "10" }),
+    );
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source, models }],
+      catalogModels,
+      value.pricingCategoricalLabels,
+    );
+    expect(partition?.books).toHaveLength(1);
+    expect(partition?.books[0]?.scope).toEqual({
+      kind: "models",
+      model_refs: catalogModels.map(({ uid }) => uid),
+    });
+    validateParsedPricing(value, source, catalogModels, partition);
+  });
+
   it("matches retail SKUs against the public model/version catalog", async () => {
     const value = manifest("azure");
     const catalogModels: ProviderModel[] = [
@@ -7430,6 +7627,48 @@ describe("Gemini adapters", () => {
         },
       ]),
     );
+  });
+
+  it("keeps dated TTS token rates without treating ten-second estimates as conflicting prices", async () => {
+    const pricing = `<div class="devsite-article-body">
+      <div class="models-section"><div class="heading-group"><h2>Gemini Test <code>gemini-test-preview</code></h2></div></div>
+      <section><h3>Standard</h3><table class="pricing-table">
+      <thead><tr><th></th><th>Free Tier</th><th>Paid Tier, per 1M tokens in USD</th></tr></thead>
+      <tbody><tr><td>Output price</td><td>Not available</td><td>
+      $9.00 (audio) through December 31, 2026.<br>$18.00 (audio) starting January 1, 2027.<br>
+      Equivalent to $0.00225 per 10s audio<sup>*</sup> through December 31, 2026.<br>
+      Equivalent to $0.0045 per 10s audio<sup>*</sup> starting January 1, 2027.
+      </td></tr></tbody></table></section></div>`;
+    const model = (await geminiCatalog({ "pricing.html": pricing })).find(
+      ({ model_id }) => model_id === "gemini-test-preview",
+    );
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "output_audio")
+        .map(({ price, unit, conditions }) => ({ price, unit, conditions })),
+    ).toEqual([
+      {
+        price: "18.00",
+        unit: "million_tokens",
+        conditions: { account_eligibility: "paid_tier", effective_from: "2027-01-01" },
+      },
+      {
+        price: "9.00",
+        unit: "million_tokens",
+        conditions: { account_eligibility: "paid_tier", effective_until: "2026-12-31" },
+      },
+    ]);
+    expect(model?.raw_price_facts).toEqual([]);
+    const degraded = (
+      await geminiCatalog({
+        "pricing.html": pricing.replace(
+          /\$9\.00 \(audio\) through December 31, 2026\.<br>\$18\.00 \(audio\) starting January 1, 2027\.<br>/,
+          "",
+        ),
+      })
+    ).find(({ model_id }) => model_id === "gemini-test-preview");
+    expect(degraded?.price_facts).toEqual([]);
+    expect(degraded?.raw_price_facts).toHaveLength(2);
   });
 
   it("uses explicit grounding units and reconciles every pricing claim", async () => {
@@ -8026,6 +8265,8 @@ describe("Vertex AI adapters", () => {
     if (source === undefined) throw new Error("Missing pricing source");
     const catalogModels = [
       ["gemini-3.8-flash", "Gemini 3.8 Flash"],
+      ["gemini-3.8-live", "Gemini 3.8 Live"],
+      ["glm-5-maas", "GLM 5"],
       ["deepseek-v3.1-maas", "DeepSeek V3.1"],
       ["claude-sonnet-5", "Claude Sonnet 5"],
       ["multilingual-e5-small", "multilingual-e5-small"],
@@ -8052,7 +8293,22 @@ describe("Vertex AI adapters", () => {
       observedAt,
       catalogModels,
       body: JSON.stringify({
-        index: { url: source.url, body: await fixture("vertex/pricing-token-layout.html") },
+        index: {
+          url: source.url,
+          body: (await fixture("vertex/pricing-token-layout.html")).replace(
+            "</main>",
+            `
+          <h2>Gemini Live API</h2><table>
+          <tr><th>Model</th><th>Type</th><th>Price /1M tokens (USD)</th></tr>
+          <tr><td>Gemini 3.8 Live API</td><td>Input audio</td><td>$3.00</td></tr></table>
+          <h2>GLM's models</h2><table>
+          <tr><th>Model</th><th>Type</th><th>Price /1M (USD)</th></tr>
+          <tr><td>GLM 5</td><td>Input</td><td>$1.00</td></tr>
+          <tr><td></td><td>Output</td><td>$3.20</td></tr>
+          <tr><td></td><td>Cache Hit</td><td>Cached Input:$0.20</td></tr></table>
+          </main>`,
+          ),
+        },
         documents: [],
       }),
     });
@@ -8061,6 +8317,11 @@ describe("Vertex AI adapters", () => {
       if (model === undefined) throw new Error(`Missing ${id}`);
       return model.price_facts;
     };
+    expect(facts("gemini-3.8-live")).toEqual([
+      expect.objectContaining({ meter: "input_audio", price: "3.00" }),
+    ]);
+    expect(facts("glm-5-maas")).toHaveLength(3);
+    expect(models.find(({ model_id }) => model_id === "glm-5-maas")?.raw_price_facts).toEqual([]);
     expect(facts("gemini-3.8-flash")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -8186,7 +8447,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v9",
+      extractorVersion: "vertex-pricing-v10",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -11460,6 +11721,19 @@ describe("xAI adapter", () => {
     expect(
       models.some(({ model_id }) => ["grok-tts", "grok-stt", "grok-realtime"].includes(model_id)),
     ).toBe(false);
+    const currentLayout = await xaiCatalog(
+      "xai/models-voice-services.txt",
+      (body) => body,
+      (body) => body.replaceAll(" / hr) audio<br />", " / hr)<br />"),
+    );
+    expect(
+      currentLayout.find(({ model_id }) => model_id === "grok-voice-think-fast-2.0")?.price_facts,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "output_audio", price: "0.08", unit: "minute" }),
+        expect.objectContaining({ meter: "input_text", price: "0.004", unit: "request" }),
+      ]),
+    );
     const deprecatedPrice = await xaiCatalog(
       "xai/models-voice-services.txt",
       (body) => body,
@@ -12173,7 +12447,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v15");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v16");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -12294,7 +12568,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v28");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v29");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -12472,10 +12746,43 @@ describe("document adapter", () => {
       release_date: "2026-09-18",
       api_endpoints: expect.arrayContaining([{ name: "Responses", path: "v1/responses" }]),
     });
-    expect(kimi?.price_facts).toHaveLength(8);
+    expect(kimi?.price_facts).toHaveLength(40);
     expect(
       kimi?.price_facts
-        .filter(({ meter }) => meter === "cache_write_text")
+        .filter(({ conditions }) => conditions.service_tier !== "standard")
+        .every(({ conditions }) =>
+          ["responses", "chat_completions"].includes(conditions.operation ?? ""),
+        ),
+    ).toBe(true);
+    expect(kimi?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "5.25",
+          conditions: expect.objectContaining({
+            service_tier: "priority",
+            operation: "responses",
+            deployment_scope: "global_cross_region",
+          }),
+        }),
+        expect.objectContaining({
+          meter: "cache_write_text",
+          price: "2.0625",
+          conditions: expect.objectContaining({
+            service_tier: "flex",
+            operation: "chat_completions",
+            inference_geo: "us",
+            cache_ttl_seconds: 1_800,
+          }),
+        }),
+      ]),
+    );
+    expect(
+      kimi?.price_facts
+        .filter(
+          ({ meter, conditions }) =>
+            meter === "cache_write_text" && conditions.service_tier === "standard",
+        )
         .map(({ price, conditions }) => [price, conditions]),
     ).toEqual([
       [
@@ -12514,12 +12821,63 @@ describe("document adapter", () => {
     });
     expect(
       driftedModels.find(({ model_id }) => model_id === "moonshotai.kimi-k3")?.price_facts,
-    ).toHaveLength(4);
+    ).toHaveLength(35);
     expect(findings).toContainEqual({
       disposition: "unsupported",
       reason_code: "model_card_price_row_unreadable",
-      sample: "US CRIS",
+      sample: "US CRIS: Cache write (30 min): Contact sales",
     });
+    card.body = body.replace("only the Responses and Chat Completions APIs", "only selected APIs");
+    const unknownScope = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+    });
+    expect(
+      unknownScope.find(({ model_id }) => model_id === "moonshotai.kimi-k3")?.price_facts,
+    ).toHaveLength(8);
+  });
+
+  it("uses Grok's Runtime card for Geo and Global tiers without borrowing Mantle prices", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.md",
+      body: await fixture("bedrock/model-card-grok-4-7.md"),
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    const grok = models.find(({ model_id }) => model_id === "xai.grok-4.7");
+    expect(grok?.price_facts).toHaveLength(18);
+    expect(
+      grok?.price_facts.every(({ conditions }) => conditions.endpoint === "bedrock-runtime"),
+    ).toBe(true);
+    expect(
+      grok?.price_facts
+        .filter(({ meter }) => meter === "input_text")
+        .map(({ price, conditions }) => [
+          price,
+          conditions.service_tier,
+          conditions.deployment_scope,
+          conditions.inference_geo,
+        ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["2.20", "standard", "geo_cross_region", "us"],
+        ["2.00", "standard", "global_cross_region", undefined],
+        ["3.85", "priority", "geo_cross_region", "us"],
+        ["3.5", "priority", "global_cross_region", undefined],
+        ["1.1", "flex", "geo_cross_region", "us"],
+        ["1", "flex", "global_cross_region", undefined],
+      ]),
+    );
   });
 
   it("uses the Bedrock OpenAI card's short and long context prices without inventing cache writes", async () => {
@@ -19383,6 +19741,38 @@ describe("DashScope adapters", () => {
     );
   });
 
+  it("reads realtime modality prices only with a table-local currency and denominator", async () => {
+    const table = `<table><tr><th>Model ID</th><th>Input: text/images/video</th><th>Input: audio</th><th>Output: text</th><th>Output: audio</th><th>Free quota</th></tr>
+      <tr><td>qwen3.8-omni-flash-realtime</td><td>0.23</td><td>0.93</td><td>0.70</td><td>1.87</td><td>1 million tokens</td></tr></table>`;
+    const body = `<section><h2>Qwen-Omni-Realtime</h2><section><h4>Singapore</h4><p>Prices in USD per million tokens.</p>${table}</section></section>`;
+    const models = parse(source("dashscope-pricing"), await pricingBundle(Promise.resolve(body)));
+    const model = models.find(({ model_id }) => model_id === "qwen3.8-omni-flash-realtime");
+    expect(
+      model?.price_facts
+        .map(({ meter, price, unit, conditions }) => [meter, price, unit, conditions.region])
+        .sort(),
+    ).toEqual([
+      ["input_audio", "0.93", "million_tokens", "Singapore"],
+      ["input_image", "0.23", "million_tokens", "Singapore"],
+      ["input_text", "0.23", "million_tokens", "Singapore"],
+      ["input_video", "0.23", "million_tokens", "Singapore"],
+      ["output_audio", "1.87", "million_tokens", "Singapore"],
+      ["output_text", "0.7", "million_tokens", "Singapore"],
+    ]);
+    const ambiguous = parse(
+      source("dashscope-pricing"),
+      await pricingBundle(
+        Promise.resolve(
+          body.replace("Prices in USD per million tokens.", "Prices per million tokens."),
+        ),
+      ),
+    );
+    expect(
+      ambiguous.find(({ model_id }) => model_id === "qwen3.8-omni-flash-realtime")?.price_facts ??
+        [],
+    ).toEqual([]);
+  });
+
   it("reads USD-per-million suffixes and header currency for audio token prices", async () => {
     const body = `<section><h2>Speech recognition</h2><h4>Singapore</h4><table>
       <tr><th>Model ID</th><th>Deployment scope</th><th>Input price</th><th>Output price</th></tr>
@@ -19811,7 +20201,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v17",
+      extractorVersion: "dashscope-pricing-v18",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),

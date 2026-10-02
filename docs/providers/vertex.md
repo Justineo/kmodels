@@ -73,6 +73,10 @@ replacement.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only
   under the reviewed model-provider section titles. The Gemini 2.5 layout keeps its exact
   short/long-context and cached-input columns. Unrelated abbreviated tables remain excluded.
+  The generic inline-label parser does not parse those same tables again merely because a cache
+  cell includes `Cached Input:$...`; this prevents spurious GLM raw records alongside valid rates.
+- A `Gemini <version> Live API` price label normalizes to the exact `Gemini <version> Live` model
+  identity. This is a naming-format rule, not inheritance across Gemini versions or Live variants.
 - Model-cell paragraph boundaries and trailing published effective-date annotations do not form
   part of a model name. The annotations still contribute applicability dates. Cache-read and
   cache-write rows retain their distinct meters and explicit five-minute/one-hour TTLs. An exact

@@ -240,8 +240,28 @@ function normalizePricingRows(
 }
 
 function pricingTables(body: string, onFinding: (path: string) => void): Table[] {
+  if (!markdownDocument(body)) {
+    const $ = load(body);
+    $("table").each((_index, element) => {
+      const table = $(element);
+      if (text(table.prev("p").text()) !== "Prices in USD per million tokens.") return;
+      table
+        .find("tr")
+        .first()
+        .children("th")
+        .each((_column, cell) => {
+          const match = text($(cell).text()).match(
+            /^(Input|Output):\s*(text\/images\/video|text|audio)$/i,
+          );
+          if (match?.[1] === undefined || match[2] === undefined) return;
+          $(cell).text(
+            `${match[1]} price (USD/million tokens) / ${match[2].replace("images", "image")}`,
+          );
+        });
+    });
+    return tables($.html());
+  }
   const parsed = tables(body);
-  if (!markdownDocument(body)) return parsed;
   return parsed.flatMap((table, tableIndex) => {
     try {
       const first = table.rows[0];
@@ -1293,14 +1313,19 @@ function rates(
           ? {}
           : { account_eligibility: segment.accountEligibility }),
       };
-      const meters = [meter(effectiveHeader, table.headings, tasks, rateUnit, conditions)];
-      for (const meterName of meters) {
+      const modalities =
+        conditions.modality === "text/image/video"
+          ? ["text", "image", "video"]
+          : [conditions.modality];
+      for (const modality of modalities) {
+        const scopedConditions = modality === undefined ? conditions : { ...conditions, modality };
+        const meterName = meter(effectiveHeader, table.headings, tasks, rateUnit, scopedConditions);
         const base: SourcePriceFact = {
           meter: meterName,
           price: normalizedPrice(segment.price, rateUnit),
           currency: "USD",
           unit: rateUnit,
-          conditions,
+          conditions: scopedConditions,
           source_ref: input.source.id,
           derived: rateUnit === "million_characters",
           derivation:

@@ -93,6 +93,9 @@ refresh mechanically while preserving their exact applicability.
 - Speech to Speech is a model-bound realtime offer. xAI publishes one audio-duration
   rate rather than separate input/output audio rates, plus a per-text-input-event rate. An exact
   `Deprecated` suffix on a pricing row changes neither its ID nor its still-published numeric rate.
+  The audio-duration row accepts the current layout without the redundant `audio` word before the
+  line break. The minute amount and text-input-event amount remain separate charges; the adjacent
+  hourly equivalent is not charged again.
 - TTS and STT are provider-resource books because their public request schemas do not
   select public model IDs. REST and streaming STT remain distinct offers because their
   published rates differ.

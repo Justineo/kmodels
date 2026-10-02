@@ -596,12 +596,13 @@ function modelChargeBinding(
   if (isStandardUnit(unit, "token")) {
     const token = tokenBindingSpec(meter, variant.applicability, mechanism, hasCacheRates, input);
     if (token === undefined) return;
+    const runtime = permitsRuntimeUsage(variant.applicability);
     const facts = tokenInputFacts(
       token.keys,
       mechanism,
       inputIndex,
-      supportsConverse && permitsRuntime(variant.applicability),
-      token.includeInvocationLog && permitsRuntime(variant.applicability),
+      supportsConverse && runtime,
+      token.includeInvocationLog && runtime,
     );
     return directBinding(token.signal, token.aggregation, facts, observation);
   }
@@ -759,7 +760,7 @@ function modelSelectorSources(
   supportsConverse: boolean,
 ): PriceSelectorSource[] {
   const result: PriceSelectorSource[] = [];
-  const runtime = permitsRuntime(applicability);
+  const runtime = permitsRuntimeUsage(applicability);
   for (const dimension of applicabilityDimensions(applicability)) {
     if (dimension.namespace !== "kmodels") continue;
     if (dimension.value === "region" && mechanism === "on-demand" && runtime) {
@@ -838,7 +839,15 @@ function categoricalValues(
   return [...values.values()].sort(compareCanonicalValues);
 }
 
-function permitsRuntime(applicability: PriceApplicability): boolean {
+function permitsRuntimeUsage(applicability: PriceApplicability): boolean {
+  // Existing accounting contracts describe Converse/Invoke. API-qualified rates need
+  // their own usage and selector contracts, even when they share the Runtime endpoint.
+  if (
+    applicabilityDimensions(applicability).some(
+      ({ namespace, value }) => namespace === "kmodels" && value === "operation",
+    )
+  )
+    return false;
   return applicability.any_of.some(({ all_of }) => {
     const endpoint = all_of.find(
       (condition) =>

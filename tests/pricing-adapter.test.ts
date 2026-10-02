@@ -2394,6 +2394,57 @@ describe("parsed-source canonical pricing adapter", () => {
     ).not.toThrow();
   });
 
+  it("does not attach Converse accounting to API-qualified Bedrock tier rates", () => {
+    const { source: pricingSource } = pricingManifest();
+    const bedrock: ParsedProviderModel = {
+      ...model(),
+      provider_id: "amazon-bedrock",
+      uid: "amazon-bedrock/test-model",
+      api_endpoints: [{ name: "Converse", path: "model/{modelId}/converse" }],
+      price_facts: [
+        tokenRate("1.75", {
+          endpoint: "bedrock-runtime",
+          region: "us-east-1",
+          service_tier: "priority",
+          operation: "responses",
+        }),
+      ],
+      pricing_inputs: [
+        bedrockPricingInput(
+          "runtime.converse.uncached_input_tokens",
+          "response",
+          "/usage/inputTokens",
+        ),
+        bedrockPricingInput(
+          "runtime.invocation_log.input_tokens",
+          "invocation_log",
+          "/input/inputTokenCount",
+          "reconciliation_only",
+        ),
+        bedrockPricingInput(
+          "runtime.converse.selector.service_tier",
+          "response",
+          "/serviceTier/type",
+        ),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "amazon-bedrock",
+      observedAt,
+      [{ source: pricingSource, models: [bedrock] }],
+      [bedrock],
+    );
+    const term = partition?.books.find(({ scope }) => scope.kind === "models")?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Missing scoped Bedrock rate");
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]?.charge_binding?.signal).toEqual({
+      namespace: "kmodels",
+      value: "input_tokens",
+    });
+    expect(term.variants[0]?.charge_binding).not.toHaveProperty("quantity_methods");
+    expect(term.variants[0]).not.toHaveProperty("selector_sources");
+  });
+
   it("keeps Bedrock request-priced execution and Nova grounding", () => {
     const { source: pricingSource } = pricingManifest();
     const bedrock: ParsedProviderModel = {
@@ -3400,6 +3451,10 @@ describe("parsed-source canonical pricing adapter", () => {
         normalization: {
           kind: "categorical_map",
           entries: [
+            {
+              source_value: "fast",
+              value: { namespace: "provider", provider_id: "openai", value: "fast" },
+            },
             {
               source_value: "priority",
               value: { namespace: "provider", provider_id: "openai", value: "fast" },

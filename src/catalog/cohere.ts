@@ -1385,19 +1385,45 @@ function applyPricing(
     }
   }
   const legacy =
-    /(.+?) pricing is \$[\d.]+\/1M tokens for input and \$[\d.]+\/1M tokens for output/i;
+    /^(Command(?:-light| R(?:\+)?(?: \d{2}-\d{4})?)?) pricing is \$(\d+(?:\.\d+)?)\/1M tokens for input and \$(\d+(?:\.\d+)?)\/1M tokens for output$/i;
   $("li,p")
     .filter((_index, element) => $(element).find("li,p").length === 0)
     .each((_index, element) => {
-      const label = text($(element).text()).match(legacy)?.[1];
-      if (label === undefined) return;
-      if (!/Command(?:-light| R(?:\+)?(?: \d{2}-\d{4})?)?$/i.test(label)) return;
-      for (let index = 0; index < 2; index += 1)
+      const match = text($(element).text()).match(legacy);
+      const label = match?.[1];
+      if (label === undefined || match?.[2] === undefined || match[3] === undefined) return;
+      const scope = $(element).is("li") ? $(element).parent("ul").parent() : $(element).parent();
+      const eligible = scope
+        .children("p")
+        .toArray()
+        .some((paragraph) => text($(paragraph).text()) === "For existing customers:");
+      if (!eligible) {
         input.onPricingReconciliation?.({
-          disposition: "excluded",
-          reason_code: "out_of_scope_account_offer",
+          disposition: "unresolved",
+          reason_code: "legacy_price_eligibility_unresolved",
           sample: label,
         });
+        return;
+      }
+      const matches = productMatches(models, label, true);
+      const target = matches.length === 1 ? matches[0] : undefined;
+      if (target === undefined) {
+        reconcileUnmatched(label, matches, input.onPricingReconciliation, 2);
+        return;
+      }
+      for (const [meter, amount] of [
+        ["input_text", match[2]],
+        ["output_text", match[3]],
+      ] as const)
+        update(models, target.model_id, (current) =>
+          addRate(
+            current,
+            publishedRate(meter, amount, "million_tokens", input.source.id, "1M tokens", {
+              account_eligibility: "existing_customer",
+            }),
+            input.onPricingReconciliation,
+          ),
+        );
     });
   const aya = text($("body").text()).match(
     /Aya Expanse models \(8B and 32B\).*?\$([\d.]+)\/1M tokens for input and \$([\d.]+)\/1M tokens for output/i,
