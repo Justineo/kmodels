@@ -21540,7 +21540,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v8",
+      extractorVersion: "ollama-cloud-v9",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });
@@ -21603,7 +21603,7 @@ describe("Ollama adapters", () => {
     expect(models.find(({ model_id }) => model_id === "gpt-oss:120b")).toMatchObject({
       service_families: ["Ollama Cloud"],
       modalities: { input: ["text"], output: ["text"] },
-      capabilities: { reasoning: true, tool_call: true, streaming: true },
+      capabilities: { reasoning: true, effort_control: true, tool_call: true, streaming: true },
       limits: { context_tokens: 131072 },
       updated_date: "2025-08-05",
       pricing_state: "unknown",

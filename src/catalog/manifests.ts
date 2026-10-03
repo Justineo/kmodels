@@ -4102,7 +4102,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v8",
+        extractorVersion: "ollama-cloud-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
