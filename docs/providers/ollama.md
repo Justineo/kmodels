@@ -61,6 +61,8 @@ compatibility page remains a fixed input.
 - Exact overlaps retain both `Ollama Library` and `Ollama Cloud` service-family evidence. A missing
   list, page, or Show detail cannot erase an identity supplied by another current witness.
 - Show capabilities and model metadata enrich tasks, modalities, context limits, and update dates.
+  A `/api/show` `thinking.values` list containing named levels establishes effort control; malformed
+  thinking metadata is isolated as a contract signal without discarding the model.
   Unknown additive fields and enum values produce bounded diagnostics and suppress only the affected
   claim.
 - A Cloud retirement is applied globally only when the exact identity is absent from the current

@@ -37,6 +37,10 @@ const capabilitySchema = z.enum([
   "tools",
   "vision",
 ]);
+const thinkingSchema = z.object({
+  values: z.array(z.union([z.boolean(), z.string().min(1)])).min(1),
+  default: z.union([z.boolean(), z.string().min(1)]),
+});
 const listItemSchema = z.object({ model: modelIdSchema }).passthrough();
 const listSchema = z.object({ models: z.array(z.unknown()) }).passthrough();
 const detailSchema = z
@@ -109,6 +113,7 @@ interface ListClaims {
 
 interface ShowClaims {
   capabilities: Set<z.infer<typeof capabilitySchema>>;
+  effortControl?: boolean;
   modelInfo: Record<string, unknown>;
   modified?: string;
   retirement?: string;
@@ -320,6 +325,7 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
     "details",
     "template",
     "capabilities",
+    "thinking",
     "model_info",
     "retirement_on",
   ]);
@@ -354,6 +360,9 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
       else diagnostic(input, "/show/capabilities");
     }
   else if (rawCapabilities !== undefined) diagnostic(input, "/show/capabilities");
+  const rawThinking = Reflect.get(raw, "thinking");
+  const thinking = rawThinking === undefined ? undefined : thinkingSchema.safeParse(rawThinking);
+  if (rawThinking !== undefined && !thinking?.success) diagnostic(input, "/show/thinking");
   const rawInfo = Reflect.get(raw, "model_info");
   const modelInfo =
     rawInfo !== null && typeof rawInfo === "object" && !Array.isArray(rawInfo)
@@ -369,6 +378,9 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
     diagnostic(input, "/show/retirement_on");
   return {
     capabilities,
+    ...(thinking?.success && thinking.data.values.some((value) => typeof value === "string")
+      ? { effortControl: true }
+      : {}),
     modelInfo,
     ...(modified === undefined ? {} : { modified }),
     ...(retirement === undefined ? {} : { retirement: retirement.slice(0, 10) }),
@@ -456,6 +468,7 @@ function cloudModel(
     capabilities: {
       ...unknownCapabilities(),
       ...libraryFacts?.capabilities,
+      effort_control: show?.effortControl ?? libraryFacts?.capabilities.effort_control ?? "unknown",
       reasoning: capabilities.has("thinking")
         ? true
         : (libraryFacts?.capabilities.reasoning ?? "unknown"),
