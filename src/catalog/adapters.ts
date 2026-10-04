@@ -443,11 +443,12 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
   ) {
     const threshold =
       Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
+    const includesCacheWrites = /input and cache rates/i.test(longContext[0]);
     const additions = rates.flatMap((rate): SourcePriceFact[] => {
       const multiplier =
         rate.meter === "input_text" ||
         rate.meter === "cache_read_text" ||
-        (rate.meter === "cache_write_text" && /input and cache rates/i.test(longContext[0]))
+        (rate.meter === "cache_write_text" && includesCacheWrites)
           ? longContext[3]
           : rate.meter === "output_text"
             ? longContext[4]
@@ -472,27 +473,27 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
   if (cacheWrite?.[1] !== undefined) {
     const multiplier = cacheWrite[1];
     rates.push(
-      ...rates.flatMap((rate): SourcePriceFact[] =>
-        rate.meter !== "input_text" ||
-        rates.some(
+      ...rates.flatMap((rate): SourcePriceFact[] => {
+        if (rate.meter !== "input_text") return [];
+        const hasCacheWrite = rates.some(
           (existing) =>
             existing.meter === "cache_write_text" &&
             existing.conditions.service_tier === rate.conditions.service_tier &&
             existing.conditions.context_min_tokens === rate.conditions.context_min_tokens,
-        )
-          ? []
-          : [
-              {
-                ...rate,
-                meter: "cache_write_text",
-                price: multiplyDecimal(rate.price, multiplier),
-                derived: true,
-                derivation: `${multiplier} × published uncached input rate`,
-                raw_price: undefined,
-                raw_unit: "published cache-write multiplier",
-              },
-            ],
-      ),
+        );
+        if (hasCacheWrite) return [];
+        return [
+          {
+            ...rate,
+            meter: "cache_write_text",
+            price: multiplyDecimal(rate.price, multiplier),
+            derived: true,
+            derivation: `${multiplier} × published uncached input rate`,
+            raw_price: undefined,
+            raw_unit: "published cache-write multiplier",
+          },
+        ];
+      }),
     );
   }
   return rates;
@@ -2135,10 +2136,11 @@ function openAiMarkdownModel(
   const idMatches = [...body.matchAll(/^Model ID: `([^`]+)`$/gm)];
   const id = idMatches.length === 1 ? idMatches[0]?.[1] : undefined;
   if (id !== expectedId) throw new Error(`OpenAI model page identity disagreed for ${expectedId}`);
-  const observedName = body.match(/^# (.+)$/m)?.[1]?.trim();
-  const name = observedName === undefined || observedName === "" ? id : observedName;
-  if (observedName === undefined || observedName === "")
+  let name = body.match(/^# (.+)$/m)?.[1]?.trim();
+  if (name === undefined || name === "") {
+    name = id;
     input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/name`]));
+  }
   const observedDetails = markdownSection(body, "Model details");
   const details = observedDetails ?? "";
   if (observedDetails === undefined)
