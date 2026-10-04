@@ -158,6 +158,7 @@ function sectionContent($: LoadedDocument, label: string): Selection {
 const openAiEndpointDefinitions = new Map<string, { name: string; tasks: ModelTask[] }>([
   ["v1/chat/completions", { name: "Chat Completions", tasks: ["text_generation"] }],
   ["v1/responses", { name: "Responses", tasks: ["text_generation"] }],
+  ["v1/live/sessions", { name: "Live", tasks: ["speech_to_speech"] }],
   ["v1/realtime", { name: "Realtime", tasks: ["speech_to_speech"] }],
   ["v1/realtime/translations", { name: "Realtime translation", tasks: ["translation"] }],
   [
@@ -272,6 +273,7 @@ function openAiMeter(
   if (group === "Text tokens") {
     if (label === "Input") return "input_text";
     if (label === "Cached input") return "cache_read_text";
+    if (label === "Cache writes") return "cache_write_text";
     if (label === "Output") return "output_text";
   }
   if (group === "Audio tokens") {
@@ -288,6 +290,7 @@ function openAiMeter(
   if (group === "Image generation") return "image_generation";
   if (group === "Video generation") return "video_generation";
   if (group === "Transcription audio duration" && label === "Price") return "input_audio";
+  if (group === "Live session duration" && label === "Per minute") return "session_runtime";
   if (group === "Realtime audio duration" && label === "Price") {
     if (tasks.includes("transcription") || tasks.includes("translation")) return "input_audio";
     if (tasks.includes("speech_synthesis") || tasks.includes("speech_to_speech"))
@@ -330,6 +333,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
     "Video generation",
     "Transcription audio duration",
     "Realtime audio duration",
+    "Live session duration",
   ]);
   content
     .find("div")
@@ -430,7 +434,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
 
   const pageText = normalizedText($("main").text());
   const longContext = pageText.match(
-    /prompts with >([\d,]+)(K)? input tokens are priced at ([\d.]+)x input and ([\d.]+)x output/i,
+    /prompts with (?:>|more than )([\d,]+)(K)? input tokens are priced at ([\d.]+)x input(?: and cache rates)? and ([\d.]+)x output/i,
   );
   if (
     longContext?.[1] !== undefined &&
@@ -441,7 +445,9 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
       Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
     const additions = rates.flatMap((rate): SourcePriceFact[] => {
       const multiplier =
-        rate.meter === "input_text" || rate.meter === "cache_read_text"
+        rate.meter === "input_text" ||
+        rate.meter === "cache_read_text" ||
+        (rate.meter === "cache_write_text" && /input and cache rates/i.test(longContext[0]))
           ? longContext[3]
           : rate.meter === "output_text"
             ? longContext[4]
@@ -467,7 +473,13 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
     const multiplier = cacheWrite[1];
     rates.push(
       ...rates.flatMap((rate): SourcePriceFact[] =>
-        rate.meter !== "input_text"
+        rate.meter !== "input_text" ||
+        rates.some(
+          (existing) =>
+            existing.meter === "cache_write_text" &&
+            existing.conditions.service_tier === rate.conditions.service_tier &&
+            existing.conditions.context_min_tokens === rate.conditions.context_min_tokens,
+        )
           ? []
           : [
               {
@@ -2125,7 +2137,8 @@ function openAiMarkdownModel(
   if (id !== expectedId) throw new Error(`OpenAI model page identity disagreed for ${expectedId}`);
   const observedName = body.match(/^# (.+)$/m)?.[1]?.trim();
   const name = observedName === undefined || observedName === "" ? id : observedName;
-  if (name === id) input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/name`]));
+  if (observedName === undefined || observedName === "")
+    input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/name`]));
   const observedDetails = markdownSection(body, "Model details");
   const details = observedDetails ?? "";
   if (observedDetails === undefined)

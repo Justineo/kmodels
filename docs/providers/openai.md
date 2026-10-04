@@ -62,9 +62,17 @@ pricing-page partition.
   a local omission rather than a provider transport failure.
 - Endpoint rows use reviewed exact route/name pairs. A new route, support label, modality, region,
   or table column is withheld locally and reported; known sibling facts remain usable.
+  The reviewed `Live` / `v1/live/sessions` pair supplies speech-to-speech session support;
+  it does not replace separately declared backend Responses endpoints.
 - The HTML price overlay binds only to an exact catalog ID. Missing, duplicate, unbound, or malformed
   HTML cards are skipped independently. Omitted overlay facts retain their previous observation;
   the dedicated pricing page remains the primary amount source.
+  Explicit `Cache writes` cells take precedence over deriving the same card rate from its
+  multiplier note. The reviewed long-context wording `input and cache rates` applies to both
+  cache reads and writes. `Live session duration` / `Per minute` is a session-runtime rate,
+  separate from backend model and tool charges. Minimal fixtures reproduce these public
+  [Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) and
+  [Live](https://developers.openai.com/api/docs/models/gpt-live-1) card labels observed on 2026-10-04.
 - The optional API inventory can add only positive account-visible evidence. Absence and private
   IDs never remove or widen the global catalog, and raw authenticated bodies are not retained.
 

@@ -197,6 +197,68 @@ describe("source retry cooldown", () => {
 });
 
 describe("linked source fetch", () => {
+  it.each(["recover", "exhaust", "oversize"])(
+    "handles SageMaker body-stream failures with bounded retries: %s",
+    async (scenario) => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const source = manifests
+        .find(({ provider }) => provider.id === "amazon-sagemaker")
+        ?.sources.find(({ id }) => id === "sagemaker-sdk");
+      if (source === undefined) throw new Error("Missing SageMaker source");
+      transport.responses.set("docs.aws.amazon.com", [
+        'HTTP/1.1 200 OK\r\n\r\n<dd tab-id="open-weight-models-(1)"><table><tr><th>Model ID</th><th>Model Name</th><th>Task</th><th>Fine-tunable</th></tr><tr><td>fixture-model</td><td>Model</td><td>Text Generation</td><td>No</td></tr></table></dd><dd tab-id="proprietary-models-(0)"><table><tr><th>Model ID</th><th>Model Name</th><th>Task</th><th>Fine-tunable</th></tr></table></dd>',
+      ]);
+      let specAttempts = 0;
+      const responses: Response[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url.endsWith("/models_manifest.json"))
+          return Response.json([
+            {
+              model_id: "fixture-model",
+              version: "1.0",
+              spec_key: "models/fixture-model/specs_v1.0.json",
+            },
+          ]);
+        if (url.endsWith("/proprietary-sdk-manifest.json")) return Response.json([]);
+        specAttempts += 1;
+        const response =
+          scenario === "recover" && specAttempts > 1
+            ? Response.json({ model_id: "fixture-model", version: "1.0", provider: "Publisher" })
+            : new Response(
+                new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    controller.enqueue(new TextEncoder().encode('{"partial":'));
+                  },
+                  pull(controller) {
+                    if (scenario === "oversize")
+                      controller.enqueue(new Uint8Array(4 * 1024 * 1024));
+                    else controller.error(new DOMException("private source URL", "TimeoutError"));
+                  },
+                }),
+              );
+        responses.push(response);
+        return response;
+      });
+      if (scenario === "recover") {
+        const result = await fetchSource(source);
+        expect(JSON.parse(result.body)).toMatchObject([
+          { id: "fixture-model", model_card: { publisher: "Publisher" } },
+        ]);
+        expect(result.dependencies).toHaveLength(4);
+        expect(specAttempts).toBe(2);
+      } else {
+        await expect(fetchSource(source)).rejects.toThrow(
+          scenario === "oversize"
+            ? "Response exceeded byte limit"
+            : "Source response body transfer failed or timed out",
+        );
+        expect(specAttempts).toBe(scenario === "oversize" ? 1 : 3);
+      }
+      expect(responses.every(({ body }) => body?.locked === false)).toBe(true);
+    },
+  );
+
   it("keeps pooled public SageMaker requests inside the reviewed host boundary", async () => {
     const configured = manifests
       .find((manifest) => manifest.provider.id === "amazon-sagemaker")
