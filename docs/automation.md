@@ -120,6 +120,16 @@ Status: implemented
   also run before inference so a broken harness does not consume a model run. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   publication request. Automatic repair publication requires every repository validation command to pass.
+  Agent execution has an explicit 45-minute limit inside a 60-minute agent job. The
+  [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
+  bounds inference and its tool calls; the job limit separately leaves time for setup,
+  post-execution validation, and artifact upload. The agent budgets 20 minutes for evidence and
+  focused repairs, 20 for complete validation and corrections, and 5 for final reporting. It
+  completes candidate triage before staging and publishes promptly after a successful gate,
+  without reopening independent work. Staging prints an explicit completion receipt only after
+  saving the unchanged validated patch. An engine timeout or failure skips outcome capture,
+  preserving the primary error instead of adding a missing-output-file error; publication still
+  requires a successful agent job and a fully validated completed outcome.
   Publication unit tests use a private in-memory environment, never host credentials or native
   token mutation. AWF v0.28.27's [one-shot token cache](https://github.com/github/gh-aw-firewall/blob/v0.28.27/containers/agent/one-shot-token/src/lib.rs)
   caches the first `GH_TOKEN` read even when absent, so `vi.stubEnv` cannot reliably replace it
