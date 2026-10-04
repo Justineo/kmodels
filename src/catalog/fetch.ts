@@ -951,21 +951,29 @@ async function request(source: SourceManifest, json?: string): Promise<Response>
 
 async function readLimited(response: Response, limit: number): Promise<string> {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > limit)
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel();
     throw new Error("Response exceeded byte limit");
+  }
   if (response.body === null) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    total += result.value.byteLength;
-    if (total > limit) {
-      await reader.cancel("Response exceeded byte limit");
-      throw new Error("Response exceeded byte limit");
+  try {
+    while (true) {
+      const result = await reader.read().catch(() => {
+        throw new TransientFetchError("Source response body transfer failed or timed out");
+      });
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > limit) {
+        await reader.cancel("Response exceeded byte limit");
+        throw new Error("Response exceeded byte limit");
+      }
+      chunks.push(result.value);
     }
-    chunks.push(result.value);
+  } finally {
+    reader.releaseLock();
   }
   return Buffer.concat(chunks, total).toString("utf8");
 }

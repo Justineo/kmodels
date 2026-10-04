@@ -5185,6 +5185,22 @@ describe("OpenAI adapters", () => {
     ).toEqual(new Set(["global_processing"]));
   });
 
+  it("accepts explicit cache writes, long-context cache rates, and live session cards", async () => {
+    const models = await openAiModelPricing("openai/current-price-cards.json", [
+      openAiModel("gpt-6-sol", ["text_generation"]),
+      openAiModel("gpt-live-1", ["speech_to_speech"]),
+    ]);
+    const sol = models.find(({ model_id }) => model_id === "gpt-6-sol");
+    expect(sol?.price_facts).toHaveLength(8);
+    expect(sol?.price_facts.filter(({ meter }) => meter === "cache_write_text")).toMatchObject([
+      { price: "2.50", conditions: { service_tier: "standard" } },
+      { price: "5", conditions: { service_tier: "standard", context_min_tokens: 272_001 } },
+    ]);
+    expect(models.find(({ model_id }) => model_id === "gpt-live-1")?.price_facts).toMatchObject([
+      { meter: "session_runtime", price: "0.05", unit: "minute" },
+    ]);
+  });
+
   it("extracts OpenAI pricing inputs independently from the rate source", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-accounting");
@@ -6159,6 +6175,27 @@ describe("OpenAI adapters", () => {
         expect.objectContaining({ meter: "input_audio", price: "0.0045", unit: "minute" }),
       ],
     });
+  });
+
+  it("accepts reviewed Live endpoints and names identical to model IDs", async () => {
+    const value = manifest("openai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing OpenAI catalog source");
+    const body = openAiCatalogFixture(await fixture("openai/catalog.json")).replaceAll(
+      "| Realtime |",
+      "| Live | `v1/live/sessions` | Supported |\\n| Realtime |",
+    );
+    const findings: SourceContractEvidence[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(models[0]?.api_endpoints).toContainEqual({ name: "Live", path: "v1/live/sessions" });
+    expect(models[0]?.tasks).toContain("speech_to_speech");
+    expect(findings).toEqual([]);
   });
 
   it("preserves model facts and signals an unreviewed endpoint card", async () => {

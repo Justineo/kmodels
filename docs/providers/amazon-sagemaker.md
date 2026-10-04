@@ -101,6 +101,9 @@ detail requests, and allow 90 seconds for each request including SDK retry waits
 source requires every selected detail; a throttled/aborted source is never published as complete.
 Public S3 spec reads reuse native HTTP connections with the same host, redirect, response-size and
 retry boundaries as other sources. API failure does not prevent independent public catalog/pricing collection.
+The retry boundary includes the entire response body: a timeout or interrupted stream after
+HTTP headers retries that dependency from the beginning, up to three attempts. Partial bytes
+are discarded, readers are released, and size-limit violations still fail without retrying.
 
 Official API references:
 [ListHubContents](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ListHubContents.html),
