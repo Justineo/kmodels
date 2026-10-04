@@ -198,6 +198,9 @@ export async function runRepairPublication(operation: string | undefined): Promi
           "Catalog repair changed during validation; review the changes and rerun stage",
         );
       await writeFile(patchPath, patch);
+      console.log(
+        "Catalog repair stage passed: full validation completed and detection patch saved.",
+      );
       break;
     }
     case "capture": {

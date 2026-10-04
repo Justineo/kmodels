@@ -1,6 +1,7 @@
 ---
 name: Catalog repair
 description: Repair reproducible catalog source drift and publish validated code automatically to main.
+timeout-minutes: 45
 
 on:
   schedule: daily
@@ -195,6 +196,8 @@ safe-outputs:
           run: gh workflow run void-deploy.yml --ref main
 
 jobs:
+  agent:
+    timeout-minutes: 60
   safe_outputs:
     if: needs.agent.result == 'success'
   conclusion:
@@ -262,7 +265,7 @@ steps:
 post-steps:
   - name: Capture and admit the repair outcome
     id: repair_outcome
-    if: always()
+    if: success()
     env:
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
       REPAIR_BASE_SHA: ${{ github.sha }}
@@ -303,6 +306,15 @@ The preparation steps installed the pinned Vite+ and Node.js in the shared `VP_H
 the frozen project dependencies. Start with `vp env doctor` and `vp node --version`. Use `vp node`
 for Node.js scripts so they use `.node-version`; use the global `vp` command for all checks.
 If the prepared toolchain is unavailable, report the failure with `report_incomplete` and stop.
+
+The agent execution budget is 45 minutes, separate from the 60-minute job budget for setup,
+independent validation, and artifact upload. Finish evidence review and focused repairs within
+the first 20 minutes, reserve the next 20 minutes for full validation and corrections, and keep
+the final 5 minutes for the completed outcome. One complete `stage` run currently takes about
+5 minutes; do not start additional independent repair work while a validation command is running.
+Complete candidate triage before staging. After `stage` succeeds, publish that validated coherent
+repair promptly instead of reopening investigation or expanding the patch. Record remaining
+candidates in the repair report for a later run. Never treat elapsed time as validation success.
 
 The scheduled workflow does not run Jev; the manual experiment has not demonstrated incremental
 production defect discovery. Use observed refresh evidence to establish the gap before proposing

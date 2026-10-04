@@ -11,6 +11,20 @@ function job(workflow: string, name: string): string {
   return body;
 }
 
+it("reserves execution time for validation retries and skips outcome capture after engine failure", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  expect(agent).toMatch(/^    timeout-minutes: 60$/m);
+  const execution = agent.match(
+    /- name: Execute GitHub Copilot CLI\n([\s\S]*?)(?=\n      - )/,
+  )?.[1];
+  expect(execution).toBeDefined();
+  expect(execution).toMatch(/^        timeout-minutes: 45$/m);
+  const capture = agent.split(/\n      - /).find((step) => step.includes("id: repair_outcome\n"));
+  expect(capture).toBeDefined();
+  expect(capture).toContain("if: success()");
+});
+
 it("keeps issue creation unavailable in both the source policy and generated workflow", async () => {
   const markdown = await readFile(source, "utf8");
   const workflow = await readFile(compiled, "utf8");
