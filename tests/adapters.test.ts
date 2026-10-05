@@ -20059,6 +20059,29 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("recovers a release ID when the deployment-scope cell is omitted", async () => {
+    const body = documentBundle(
+      source("dashscope-releases"),
+      "<main>Model Studio release notes</main>",
+      [
+        {
+          url: "https://help.aliyun.com/zh/model-studio/newly-released-models",
+          body: await fixture("dashscope/release-missing-scope.html"),
+        },
+      ],
+    );
+    const findings: SourceContractEvidence[] = [];
+    expect(
+      parse(source("dashscope-releases"), body, undefined, (finding) => findings.push(finding)),
+    ).toEqual([
+      expect.objectContaining({
+        model_id: "decision-model-preview",
+        release_date: "2026-09-24",
+      }),
+    ]);
+    expect(findings).toEqual([]);
+  });
+
   it("unions the stable international and China lifecycle tables", async () => {
     const body = JSON.stringify({
       index: {
@@ -20298,7 +20321,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-releases")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
       format: "html",
-      extractorVersion: "dashscope-releases-v3",
+      extractorVersion: "dashscope-releases-v4",
       optional: true,
       retainOmittedFacts: true,
       linkedDocuments: {

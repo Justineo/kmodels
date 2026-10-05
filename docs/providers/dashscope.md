@@ -124,8 +124,10 @@ The text and vision task pages are non-exhaustive curated catalogs. Their drift 
 current published inventories (at least 50 text IDs and 5 vision IDs); the larger pricing and
 deployment sources remain independent and are not truncated to those curated lists.
 
-Lifecycle and release pages are structured table sources. Malformed dates, cells, or model IDs are
-skipped at row scope and reported. The lifecycle summaries may temporarily contain only dated
+Lifecycle and release pages are structured table sources. Malformed dates or rows without an exact
+model ID are skipped at row scope and reported. When a release row omits its optional deployment-
+scope cell, the parser recovers the exact model ID from the shifted labeled column without
+inferring it from prose. The lifecycle summaries may temporarily contain only dated
 notice links and no exact model rows; that is a valid empty non-exhaustive observation and retains
 the last accepted lifecycle facts. The collector never guesses IDs from notice titles or depends on
 unstable announcement DOM or OCR.

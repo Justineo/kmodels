@@ -2222,11 +2222,15 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
           continue;
         }
         const rowIds = cellIds(row[modelColumn]);
-        if (rowIds.length === 0) {
+        const recoveredRowIds =
+          rowIds.length === 0 && row.length === table.headers.length - 1 && modelColumn > 0
+            ? cellIds(row[modelColumn - 1])
+            : rowIds;
+        if (recoveredRowIds.length === 0) {
           findings.push(`${path}/model`);
           continue;
         }
-        for (const id of rowIds) {
+        for (const id of recoveredRowIds) {
           const current = dates.get(id);
           if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
         }
