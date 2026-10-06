@@ -97,6 +97,8 @@ const publicPriceSuffixes = new Map<string, string | null>([
   ["Input (/M tokens)", null],
   ["Cached input (/M tokens)", null],
   ["Output (/M tokens)", null],
+  ["Input (/M chars)", null],
+  ["Output (/M chars)", null],
   ["OCR", "/ 1000 pages"],
   ["Document AI", "/ 1000 pages"],
   ["Audio generation", "per 1k characters"],
@@ -836,6 +838,12 @@ function pageRate(
   } else if (label === "Cached input (/M tokens)") {
     meter = "cache_read_text";
     unit = "million_tokens";
+  } else if (label === "Input (/M chars)") {
+    meter = "input_text";
+    unit = "million_characters";
+  } else if (label === "Output (/M chars)") {
+    meter = "output_audio";
+    unit = "million_characters";
   } else if (label === "Output (/M tokens)") {
     meter = "output_text";
     unit = "million_tokens";
@@ -1039,17 +1047,21 @@ function publicPricing(
         });
         continue;
       }
-      const eur = pageRate(
-        candidate.model,
-        label,
-        row.priceEur,
-        row.suffix,
-        "EUR",
-        input.source.id,
-      );
-      if (eur === undefined) throw new Error("Mistral public price mapping was inconsistent");
       let merged = candidate.model;
-      for (const rate of [candidate.rate, eur])
+      const rates = [candidate.rate];
+      if (row.priceEur !== undefined) {
+        const eur = pageRate(
+          candidate.model,
+          label,
+          row.priceEur,
+          row.suffix,
+          "EUR",
+          input.source.id,
+        );
+        if (eur === undefined) throw new Error("Mistral public price mapping was inconsistent");
+        rates.push(eur);
+      }
+      for (const rate of rates)
         merged = selectPublicRate(
           merged,
           rate,
@@ -1060,7 +1072,7 @@ function publicPricing(
         );
       models[candidate.index] = merged;
       observedModels.add(candidate.model.uid);
-      reconcileMany(input.onPricingReconciliation, 2, {
+      reconcileMany(input.onPricingReconciliation, rates.length, {
         disposition: "normalized",
         reason_code: "normalized_public_currency_price",
       });

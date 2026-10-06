@@ -17,7 +17,7 @@ interface Input {
 
 export interface MistralPricingRow {
   label: string;
-  priceEur: string;
+  priceEur?: string;
   priceUsd: string;
   prefix: string | null;
   suffix: string | null;
@@ -124,6 +124,79 @@ export function parseMistralPricingCards(
     }
     seen.add(fingerprint);
     cards.push(parsed);
+  }
+  if (cards.length === 0) {
+    for (const table of $("table").toArray()) {
+      const headers = $(table)
+        .find("tr")
+        .first()
+        .find("th")
+        .toArray()
+        .map((cell) => compact($(cell).text()));
+      if (
+        headers.length !== 4 ||
+        !headers.every(
+          (header, index) => header === ["Model", "Input", "Cached input", "Output"][index],
+        )
+      )
+        continue;
+      for (const row of $(table).find("tr").slice(1).toArray()) {
+        const cells = $(row).find("td").toArray();
+        if (cells.length !== 4) continue;
+        const modelCell = $(cells[0]);
+        const title = compact(modelCell.find("a").first().text()).replace(/\s*↗$/u, "");
+        const href = modelCell.find("a").first().attr("href");
+        if (title === "" || href === undefined || !/^\/models\/[a-z0-9-]+\/?$/u.test(href))
+          continue;
+        const rows = cells.slice(1).flatMap((cell, index): MistralPricingRow[] => {
+          const value = compact($(cell).text());
+          if (value === "—" || value.toLowerCase() === "free") return [];
+          const match = value.match(
+            /^\$(\d+(?:\.\d+)?)(?:\s*(\/\s*1000\s*pages|\/\s*min|\/\s*m\s*chars))?$/iu,
+          );
+          if (match?.[1] === undefined) return [];
+          const suffix = match[2]
+            ?.toLowerCase()
+            .replace(/^\/\s*/u, "/ ")
+            .replace(/\s+/g, " ");
+          const column = headers[index + 1];
+          if (column === undefined) return [];
+          const label =
+            suffix === "/ 1000 pages"
+              ? "OCR"
+              : suffix === "/ min"
+                ? column === "Input"
+                  ? "Audio Input/min"
+                  : `${column} (/Min)`
+                : suffix === "/ m chars"
+                  ? column === "Input"
+                    ? "Input (/M chars)"
+                    : column === "Output"
+                      ? "Output (/M chars)"
+                      : `${column} (/M chars)`
+                  : `${column} (/M tokens)`;
+          return [
+            {
+              label,
+              priceUsd: match[1],
+              prefix: null,
+              suffix: suffix === "/ 1000 pages" ? "/ 1000 pages" : null,
+            },
+          ];
+        });
+        const free = cells
+          .slice(1)
+          .every((cell) => compact($(cell).text()).toLowerCase() === "free");
+        cards.push({
+          id: "",
+          modelUrls: [new URL(href, "https://mistral.ai").href],
+          title,
+          text: compact($(row).text()),
+          rows,
+          free,
+        });
+      }
+    }
   }
   if (cards.length === 0)
     reconcile?.({ disposition: "unbound", reason_code: "commercial_companion_drift" });
@@ -297,8 +370,9 @@ function rowRates(
   unit: SourcePriceFact["unit"],
   conditions: SourcePriceFact["conditions"] = {},
 ): SourcePriceFact[] {
-  return (["USD", "EUR"] as const).map((currency) => {
+  return (["USD", "EUR"] as const).flatMap((currency) => {
     const price = currency === "USD" ? row.priceUsd : row.priceEur;
+    if (price === undefined) return [];
     return {
       ...publishedRate(meter, price, unit, sourceId, row.label, {
         ...conditions,
