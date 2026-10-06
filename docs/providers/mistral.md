@@ -25,6 +25,11 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   source. The repository remains the fallback amount source and owns model identity, lifecycle,
   capabilities, and routes. For the exact overlapping claim, a price-page amount supersedes a
   conflicting repository amount; the losing observation remains local conflict evidence.
+- The current pricing page renders four reviewed `Model`/`Input`/`Cached input`/`Output` HTML
+  tables instead of the former model-card elements. Table links provide navigation only; each
+  row still binds through its unique exact active catalog title. Dollar-prefixed cells publish USD
+  only, so the parser does not manufacture an EUR amount. Explicit page units remain scoped to
+  their row: tokens, OCR pages, audio minutes, or speech characters.
 - Prompt-caching and Batch guides are claim-local catalog companions. The central price page and
   its optional OpenAPI and built-in-tool usage companions form a separate pricing overlay. This
   lets catalog identity advance when pricing acquisition fails; the last accepted pricing

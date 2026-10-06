@@ -3033,6 +3033,37 @@ describe("Mistral adapters", () => {
       ),
     ).toEqual([]);
   });
+  it("parses the current tabular pricing page without inferring EUR rates", async () => {
+    const items: PricingReconciliationItem[] = [];
+    const models = await mistralCatalog(
+      { pricing: await fixture("mistral/pricing-table.html") },
+      (item) => items.push(item),
+    );
+    const medium = models.find(({ model_id }) => model_id === "mistral-medium-3-5");
+    expect(medium?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "input_text", price: "1.5", currency: "USD" }),
+        expect.objectContaining({ meter: "cache_read_text", price: "0.15", currency: "USD" }),
+        expect.objectContaining({ meter: "output_text", price: "7.5", currency: "USD" }),
+      ]),
+    );
+    expect(
+      medium?.price_facts.some(
+        ({ source_ref, currency }) => source_ref === "mistral-pricing" && currency === "EUR",
+      ),
+    ).toBe(false);
+    expect(
+      models.find(({ model_id }) => model_id === "voxtral-mini-tts-2603")?.price_facts,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "input_text", price: "0", unit: "million_characters" }),
+        expect.objectContaining({ meter: "output_audio", price: "16", unit: "million_characters" }),
+      ]),
+    );
+    expect(items).not.toContainEqual(
+      expect.objectContaining({ reason_code: "commercial_companion_drift" }),
+    );
+  });
   it("recognizes paragraph pricing titles only through a unique exact active catalog name", async () => {
     const pricing = (await fixture("mistral/pricing.html"))
       .replaceAll("<h2>Mistral Medium 3.5</h2>", "<p>Mistral Medium 3.5</p>")
@@ -4215,8 +4246,8 @@ describe("Mistral adapters", () => {
       {
         id: "mistral-pricing",
         url: "https://mistral.ai/pricing/api/",
-        extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v4",
+        extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
+        extractorVersion: "mistral-pricing-v5",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
