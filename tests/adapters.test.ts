@@ -11591,6 +11591,21 @@ describe("Databricks adapters", () => {
     ).toBe(true);
   });
 
+  it("accepts the unqualified standard token table heading", async () => {
+    const models = await databricksCatalog({
+      "pricing-open.html": await fixture("databricks/pricing-open-unqualified.html"),
+    });
+    expect(models.find(({ model_id }) => model_id === "databricks-glm-5-2")?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "20",
+          conditions: { service_tier: "standard" },
+        }),
+      ]),
+    );
+  });
+
   it("normalizes scoped DBU promotions and modality quantities without binding aggregate tokens", async () => {
     const body = await fixture("databricks/pricing-partner-modalities.html");
     const models = await databricksCatalog({
@@ -14704,6 +14719,29 @@ describe("Vercel adapter", () => {
           expect(term.kind).not.toBe("raw");
           if (term.kind !== "raw") expect(term.raw_variants).toEqual([]);
         }
+  });
+
+  it("keeps flat per-video model-page rates distinct from per-second rates", async () => {
+    const models = await vercelCatalog("vercel/video-per-item.json");
+    expect(models[0]?.price_facts).toEqual([]);
+    expect(models[0]?.raw_price_facts).toEqual([
+      expect.objectContaining({
+        term_key: "model_page_output",
+        raw: expect.objectContaining({ fragment: "$0.08/video+17 more" }),
+      }),
+    ]);
+    const flat = await vercelCatalog("vercel/video-per-item.json", (body) =>
+      body.replace("$0.08/video+17 more", "$0.08/video"),
+    );
+    expect(flat[0]?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "video_generation",
+        price: "0.08",
+        unit: "video",
+        raw_unit: "video",
+        conditions: { route_provider: "topaz" },
+      }),
+    ]);
   });
 
   it("does not reclassify a fast endpoint whose prices disagree with the independent base model", async () => {
