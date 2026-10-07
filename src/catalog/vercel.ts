@@ -827,7 +827,8 @@ function modelPageRates(
   const free = prices.length > 0 && prices.every((value) => value === "Free");
   if (!free && prices.includes("Free"))
     throw new Error(`Vercel model page free pricing disagreed for ${item.id}`);
-  const pricePattern = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP|sec)(\*)?(?:\+(\d+) more)?$/;
+  const pricePattern =
+    /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP|sec|video)(\*)?(?:\+(\d+) more)?$/;
   for (const header of priceHeaders) {
     const value = cells.get(header);
     if (value === undefined || value === "" || value === "—" || value === "Free") continue;
@@ -881,9 +882,16 @@ function modelPageRates(
       );
       continue;
     }
-    if (item.type === "video" && header === "Output" && unit === "sec") {
+    if (item.type === "video" && header === "Output" && (unit === "sec" || unit === "video")) {
       rates.push(
-        publishedRate("video_generation", amount, "second", sourceId, "second", conditions),
+        publishedRate(
+          "video_generation",
+          amount,
+          unit === "sec" ? "second" : "video",
+          sourceId,
+          unit,
+          conditions,
+        ),
       );
       continue;
     }

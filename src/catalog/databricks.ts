@@ -748,7 +748,9 @@ function tieredPrices(
       });
       return;
     }
-    const tier = heading.match(/^(Standard|Priority) Pay Per Token \(DBU Per 1M Tokens\)$/)?.[1];
+    const tier =
+      heading.match(/^(?:(Standard|Priority) )?Pay Per Token \(DBU Per 1M Tokens\)$/)?.[1] ??
+      (heading === "Pay Per Token (DBU Per 1M Tokens)" ? "Standard" : undefined);
     const columns = headers.slice(headingIndex + 1);
     if (
       tier === undefined ||

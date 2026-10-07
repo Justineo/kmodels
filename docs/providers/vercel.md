@@ -91,6 +91,8 @@ conflict instead of being silently relabeled.
 Video duration rows with an omitted resolution or quality beside explicitly qualified siblings
 use the source's `default` selector value, as image rows do. They are not wildcard prices over all
 resolutions or qualities, and `default` does not infer a particular physical resolution.
+Video model pages may publish a flat `$N/video` output rate instead of a duration rate; retain its
+provider-published `video` unit rather than treating it as seconds.
 `capabilities.pricing.image_input_cost_per_image_usd` and
 `video_input_cost_per_second_usd` add independently charged input-image and input-video terms.
 Their bindings take billable input images and input-video seconds per generation job; they do not
