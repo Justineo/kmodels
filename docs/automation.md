@@ -5,7 +5,14 @@ Status: implemented
 - GitHub Actions checks every push and pull request, including the portable pricing package build
   and packed Node/browser conformance checks. Package preparation never publishes to npm.
 - A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
-  alone never starts Copilot: code-repair inference begins when the latest committed refresh report contains
+  alone never starts Copilot: preparation reads the latest completed main-branch refresh's report
+  artifact, run identity, failed steps, and bounded failure log with read-only Actions access.
+  Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
+  Collection, generated-data verification, and build failures enter execution review even when
+  the provider report contains no repair candidate. Operational failures or a missing report
+  remain explicitly incomplete; GitHub evidence retrieval errors fail preparation instead of
+  silently falling back to a healthy old report. Local runs without execution evidence use the
+  committed report. Code-repair inference also begins when the selected refresh report contains
   a parser failure, a changed source-contract finding, known unrecognized public pricing-card
   structure, an explicitly rejected Databricks pricing subpage, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
   pricing validation. The gate excludes operational states such as fetch failures and missing
@@ -87,7 +94,8 @@ Status: implemented
   ordinary GitHub CLI OAuth token is not an acceptable substitute.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
-  for compilation, including its supported `threat-detection.report-as-issue` switch. Keep the
+  for compilation, including its supported `threat-detection.report-as-issue` switch. Compile with
+  `--action-mode action --action-tag v0.90.0` to preserve the reviewed setup-action update. Keep the
   generated action pins synchronized with that compiler; v0.87.10 cannot express this policy.
   Pin `sandbox.agent.version` to v0.28.27 so the Copilot Responses adapter normalizes replayed
   `apply_patch` item IDs from `ctc_` to `fc_` ([upstream fix](https://github.com/github/gh-aw-firewall/pull/8944)).

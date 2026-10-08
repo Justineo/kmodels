@@ -11,6 +11,16 @@ function job(workflow: string, name: string): string {
   return body;
 }
 
+it("loads completed refresh evidence before selecting repair work", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  expect(agent).toContain("actions: read");
+  expect(agent.indexOf("scripts/catalog-repair-evidence.ts")).toBeGreaterThan(0);
+  expect(agent.indexOf("scripts/catalog-repair-evidence.ts")).toBeLessThan(
+    agent.indexOf("Check whether repair work is needed"),
+  );
+});
+
 it("reserves execution time for validation retries and skips outcome capture after engine failure", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");

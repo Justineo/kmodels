@@ -311,8 +311,9 @@ Status: implemented
   rebuilt partition. A topology failure for a fresh snapshot aborts compilation. If the snapshot
   was already retained, compilation may keep its exact accepted partition only after that partition
   passes the same topology gate; it reports the provider and bounded failure reason. Observation
-  time, retention metadata, and parsed repair inputs remain unchanged. Binding, provenance, schema,
-  and assembly failures still abort compilation rather than using this fallback.
+  time, retention metadata, and parsed repair inputs remain unchanged. An empty assembly result
+  follows the same retained-only rule and emits an explicit replay failure. Binding, provenance,
+  schema, and assembly exceptions still abort compilation rather than using this fallback.
 - A manifest source declares `pricing` when it owns rates and `pricing_inputs`
   when it owns accounting or selector contracts. Either role makes it a pricing
   dependency for omission, required-source completeness, and replay. Only the rate role carries pricing-evidence

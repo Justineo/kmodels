@@ -93,7 +93,9 @@ provenance, completeness, or structural validation failures abort compilation. E
 partition must also pass the provider's adopted-topology gate before publication. A topology failure
 for an already-retained provider preserves its valid accepted partition and is reported separately
 in the compilation result; it does not erase admitted services or reset the observation time. The
-captured input remains available for repair. The same failure for a fresh provider aborts compilation.
+captured input remains available for repair. An empty assembly result uses the same retained-only
+fallback and explicit failure report: absence of current rates cannot erase accepted pricing or
+block independent providers. Empty fresh replays and assembly exceptions still abort compilation.
 
 Source manifests distinguish rate authority from accounting authority. `pricing`
 means that a source publishes price facts and therefore requires reviewed pricing

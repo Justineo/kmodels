@@ -293,6 +293,39 @@ function xaiReplayCase(publication: "fresh" | "retained", includeAcceptedResourc
 }
 
 describe("local canonical pricing compilation", () => {
+  it("preserves retained pricing when current public inputs contain no prices", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("retained");
+    for (const provider of snapshot.providers)
+      for (const source of provider.sources)
+        for (const model of source.models) {
+          model.pricing_state = "unknown";
+          model.price_facts = [];
+          model.raw_price_facts = [];
+        }
+
+    const compiled = await compilePricingSnapshot(current, snapshot, [manifest]);
+
+    expect(compiled.candidate).toBe(current);
+    expect(compiled.preservedProviders).toEqual(["xai"]);
+    expect(compiled.replayedProviders).toEqual([]);
+    expect(compiled.replayFailures).toEqual([
+      { provider_id: "xai", reason: "Pricing replay for xai produced nothing" },
+    ]);
+  });
+
+  it("rejects empty fresh replay instead of silently keeping accepted prices", async () => {
+    const current = candidate("1");
+    const source = replaySource("1");
+    source.models = [];
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [source] },
+    ]);
+
+    await expect(compilePricingSnapshot(current, snapshot, [providerManifest])).rejects.toThrow(
+      `Pricing replay for ${providerId} produced nothing`,
+    );
+  });
+
   it("rejects fresh replay that removes an adopted provider resource", async () => {
     const { current, snapshot, manifest } = xaiReplayCase("fresh");
 

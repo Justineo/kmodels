@@ -28,11 +28,9 @@ port.on("message", (message: unknown) => {
       message.models,
       message.categoricalLabels,
     );
-    if (partition === undefined)
-      throw new Error(`Pricing replay for ${message.providerId} produced nothing`);
     port.postMessage({
       providerId: message.providerId,
-      partition: { ...partition, snapshot: message.snapshot },
+      partition: partition === undefined ? null : { ...partition, snapshot: message.snapshot },
     });
   } catch (error) {
     port.postMessage({

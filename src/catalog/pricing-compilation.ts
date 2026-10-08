@@ -200,7 +200,7 @@ interface CompilationTask {
 }
 
 type CompilationTaskResult =
-  | { providerId: string; partition: ProviderPricingPartition }
+  | { providerId: string; partition: ProviderPricingPartition | null }
   | { providerId: string; error: string };
 
 export const pricingCompilationPath = join(rootDirectory, "data/pricing-inputs.json.gz");
@@ -414,13 +414,21 @@ export async function compilePricingSnapshot(
     });
   }
 
-  for (const partition of await compileProviderPricing(
+  for (const { providerId, partition } of await compileProviderPricing(
     tasks
       .map((task) => ({ task, weight: compilationWeight(task) }))
       .sort((left, right) => right.weight - left.weight)
       .map(({ task }) => task),
   )) {
-    const providerId = partition.snapshot.provider_id;
+    if (partition === null) {
+      const reason = `Pricing replay for ${providerId} produced nothing`;
+      const accepted = acceptedPartition(providerId);
+      if (accepted.snapshot.publication !== "retained") throw new Error(reason);
+      partitions.set(providerId, accepted);
+      preservedProviders.push(providerId);
+      replayFailures.push({ provider_id: providerId, reason });
+      continue;
+    }
     if (adoptedTopologies.has(providerId)) {
       try {
         validateAdoptedTopology(partition);
@@ -488,7 +496,7 @@ function compilationWeight(task: CompilationTask): number {
 
 async function compileProviderPricing(
   tasks: readonly CompilationTask[],
-): Promise<ProviderPricingPartition[]> {
+): Promise<Extract<CompilationTaskResult, { partition: unknown }>[]> {
   return runWorkerPool(
     tasks,
     new URL("./pricing-compilation-worker.ts", import.meta.url),
@@ -496,10 +504,13 @@ async function compileProviderPricing(
   );
 }
 
-function compilationResult(message: unknown, task: CompilationTask): ProviderPricingPartition {
+function compilationResult(
+  message: unknown,
+  task: CompilationTask,
+): Extract<CompilationTaskResult, { partition: unknown }> {
   if (!isCompilationTaskResult(message) || message.providerId !== task.providerId)
     throw new Error("Pricing compilation worker returned an invalid result");
-  if ("partition" in message) return message.partition;
+  if ("partition" in message) return message;
   throw new Error(message.error);
 }
 
@@ -512,7 +523,7 @@ function isCompilationTaskResult(value: unknown): value is CompilationTaskResult
   )
     return false;
   return (
-    ("partition" in value && value.partition !== null && typeof value.partition === "object") ||
+    ("partition" in value && typeof value.partition === "object") ||
     ("error" in value && typeof value.error === "string")
   );
 }
