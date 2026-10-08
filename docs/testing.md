@@ -66,7 +66,7 @@ after each test, including failures.
 - Generated pricing replay checks current extractor inputs against their manifests and verifies
   obsolete-input providers keep their exact accepted partitions. An extractor bump must not require
   a live data refresh merely to validate code changes.
-  A current replay rejected by the adopted-topology gate may preserve only an already-retained,
+  An empty current replay or one rejected by the adopted-topology gate may preserve only an already-retained,
   valid accepted partition with an explicit compilation failure report; fresh failures still abort.
   An obsolete extractor preserves the already validated snapshot under its collected topology;
   new topology requirements apply to current replays and fresh collection. Registering a provider
