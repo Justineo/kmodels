@@ -9,6 +9,7 @@ import {
   parseSource,
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
+import { formatPricingInterpretationSample } from "../src/catalog/bedrock.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
@@ -12530,7 +12531,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v16");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v17");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -13213,6 +13214,19 @@ describe("document adapter", () => {
         reason_code: "model_card_unsupported",
       }),
     );
+  });
+
+  it("bounds Bedrock aggregate pricing diagnostics to the reconciliation schema", () => {
+    const sample = formatPricingInterpretationSample(
+      20_437,
+      20_543,
+      new Set([
+        "Grok 4.7 (APS3-xai.grok-4.7-mantle-cache-read-tokens-priority)",
+        "Grok 4.7 (APS6-xai.grok-4.7-mantle-output-tokens-priority)",
+      ]),
+      new Set(["A long unsupported pricing dimension".repeat(20)]),
+    );
+    expect(sample).toHaveLength(256);
   });
 
   it("uses the current public Bedrock page when the structured price lists lag", async () => {

@@ -344,7 +344,7 @@ Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, uncached
 * `SERVER_SIDE_TOOL_COLLECTIONS_SEARCH`
 
 
-===/developers/rest-api-reference/inference/chat===
+===/developers/rest-api-reference/inference/chat-completions===
 # Chat
 
 Chat Completions response:
@@ -352,6 +352,16 @@ Chat Completions response:
 ```json
 {"object":"chat.completion","service_tier":"priority","usage":{"prompt_tokens":135,"prompt_tokens_details":{"text_tokens":125,"image_tokens":10,"cached_tokens":98},"completion_tokens":48,"completion_tokens_details":{"reasoning_tokens":12}}}
 ```
+
+Responses response:
+
+```json
+{"object":"response","service_tier":"default","usage":{"input_tokens":125,"input_tokens_details":{"cached_tokens":98},"output_tokens":48,"output_tokens_details":{"reasoning_tokens":12}}}
+```
+
+
+===/developers/rest-api-reference/inference/responses===
+# Responses
 
 Responses response:
 
@@ -652,6 +662,14 @@ Speech to Text - REST returns `duration`, the audio duration in seconds.
 Streaming Speech to Text ends with `transcript.done`, where duration is always present.
 
 WSS wss://api.x.ai/v1/realtime
+
+
+===/developers/rest-api-reference/inference/speech-to-text===
+# Speech to Text
+
+Speech to Text - REST returns `duration`, the audio duration in seconds.
+
+Streaming Speech to Text ends with `transcript.done`, where duration is always present.
 
 
 ===/developers/migration/may-15-retirement===

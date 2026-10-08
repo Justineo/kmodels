@@ -43,6 +43,10 @@ dynamic product documentation as a refresh dependency.
   lifecycle redirects, Batch and Priority terms, endpoint examples, Voice model IDs,
   and paid-tool semantics. `llms.txt` is only a link index and cannot replace the complete
   sectioned document; the missing pricing sections would discard provider-resource evidence.
+  The Chat Completions, Responses, and Speech to Text accounting contracts are read from their
+  reviewed `/developers/rest-api-reference/inference/chat-completions`,
+  `/developers/rest-api-reference/inference/responses`, and
+  `/developers/rest-api-reference/inference/speech-to-text` sections.
 - The dedicated pricing table owns a current public amount when its model and
   applicability match exactly. Conflicts with the embedded payload or Models summary
   are retained as warnings; they do not discard the model or unrelated rates.
@@ -176,6 +180,9 @@ count.
 
 ## Deliberate unresolved inputs
 
+- The current `llms-full.txt` bundle documents agent prompt, realtime audio, and Batch result
+  surfaces without the exact field contracts required for the remaining pricing inputs; those
+  quantities stay caller-supplied until xAI publishes stable locators.
 - File Attachment Search has a published successful-call rate, but the reviewed public
   result contract has no stable category counter. Its semantic charge binding remains,
   without an acquisition method.

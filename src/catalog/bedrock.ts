@@ -2670,7 +2670,12 @@ function parsePrices(
     onPricingReconciliation?.({
       disposition: "unbound",
       reason_code: "pricing_interpretation_partial",
-      sample: `${handledDimensions}/${requiredDimensions}; unbound: ${[...unbound].slice(0, 5).join(", ") || "none"}; unsupported: ${[...unsupported].slice(0, 5).join(", ") || "none"}`,
+      sample: formatPricingInterpretationSample(
+        handledDimensions,
+        requiredDimensions,
+        unbound,
+        unsupported,
+      ),
     });
   return {
     modelRates: new Map(
@@ -2995,6 +3000,18 @@ function bedrockPricingInputs(
       sample: `${result.length}/${expected} Bedrock pricing inputs`,
     });
   return result;
+}
+
+export function formatPricingInterpretationSample(
+  handledDimensions: number,
+  requiredDimensions: number,
+  unbound: ReadonlySet<string>,
+  unsupported: ReadonlySet<string>,
+): string {
+  return `${handledDimensions}/${requiredDimensions}; unbound: ${[...unbound].slice(0, 5).join(", ") || "none"}; unsupported: ${[...unsupported].slice(0, 5).join(", ") || "none"}`.slice(
+    0,
+    256,
+  );
 }
 
 export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {

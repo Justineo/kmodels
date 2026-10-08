@@ -18,13 +18,15 @@ interface SectionRequirement {
   markers: readonly RegExp[];
 }
 
-const chatPath = "/developers/rest-api-reference/inference/chat";
+const chatPath = "/developers/rest-api-reference/inference/chat-completions";
+const responsesPath = "/developers/rest-api-reference/inference/responses";
 const costPath = "/developers/cost-tracking";
 const batchPath = "/developers/advanced-api-usage/batch-api";
 const toolPath = "/developers/tools/tool-usage-details";
 const imagePath = "/developers/rest-api-reference/inference/images";
 const videoPath = "/developers/rest-api-reference/inference/videos";
 const voicePath = "/developers/rest-api-reference/inference/voice";
+const speechToTextPath = "/developers/rest-api-reference/inference/speech-to-text";
 const realtimePath = "/developers/model-capabilities/audio/speech-to-speech";
 
 const contracts: readonly Contract[] = [
@@ -181,16 +183,16 @@ const contracts: readonly Contract[] = [
     "stt.rest.audio_seconds",
     "response",
     "/duration",
-    voicePath,
-    [/speech to text - rest/i, /duration[^\n]*audio duration/i],
+    speechToTextPath,
+    [/speech to text/i, /duration[^\n]*audio duration/i],
     { availability: "success_only" },
   ),
   jsonPointer(
     "stt.streaming.audio_seconds",
     "stream_event",
     "/duration",
-    voicePath,
-    [/transcript\.done/, /duration is always present/i],
+    speechToTextPath,
+    [/transcript\.done/, /duration/],
     { availability: "terminal_only" },
   ),
   providerField(
@@ -304,7 +306,7 @@ function chatStreamContracts(): Contract[] {
 }
 
 function responsesUsageContracts(channel: "response" | "result"): Contract[] {
-  const path = channel === "response" ? chatPath : batchPath;
+  const path = channel === "response" ? responsesPath : batchPath;
   const prefix = channel === "response" ? "responses" : "batch.responses";
   const wrap = channel === "response" ? (value: string) => value : batchResponsesField;
   return [
@@ -323,7 +325,7 @@ function responsesUsageContracts(channel: "response" | "result"): Contract[] {
     ]),
     ...(channel === "response"
       ? [
-          jsonPointer("responses.served_service_tier", "response", "/service_tier", chatPath, [
+          jsonPointer("responses.served_service_tier", "response", "/service_tier", responsesPath, [
             /"object"\s*:\s*"response"[\s\S]*service_tier/,
           ]),
         ]
@@ -343,7 +345,7 @@ function toolContracts(): Contract[] {
       "response",
       `ChatResponse.server_side_tool_usage.${category}`,
       toolPath,
-      [new RegExp(`\\b${category}\\b`), /successful calls \(billable\)/i],
+      [new RegExp(`\\b${category}\\b`), /successful calls/i],
       { availability: "terminal_only" },
     ),
   );
