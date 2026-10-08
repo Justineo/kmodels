@@ -1,74 +1,1229 @@
 {
-  "catalog_version": "fa91f2cf13d91e53cba61cb08034b13248fad2ae2b5643d2fe1e9a9a40628032",
-  "generated_at": "2026-10-08T02:15:05.072Z",
+  "catalog_version": "304029f5c33261ed3975ba649ba473fbf1f132117c5fe6af7336df2b1a8ed6b3",
+  "generated_at": "2026-10-08T03:08:09.143Z",
   "outcome": "changed",
-  "previous_catalog_version": "5538fc66c9d3061ea44e1bf76fba9be1ece7615838cf1246f35a79812fd34611",
+  "previous_catalog_version": "fa91f2cf13d91e53cba61cb08034b13248fad2ae2b5643d2fe1e9a9a40628032",
   "providers": [
     {
       "attempt": {
-        "failure": {
-          "code": "provider_refresh_failed",
-          "message": "[\n  {\n    \"origin\": \"string\",\n    \"code\": \"too_big\",\n    \"maximum\": 256,\n    \"inclusive\": true,\n    \"path\": [\n      \"sample\"\n    ],\n    \"message\": \"Too big: expected string to have <=256 characters\"\n  }\n]"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "provider_refresh_failed",
-          "message": "[\n  {\n    \"origin\": \"string\",\n    \"code\": \"too_big\",\n    \"maximum\": 256,\n    \"inclusive\": true,\n    \"path\": [\n      \"sample\"\n    ],\n    \"message\": \"Too big: expected string to have <=256 characters\"\n  }\n]",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
-        "sources": []
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 143,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 143,
+              "normalized_facts": 14202,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 140,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 3
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 2016,
+              "diagnostics": [
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "model_card_endpoint_mismatch",
+                  "sample": "Claude Haiku 4.5"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Grok 4.7: $0.0009625 per 1K token for xai.grok-4.7-mantle-cache-read-tokens-priority in Asia Pacific (Mumbai)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Grok 4.7: $0.01155 per 1K token for xai.grok-4.7-mantle-output-tokens-priority in Asia Pacific (Melbourne)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.0165 per 1K token for moonshotai.kimi-k3-mantle-output-tokens-standard in Middle East (Bahrain)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Grok 4.7: $0.0009625 per 1K token for xai.grok-4.7-mantle-cache-read-tokens-priority in Asia Pacific (New Zealand)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Grok 4.7: $0.0105 per 1K token for xai.grok-4.7-mantle-output-tokens-global-priority in Asia Pacific (Singapore)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.00721875 per 1K token for moonshotai.kimi-k3-mantle-cache-write-tokens-30m-priority in EU (Frankfurt)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "price_dimension_target_unbound",
+                  "sample": "Kimi K3: $0.028875 per 1K token for moonshotai.kimi-k3-mantle-output-tokens-priority in US East (Ohio)"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 4167,
+                "explicit_non_numeric": 0,
+                "normalized": 14376,
+                "raw": 0,
+                "unbound": 1907,
+                "unresolved": 0,
+                "unsupported": 109
+              },
+              "observed_items": 20559,
+              "reason_counts": {
+                "commercial_dimension_bound": 218,
+                "model_card_endpoint_mismatch": 1,
+                "model_card_public_rate": 6,
+                "model_card_unsupported": 5,
+                "optional_pricing_source_drifted": 2,
+                "price_dimension_bound": 14139,
+                "price_dimension_outside_invocation_scope": 1882,
+                "price_dimension_target_unbound": 1905,
+                "price_dimension_unsupported": 106,
+                "price_product_absent_from_current_catalog": 2280,
+                "pricing_input_contract_partial": 1,
+                "pricing_interpretation_partial": 1,
+                "pricing_page_cell_bound": 13
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "bedrock-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 123,
+            "source_id": "bedrock-api-us-east-1"
+          }
+        ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 140,
+        "added": 4,
+        "added_model_refs": [
+          "amazon-bedrock/anthropic.claude-haiku-5-5",
+          "amazon-bedrock/stability.sd3-5-large-v1:0",
+          "amazon-bedrock/stability.stable-image-core-v1:1",
+          "amazon-bedrock/stability.stable-image-ultra-v1:1"
+        ],
+        "changed": 7,
+        "changed_fields": {
+          "aliases": 1,
+          "availability": 7
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-gov-west-1"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-gov-west-1"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-pro-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "global.moonshotai.kimi-k3"
+                ],
+                "path": "aliases",
+                "previous": [
+                  "global.moonshotai.kimi-k3",
+                  "us.moonshotai.kimi-k3"
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "aliases",
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/moonshotai.kimi-k3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-235b-a22b-2507-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/in-region",
+                    "region": "us-east-1"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-next"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-next-80b-a3b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-vl-235b-a22b-instruct"
+          }
+        ],
+        "current": 143,
         "previous": 140,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 140
+        "removed": 1,
+        "removed_model_refs": [
+          "amazon-bedrock/anthropic.claude-3-5-haiku-20241022-v1:0"
+        ],
+        "unchanged": 132
       },
       "pricing": {
-        "commercial_hash": "ed9af1a993f15624207b60d12b8be08f00414912548f98412349794ac0e90544",
-        "outcome": "provenance_only",
+        "commercial_hash": "b43d525e59dd1420249bc51ec68a908e4849e4c6ac3af4f437dd3a3b034d4c40",
+        "outcome": "commercial",
         "previous_commercial_hash": "ed9af1a993f15624207b60d12b8be08f00414912548f98412349794ac0e90544"
       },
       "pricing_coverage": {
-        "current_models": 130,
+        "current_models": 134,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": 3,
+          "unknown_models": 1
         },
-        "normalized_rate_models": 127,
+        "normalized_rate_models": 130,
         "not_applicable_models": 0,
-        "offer_models": 128,
+        "offer_models": 131,
         "raw_fact_models": 2,
         "unknown_model_refs": [
           "amazon-bedrock/amazon.titan-embed-g1-text-02",
+          "amazon-bedrock/stability.sd3-5-large-v1:0",
           "amazon-bedrock/zai.glm-5.3"
         ],
         "unknown_model_refs_omitted": 0,
-        "unknown_models": 2
+        "unknown_models": 3
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "amazon-bedrock",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "bedrock-api-us-east-1"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "bedrock-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 0
       },
-      "status": "stale",
-      "warning_codes": {}
+      "status": "fresh",
+      "warning_codes": {
+        "catalog_api_set_mismatch": 1,
+        "missing_field": 2,
+        "scope_limited": 1
+      }
     },
     {
       "attempt": {
@@ -447,9 +1602,9 @@
             "source_id": "azure-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 94,
             "source_id": "azure-portal-models"
           },
@@ -771,14 +1926,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-portal-models"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -790,7 +1939,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -999,7 +2148,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 6,
+            "consecutive_failures": 7,
             "last_success_at": "2026-10-06T23:04:00.344Z",
             "message": "HTTP 404",
             "outcome": "fetch_failed",
@@ -1641,18 +2790,16 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "databricks/databricks-claude-haiku-5-5"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 68,
-        "previous": 67,
+        "previous": 68,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 67
+        "unchanged": 68
       },
       "pricing": {
         "commercial_hash": "a469ee8bc1e3a2b60451fcf7edcbd18ac67da22ec7f0eb48d0aadef51716578c",
@@ -1663,7 +2810,7 @@
         "current_models": 67,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 1
+          "unknown_models": 0
         },
         "normalized_rate_models": 63,
         "not_applicable_models": 0,
@@ -1999,22 +3146,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1504,
+            "parsed_models": 1503,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1504,
+              "model_records": 1503,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1504
+              "unknown_models": 1503
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1747,
+              "diagnostic_count": 1745,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2059,20 +3206,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6819,
+                "excluded": 6818,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1747,
+                "unbound": 1745,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8566,
+              "observed_items": 8563,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1362,
-                "partner_route_price_not_published": 385,
-                "single_partner_inventory_without_product_evidence": 6748
+                "partner_route_price_not_published": 383,
+                "single_partner_inventory_without_product_evidence": 6747
               },
               "unit": "reviewed source pricing item"
             },
@@ -2082,22 +3229,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 138,
+            "parsed_models": 137,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 138,
-              "normalized_facts": 414,
+              "model_records": 137,
+              "normalized_facts": 412,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 114,
-              "raw_facts": 113,
-              "raw_models": 103,
+              "numeric_models": 113,
+              "raw_facts": 112,
+              "raw_models": 102,
               "unknown_models": 24
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 114,
+              "diagnostic_count": 113,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2144,19 +3291,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 208,
+                "normalized": 207,
                 "raw": 0,
-                "unbound": 113,
+                "unbound": 112,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 323,
+              "observed_items": 321,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 207,
-                "route_price_not_published": 113
+                "route_price_normalized": 206,
+                "route_price_not_published": 112
               },
               "unit": "reviewed source pricing item"
             },
@@ -2239,13 +3386,8 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 11,
+              "diagnostic_count": 9,
               "diagnostics": [
-                {
-                  "disposition": "ambiguous",
-                  "reason_code": "native_free_conflicts_with_hf_paid_route",
-                  "sample": "zai-org/GLM-4.6V-Flash:glm-4.6v-flash"
-                },
                 {
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
@@ -2280,23 +3422,27 @@
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/tiny-aya-global:cohere:tiny-aya-global"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "native_route_price_not_exactly_joinable",
+                  "sample": "CohereLabs/tiny-aya-water:cohere:tiny-aya-water"
                 }
               ],
               "disposition_counts": {
-                "ambiguous": 1,
+                "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
                 "normalized": 28,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 10,
+                "unresolved": 9,
                 "unsupported": 0
               },
-              "observed_items": 39,
+              "observed_items": 37,
               "reason_counts": {
-                "native_free_conflicts_with_hf_paid_route": 1,
                 "native_route_price_normalized": 28,
-                "native_route_price_not_exactly_joinable": 10
+                "native_route_price_not_exactly_joinable": 9
               },
               "unit": "reviewed source pricing item"
             },
@@ -2313,339 +3459,106 @@
       },
       "count_decreases": [
         {
-          "current": 1544,
+          "current": 1543,
           "field": "models",
-          "previous": 1545
+          "previous": 1544
+        },
+        {
+          "current": 274,
+          "field": "api_endpoints",
+          "previous": 276
+        },
+        {
+          "current": 1745,
+          "field": "routes",
+          "previous": 1747
         }
       ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 7,
+        "changed": 1,
         "changed_fields": {
-          "capabilities": 3,
-          "routes": 4
+          "routes": 1,
+          "source_refs": 1,
+          "task_evidence": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/CohereLabs/command-a-reasoning-08-2025"
-          },
-          {
-            "field_changes": [
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ]
+              },
               {
-                "current": [
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "qwen-3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
+                "path": "routes",
+                "previous": [
                   {
                     "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.8-27B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/moonshotai/Kimi-K3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/hunyuan-image/v2.1/text-to-image",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/tencent/HunyuanImage-2.1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.1",
+                    "provider_model_id": "zai-org/glm-4.6v",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "zai-org",
-                    "provider_model_id": "glm-5.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.1",
+                    "provider_model_id": "glm-4.6v-flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ]
+              },
+              {
+                "current": [
+                  "huggingface-router"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-router",
+                  "huggingface-hf-inference"
+                ]
               }
             ],
             "fields": [
-              "routes"
+              "task_evidence",
+              "routes",
+              "source_refs"
             ],
-            "model_ref": "huggingface/zai-org/GLM-5.1"
+            "model_ref": "huggingface/zai-org/GLM-4.6V-Flash"
           }
         ],
-        "current": 1544,
-        "previous": 1545,
+        "current": 1543,
+        "previous": 1544,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/Tongyi-MAI/Z-Image"
+          "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16"
         ],
-        "unchanged": 1537
+        "unchanged": 1542
       },
       "pricing": {
-        "commercial_hash": "a46e5556b794a527f24b45eebb9884ee15c654caaa3417d779ce311f827013d2",
+        "commercial_hash": "02d6e5c881681e17d23bca74932e6224f62729d4744c27ca72faa63efd8b6ee5",
         "outcome": "commercial",
-        "previous_commercial_hash": "4ab8541f573d58bcb98aad333f8f6f57f923ca634d6ef4f53592330599af4bf7"
+        "previous_commercial_hash": "a46e5556b794a527f24b45eebb9884ee15c654caaa3417d779ce311f827013d2"
       },
       "pricing_coverage": {
-        "current_models": 1544,
+        "current_models": 1543,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": -1
+          "resolved_models": -1,
+          "unknown_models": 0
         },
-        "normalized_rate_models": 133,
+        "normalized_rate_models": 132,
         "not_applicable_models": 0,
-        "offer_models": 141,
-        "raw_fact_models": 14,
+        "offer_models": 140,
+        "raw_fact_models": 13,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
           "huggingface/AAUBS/PatentSBERTa_V2",
@@ -4448,7 +5361,7 @@
               "disposition": "accept_with_signal",
               "observed_items": 1
             },
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 23,
             "pricing_extraction": {
@@ -4490,7 +5403,7 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "pricing_input_contract_partial",
-                  "sample": "19/54 xAI pricing inputs"
+                  "sample": "42/54 xAI pricing inputs"
                 }
               ],
               "disposition_counts": {
@@ -4545,7 +5458,7 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -4566,7 +5479,7 @@
               "observed_items": 8
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 8,
             "source_id": "xai-language-api"
           },
@@ -4599,8 +5512,8 @@
         "unchanged": 23
       },
       "pricing": {
-        "commercial_hash": "7a64f4455e257c61236c73c1cbbaa9e5fe6683755128e653090c551d364b25cb",
-        "outcome": "provenance_only",
+        "commercial_hash": "867ef70f1c0acd33c95418487dd2d90bf22f45b327a9a9619eb6d7324c45a282",
+        "outcome": "commercial",
         "previous_commercial_hash": "7a64f4455e257c61236c73c1cbbaa9e5fe6683755128e653090c551d364b25cb"
       },
       "pricing_coverage": {
@@ -4626,11 +5539,17 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-language-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "xai-models"
           }
@@ -4639,7 +5558,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -4653,21 +5572,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 18,
-    "added_models": 1,
+    "accepted": 19,
+    "added_models": 4,
     "added_sources": 0,
-    "changed_models": 7,
-    "changed_sources": 25,
-    "models": 4273,
-    "pricing_accepted": 17,
+    "changed_models": 8,
+    "changed_sources": 27,
+    "models": 4275,
+    "pricing_accepted": 18,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 3,
+    "pricing_retained": 2,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 1,
+    "removed_models": 2,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 1,
     "withheld": 0
   }
 }
