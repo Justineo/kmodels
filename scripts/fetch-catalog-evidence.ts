@@ -8,7 +8,7 @@ import { publicEvidenceBaseline, reviewedPublicSource } from "../src/catalog/pub
 const sourceId = process.argv[2];
 if (!sourceId)
   throw new Error(
-    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [FIXED_COMPANION_URL]",
+    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [--index | FIXED_COMPANION_URL]",
   );
 const source = reviewedPublicSource(sourceId, process.argv[3]);
 const directory = "/tmp/gh-aw/agent/catalog-evidence";
@@ -34,9 +34,16 @@ const report = z
 const companion = reviewedPublicSource(sourceId).linkedDocuments?.documents?.find(
   ({ url }) => url === process.argv[3],
 );
-const stateKey = companion === undefined ? sourceId : `${sourceId}/${companion.id}`;
+const scope =
+  process.argv[3] === "--index" ? "index" : companion === undefined ? "source" : "companion";
+const stateKey =
+  scope === "index"
+    ? `${sourceId}/index`
+    : companion === undefined
+      ? sourceId
+      : `${sourceId}/${companion.id}`;
 const attemptOutcome =
-  companion === undefined
+  scope === "source"
     ? report.providers
         .flatMap(({ attempt }) => attempt?.sources ?? [])
         .find(({ source_id }) => source_id === sourceId)?.outcome
@@ -45,11 +52,12 @@ const attemptOutcome =
       : undefined;
 const refresh = publicEvidenceBaseline(stateKey, hash, state, report.generated_at, attemptOutcome);
 await mkdir(directory, { recursive: true });
-const path = join(directory, `${source.id}-${hash.slice(0, 16)}.json`);
+const path = join(directory, `${source.id}-${scope}-${hash.slice(0, 16)}.json`);
 await writeFile(
   path,
   JSON.stringify({
     source_id: source.id,
+    scope,
     source_url: source.url,
     observed_at: new Date().toISOString(),
     source_hash: hash,
@@ -63,6 +71,7 @@ console.log(
   JSON.stringify({
     path,
     source_id: source.id,
+    scope,
     source_url: source.url,
     source_hash: hash,
     refresh,

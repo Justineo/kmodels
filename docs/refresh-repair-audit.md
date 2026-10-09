@@ -109,6 +109,11 @@ The CLI now reports this comparison automatically, including fixed companion has
 timestamps. Hash mismatch limits historical attribution, not independently reproducible current
 repairs. A parser replay, rather than a text-link count, establishes each candidate's outcome.
 The workflow completes independent validated fixes and lists unresolved candidates separately.
+Raw linked-document indexes can be fetched with `fetch-catalog-evidence.ts SOURCE_ID --index`
+when discovery itself rejects the bundle. This exposes changed link paths without weakening the
+collector's count guards. Review classifies structural discovery failures separately from network
+failures and checks first-party navigation for relocated sections before treating absent rates as
+unpublished. A passing drift/fallback test alone does not dismiss a current extraction candidate.
 A deterministic post-execution check rejects incomplete, missing-data, missing-tool, unsupported,
 or absent final outcomes even if the agent process exits successfully. Repair intents must pass the
 four repository validations and portable-package checks before publication. The independent

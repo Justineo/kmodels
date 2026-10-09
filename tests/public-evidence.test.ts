@@ -77,3 +77,24 @@ it("keeps public repair transport hosts reachable through the declared sandbox n
       expect(allowed.has(host), `${source.id}: ${host}`).toBe(true);
   }
 });
+
+it("isolates raw index evidence without widening the reviewed source boundary", () => {
+  const source = reviewedPublicSource("cohere-models");
+  const index = reviewedPublicSource("cohere-models", "--index");
+  expect(index.url).toBe(source.url);
+  expect(index.allowedHosts).toEqual(source.allowedHosts);
+  expect(index.format).toBe(source.format);
+  expect(index.maxResponseBytes).toBe(source.linkedDocuments?.maxDocumentBytes);
+  expect(index.linkedDocuments).toBeUndefined();
+  expect(index.transport).toBeUndefined();
+  expect(source.linkedDocuments).toBeDefined();
+  expect(() => reviewedPublicSource("mistral-api", "--index")).toThrow(
+    "public source without credentials",
+  );
+  expect(() => reviewedPublicSource("cohere-models", "https://docs.cohere.com/unreviewed")).toThrow(
+    "not a fixed reviewed companion",
+  );
+  expect(() => reviewedPublicSource("vercel-models", "--index")).toThrow(
+    "without a custom transport",
+  );
+});
