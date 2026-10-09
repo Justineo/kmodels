@@ -22,6 +22,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { sha256 } from "./io.ts";
 import { assertItemCount } from "./source-contract.ts";
+import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 
 const execute = promisify(execFile);
 
@@ -1076,7 +1077,9 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
     }
   };
   const indexFormat = crawl.indexFormat ?? source.format;
-  if (indexFormat === "markdown" || indexFormat === "mixed")
+  if (source.extractor.kind === "cohere-catalog")
+    for (const url of cohereModelDocumentUrls(body, source.url)) add(url.href);
+  else if (indexFormat === "markdown" || indexFormat === "mixed")
     for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
   if (indexFormat === "typescript")
     for (const match of body.matchAll(

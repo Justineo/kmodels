@@ -1607,6 +1607,7 @@ async function cohereCatalog(
     index?: string;
     lifecycle?: string;
     modelIndex?: string;
+    versionedModelPages?: boolean;
     omitDocument?: string;
     pricing?: string;
     pricingPolicy?: string;
@@ -1686,7 +1687,10 @@ async function cohereCatalog(
       documents
         .filter(([url]) => url !== overrides.omitDocument)
         .map(async ([url, path]) => ({
-          url,
+          url:
+            overrides.versionedModelPages && /\/docs\/transcribe(?:-arabic)?$/.test(url)
+              ? url.replace("/docs/", "/v2/docs/")
+              : url,
           body: documentOverrides.get(url) ?? (await fixture(`cohere/${path}`)),
         })),
     ),
@@ -2176,6 +2180,14 @@ describe("source taxonomy", () => {
 });
 
 describe("Cohere adapters", () => {
+  it("replays relative overview links and versioned transcription pages without losing model facts", async () => {
+    const previous = await cohereCatalog();
+    const current = await cohereCatalog({
+      modelIndex: await fixture("cohere/model-overview-links.md"),
+      versionedModelPages: true,
+    });
+    expect(current).toEqual(previous);
+  });
   it("binds the Parse overview identity and page rate to the API billed-page counter", async () => {
     const product = {
       modelName: "Parse 5",
@@ -2937,7 +2949,7 @@ describe("Cohere adapters", () => {
     const value = manifest("cohere");
     expect(value.sources).toMatchObject([
       {
-        url: "https://docs.cohere.com/docs/models/llms.txt",
+        url: "https://docs.cohere.com/docs/models.md",
         extractor: {
           kind: "cohere-catalog",
           minModels: 40,
@@ -2949,7 +2961,6 @@ describe("Cohere adapters", () => {
         fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
         linkedDocuments: {
           indexFormat: "markdown",
-          discoverySuffix: ".md",
           minDocuments: 15,
           maxDocuments: 30,
           optionalDocuments: true,
@@ -5011,7 +5022,7 @@ describe("HTTP transport boundary", () => {
     if (source?.linkedDocuments === undefined) throw new Error("Missing Cohere link policy");
     const urls = linkedDocumentUrls(
       `${await fixture("cohere/model-index.md")}
-       [Not a Markdown source](https://docs.cohere.com/docs/not-a-source)`,
+       [API reference](https://docs.cohere.com/v2/reference/chat)`,
       {
         ...source,
         linkedDocuments: {

@@ -43,8 +43,13 @@ or another exact non-numeric price state. Absence of a separate price is unknown
 
 ## Sources and identity
 
-- The public model index at `https://docs.cohere.com/docs/models/llms.txt` discovers Cohere model
-  pages. The maintained Models overview, exact cards, deprecations, release notes, and API
+- The public Models overview at `https://docs.cohere.com/docs/models.md` discovers Cohere model
+  pages. Its relative links resolve against the overview page, while legacy absolute `.md` links
+  remain supported. Only same-origin `/docs/` and default `/v2/docs/` document paths are admitted;
+  their HTML views feed the existing card parsers. Discovery and parser replay share the same URL
+  resolver, so versioned transcription cards remain visible. Query strings, fragments, credentials,
+  other API versions and external links are excluded; document/model count guards remain unchanged.
+  The maintained Models overview, exact cards, deprecations, release notes, and API
   references establish model identity, lifecycle, tasks, modalities, endpoints, and limits.
 - `https://cohere.com/pricing` is a separate required pricing overlay. Its embedded structured
   model records establish token, embedding, rerank-search, and explicit model-specific free prices.
