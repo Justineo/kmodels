@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractCoherePricingInputs } from "./cohere-accounting.ts";
+import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
@@ -622,7 +623,8 @@ function documentedCardId(
   if (candidates.size !== 1 || candidate === undefined) return undefined;
   const observedIdHasOwnCard = documents.some((document) => {
     const documentUrl = new URL(document.url);
-    if (documentUrl.href === url.href || !documentUrl.pathname.startsWith("/docs/")) return false;
+    if (documentUrl.href === url.href || !/^\/(?:v2\/)?docs\//.test(documentUrl.pathname))
+      return false;
     const $ = load(document.body);
     return (
       cardId($) === observedId &&
@@ -1591,20 +1593,9 @@ function indexedModelDocuments(
   minimum: number,
   maximum: number,
 ): LinkedDocument[] {
-  const paths = new Set<string>();
-  const origin = new URL(index.url).origin;
-  for (const match of index.body.matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g)) {
-    const target = match[1];
-    if (target === undefined) continue;
-    let url: URL;
-    try {
-      url = new URL(target, index.url);
-    } catch {
-      continue;
-    }
-    if (url.origin !== origin || !/^\/docs\/[a-z0-9.-]+\.md$/.test(url.pathname)) continue;
-    paths.add(url.pathname.slice(0, -".md".length));
-  }
+  const paths = new Set(
+    cohereModelDocumentUrls(index.body, index.url).map(({ pathname }) => pathname),
+  );
   assertItemCount("Cohere model documents", paths.size, minimum, maximum);
   const byPath = new Map<string, LinkedDocument>();
   for (const document of documents) {
@@ -1635,9 +1626,10 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   for (const document of modelDocuments) {
     const url = new URL(document.url);
     modelCard(input, models, url, document.body, references, bundle.documents);
-    if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
+    if (/^\/(?:v2\/)?docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
-    if (url.pathname === "/docs/parse") parsePage(input, models, document.body, references);
+    if (/^\/(?:v2\/)?docs\/parse$/.test(url.pathname))
+      parsePage(input, models, document.body, references);
   }
   for (const document of bundle.documents) {
     const url = new URL(document.url);

@@ -2608,7 +2608,7 @@ export const manifests = [
     sources: [
       {
         id: "cohere-models",
-        url: "https://docs.cohere.com/docs/models/llms.txt",
+        url: "https://docs.cohere.com/docs/models.md",
         type: "website",
         source: ["website"],
         access: "public",
@@ -2619,7 +2619,7 @@ export const manifests = [
           minModels: 40,
           maxModels: 70,
         },
-        extractorVersion: "cohere-catalog-v15",
+        extractorVersion: "cohere-catalog-v16",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2645,9 +2645,8 @@ export const manifests = [
         role: "catalog",
         retainOmittedFacts: true,
         linkedDocuments: {
-          path: /^\/docs\/[a-z0-9.-]+$/,
+          path: /^\/(?:v2\/)?docs\/[a-z0-9.-]+$/,
           indexFormat: "markdown",
-          discoverySuffix: ".md",
           minDocuments: 15,
           maxDocuments: 30,
           concurrency: 6,

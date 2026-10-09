@@ -24,6 +24,11 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
   instance rates remain excluded.
   Embed V2's indented Response field list also establishes billed image tokens; JSON examples
   need not include this optional field.
+  Model discovery reads the maintained overview's Markdown view and resolves page-relative and
+  default-version document paths with the same resolver used by parser replay. The obsolete
+  page-level index endpoint now returns overview content rather than an absolute `.md` link list;
+  discovery no longer rejects that change as an empty catalog. Existing count and identity guards
+  remain in place.
 - Mistral: cards without clipboard IDs now follow bounded first-party model-document links and
   require an exact labeled API ID whose visible text agrees with its copy payload. A unique active
   repository ID or alias binds the card; exact active names remain a fallback. The latest full
@@ -127,6 +132,11 @@ handling creates issues. Remote execution of these gates remains a CI verificati
 
 - Newly named Mistral products still require the same exact ID or alias evidence; a future card
   with only family resemblance remains a repair candidate rather than an automatic join.
+  The former API pricing URL now redirects to a model-only inference table. The current Code
+  Interpreter, Websearch, Image Generation and Libraries guides, as well as the official
+  repository's pricing-table definition, do not establish successor service rates. Search-engine
+  copies of the former cards are historical evidence, not current pricing. Retain the accepted
+  partition and keep the missing service evidence explicit until a first-party successor is verified.
 - Missing owned accounting fields remain visible, including Gemini's audio selector and xAI's
   partial input contracts. Restoring neighboring mappings does not prove those fields exist.
 - Current public sources still omit an exact price for Anthropic's Mythos preview and Bedrock's
