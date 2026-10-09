@@ -137,7 +137,9 @@ Status: implemented
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
   save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
-  public repair source or fixed companion, to temporary external artifacts for replay. This is not
+  public repair source, fixed companion, or bounded raw discovery index (`--index`), to temporary
+  external artifacts for replay. Index-only evidence does not satisfy bundle completeness and is
+  compared only with its own dependency hash. This is not
   collector snapshotting; authenticated responses remain prohibited. Snapshots never enter the
   repository, generated `data/`, or static exports; only minimal reviewed fixtures may be committed.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.

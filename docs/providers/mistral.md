@@ -30,11 +30,16 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   row still binds through its unique exact active catalog title. Dollar-prefixed cells publish USD
   only, so the parser does not manufacture an EUR amount. Explicit page units remain scoped to
   their row: tokens, OCR pages, audio minutes, or speech characters.
+  The configured URL redirects to the official
+  [inference pricing page](https://docs.mistral.ai/inference/pricing). That page's model tables
+  alone do not establish current request-service rates or prove those rates were withdrawn.
+  A missing service section requires first-party successor evidence before a source repair;
+  until then the topology guard retains the accepted partition.
 - Prompt-caching and Batch guides are claim-local catalog companions. The central price page and
   its optional OpenAPI and built-in-tool usage companions form a separate pricing overlay. This
   lets catalog identity advance when pricing acquisition fails; the last accepted pricing
-  partition is retained and marked stale because the central page owns request-service amounts and
-  current EUR prices.
+  partition is retained and marked stale because the accepted partition also includes
+  request-service amounts and EUR prices from the previously reviewed central page.
 - Optional authenticated `/v1/models` confirms only exact existing public base models or aliases.
   Private fine-tunes never create rows or enter durable data. Enable it with `MISTRAL_API_KEY`.
 
@@ -65,7 +70,8 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 
 ## Request services
 
-The pricing page currently publishes five admitted request-attributable service books:
+The accepted partition contains five admitted request-attributable service books from the
+previously reviewed pricing cards:
 
 - code execution, per completed `code_interpreter` execution;
 - web search, per completed `web_search` execution;

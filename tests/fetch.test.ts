@@ -1,7 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { fetchSource } from "../src/catalog/fetch.ts";
+import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
+import { reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -75,6 +76,31 @@ function retailSource(): SourceManifest {
   if (source === undefined) throw new Error("Missing Azure retail source");
   return source;
 }
+
+it("retrieves a rejected discovery index for repair while collection still rejects it", async () => {
+  const body = "# Models\n[Model](https://docs.cohere.com/v2/docs/model.md)";
+  const source = reviewedPublicSource("cohere-models");
+  expect(() => linkedDocumentUrls(body, source)).toThrow("count_outside_bounds");
+  transport.responses.set("docs.cohere.com", [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+  const result = await fetchSource(reviewedPublicSource(source.id, "--index"));
+  expect(result.body).toBe(body);
+  expect(result.dependencies).toEqual([]);
+  expect(transport.calls).toEqual([source.url]);
+  expect(() => linkedDocumentUrls(body, source)).toThrow("count_outside_bounds");
+});
+
+it("keeps raw repair indexes within the redirect and response byte limits", async () => {
+  const source = reviewedPublicSource("cohere-models", "--index");
+  transport.responses.set("docs.cohere.com", [
+    "HTTP/1.1 302 Found\r\nlocation: https://unreviewed.test/index.md\r\n\r\n",
+  ]);
+  await expect(fetchSource(source)).rejects.toThrow("allowlist");
+  transport.responses.set("docs.cohere.com", [
+    `HTTP/1.1 200 OK\r\ncontent-length: ${source.maxResponseBytes + 1}\r\n\r\nx`,
+  ]);
+  await expect(fetchSource(source)).rejects.toThrow("byte limit");
+  expect(transport.calls).toEqual([source.url, source.url]);
+});
 
 function retailResponse(status: number, headers = ""): string {
   return `HTTP/1.1 ${status} Test\r\ncontent-type: application/json\r\n${headers}\r\n${

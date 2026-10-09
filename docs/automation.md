@@ -144,6 +144,16 @@ Status: implemented
   inside the sandbox. A missing fake token must not strand an otherwise valid source repair.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
   (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
+  For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
+  reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
+  smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts
+  declare `scope` and use distinct filenames; index hashes compare with the `/index` dependency,
+  not the bundle. A structural discovery failure is not classified as a network outage. Agents
+  inspect the raw links and first-party successor evidence before abandoning repair, and describe
+  missing pricing sections as unresolved until relocation or withdrawal is established. Passing an
+  existing fallback test does not establish that a current contract omission is unrepairable.
+  The prepared context is read directly inside the sandbox; rerunning the preparation CLI there
+  attempts to write runner-only summary/output paths and is unsupported.
   Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
   that list synchronized when adding source hosts. An unavailable tool/source or an unreproduced
   issue produces `report_incomplete`, not a no-op. Runtime sandbox connectivity must be verified in

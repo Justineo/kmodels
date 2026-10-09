@@ -318,6 +318,8 @@ The preparation steps installed the pinned Vite+ and Node.js in the shared `VP_H
 the frozen project dependencies. Start with `vp env doctor` and `vp node --version`. Use `vp node`
 for Node.js scripts so they use `.node-version`; use the global `vp` command for all checks.
 If the prepared toolchain is unavailable, report the failure with `report_incomplete` and stop.
+Read the prepared repair context directly; do not rerun `scripts/catalog-repair.ts` inside the
+sandbox. It writes runner-only summary/output paths that are not mounted in the agent container.
 
 The agent execution budget is 45 minutes, separate from the 60-minute job budget for setup,
 independent validation, and artifact upload. Finish evidence review and focused repairs within
@@ -387,6 +389,13 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    is an available tool. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
+   A `SourceContractError`, including zero discovered documents, is a discovery/parser failure,
+   not evidence of a network outage. If linked-document discovery rejects the bundle, run
+   `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --index` to save the original index alone.
+   Inspect its actual links, path prefixes and formats against the discovery rules. This bounded
+   diagnostic fetch keeps the same host/redirect and byte limits; it does not relax collection
+   count guards. Its `scope: index` hash compares only with the matching `/index` dependency,
+   never with the full bundle. It is partial evidence, not a successful catalog replay.
 2. Decide whether a deterministic code repair is possible. Repeated public 404/410 candidates may
    indicate a relocated or removed source. Require an independent first-party index or link and
    verify the replacement's content before updating a fixed URL. A temporary failure or a plausible
@@ -404,6 +413,18 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    the observed absence and a regression that proves valid sibling models survive. A verified
    defect of this kind is repairable without inventing the missing tariff; do not classify it as
    an unrepairable provider omission.
+   Absence from one fetched page or from parser output does not establish that a provider stopped
+   publishing a rate. When a page redirects, loses a previously represented section, or retains only
+   model prices while service books disappear, inspect first-party navigation/indexes and linked
+   successor pages before concluding that no safe repair exists. Record the authoritative link and
+   exact replacement content for a relocation repair. If no successor can be verified, describe the
+   missing scope and searches performed as unresolved; do not claim that inventing prices or deleting
+   retained books are the only possible repairs. Keep retained data and topology checks intact.
+   A localized accounting/endpoint contract change can still be repairable. An existing drift test
+   passing proves fallback behavior, not the absence of a new extraction rule. Compare the current
+   source's field or example with the owned contract before dismissing it. For every candidate,
+   report the specific source inspected, parser result, and repair/no-repair/unresolved rationale;
+   grouping all remaining candidates as "localized drift" is not adequate investigation.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
    `src/catalog/*.ts` (excluding repair infrastructure), `tests/*.test.ts` (excluding repair infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.

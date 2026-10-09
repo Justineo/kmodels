@@ -40,6 +40,21 @@ export function reviewedPublicSource(sourceId: string, documentUrl?: string): So
   if (!source || source.access !== "public" || source.auth)
     throw new Error("Evidence requires a reviewed public source without credentials");
   if (documentUrl === undefined) return source;
+  if (documentUrl === "--index") {
+    const { transport: _transport, linkedDocuments: crawl, ...plain } = source;
+    if (crawl === undefined || _transport !== undefined)
+      throw new Error(
+        "Index evidence requires a reviewed linked-document source without a custom transport",
+      );
+    // Inspect the bytes that discovery rejected without changing collection admission.
+    return {
+      ...plain,
+      maxResponseBytes: Math.min(
+        source.maxResponseBytes,
+        crawl.maxDocumentBytes ?? source.maxResponseBytes,
+      ),
+    };
+  }
   const document = source.linkedDocuments?.documents?.find(({ url }) => url === documentUrl);
   if (!document) throw new Error("Evidence URL is not a fixed reviewed companion");
   // A single companion must not inherit a catalog transport or recursive crawl.
