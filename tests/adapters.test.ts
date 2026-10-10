@@ -6677,6 +6677,19 @@ describe("Azure adapters", () => {
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
 
+  it("maps the reviewed zero-shot classification task", async () => {
+    const value = manifest("azure");
+    const models = parseSource({
+      provider: provider(value),
+      source: azurePortalSource(1, 1),
+      body: await fixture("azure/portal-zero-shot.json"),
+      observedAt,
+      catalogModels: [azurePricingModel("Microsoft-Decision-1", "1")],
+    });
+    expect(models[0]?.tasks).toEqual(["classification"]);
+    expect(models[0]?.modalities).toEqual({ input: ["text"], output: [] });
+  });
+
   it("bounds the anonymous portal request as a non-exhaustive supplement", () => {
     const source = azurePortalSource(50, 150);
     expect(source).toMatchObject({
