@@ -224,6 +224,7 @@ const azurePortalTaskMap: Readonly<Record<string, readonly ModelTask[]>> = {
   "text-to-image": ["image_generation"],
   "text-to-speech": ["speech_synthesis"],
   translation: ["translation"],
+  "zero-shot-classification": ["classification"],
 };
 const azurePortalDateSchema = z.iso.datetime({ offset: true }).nullable().optional();
 const azurePortalModelSchema = z.object({

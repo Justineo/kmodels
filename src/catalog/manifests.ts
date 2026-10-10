@@ -1769,7 +1769,7 @@ export const manifests = [
         format: "json",
         stability: "undocumented",
         extractor: { kind: "azure-portal-catalog", minModels: 50, maxModels: 150 },
-        extractorVersion: "azure-portal-catalog-v2",
+        extractorVersion: "azure-portal-catalog-v3",
         fields: [
           "model_id",
           "version",

@@ -47,8 +47,9 @@ a freshness warning.
   cannot replace a known scalar.
 - Treat OpenAI, models sold directly by Azure, and partner/community models as service-family
   evidence, not as different identity namespaces.
-- Derive tasks and endpoints only from explicit table types and endpoint text. New unrecognized task
-  labels are reported and ignored locally; they do not reject the model row.
+- Derive tasks and endpoints only from explicit table types and endpoint text. The portal's
+  `zero-shot-classification` task maps to the shared `classification` task, while other new
+  unrecognized labels are reported and ignored locally; they do not reject the model row.
 - Availability records deployment type and region. Standard, Batch, and Provisioned matrices may all
   describe a callable model, but only request-attributable usage rates enter pricing.
 - Optional account inventory contributes only positive, non-secret facts to an existing public
