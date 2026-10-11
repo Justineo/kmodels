@@ -120,9 +120,19 @@ host, region, model-ID, and 15–60-model collection guards. A
 malformed card or link, unknown route or console region, or route/region contradiction suppresses
 only that item and records a contract finding; valid siblings survive.
 
-The text and vision task pages are non-exhaustive curated catalogs. Their drift floors track the
-current published inventories (at least 50 text IDs and 5 vision IDs); the larger pricing and
-deployment sources remain independent and are not truncated to those curated lists.
+Task pages are non-exhaustive curated catalogs. Completeness is measured against each current
+table under Recommended models, All models, or Legacy models: every table must expose a reviewed
+model column and every non-divider row must yield an exact ID. Empty tables, missing sections,
+unrecognized identity columns, and unparsed model rows reject the source. Nonempty output and the
+existing upper resource budgets remain required. Historical inventory floors are inappropriate:
+the current ASR, Omni, and TTS pages intentionally list fewer models. Independent pricing and
+deployment sources remain broader and are not truncated to these curated lists.
+The ID column may mix rendered HTML code elements and literal Markdown backtick spans, including
+multiple snapshot IDs in one cell. Explicit space-delimited slash lists split into exact IDs;
+slashes within an ID remain intact. Numeric JSX row/column spans use the same table expansion
+as HTML attributes; full-width divider rows carry no identity. Specification tables and prose outside the reviewed model
+sections cannot create identities. The 2026-10-11 text source exposed 54 exact IDs, of which 14
+were previously missed because their cells contained literal Markdown.
 
 Lifecycle and release pages are structured table sources. Malformed dates or rows without an exact
 model ID are skipped at row scope and reported. When a release row omits its optional deployment-

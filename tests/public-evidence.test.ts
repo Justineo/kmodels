@@ -3,6 +3,15 @@ import { expect, it } from "vite-plus/test";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { publicEvidenceBaseline, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 
+it("distinguishes a provider-ID mistake from authentication and names the public source", () => {
+  expect(() => reviewedPublicSource("amazon-bedrock")).toThrow(
+    /Expected a source ID, received provider ID amazon-bedrock.*bedrock-models.*not an authentication failure/,
+  );
+  expect(reviewedPublicSource("bedrock-models")).toMatchObject({ access: "public" });
+  expect(() => reviewedPublicSource("unknown-source")).toThrow("Unknown reviewed source ID");
+  expect(() => reviewedPublicSource("mistral-api")).toThrow("public source without credentials");
+});
+
 it("compares public refetches to the exact reported attempt, including a failed parse", () => {
   const at = "2026-09-20T02:06:07.280Z";
   const hash = "1".repeat(64);

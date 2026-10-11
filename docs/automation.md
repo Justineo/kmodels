@@ -128,6 +128,17 @@ Status: implemented
   also run before inference so a broken harness does not consume a model run. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   publication request. Automatic repair publication requires every repository validation command to pass.
+  Preparation supplies deduplicated fetch commands built from reviewed public source IDs and a
+  runner-owned repair-admission output. The outcome gate rejects `noop` whenever preparation found
+  candidates or a failed refresh execution requiring repair. Only an empty healthy preparation may
+  complete without a patch. An admitted run requires validated code, publication and deployment;
+  an external blocker remains a failed run, never a fabricated repair or successful dismissal.
+  If initial triage finds no repair, the agent must make a second diagnostic pass over hard
+  rejections and owned contract omissions before declaring an external blocker. It must correct
+  argument/decoding mistakes, inspect rejected rows and parser branches, and test alternative
+  explanations. Hash identity proves persistence, and passing fallback tests prove fallback only.
+  Neither can establish that a repair is impossible. Incomplete reports record the corrected
+  commands, actual parser results, examined source sections and concrete remaining blockers.
   Agent execution has an explicit 45-minute limit inside a 60-minute agent job. The
   [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
   bounds inference and its tool calls; the job limit separately leaves time for setup,
@@ -158,6 +169,9 @@ Status: implemented
   that list synchronized when adding source hosts. An unavailable tool/source or an unreproduced
   issue produces `report_incomplete`, not a no-op. Runtime sandbox connectivity must be verified in
   CI; local fetch success alone does not establish remote access.
+  The evidence CLI distinguishes unknown source IDs and mistaken provider IDs from authenticated
+  sources. A provider-ID error lists its reviewed public source IDs; for example Bedrock uses
+  `bedrock-models`, not `amazon-bedrock`. Such errors must be corrected within the same run.
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.

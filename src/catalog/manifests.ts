@@ -97,7 +97,6 @@ export type Extractor =
         | "s2s"
         | "omni"
         | "embedding";
-      minModels: number;
       maxModels: number;
     }
   | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
@@ -452,7 +451,6 @@ const dashscopeCatalogSource = (
   id: string,
   path: string,
   category: Extract<Extractor, { kind: "dashscope-catalog" }>["category"],
-  minModels: number,
   maxModels: number,
 ): SourceManifest => ({
   id,
@@ -461,8 +459,8 @@ const dashscopeCatalogSource = (
   access: "public",
   format: "markdown",
   stability: "documented",
-  extractor: { kind: "dashscope-catalog", category, minModels, maxModels },
-  extractorVersion: "dashscope-catalog-v5",
+  extractor: { kind: "dashscope-catalog", category, maxModels },
+  extractorVersion: "dashscope-catalog-v6",
   fields: [
     "model_id",
     "description",
@@ -3659,15 +3657,15 @@ export const manifests = [
         optional: true,
         retainOmittedFacts: true,
       },
-      dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 50, 180),
-      dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 5, 50),
-      dashscopeCatalogSource("dashscope-image", "image-model", "image", 20, 70),
-      dashscopeCatalogSource("dashscope-video", "video-generate-edit-model", "video", 25, 80),
-      dashscopeCatalogSource("dashscope-asr", "asr-model/", "asr", 25, 90),
-      dashscopeCatalogSource("dashscope-tts", "tts-model/", "tts", 20, 70),
-      dashscopeCatalogSource("dashscope-s2s", "s2s-model", "s2s", 15, 80),
-      dashscopeCatalogSource("dashscope-omni", "omni/", "omni", 20, 80),
-      dashscopeCatalogSource("dashscope-embedding", "embedding-rerank-model/", "embedding", 5, 25),
+      dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 180),
+      dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 50),
+      dashscopeCatalogSource("dashscope-image", "image-model", "image", 70),
+      dashscopeCatalogSource("dashscope-video", "video-generate-edit-model", "video", 80),
+      dashscopeCatalogSource("dashscope-asr", "asr-model/", "asr", 90),
+      dashscopeCatalogSource("dashscope-tts", "tts-model/", "tts", 70),
+      dashscopeCatalogSource("dashscope-s2s", "s2s-model", "s2s", 80),
+      dashscopeCatalogSource("dashscope-omni", "omni/", "omni", 80),
+      dashscopeCatalogSource("dashscope-embedding", "embedding-rerank-model/", "embedding", 25),
       {
         id: "dashscope-pricing",
         url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",

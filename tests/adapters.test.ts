@@ -19025,8 +19025,9 @@ describe("DashScope adapters", () => {
   function source(id: string, minModels = 1, maxModels = 20): SourceManifest {
     const configured = manifest("dashscope").sources.find((item) => item.id === id);
     if (configured === undefined) throw new Error(`Missing DashScope source ${id}`);
+    if (configured.extractor.kind === "dashscope-catalog")
+      return { ...configured, extractor: { ...configured.extractor, maxModels } };
     if (
-      configured.extractor.kind === "dashscope-catalog" ||
       configured.extractor.kind === "dashscope-pricing" ||
       configured.extractor.kind === "dashscope-recommended" ||
       configured.extractor.kind === "dashscope-lifecycle" ||
@@ -19155,6 +19156,63 @@ describe("DashScope adapters", () => {
           structured_output: true,
         },
       },
+    ]);
+  });
+
+  it("reads every literal Markdown ID in current task tables alongside rendered HTML", async () => {
+    const models = parse(
+      source("dashscope-text"),
+      await fixture("dashscope/catalog-mixed-markup.md"),
+    );
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "qwen3.7-max",
+      "qwen3.7-max-2026-06-08",
+      "qwen3.7-max-preview",
+      "qwen3.8-max",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "qwen3.7-max-preview")).toMatchObject({
+      limits: { context_tokens: 256_000 },
+      capabilities: { reasoning: true },
+    });
+  });
+
+  it("validates current task-table coverage independently of historical inventory size", () => {
+    const configured = manifest("dashscope").sources.find(({ id }) => id === "dashscope-tts");
+    if (configured === undefined) throw new Error("Missing TTS source");
+    const table = (rows: string) => `<section><h2>All models</h2><table>
+      <tr><th>Model ID</th><th>API</th></tr>${rows}</table></section>`;
+    const row = "<tr><td><code>qwen-audio-3.0-tts-plus</code></td><td>HTTP</td></tr>";
+    expect(parse(configured, table(`<tr></tr>${row}`))).toMatchObject([
+      { model_id: "qwen-audio-3.0-tts-plus", tasks: ["speech_synthesis"] },
+    ]);
+    expect(() =>
+      parse(configured, table(row + "<tr><td>Unrecognized model label</td><td>HTTP</td></tr>")),
+    ).toThrow("coverage_below_threshold");
+    expect(() => parse(configured, table(""))).toThrow("coverage_below_threshold");
+    expect(() => parse(configured, table(row).replace("Model ID", "Unreviewed identity"))).toThrow(
+      "count_outside_bounds",
+    );
+    expect(() =>
+      parse(configured, table(row).replace("All models", "Audio specifications")),
+    ).toThrow("count_outside_bounds");
+    expect(() =>
+      parse(source("dashscope-tts", 1, 1), table(row + row.replaceAll("tts-plus", "tts-flash"))),
+    ).toThrow("count_outside_bounds");
+  });
+
+  it("splits explicitly spaced model lists while preserving slashes inside exact IDs", () => {
+    const models = parse(
+      source("dashscope-omni"),
+      `<section><h2>Recommended models</h2><table>
+      <tr><th>Model ID</th><th>API</th></tr>
+      <tr><td>qwen3.5-omni-plus / qwen3.5-omni-flash</td><td>HTTP</td></tr>
+      <tr><td><code>publisher/model</code></td><td>HTTP</td></tr>
+    </table></section>`,
+    );
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "publisher/model",
+      "qwen3.5-omni-flash",
+      "qwen3.5-omni-plus",
     ]);
   });
 
@@ -20375,12 +20433,6 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-recommended")).toMatchObject({
       extractorVersion: "dashscope-recommended-v7",
       retainOmittedFacts: true,
-    });
-    expect(value.sources.find(({ id }) => id === "dashscope-text")?.extractor).toMatchObject({
-      minModels: 50,
-    });
-    expect(value.sources.find(({ id }) => id === "dashscope-vision")?.extractor).toMatchObject({
-      minModels: 5,
     });
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",

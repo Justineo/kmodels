@@ -205,6 +205,13 @@ export async function runRepairPublication(operation: string | undefined): Promi
     }
     case "capture": {
       const outcome = parseRepairOutcome(await readFile(environment("GH_AW_SAFE_OUTPUTS"), "utf8"));
+      const required = environment("REPAIR_REQUIRED");
+      if (!["true", "false"].includes(required))
+        throw new Error("Invalid repair admission decision");
+      if (outcome.type === "noop" && required === "true")
+        throw new Error(
+          "Catalog repair was required; a no-op cannot complete the admitted repair. Continue diagnosis and stage a validated fix.",
+        );
       git(["add", "--all"]);
       const patch = stagedPatch(baseSha());
       if (outcome.type === "noop") {

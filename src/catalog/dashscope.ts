@@ -24,6 +24,7 @@ import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
+  assertCoverage,
   assertItemCount,
   contractExtensionEvidence,
   recognizeItems,
@@ -308,6 +309,16 @@ function cellIds(cell: Cell | undefined): string[] {
         .flatMap((candidate) => exactId(candidate) ?? []),
     ),
   );
+}
+
+/** Task tables mix rendered HTML with literal Markdown code spans in the ID column. */
+function catalogCellIds(cell: Cell | undefined): string[] {
+  if (cell === undefined) return [];
+  const markdownIds = [...cell.text.matchAll(/`([^`]+)`/g)].flatMap(
+    (match) => exactId(match[1] ?? "") ?? [],
+  );
+  const listedIds = cell.text.split(/\s+\/\s+/).flatMap((part) => exactId(part) ?? []);
+  return unique([...cellIds(cell), ...markdownIds, ...listedIds]);
 }
 
 function equivalentIds(cell: Cell | undefined): string[] {
@@ -616,24 +627,37 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-catalog") throw new Error("Wrong DashScope catalog extractor");
   const models = new Map<string, ProviderModel>();
   const findings: string[] = [];
-  for (const [tableIndex, table] of tables(input.body).entries()) {
+  let catalogTables = 0;
+  // The Markdown endpoint also publishes JSX numeric span attributes in raw tables.
+  const body = input.body.replace(/\b(rowSpan|colSpan)=\{(\d+)\}/g, '$1="$2"');
+  for (const [tableIndex, table] of tables(body).entries()) {
     if (
       !table.headings.some((heading) =>
         /^(?:Recommended models|All models|Legacy models)$/.test(heading),
       )
     )
       continue;
+    catalogTables += 1;
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
+    assertItemCount("DashScope catalog model column", idIndex === undefined ? 0 : 1, 1, 1, [
+      "tables",
+      tableIndex,
+      "headers",
+    ]);
     if (idIndex === undefined) continue;
+    let observedRows = 0;
+    let coveredRows = 0;
     for (const [rowIndex, row] of table.rows.entries()) {
-      if (row.every((cell) => cell === row[0])) continue;
+      if (row.length === 0 || (row.length > 1 && row.every((cell) => cell === row[0]))) continue;
+      observedRows += 1;
       const rawType = value(table, row, /^(?:Type|Mode)(?:$| \/)/i);
       const api = value(table, row, /^API(?:$| \/)/i);
-      const rowIds = cellIds(row[idIndex]);
+      const rowIds = catalogCellIds(row[idIndex]);
       if (rowIds.length === 0) {
         findings.push(`/tables/${tableIndex}/rows/${rowIndex}/model`);
         continue;
       }
+      coveredRows += 1;
       for (const id of rowIds) {
         const realtime = /WebSocket|realtime/i.test(api ?? "");
         const context = tokenCount(value(table, row, /^Context(?:$| \/)/i));
@@ -692,14 +716,15 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
         );
       }
     }
+    assertCoverage("DashScope catalog model rows", coveredRows, observedRows, 1, [
+      "tables",
+      tableIndex,
+      "rows",
+    ]);
   }
+  assertItemCount("DashScope catalog tables", catalogTables, 1);
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(
-    models,
-    extractor.minModels,
-    extractor.maxModels,
-    `DashScope ${extractor.category}`,
-  );
+  return bounded(models, 1, extractor.maxModels, `DashScope ${extractor.category}`);
 }
 
 const recommendedEndpoints = new Map<string, { name: string; protocol: "https:" | "wss:" }>([

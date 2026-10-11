@@ -101,6 +101,20 @@ export interface CatalogRepairCandidate {
   diagnostics: z.infer<typeof diagnosticSchema>[];
 }
 
+/** Build commands from reviewed source IDs, never from provider IDs or report prose. */
+export function catalogRepairEvidenceCommands(
+  candidates: readonly CatalogRepairCandidate[],
+): string[] {
+  const sources = [...new Set(candidates.flatMap(({ source_id }) => source_id ?? []))];
+  return manifests.flatMap(({ sources: configured }) =>
+    configured.flatMap((source: SourceManifest) =>
+      sources.includes(source.id) && source.access === "public" && !source.auth
+        ? [`vp node scripts/fetch-catalog-evidence.ts ${source.id}`]
+        : [],
+    ),
+  );
+}
+
 function sourceIndex(): ReadonlyMap<string, ReadonlyMap<string, SourceManifest>> {
   return new Map(
     manifests.map(({ provider, sources }) => [

@@ -36,6 +36,7 @@ beforeEach(() => {
     ...process,
     env: {
       REPAIR_BASE_SHA: "1".repeat(40),
+      REPAIR_REQUIRED: "true",
       REPAIR_ARTIFACT_DIR: "/tmp/repair-test",
       REPAIR_TREE_SHA: "2".repeat(40),
       GH_AW_SAFE_OUTPUTS: "/tmp/repair-output.jsonl",
@@ -52,6 +53,21 @@ const repair = {
   title: "fix: repair billing fields",
   body: "Reviewed source and regression evidence",
 };
+
+it("rejects a no-op when preparation admitted repair work, before staging any files", async () => {
+  files.set(
+    "/tmp/repair-output.jsonl",
+    JSON.stringify({ type: "noop", message: "Existing fallback tests pass" }),
+  );
+  await expect(runRepairPublication("capture")).rejects.toThrow("a no-op cannot complete");
+  expect(git).not.toHaveBeenCalled();
+  delete process.env.REPAIR_REQUIRED;
+  await expect(runRepairPublication("capture")).rejects.toThrow("Missing REPAIR_REQUIRED");
+  process.env.REPAIR_REQUIRED = "false";
+  git.mockReturnValue(success(""));
+  await runRepairPublication("capture");
+  expect(files.get("/tmp/repair-test-output")).toBe("outcome=noop\n");
+});
 const diff = (path: string, oldMode = "100644", newMode = "100644", status = "M") =>
   `:${oldMode} ${newMode} ${"1".repeat(40)} ${"2".repeat(40)} ${status}\0${path}\0`;
 
