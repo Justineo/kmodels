@@ -1904,12 +1904,32 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
   const findings: string[] = [];
+  let observedRows = 0;
+  let coveredRows = 0;
   for (const table of pricingTables(bundle.index.body, (path) => findings.push(path))) {
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
+    if (table.headers.some((header) => /price/i.test(header)))
+      assertItemCount("DashScope pricing model column", idIndex === undefined ? 0 : 1, 1, 1);
     if (idIndex === undefined) continue;
+    assertItemCount(
+      "DashScope pricing price columns",
+      table.headers.filter((header) => /price|^(?:Input|Output):/i.test(header)).length,
+      1,
+    );
     for (const row of table.rows) {
+      if (row.length === 0 || (row.length > 1 && row.every((cell) => cell === row[0]))) continue;
+      observedRows += 1;
       const idCell = row[idIndex];
-      const rowIds = cellIds(idCell);
+      const stripPreview = (value: string) => value.replace(/\s*\(Invitational preview\)\s*$/i, "");
+      const rowIds = cellIds(
+        idCell === undefined
+          ? undefined
+          : {
+              ...idCell,
+              text: stripPreview(idCell.text),
+              parts: idCell.parts.map(stripPreview),
+            },
+      );
       if (rowIds.length === 0) {
         input.onPricingReconciliation?.({
           disposition: "unsupported",
@@ -1918,11 +1938,20 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
         });
         continue;
       }
+      coveredRows += 1;
       const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
       const customQuote = row.some((cell) => /contact (?:sales|us)/i.test(cell.text));
       for (const id of rowIds) {
         const tasks = priceOperations(id, table.headings);
-        const parsedRates = rates(input, table, row, tasks, id);
+        // A new operation column cannot disappear into an unconditional model rate.
+        const billingItem = value(table, row, /^Billing item$/i);
+        const parsedRates = billingItem === undefined ? rates(input, table, row, tasks, id) : [];
+        if (billingItem !== undefined)
+          input.onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "pricing_billing_item_unsupported",
+            sample: `${id}:${billingItem}`.slice(0, 256),
+          });
         const modelRates = discontinued ? [] : parsedRates;
         if (discontinued) {
           input.onPricingReconciliation?.({
@@ -1994,6 +2023,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       }
     }
   }
+  assertCoverage("DashScope pricing model rows", coveredRows, observedRows, 1);
   attachDashscopeWebSearchFacts(
     models,
     input.source.id,
@@ -2115,7 +2145,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
+  return bounded(models, 1, extractor.maxModels, "DashScope pricing");
 }
 
 function lifecycleOperations(category: string, id: string): ModelTask[] {

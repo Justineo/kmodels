@@ -149,6 +149,16 @@ systemic failure because it cannot establish a complete inventory.
 
 ## Pricing mapping
 
+Pricing completeness follows the current source's labeled table rows, not a historical model-count
+floor. Every price table requires a reviewed model column; model tables require price columns;
+every normalized, non-divider row must resolve an exact ID, and the complete source must produce
+nonempty output within the 500-model resource budget. Malformed sparse rows retain their explicit
+row-local diagnostics. Missing headers, wholly absent tables, and unsupported identity rows fail
+closed. This replaces the obsolete 240-model floor without calibrating another floor to today's
+population. Current 2026-10-11 evidence contains 221 identities after recognizing the exact
+`(Invitational preview)` suffix on HappyOyster's ID. A new Billing item column remains explicitly
+unsupported until its operation contract is reviewed; those rows never become unconditioned rates.
+
 The public price book produces one model book per exact catalog identity. A model book has an
 on-demand offer and, where published, a Batch offer. Rates remain separate variants under their
 exact applicability rather than expanding a Cartesian product or choosing a default.

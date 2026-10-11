@@ -121,6 +121,10 @@ Status: implemented
   allowed changes and retries the complete gate, up to three attempts per run. Apparently
   transient failures get one diagnostic rerun; deterministic failures require a correction.
   Staging removes any stale detection patch first and rejects mutations during validation.
+  Staging and publication admission also reject changes to manifest `min*`/`max*` limit
+  declarations, including removal or replacement with an expression. Tests passing cannot justify
+  lowering a count floor or raising a resource ceiling. Operator-reviewed source-contract migrations
+  happen outside automatic repair; URL and extractor-version updates remain eligible.
   The agent requests `commit_repair` only after staging succeeds. The post-execution gate verifies
   that patch against the final working tree and uploads a separate validated candidate artifact
   only after all checks pass. Staging, post-execution, and latest-main publication share the same

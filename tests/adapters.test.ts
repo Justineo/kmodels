@@ -19025,10 +19025,12 @@ describe("DashScope adapters", () => {
   function source(id: string, minModels = 1, maxModels = 20): SourceManifest {
     const configured = manifest("dashscope").sources.find((item) => item.id === id);
     if (configured === undefined) throw new Error(`Missing DashScope source ${id}`);
-    if (configured.extractor.kind === "dashscope-catalog")
+    if (
+      configured.extractor.kind === "dashscope-catalog" ||
+      configured.extractor.kind === "dashscope-pricing"
+    )
       return { ...configured, extractor: { ...configured.extractor, maxModels } };
     if (
-      configured.extractor.kind === "dashscope-pricing" ||
       configured.extractor.kind === "dashscope-recommended" ||
       configured.extractor.kind === "dashscope-lifecycle" ||
       configured.extractor.kind === "dashscope-releases" ||
@@ -20019,6 +20021,51 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("validates the current price table denominator rather than a historical model floor", async () => {
+    const configured = manifest("dashscope").sources.find(({ id }) => id === "dashscope-pricing");
+    if (configured === undefined) throw new Error("Missing pricing source");
+    const body = await fixture("dashscope/pricing.html");
+    const models = parse(configured, await pricingBundle(Promise.resolve(body)));
+    expect(models.some(({ model_id }) => model_id === "qwen3.7-plus")).toBe(true);
+    for (const broken of [
+      body.replaceAll("Model ID", "Unknown identity"),
+      body.replaceAll("qwen-mt-lite", "invalid model label"),
+      "<main></main>",
+    ])
+      expect(() =>
+        parse(
+          configured,
+          JSON.stringify({ index: { url: configured.url, body: broken }, documents: [] }),
+        ),
+      ).toThrow();
+  });
+
+  it("reads annotated preview IDs without inventing unscoped billing-item rates", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parse(
+      source("dashscope-pricing"),
+      await pricingBundle(fixture("dashscope/pricing-preview.html")),
+      (item) => reconciliation.push(item),
+    );
+    expect(models.find(({ model_id }) => model_id === "happyoyster-1.0-acting")).toMatchObject({
+      model_id: "happyoyster-1.0-acting",
+      release_stage: "preview",
+      pricing_state: "unknown",
+      price_facts: [],
+    });
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        reason_code: "pricing_billing_item_unsupported",
+        sample: "happyoyster-1.0-acting:World creation",
+      }),
+    );
+    expect(
+      reconciliation.some(
+        ({ reason_code }) => reason_code === "pricing_model_identity_unsupported",
+      ),
+    ).toBe(false);
+  });
+
   it("skips one malformed sparse price row without rejecting sibling prices", async () => {
     const findings: SourceContractEvidence[] = [];
     const body = (await fixture("dashscope/pricing.md")).replace(
@@ -20437,7 +20484,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v18",
+      extractorVersion: "dashscope-pricing-v19",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
