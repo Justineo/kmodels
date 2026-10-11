@@ -41,7 +41,9 @@ claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index co
 boundary. Account balances, quotas, budgets, invoices, consumer subscriptions, and organization
 controls are intentionally not collected as model-pricing reconciliation facts.
 
-Extraction is bilingual and deterministic. Exact IDs, labeled tables, reviewed JSON/MDX structures,
+Extraction is bilingual and deterministic. Formula billing evidence accepts the reviewed Chinese and
+English spellings of the `tool_call` charge marker, including Markdown-escaped underscores. Exact IDs,
+labeled tables, reviewed JSON/MDX structures,
 and bounded semantic markers are accepted; Markdown-escaped emphasis in a reviewed billing phrase
 is normalized at the marker boundary, and an LLM is never used during refresh. Identity
 contradictions fail the source. Price rows and calculation inputs are claim-local: one malformed row

@@ -157,7 +157,7 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
           markers: [
             /moonshot\/web-search:latest/,
             /POST \/v1\/formulas\/\{uri\}\/fibers/,
-            /(?:produces the tool(?:\\)?_call billing|产生工具调用计费)/i,
+            /(?:produces the tool(?:\\)?_call billing|产生\s*(?:工具调用|tool(?:\\)?_call)\s*计费)/i,
           ],
         },
       ],
