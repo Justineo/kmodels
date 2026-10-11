@@ -20633,7 +20633,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v10",
+      extractorVersion: "kimi-pricing-v11",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -21655,6 +21655,22 @@ describe("Kimi adapters", () => {
     const reconciliation: PricingReconciliationItem[] = [];
     await pricing({
       sourceId: "kimi-international-pricing",
+      overrides: { "official-tools": officialTools },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "normalized",
+        reason_code: "pricing_input_contract_bound",
+        sample: "4/4 Kimi commercial pricing inputs",
+      }),
+    );
+  });
+
+  it("recognizes the Chinese Formula billing wording from the current source", async () => {
+    const officialTools = await fixture("kimi/official-tools-cn-escaped.md");
+    const reconciliation: PricingReconciliationItem[] = [];
+    await pricing({
       overrides: { "official-tools": officialTools },
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
