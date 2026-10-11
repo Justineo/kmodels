@@ -260,10 +260,11 @@ steps:
     run: vp node scripts/catalog-repair-evidence.ts
 
   - name: Check whether repair work is needed
+    id: repair_context
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
-    run: vp node scripts/catalog-repair.ts
+    run: vp node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
 
   - name: Check repair infrastructure before inference
     run: vp test --run tests/catalog-repair-publication.test.ts tests/catalog-repair-workflow.test.ts
@@ -276,6 +277,7 @@ post-steps:
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
       REPAIR_BASE_SHA: ${{ github.sha }}
       REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
+      REPAIR_REQUIRED: ${{ steps.repair_context.outputs.repairable }}
     run: |
       set -euo pipefail
       git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
@@ -304,6 +306,10 @@ post-steps:
 Resolve reproducible problems with validated code changes automatically committed to main. Never create
 an issue as a repair result or fallback. Keep blocked or incomplete investigations in the workflow
 summary and artifacts via `report_incomplete`; reporting a problem is not a completed repair.
+When preparation has admitted repair work, a successful outcome requires a nonempty validated code
+repair, publication, and deployment dispatch. Do not end after triage or a passing fallback test.
+`noop` is reserved for preparation finding no repair work; the deterministic outcome gate rejects
+an agent no-op on an admitted repair run. Never manufacture a change merely to satisfy this gate.
 
 Read `design.md`, `AGENTS.md`, `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 refresh report identified in that context, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.
@@ -329,6 +335,11 @@ the final 5 minutes for the completed outcome. One complete `stage` run currentl
 Complete candidate triage before staging. After `stage` succeeds, publish that validated coherent
 repair promptly instead of reopening investigation or expanding the patch. Record remaining
 candidates in the repair report for a later run. Never treat elapsed time as validation success.
+An early unsuccessful diagnosis is not a stopping condition. If the first pass finds no repair,
+use the remaining investigation budget for a second pass over hard parser/validation failures,
+then owned contract omissions. Correct invocation errors, inspect the exact rejected input and
+the parser branch that rejects it, and try a concrete alternative explanation. A genuine external
+blocker may end a failed run, but only after exhausting the available independent repairs.
 
 The scheduled workflow does not run Jev; the manual experiment has not demonstrated incremental
 production defect discovery. Use observed refresh evidence to establish the gap before proposing
@@ -389,6 +400,15 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    is an available tool. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
+   Copy the exact prepared evidence commands. `amazon-bedrock` is a provider ID;
+   `bedrock-models` is its public source ID. Unknown-source, bad-argument, JSON/HTML decoding, and
+   missing-local-file errors require correcting the command, not reporting unavailable credentials.
+   For each parser rejection, inspect its structured diagnostic and the relevant table/row/field.
+   Matching hashes establish persistence, not that code is correct; changed hashes still permit a
+   current-source repair. Compare labeled input IDs with parsed IDs, including Markdown/HTML
+   variants. For count failures, distinguish missed rows from an intentionally shorter current
+   catalog; replace obsolete historical assumptions only with a tested current-source completeness
+   contract, never by simply lowering a floor or dropping validation.
    A `SourceContractError`, including zero discovered documents, is a discovery/parser failure,
    not evidence of a network outage. If linked-document discovery rejects the bundle, run
    `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --index` to save the original index alone.
@@ -472,9 +492,15 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    without running them or that a recorded publication intent is an already-pushed commit.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
-unpublished price, and no independent validated repair is ready, report the unresolved evidence with `report_incomplete` and do not request publication.
+unpublished price, and no independent validated repair is ready after both diagnostic passes,
+report the unresolved evidence with `report_incomplete` and do not request publication. Include
+the exact corrected commands and their results, inspected source sections, rejected parser branches,
+alternative hypotheses tested, and concrete external blockers. "Localized drift", unchanged hashes,
+or passing existing fallback tests alone do not justify stopping. Incomplete remains a failed,
+undelivered repair, never a successful completion.
 A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
-`noop`. Only use `noop` after adequate evidence positively establishes that no repair is needed.
+`noop`. On an admitted run, continue until an independent repair is validated or the concrete
+external blockers above are established; do not downgrade candidates to a successful no-op.
 Otherwise request one small `commit_repair` describing the source change, repair, focused
 regression results, and the successful full `stage` validation.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use

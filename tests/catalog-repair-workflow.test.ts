@@ -19,6 +19,9 @@ it("loads completed refresh evidence before selecting repair work", async () => 
   expect(agent.indexOf("scripts/catalog-repair-evidence.ts")).toBeLessThan(
     agent.indexOf("Check whether repair work is needed"),
   );
+  expect(agent).toContain("id: repair_context");
+  expect(agent).toContain('scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"');
+  expect(agent).toContain("REPAIR_REQUIRED: ${{ steps.repair_context.outputs.repairable }}");
 });
 
 it("reserves execution time for validation retries and skips outcome capture after engine failure", async () => {

@@ -37,7 +37,20 @@ export function reviewedPublicSource(sourceId: string, documentUrl?: string): So
   const source = manifests
     .flatMap<SourceManifest>(({ sources }) => sources)
     .find(({ id }) => id === sourceId);
-  if (!source || source.access !== "public" || source.auth)
+  if (source === undefined) {
+    const provider = manifests.find(({ provider }) => provider.id === sourceId);
+    if (provider !== undefined)
+      throw new Error(
+        `Expected a source ID, received provider ID ${sourceId}. Public source IDs: ${
+          provider.sources
+            .filter((item: SourceManifest) => item.access === "public" && !item.auth)
+            .map(({ id }) => id)
+            .join(", ") || "none"
+        }. Use an exact source ID; this is not an authentication failure.`,
+      );
+    throw new Error(`Unknown reviewed source ID: ${sourceId}`);
+  }
+  if (source.access !== "public" || source.auth)
     throw new Error("Evidence requires a reviewed public source without credentials");
   if (documentUrl === undefined) return source;
   if (documentUrl === "--index") {

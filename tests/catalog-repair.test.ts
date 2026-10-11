@@ -3,6 +3,7 @@ import { parseRepairOutcome } from "../scripts/catalog-repair-publication.ts";
 import {
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
+  catalogRepairEvidenceCommands,
 } from "../src/catalog/catalog-repair.ts";
 
 const assertCatalogRepairOutcome = (output: string) => parseRepairOutcome(output).type;
@@ -72,6 +73,29 @@ const report = (providers: Record<string, unknown>[]): Record<string, unknown> =
   schema_version: 2,
   generated_at: "2026-09-02T00:00:00.000Z",
   providers,
+});
+
+it("prepares exact reviewed source commands instead of provider IDs", () => {
+  const candidates = catalogRepairCandidates(
+    report([
+      {
+        provider_id: "amazon-bedrock",
+        signals: [],
+        attempt: {
+          outcome: "accepted",
+          sources: [{ source_id: "bedrock-models", outcome: "parse_failed" }],
+        },
+      },
+    ]),
+  );
+  expect(catalogRepairEvidenceCommands([...candidates, ...candidates])).toEqual([
+    "vp node scripts/fetch-catalog-evidence.ts bedrock-models",
+  ]);
+  expect(
+    catalogRepairEvidenceCommands(
+      candidates.map((candidate) => ({ ...candidate, source_id: "mistral-api" })),
+    ),
+  ).toEqual([]);
 });
 
 describe("catalog repair candidate selection", () => {

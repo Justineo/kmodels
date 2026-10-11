@@ -2,6 +2,7 @@ import { appendFile, readFile, writeFile } from "node:fs/promises";
 import {
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
+  catalogRepairEvidenceCommands,
 } from "../src/catalog/catalog-repair.ts";
 import { join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
@@ -79,6 +80,13 @@ const markdown =
               `| ${provider_id} | ${subject_id} | ${trigger} | ${source_access ?? "provider"} | ${message.replaceAll("|", "\\|")} |`,
           ),
         ]),
+    "",
+    "## Reviewed public evidence commands",
+    "",
+    ...catalogRepairEvidenceCommands(candidates).map((command) => `- \`${command}\``),
+    "",
+    "These commands use source IDs, not provider IDs. A bad argument is a tooling mistake to correct, not unavailable source evidence.",
+    "Fetch success and hash identity do not prove parser correctness. Replay the actual parser and inspect rejected rows or sections before deciding whether repair is possible.",
     "",
     ...(sourceEvidenceIncomplete
       ? [
