@@ -99,7 +99,7 @@ export type Extractor =
         | "embedding";
       maxModels: number;
     }
-  | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
+  | { kind: "dashscope-pricing"; maxModels: number }
   | { kind: "dashscope-recommended"; minModels: number; maxModels: number }
   | { kind: "dashscope-lifecycle"; minModels: number; maxModels: number }
   | { kind: "dashscope-releases"; minModels: number; maxModels: number }
@@ -3673,8 +3673,8 @@ export const manifests = [
         access: "public",
         format: "html",
         stability: "documented",
-        extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v18",
+        extractor: { kind: "dashscope-pricing", maxModels: 500 },
+        extractorVersion: "dashscope-pricing-v19",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

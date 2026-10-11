@@ -409,6 +409,10 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    variants. For count failures, distinguish missed rows from an intentionally shorter current
    catalog; replace obsolete historical assumptions only with a tested current-source completeness
    contract, never by simply lowering a floor or dropping validation.
+   The publication gate rejects manifest `min*`/`max*` declaration changes. Repair extraction
+   within existing limits; if the actual completeness contract needs an operator-reviewed change,
+   investigate other independent candidates and report that contract change as blocked. A count-only
+   patch is not a repair, even with a new fixture and passing tests.
    A `SourceContractError`, including zero discovered documents, is a discovery/parser failure,
    not evidence of a network outage. If linked-document discovery rejects the bundle, run
    `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --index` to save the original index alone.

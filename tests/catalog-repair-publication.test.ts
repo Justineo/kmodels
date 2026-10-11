@@ -140,6 +140,30 @@ it("rejects executable, symlink, submodule, malformed, and oversized patches", (
 });
 
 const success = (stdout: string) => ({ status: 0, stdout, stderr: "" });
+
+it("rejects manifest limit edits even when accompanied by fixtures and passing tests", () => {
+  const patch = (before: string, after: string) =>
+    `diff --git a/src/catalog/manifests.ts b/src/catalog/manifests.ts\n--- a/src/catalog/manifests.ts\n+++ b/src/catalog/manifests.ts\n@@ -1 +1 @@\n-${before}\n+${after}\n`;
+  const before = 'extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },';
+  for (const after of [
+    before.replace("240", "200"),
+    before.replace("500", "1000"),
+    before.replace("minModels: 240, ", ""),
+    before.replace("240", "configuredFloor"),
+  ])
+    expect(() =>
+      assertRepairChanges(diff("src/catalog/manifests.ts"), patch(before, after)),
+    ).toThrow("cannot change manifest limits");
+  expect(() =>
+    assertRepairChanges(
+      diff("src/catalog/manifests.ts"),
+      patch(
+        'url: "https://docs.example/old", extractorVersion: "v1",',
+        'url: "https://docs.example/current", extractorVersion: "v2",',
+      ),
+    ),
+  ).not.toThrow();
+});
 function artifact(patch = "patch"): void {
   files.set("/tmp/repair-test/repair.patch", patch);
   files.set(

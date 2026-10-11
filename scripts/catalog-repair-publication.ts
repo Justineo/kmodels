@@ -87,6 +87,27 @@ export function assertRepairChanges(raw: string, patch: string): void {
     )
       throw new Error(`Catalog repair cannot modify ${path ?? "an invalid path"}`);
   }
+  // Numeric manifest limits are operator-reviewed policy, not an automatic repair knob.
+  // Compare changed limit declarations conservatively, including deletion and expressions.
+  const manifestPatch = patch
+    .split(/^diff --git /m)
+    .find((part) => part.startsWith("a/src/catalog/manifests.ts b/src/catalog/manifests.ts\n"));
+  if (manifestPatch !== undefined) {
+    const limits = (prefix: string) =>
+      manifestPatch
+        .split("\n")
+        .filter((line) => line.startsWith(prefix) && !line.startsWith(prefix.repeat(3)))
+        .flatMap((line) =>
+          [...line.matchAll(/\b(?:min|max)[A-Z]\w*\s*:\s*[^,}\n]+/g)].map(([value]) =>
+            value.trim(),
+          ),
+        )
+        .sort();
+    if (JSON.stringify(limits("-")) !== JSON.stringify(limits("+")))
+      throw new Error(
+        "Catalog repair cannot change manifest limits; repair extraction with the existing guards or report the required operator-reviewed contract change.",
+      );
+  }
 }
 
 export function repairPatchHash(patch: string): string {
