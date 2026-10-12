@@ -11,6 +11,7 @@ import {
 } from "../src/catalog/adapters.ts";
 import { formatPricingInterpretationSample } from "../src/catalog/bedrock.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { decimalsEqual, publishedRate } from "../src/catalog/pricing.ts";
@@ -19571,6 +19572,54 @@ describe("DashScope adapters", () => {
       expect.any(Array),
     );
   });
+
+  it.each([true, false])(
+    "admits current DashScope pricing with or without discontinued rows (present: %s)",
+    async (hasDiscontinuedRow) => {
+      const pricingSource = source("dashscope-pricing");
+      const value = manifest("dashscope");
+      const original = await fixture("dashscope/pricing.html");
+      const body = hasDiscontinuedRow
+        ? original
+        : original.replace(/<tr>\s*<td>deepseek-r1-distill-llama-8b<\/td>[\s\S]*?<\/tr>/, "");
+      const models = parse(pricingSource, await pricingBundle(Promise.resolve(body)));
+      const partition = assembleParsedProviderPricing(
+        "dashscope",
+        observedAt,
+        [{ source: pricingSource, models }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      if (partition === undefined) throw new Error("Missing DashScope pricing partition");
+      validateParsedPricing(value, pricingSource, models, partition);
+      if (hasDiscontinuedRow)
+        expect(partition.model_dispositions).toEqual([
+          expect.objectContaining({
+            model_ref: "dashscope/deepseek-r1-distill-llama-8b",
+            state: "not_applicable",
+          }),
+        ]);
+      else expect(partition.model_dispositions).toEqual([]);
+      expect(() => validateAdoptedTopology(partition)).not.toThrow();
+
+      const missingResources = {
+        ...partition,
+        books: partition.books.filter(({ scope }) => scope.kind !== "provider_resource"),
+      };
+      expect(() => validateAdoptedTopology(missingResources)).toThrow(
+        "dashscope commercial topology changed",
+      );
+      const missingBindings = structuredClone(partition);
+      for (const book of missingBindings.books)
+        for (const offer of book.offers)
+          for (const term of offer.terms)
+            if (term.kind === "rate")
+              for (const variant of term.variants) delete variant.charge_binding;
+      expect(() => validateAdoptedTopology(missingBindings)).toThrow(
+        "dashscope commercial topology changed",
+      );
+    },
+  );
 
   it("publishes field-local accounting inputs for token, tool, media, and regional rates", async () => {
     const findings: SourceContractEvidence[] = [];

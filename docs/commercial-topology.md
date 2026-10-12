@@ -253,6 +253,13 @@ source order, or collection time. Validation proves that references resolve with
 units and bound signals are dimensionally compatible, exact relations are valid, normalized facts
 retain first-party observations, and private/account data cannot enter the public resource.
 
+Adopted-topology checks distinguish required commercial mechanisms from source-dependent inventory.
+DashScope's explicit model dispositions are optional because the current price book can omit all
+discontinued rows. Fixture tests still require an explicit discontinued row to survive as a
+`not_applicable` disposition and reject missing provider resources or charge bindings. Other
+providers retain their reviewed topology requirements; this exception does not bypass canonical
+validation or authorize inventing a non-numeric price state.
+
 The wire and UI projection remain shared. Each configured provider adapter removes commercial facts
 outside this boundary, preserves useful invocation facts, hardens source parsing, and adds
 calculation and input-source contracts where evidence allows. A provider retains its currently
