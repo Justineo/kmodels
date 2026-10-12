@@ -60,6 +60,10 @@ service, model-list pricing, or the provider refresh. Malformed model rows are i
 identity disagreement, duplicate route ownership, truncated exhaustive list, unsafe count change,
 or invalid pricing partition still fails closed.
 
+Endpoint metadata may publish a quantization label such as `fp8` or `null`; that label is not part of
+the catalog identity or pricing contract, but either reviewed value must preserve the endpoint's
+route and rates.
+
 The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
 returned array is the completed-image quantity. Older examples that expose the same result as
 `result.images` remain equivalent evidence, but arbitrary image-related prose is not.
