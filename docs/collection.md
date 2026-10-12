@@ -293,8 +293,12 @@ Status: implemented
   extractor changes still require collection because raw response bodies are
   intentionally not retained.
 - Capture a complete public parsed pricing bundle before canonical assembly. Assembly or validation
-  failure retains those inputs for local repair while retaining the accepted provider prices. Check
-  source ownership and provenance during capture, so one malformed provider input cannot abort
+  failure retains those inputs for local repair while retaining the accepted provider prices.
+  Check the final composed core before selecting inputs: if `retained_pricing_core_mismatch` rolls back
+  the provider catalog and its source records, retain that provider's previous compilation input
+  as well. If no previous input exists, omit its replay entry and preserve the accepted prices.
+  Never bind freshly parsed input to a rolled-back core with different source/extractor identity.
+  Check source ownership and provenance during capture, so one malformed provider input cannot abort
   publication of independent providers. Parsed rate fields and qualifiers are closed: an unsupported
   commercial condition must become an explicit raw fact, never silently disappear into an
   unconditional rate. Source-fact identities compare condition and raw-field objects independently

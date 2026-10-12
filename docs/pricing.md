@@ -85,6 +85,9 @@ facts; conflicting non-unknown pricing states abort capture.
 Replay takes published model metadata from the bound catalog. Minimal pricing or accounting carriers
 cannot overwrite the catalog's endpoints, capabilities, or lifecycle. Complete public inputs are
 captured before assembly so a failed normalization can still be repaired offline.
+If retaining prices also requires rolling back the provider's catalog core, collection keeps the
+previous compilation input with that core, or omits the replay entry when no prior input exists.
+Rejected fresh input must not be rebound to the rolled-back source records.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted

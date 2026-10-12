@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { pricingCompilationEntries } from "../src/catalog/collector.ts";
 import type { ProviderManifest, SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
@@ -14,6 +15,8 @@ import {
   type PricingReplaySource,
 } from "../src/catalog/pricing-compilation.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
+import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import type { ParsedPricingModel, ParsedProviderModel } from "../src/catalog/pricing-source.ts";
 import {
@@ -293,6 +296,101 @@ function xaiReplayCase(publication: "fresh" | "retained", includeAcceptedResourc
 }
 
 describe("local canonical pricing compilation", () => {
+  it("keeps rejected assembly inputs when the accepted core still supports replay", async () => {
+    const accepted = candidate("1");
+    const transition = failedPricingTransition(providerId, observedAt, "pricing_validation_failed");
+    const composed = composeCatalogPair(accepted.catalog, accepted.catalog, accepted.pricing.data, [
+      transition,
+    ]);
+    const current = prepareCatalogPair(composed.catalog, composed.pricing);
+    const provider = current.catalog.providers[0];
+    if (provider === undefined) throw new Error("Missing test provider");
+    const sources = [replaySource("2")];
+    const entries = pricingCompilationEntries(
+      current,
+      [{ provider, pricingReplaySources: sources }],
+      new Map([[providerId, transition]]),
+      new Set(),
+      createPricingCompilationSnapshot(accepted, [
+        { provider_id: providerId, sources: [replaySource("1")] },
+      ]),
+    );
+    expect(entries).toEqual([{ provider_id: providerId, sources }]);
+    const compiled = await compilePricingSnapshot(
+      current,
+      createPricingCompilationSnapshot(current, entries),
+      [providerManifest],
+    );
+    expect(compiled.replayedProviders).toEqual([providerId]);
+    expect(compiled.candidate.pricing.data.books).toEqual(candidate("2").pricing.data.books);
+  });
+
+  it.each([true, false])(
+    "keeps replay inputs aligned with a rolled-back provider core (prior input: %s)",
+    async (hasPriorInput) => {
+      const accepted = candidate("1");
+      const prior = createPricingCompilationSnapshot(accepted, [
+        { provider_id: providerId, sources: [replaySource("1")] },
+      ]);
+      const attemptedAt = "2026-07-30T01:00:00.000Z";
+      const updatedSource = { ...sourceManifest, extractorVersion: "test-pricing-v2" };
+      const transition = failedPricingTransition(
+        providerId,
+        attemptedAt,
+        "pricing_validation_failed",
+      );
+      const composed = composeCatalogPair(
+        accepted.catalog,
+        {
+          ...accepted.catalog,
+          generated_at: attemptedAt,
+          models: [],
+          sources: accepted.catalog.sources.map((source) => ({
+            ...source,
+            extractor_version: updatedSource.extractorVersion,
+            content_hash: "4".repeat(64),
+          })),
+        },
+        accepted.pricing.data,
+        [transition],
+      );
+      const current = prepareCatalogPair(composed.catalog, composed.pricing);
+      expect(current.catalog.warnings).toContainEqual(
+        expect.objectContaining({
+          code: "retained_pricing_core_mismatch",
+          provider_id: providerId,
+        }),
+      );
+      const provider = accepted.catalog.providers[0];
+      if (provider === undefined) throw new Error("Missing test provider");
+      const entries = pricingCompilationEntries(
+        current,
+        [
+          {
+            provider,
+            pricingReplaySources: [
+              {
+                ...replaySource("2"),
+                extractor_version: updatedSource.extractorVersion,
+                content_hash: "4".repeat(64),
+              },
+            ],
+          },
+        ],
+        new Map([[providerId, transition]]),
+        new Set(),
+        hasPriorInput ? prior : undefined,
+      );
+      expect(entries).toEqual(hasPriorInput ? prior.providers : []);
+      const snapshot = createPricingCompilationSnapshot(current, entries);
+      const compiled = await compilePricingSnapshot(current, snapshot, [
+        { ...providerManifest, sources: [updatedSource] },
+      ]);
+      expect(compiled.preservedProviders).toEqual([providerId]);
+      expect(compiled.candidate.pricing).toEqual(current.pricing);
+    },
+  );
+
   it("preserves retained pricing when current public inputs contain no prices", async () => {
     const { current, snapshot, manifest } = xaiReplayCase("retained");
     for (const provider of snapshot.providers)

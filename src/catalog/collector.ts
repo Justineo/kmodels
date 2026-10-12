@@ -1428,9 +1428,9 @@ async function loadPreviousPricingCompilation(
   }
 }
 
-function pricingCompilationEntries(
+export function pricingCompilationEntries(
   candidate: CatalogPairCandidate,
-  results: readonly ProviderResult[],
+  results: readonly Pick<ProviderResult, "provider" | "pricingReplaySources">[],
   transitions: ReadonlyMap<string, ProviderPricingTransition>,
   explicitProviders: ReadonlySet<string>,
   previous: PricingCompilationSnapshot | undefined,
@@ -1444,12 +1444,22 @@ function pricingCompilationEntries(
     previous?.providers.map((provider) => [provider.provider_id, provider]),
   );
   return candidate.pricing.data.provider_snapshots.flatMap(({ provider_id: providerId }) => {
+    const prior = previousProviders.get(providerId);
+    if (
+      candidate.catalog.warnings.some(
+        (warning) =>
+          warning.code === "retained_pricing_core_mismatch" &&
+          "provider_id" in warning &&
+          warning.provider_id === providerId,
+      )
+    )
+      return prior === undefined ? [] : [prior];
+
     const transition = transitions.get(providerId);
     const sources = replaySources.get(providerId);
     if (!explicitProviders.has(providerId) && sources !== undefined)
       return [{ provider_id: providerId, sources }];
 
-    const prior = previousProviders.get(providerId);
     return transition?.kind === "failed" && prior !== undefined ? [prior] : [];
   });
 }
