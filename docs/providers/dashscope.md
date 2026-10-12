@@ -163,6 +163,14 @@ The public price book produces one model book per exact catalog identity. A mode
 on-demand offer and, where published, a Batch offer. Rates remain separate variants under their
 exact applicability rather than expanding a Cartesian product or choosing a default.
 
+Explicit discontinued rows publish `not_applicable` model dispositions when present. Their
+presence is not an invariant of a current price book: the 2026-10-12 first-party recheck contains
+no discontinued or contact-sales price rows, and the parser produces no model dispositions.
+The adopted-topology gate therefore accepts DashScope both with and without model dispositions,
+while still requiring provider resources and charge bindings and rejecting unadopted topology.
+Missing or unsupported prices stay unknown; do not fabricate a non-numeric state to satisfy the
+gate. Source row completeness and canonical provenance validation remain required.
+
 For token-priced models, total request input selects the published context band and the selected
 band applies to the request. Input, output, cache-read, and cache-write terms retain separate meters.
 Published `L<Token≤U` bands use inclusive integer bounds `L + 1` through `U`;

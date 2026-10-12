@@ -63,13 +63,19 @@ export function validateAdoptedTopology(pricing: ProviderPricingPartition): void
   const expected = adoptedTopologies.get(providerId);
   if (expected === undefined) throw new Error(`${providerId} has no adopted commercial topology`);
   const actual = pricingTopology(pricing);
+  // DashScope's current price book can omit every discontinued model. Explicit
+  // non-numeric states are preserved when published, not required as inventory.
+  const required =
+    providerId === "dashscope" && !actual.includes("disposition")
+      ? expected.filter((feature) => feature !== "disposition")
+      : expected;
   if (
-    actual.length === expected.length &&
-    actual.every((feature, index) => feature === expected[index])
+    actual.length === required.length &&
+    actual.every((feature, index) => feature === required[index])
   )
     return;
   throw new Error(
-    `${providerId} commercial topology changed: expected ${format(expected)}, received ${format(actual)}`,
+    `${providerId} commercial topology changed: expected ${format(required)}, received ${format(actual)}`,
   );
 }
 
