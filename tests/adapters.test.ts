@@ -15106,7 +15106,7 @@ describe("Vercel adapter", () => {
               discount: 0,
             },
             provider_name: "acme",
-            quantization: null,
+            quantization: "fp8",
             status: 0,
             supports_implicit_caching: false,
           },

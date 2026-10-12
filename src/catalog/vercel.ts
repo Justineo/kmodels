@@ -283,7 +283,7 @@ const endpointSchema = z
     provider_name: z.string().min(1),
     tags: z.array(z.string().min(1)).optional(),
     inference_regions: z.array(endpointRegionSchema).optional(),
-    quantization: z.null(),
+    quantization: z.union([z.null(), z.string().min(1)]),
     max_completion_tokens: z.number().int().nonnegative().optional(),
     max_prompt_tokens: z.number().int().nonnegative().nullable().optional(),
     supported_parameters: z.array(z.string().min(1)).optional(),
