@@ -6689,6 +6689,7 @@ describe("Azure adapters", () => {
     });
     expect(models[0]?.tasks).toEqual(["classification"]);
     expect(models[0]?.modalities).toEqual({ input: ["text"], output: [] });
+    expect(models[0]?.capabilities.structured_output).toBe(true);
   });
 
   it("bounds the anonymous portal request as a non-exhaustive supplement", () => {

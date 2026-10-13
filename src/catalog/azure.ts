@@ -1178,6 +1178,7 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
       if (value === "audio" || value === "image" || value === "pdf" || value === "text")
         return value;
       if (output && value === "embeddings") return "embedding";
+      if (output && value === "json") return;
       extensions.add(
         `/annotations/systemCatalogData/${output ? "outputModalities" : "inputModalities"}/${value}`,
       );
@@ -1222,6 +1223,7 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
           catalog.supportsToolCalling,
           hasFeature("tool-calling", "function-calling"),
         ),
+        structured_output: catalog.outputModalities?.includes("json") === true ? true : "unknown",
         streaming: hasFeature("streaming") ? true : "unknown",
         batch: azurePortalBoolean(catalog.enableBatch, hasFeature("batch")),
         fine_tuning: hasFeature("fine-tuning") ? true : "unknown",
