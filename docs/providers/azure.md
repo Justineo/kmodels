@@ -50,6 +50,9 @@ a freshness warning.
 - Derive tasks and endpoints only from explicit table types and endpoint text. The portal's
   `zero-shot-classification` task maps to the shared `classification` task, while other new
   unrecognized labels are reported and ignored locally; they do not reject the model row.
+- The portal's `outputModalities: ["json"]` value is a structured-output capability signal, not a
+  separate catalog modality. It is recognized without widening the modality vocabulary or
+  treating the value as an unreviewed contract extension.
 - Availability records deployment type and region. Standard, Batch, and Provisioned matrices may all
   describe a callable model, but only request-attributable usage rates enter pricing.
 - Optional account inventory contributes only positive, non-secret facts to an existing public
