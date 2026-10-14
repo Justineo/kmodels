@@ -104,6 +104,21 @@ const linkedBundleFixtureSchema = z.object({
   documents: z.array(z.object({ url: z.string(), body: z.string() })),
 });
 
+it("reads endpoint labels from the current list-item model layout", async () => {
+  const models = await fixture("databricks/models.html");
+  const listSection = await fixture("databricks/models-list-endpoint.html");
+  const firstHeading = models.indexOf("<h2>");
+  const nextHeading = models.indexOf("<h2>", firstHeading + 1);
+  if (firstHeading < 0 || nextHeading < 0) throw new Error("Missing Databricks model sections");
+  const parsed = await databricksCatalog({
+    "models.html": `${models.slice(0, firstHeading)}${listSection.trim()}\n${models.slice(nextHeading)}`,
+  });
+  expect(parsed.find((model) => model.model_id === "databricks-gpt-5-6-sol")).toMatchObject({
+    name: "OpenAI GPT-5.6 Sol",
+    modalities: { input: ["text", "image"] },
+  });
+});
+
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
@@ -10881,7 +10896,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v15");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v16");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
