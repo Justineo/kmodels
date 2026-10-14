@@ -173,7 +173,8 @@ function parseModels(input: Input): ProviderModel[] {
     const section = heading.nextUntil("h2");
     const content = text(section.text());
     const paragraphs = section
-      .filter("p")
+      .filter("p, li")
+      .add(section.find("p, li"))
       .map((_paragraphIndex, paragraph) => text($(paragraph).text()))
       .get();
     const id = paragraphs

@@ -66,7 +66,9 @@ dependency.
 ## Identity and model facts
 
 - Callable identity comes only from a labeled `Endpoint name:` in the official supported-model
-  page. Pricing cannot create model rows.
+  page. The label may be a paragraph or a list item in a model section; pricing cannot create
+  model rows. This preserves newly published model sections when Databricks changes the HTML
+  presentation of their labeled fields.
 - An omitted `Supported inputs:` field leaves input modalities unknown without discarding the
   endpoint or independent description and price evidence. An unrecognized published modality
   label still fails the catalog contract.
