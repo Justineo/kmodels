@@ -1,8 +1,8 @@
 {
-  "catalog_version": "85c8d892eec2a3b56fa3ca0dd8ec77e376c8b1a1023bc1f9f117606144fa1f89",
-  "generated_at": "2026-10-15T10:04:22.779Z",
+  "catalog_version": "2ea88de2dacceda4135e91a697086577fa9a8fd1be307eb68447be9e93095088",
+  "generated_at": "2026-10-15T11:03:59.004Z",
   "outcome": "changed",
-  "previous_catalog_version": "a6a72f85dbd3b9d32b7e75bb2036c814556617c528e8cb92e0506cf222196f4d",
+  "previous_catalog_version": "85c8d892eec2a3b56fa3ca0dd8ec77e376c8b1a1023bc1f9f117606144fa1f89",
   "providers": [
     {
       "attempt": {
@@ -200,9 +200,9 @@
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 631,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -255,21 +255,21 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 38103,
+                "excluded": 38110,
                 "explicit_non_numeric": 0,
-                "normalized": 4990,
+                "normalized": 5001,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 20,
                 "unsupported": 0
               },
-              "observed_items": 43113,
+              "observed_items": 43131,
               "reason_counts": {
-                "sagemaker_marketplace_batch_or_training": 265,
+                "sagemaker_marketplace_batch_or_training": 272,
                 "sagemaker_marketplace_billable_inference": 3,
                 "sagemaker_marketplace_non_usage_term": 254,
                 "sagemaker_marketplace_public_pricing_unavailable": 20,
-                "sagemaker_marketplace_realtime_software_capacity": 652,
+                "sagemaker_marketplace_realtime_software_capacity": 663,
                 "sagemaker_outside_request_pricing": 37584,
                 "sagemaker_public_hosting_capacity": 4011,
                 "sagemaker_public_invocation_meter": 324
@@ -300,8 +300,8 @@
         "unchanged": 631
       },
       "pricing": {
-        "commercial_hash": "5284255b8524a1c84d6ce9d166e643c47561328af06f05e7e00d154448b7181d",
-        "outcome": "provenance_only",
+        "commercial_hash": "24390f2685f2ea6b76b8653ee1c83198a66282e1632224f4a8001d7e8aa5e6e3",
+        "outcome": "commercial",
         "previous_commercial_hash": "5284255b8524a1c84d6ce9d166e643c47561328af06f05e7e00d154448b7181d"
       },
       "pricing_coverage": {
@@ -331,13 +331,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-pricing"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -554,7 +561,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 42,
+            "consecutive_failures": 43,
             "last_success_at": "2026-10-13T16:05:00.007Z",
             "message": "HTTP 404",
             "outcome": "fetch_failed",
@@ -739,9 +746,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -799,13 +806,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -998,9 +1012,7 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Optional commercial source bundle is incomplete at dashscope-pricing/web-search",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -1111,11 +1123,6 @@
               "diagnostics": [
                 {
                   "disposition": "unbound",
-                  "reason_code": "commercial_companion_missing",
-                  "sample": "/help/en/model-studio/web-search"
-                },
-                {
-                  "disposition": "unbound",
                   "reason_code": "cache_model_scope_drift",
                   "sample": "Explicit cache"
                 },
@@ -1148,29 +1155,35 @@
                   "disposition": "unsupported",
                   "reason_code": "pricing_billing_item_unsupported",
                   "sample": "happyoyster-1.0-adventure:World creation"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "model_price_unbound",
+                  "sample": "happyoyster-1.0-adventure"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 1953,
+                "normalized": 1990,
                 "raw": 0,
                 "unbound": 29,
                 "unresolved": 0,
                 "unsupported": 24
               },
-              "observed_items": 2006,
+              "observed_items": 2043,
               "reason_counts": {
                 "cache_model_scope_drift": 2,
-                "commercial_companion_missing": 1,
                 "image_search_rate_normalized": 6,
                 "model_price_unbound": 24,
                 "price_fact_normalized": 1944,
                 "pricing_billing_item_unsupported": 24,
                 "pricing_input_contract_partial": 1,
                 "web_search_image_price_unbound": 1,
-                "web_search_image_rate_normalized": 3
+                "web_search_image_rate_normalized": 3,
+                "web_search_price_unbound": 1,
+                "web_search_rate_normalized": 37
               },
               "unit": "reviewed source pricing item"
             },
@@ -1213,22 +1226,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1241,8 +1254,8 @@
           {
             "field_changes": [
               {
-                "current": [],
-                "path": "availability"
+                "path": "availability",
+                "previous": []
               }
             ],
             "fields": [
@@ -1264,7 +1277,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "US (Virginia)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1276,7 +1289,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   }
                 ],
                 "path": "availability",
@@ -1291,7 +1304,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1303,7 +1316,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -1319,22 +1332,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1350,15 +1363,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1369,15 +1382,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1397,11 +1410,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1409,30 +1422,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1440,11 +1445,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -1460,11 +1473,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1472,30 +1485,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1503,11 +1508,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -1523,22 +1536,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1554,22 +1567,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1585,22 +1598,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1616,22 +1629,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1647,11 +1660,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1659,7 +1672,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1670,11 +1683,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1682,7 +1695,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1702,22 +1715,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1733,15 +1746,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1752,15 +1765,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1780,15 +1793,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1799,15 +1812,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1827,22 +1840,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1858,11 +1871,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1870,7 +1883,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1881,11 +1894,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1893,7 +1906,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1913,22 +1926,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1944,22 +1957,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1975,22 +1988,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2006,22 +2019,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2039,19 +2052,19 @@
         "unchanged": 218
       },
       "pricing": {
-        "commercial_hash": "a10ab1c19ba1f0e213977bd26984c0d09ff0fa8237c90178dbce3bd24ca33ec4",
-        "outcome": "provenance_only",
+        "commercial_hash": "f3acda3edf9a25409d48bcf537b35ae1415e8fe78e8895b9b861cb442502aeaa",
+        "outcome": "commercial",
         "previous_commercial_hash": "a10ab1c19ba1f0e213977bd26984c0d09ff0fa8237c90178dbce3bd24ca33ec4"
       },
       "pricing_coverage": {
         "current_models": 239,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": -1,
+          "unknown_models": 1
         },
-        "normalized_rate_models": 219,
+        "normalized_rate_models": 218,
         "not_applicable_models": 0,
-        "offer_models": 219,
+        "offer_models": 218,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "dashscope/MiniMax-M2.7",
@@ -2059,6 +2072,7 @@
           "dashscope/happyoyster-1.0-adventure",
           "dashscope/happyoyster-1.0-directing",
           "dashscope/qwen-long",
+          "dashscope/qwen-math-plus-2024-08-16",
           "dashscope/qwen2.5-14b-instruct",
           "dashscope/qwen2.5-14b-instruct-1m",
           "dashscope/qwen2.5-32b-instruct",
@@ -2072,13 +2086,12 @@
           "dashscope/qwen3-0.6b",
           "dashscope/qwen3-1.7b",
           "dashscope/qwen3-4b",
-          "dashscope/wan2.1-i2v-plus",
-          "dashscope/wan2.1-i2v-turbo"
+          "dashscope/wan2.1-i2v-plus"
         ],
-        "unknown_model_refs_omitted": 0,
-        "unknown_models": 20
+        "unknown_model_refs_omitted": 1,
+        "unknown_models": 21
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "dashscope",
       "publication": "accepted",
       "signals": [
@@ -2114,7 +2127,7 @@
         "missing_field": 4,
         "scope_limited": 1,
         "source_contract_extension": 1,
-        "source_partial_retention": 2
+        "source_partial_retention": 1
       }
     },
     {
@@ -2552,22 +2565,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1623,
+            "parsed_models": 1620,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1623,
+              "model_records": 1620,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1623
+              "unknown_models": 1620
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1850,
+              "diagnostic_count": 1845,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2587,17 +2600,17 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
+                  "sample": "moonshotai/Kimi-K3:fireworks-ai:conversational"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "partner_route_price_not_published",
                   "sample": "moonshotai/Kimi-K3:together:conversational"
                 },
                 {
                   "disposition": "unbound",
                   "reason_code": "partner_route_price_not_published",
                   "sample": "zai-org/GLM-5.2:baseten:conversational"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "partner_route_price_not_published",
-                  "sample": "zai-org/GLM-5.2:deepinfra:conversational"
                 },
                 {
                   "disposition": "unbound",
@@ -2616,15 +2629,15 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1850,
+                "unbound": 1845,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8676,
+              "observed_items": 8671,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1493,
-                "partner_route_price_not_published": 357,
+                "hf_inference_compute_price_unbound": 1490,
+                "partner_route_price_not_published": 355,
                 "single_partner_inventory_without_product_evidence": 6755
               },
               "unit": "reviewed source pricing item"
@@ -2635,22 +2648,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 132,
+            "parsed_models": 131,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 132,
-              "normalized_facts": 380,
+              "model_records": 131,
+              "normalized_facts": 376,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 107,
-              "raw_facts": 107,
+              "numeric_models": 106,
+              "raw_facts": 106,
               "raw_models": 95,
               "unknown_models": 25
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 108,
+              "diagnostic_count": 107,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2697,19 +2710,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 191,
+                "normalized": 189,
                 "raw": 0,
-                "unbound": 107,
+                "unbound": 106,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 300,
+              "observed_items": 297,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 190,
-                "route_price_not_published": 107
+                "route_price_normalized": 188,
+                "route_price_not_published": 106
               },
               "unit": "reviewed source pricing item"
             },
@@ -2754,7 +2767,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 22145,
+                "excluded": 22144,
                 "explicit_non_numeric": 0,
                 "normalized": 67,
                 "raw": 0,
@@ -2762,9 +2775,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 22215,
+              "observed_items": 22214,
               "reason_counts": {
-                "featherless_model_not_hf_route": 22144,
+                "featherless_model_not_hf_route": 22143,
                 "featherless_price_normalized": 67,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
@@ -2777,15 +2790,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 25,
+            "parsed_models": 24,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 25,
-              "normalized_facts": 54,
+              "model_records": 24,
+              "normalized_facts": 52,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 25,
+              "numeric_models": 24,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -2839,15 +2852,15 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 27,
+                "normalized": 26,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 13,
                 "unsupported": 0
               },
-              "observed_items": 40,
+              "observed_items": 39,
               "reason_counts": {
-                "native_route_price_normalized": 27,
+                "native_route_price_normalized": 26,
                 "native_route_price_not_exactly_joinable": 13
               },
               "unit": "reviewed source pricing item"
@@ -2855,142 +2868,56 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1493,
+            "outcome": "changed",
+            "parsed_models": 1490,
             "source_id": "huggingface-hub"
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 1666,
+          "field": "models",
+          "previous": 1670
+        },
+        {
+          "current": 262,
+          "field": "api_endpoints",
+          "previous": 264
+        },
+        {
+          "current": 1845,
+          "field": "routes",
+          "previous": 1850
+        }
+      ],
       "models": {
-        "added": 11,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/Qwen/Qwen2.5-Coder-3B-Instruct",
-          "huggingface/Qwen/Qwen2.5-Coder-7B-Instruct",
-          "huggingface/Qwen/Qwen3-235B-A22B",
-          "huggingface/Qwen/Qwen3-4B-Instruct-2507",
-          "huggingface/Qwen/Qwen3-4B-Thinking-2507",
-          "huggingface/Qwen/Qwen3-8B",
-          "huggingface/XiaomiMiMo/MiMo-V2.6-Pro-RL",
-          "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-          "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-          "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-          "huggingface/deepseek-ai/DeepSeek-V3.2"
+          "huggingface/hexgrad/Kokoro-82M",
+          "huggingface/ideogram-ai/ideogram-4-fp8"
         ],
-        "changed": 14,
+        "changed": 4,
         "changed_fields": {
-          "api_endpoints": 1,
-          "capabilities": 3,
-          "delivery_modes": 1,
-          "limits": 1,
-          "routes": 13,
-          "source_refs": 2,
-          "task_evidence": 1
+          "routes": 4
         },
         "changed_models": [
           {
             "field_changes": [
               {
                 "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  {
-                    "name": "Chat Completions",
-                    "path": "/v1/chat/completions"
-                  },
-                  {
-                    "name": "Responses",
-                    "path": "/v1/responses"
-                  }
-                ],
-                "path": "api_endpoints"
-              },
-              {
-                "current": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  "huggingface-hf-inference",
-                  "huggingface-featherless",
-                  "huggingface-router"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-hf-inference",
-                  "huggingface-featherless"
-                ]
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "api_endpoints",
-              "routes",
-              "capabilities",
-              "source_refs"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-Coder-32B-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-14B",
+                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3-14B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "Qwen/Qwen3-14B",
+                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -3000,14 +2927,21 @@
                 "previous": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-14B",
+                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3-14B",
+                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "xiaomimimo/mimo-v2.5",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -3018,332 +2952,12 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-14B"
+            "model_ref": "huggingface/XiaomiMiMo/MiMo-V2.5"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3-235b-a22b-instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3-235b-a22b-instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B-Instruct-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-32B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3-32B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "Qwen/Qwen3-32B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3-32B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3-32B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "black-forest-labs/FLUX.1-schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux/schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.1-schnell"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "meta-llama/Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "meta-llama/llama-3.1-8b-instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "meta-llama/Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "meta-llama/Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "meta-llama/llama-3.1-8b-instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "routes",
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": 890000,
-                "path": "limits.context_tokens",
-                "previous": 327680
-              }
-            ],
-            "fields": [
-              "routes",
-              "limits"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-4-Scout-17B-16E-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "moonshotai/Kimi-K3",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "baseten",
                     "provider_model_id": "moonshotai/Kimi-K3",
@@ -3379,6 +2993,37 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
@@ -3392,198 +3037,22 @@
               {
                 "current": [
                   {
-                    "provider": "baseten",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
                     "provider": "deepinfra",
-                    "provider_model_id": "openai/gpt-oss-120b",
+                    "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "groq",
-                    "provider_model_id": "openai/gpt-oss-120b",
+                    "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "groq",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "openai/gpt-oss-120b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/openai/gpt-oss-120b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "groq",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "gpt-oss-20b",
+                    "provider_model_id": "zai-org/glm-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -3593,142 +3062,28 @@
                 "previous": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "openai/gpt-oss-20b",
+                    "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "groq",
-                    "provider_model_id": "openai/gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "gpt-oss-20b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/openai/gpt-oss-20b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/hunyuan-image/v2.1/text-to-image",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/tencent/HunyuanImage-2.1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
+                    "provider_model_id": "zai-org/GLM-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
+                    "provider_model_id": "zai-org/glm-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "zai-org",
-                    "provider_model_id": "glm-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.6",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6",
+                    "provider_model_id": "glm-4.7",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -3739,82 +3094,142 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6"
+            "model_ref": "huggingface/zai-org/GLM-4.7"
           },
           {
             "field_changes": [
               {
-                "path": "task_evidence",
-                "previous": [
+                "current": [
                   {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.2",
                     "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ]
-              },
-              {
-                "path": "routes",
-                "previous": [
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6v",
+                    "provider_model_id": "zai-org/glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.2",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "zai-org",
-                    "provider_model_id": "glm-4.6v-flash",
+                    "provider_model_id": "glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.2",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ]
-              },
-              {
-                "current": [
-                  "huggingface-router"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
-                ]
               }
             ],
             "fields": [
-              "task_evidence",
-              "routes",
-              "source_refs"
+              "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V-Flash"
+            "model_ref": "huggingface/zai-org/GLM-5.2"
           }
         ],
-        "current": 1670,
-        "previous": 1660,
-        "removed": 1,
+        "current": 1666,
+        "previous": 1670,
+        "removed": 6,
         "removed_model_refs": [
-          "huggingface/hexgrad/Kokoro-82M"
+          "huggingface/Luyu/co-condenser-marco",
+          "huggingface/com-kotobalabs/open-jev-deberta-v3-large",
+          "huggingface/deepseek-ai/DeepSeek-V3.2",
+          "huggingface/deepvk/USER-bge-m3",
+          "huggingface/stabilityai/stable-diffusion-3.5-large",
+          "huggingface/stabilityai/stable-diffusion-3.5-large-turbo"
         ],
-        "unchanged": 1645
+        "unchanged": 1660
       },
       "pricing": {
-        "commercial_hash": "ebb739f066bb4aa03966aed3453890e9124503346d203f15a7628a206c97f0e6",
+        "commercial_hash": "2060cb6c4f970ba82134950651439c150f489394e8a6456a52c07b5a52c9fab1",
         "outcome": "commercial",
-        "previous_commercial_hash": "2fc291bbe803f5d80571bba0997b5568b70f2e647ac7c7c4f61d4d26c4843910"
+        "previous_commercial_hash": "ebb739f066bb4aa03966aed3453890e9124503346d203f15a7628a206c97f0e6"
       },
       "pricing_coverage": {
-        "current_models": 1670,
+        "current_models": 1666,
         "delta": {
-          "resolved_models": 11,
-          "unknown_models": -1
+          "resolved_models": -1,
+          "unknown_models": -3
         },
-        "normalized_rate_models": 124,
+        "normalized_rate_models": 123,
         "not_applicable_models": 0,
-        "offer_models": 136,
+        "offer_models": 135,
         "raw_fact_models": 17,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
@@ -3838,17 +3253,19 @@
           "huggingface/BAAI/bge-base-en",
           "huggingface/BAAI/bge-base-en-v1.5"
         ],
-        "unknown_model_refs_omitted": 1514,
-        "unknown_models": 1534
+        "unknown_model_refs_omitted": 1511,
+        "unknown_models": 1531
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
@@ -3861,6 +3278,12 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -3879,7 +3302,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3986,9 +3409,9 @@
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -4125,7 +3548,7 @@
             "source_id": "kimi-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -4167,7 +3590,7 @@
               "observed_items": 2
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "kimi-api"
           },
@@ -4266,13 +3689,13 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "kimi-china-api"
+            "source_id": "kimi-api"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "kimi-pricing"
+            "source_id": "kimi-china-api"
           }
         ],
         "current": 9,
@@ -4899,9 +4322,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 101,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -5103,26 +4526,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -5316,9 +4733,9 @@
         "unchanged": 465
       },
       "pricing": {
-        "commercial_hash": "09cbb45f107c9798e6a942402e7bffc57dd5ff02acb8e6934ab4e8384eb15db0",
+        "commercial_hash": "24272b1008a24b2feb25acaef0fbe54d4f7ebceca27707091afe84dcf479d5b6",
         "outcome": "commercial",
-        "previous_commercial_hash": "31835fa847750bcddfba94296b1a460e8c3d1ed05bb7977c2479fe6b95c0551e"
+        "previous_commercial_hash": "09cbb45f107c9798e6a942402e7bffc57dd5ff02acb8e6934ab4e8384eb15db0"
       },
       "pricing_coverage": {
         "current_models": 465,
@@ -5827,18 +5244,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 11,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 35,
-    "changed_sources": 25,
-    "models": 4329,
-    "pricing_accepted": 16,
+    "changed_models": 25,
+    "changed_sources": 27,
+    "models": 4325,
+    "pricing_accepted": 17,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 4,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 1,
+    "removed_models": 6,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
