@@ -27,6 +27,12 @@ interface Table {
   rows: string[][];
 }
 
+interface ModelRecord {
+  name: string;
+  idCell: string;
+  fields: Map<string, string>;
+}
+
 function section(body: string, title: string): string {
   const lines = body.split(/\r?\n/);
   const start = lines.findIndex((line) => line.trim() === `## ${title}`);
@@ -68,6 +74,40 @@ function tables(body: string): Table[] {
 function codeId(value: string | undefined): string {
   const id = value?.match(/^`([^`]+)`$/)?.[1];
   return modelIdSchema.parse(id);
+}
+
+function modelRecords(table: Table): ModelRecord[] {
+  const [first, second] = table.header;
+  if (table.header.length === 2 && first !== undefined && first !== "") {
+    if (second === undefined) throw new Error("TypeSafe model table changed");
+    const fields = new Map<string, string>();
+    for (const row of table.rows) {
+      const [key, value] = row;
+      if (!key || !value || fields.has(key)) throw new Error("TypeSafe model field changed");
+      fields.set(key, value);
+    }
+    return [{ name: first, idCell: second, fields }];
+  }
+  if (first !== "" || table.header.length < 2 || table.header.slice(1).some((name) => !name))
+    throw new Error("TypeSafe model table changed");
+  const records = table.header.slice(1).map((name) => ({
+    name,
+    idCell: "",
+    fields: new Map<string, string>(),
+  }));
+  for (const row of table.rows) {
+    const key = row[0];
+    if (!key) throw new Error("TypeSafe model field changed");
+    for (const [index, value] of row.slice(1).entries()) {
+      const record = records[index];
+      if (record === undefined || !value || record.fields.has(key))
+        throw new Error("TypeSafe model field changed");
+      record.fields.set(key, value);
+      if (key === "Model ID") record.idCell = value;
+    }
+  }
+  if (records.some(({ idCell }) => idCell === "")) throw new Error("TypeSafe model field changed");
+  return records;
 }
 
 function signal(input: Input, path: string): void {
@@ -128,7 +168,7 @@ export function parseTypesafeCatalog(input: Input): ParsedProviderModel[] {
   const current = section(body, "Current models");
   if (!/Every model on this page is served by the same endpoint, `POST \/v1\/systemone`/.test(body))
     throw new Error("TypeSafe model endpoint contract changed");
-  if (!/Charged per input token\. Output tokens are free\./.test(current))
+  if (!/(?:Charged|You pay) per input token\. Output tokens are free\./.test(current))
     throw new Error("TypeSafe token billing contract changed");
   const api = bundle.documents.find(({ url }) => url === "https://docs.typesafe.ai/api.md")?.body;
   const pricingInputs = accounting(input, api);
@@ -138,93 +178,98 @@ export function parseTypesafeCatalog(input: Input): ParsedProviderModel[] {
     ["noul", "choice", "score"].every((type) => api.includes(`type="&#x22;${type}&#x22;"`));
   if (!typed) signal(input, "/api/question-types");
   const byId = new Map<string, ParsedProviderModel>();
-  for (const { header, rows } of tables(current)) {
-    if (header.length !== 2 || !header[0]) throw new Error("TypeSafe model table changed");
-    const id = codeId(header[1]);
-    if (byId.has(id)) throw new Error("Duplicate TypeSafe model ID");
-    const fields = new Map<string, string>();
-    for (const [key, value] of rows) {
-      if (!key || !value || fields.has(key)) throw new Error("TypeSafe model field changed");
-      fields.set(key, value);
-      if (
-        !["Price (per Btok / per Mtok)", "Rate limits", "Context length", "Input"].includes(key)
-      ) {
+  for (const table of tables(current)) {
+    for (const { name, idCell, fields } of modelRecords(table)) {
+      const id = codeId(idCell);
+      if (byId.has(id)) throw new Error("Duplicate TypeSafe model ID");
+      for (const key of fields.keys()) {
+        if (
+          [
+            "Model ID",
+            "Price (per Btok / per Mtok)",
+            "Rate limits",
+            "Context length",
+            "Input",
+          ].includes(key)
+        )
+          continue;
         if (/price|cost|billing|discount|cache/i.test(key))
           throw new Error("Unreviewed TypeSafe price field");
         signal(input, "/models/fields/extension");
       }
-    }
-    const rawPrice = fields.get("Price (per Btok / per Mtok)");
-    const prices = rawPrice?.match(/^\$(\d+(?:\.\d+)?)\s*\/\s*\$(\d+(?:\.\d+)?)$/);
-    const billion = prices?.[1];
-    const million = prices?.[2];
-    if (
-      million === undefined ||
-      billion === undefined ||
-      !decimalsEqual(multiplyDecimal(million, "1000"), billion)
-    )
-      throw new Error("TypeSafe token prices are missing or inconsistent");
-    const model = baseModel({
-      providerId: input.provider.id,
-      id,
-      name: header[0],
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    model.status = "active";
-    model.api_endpoints = [{ name: "System One", path: "/v1/systemone" }];
-    if (typed) {
-      model.tasks = ["classification"];
-      model.task_evidence = [
-        {
-          task: "classification",
-          source_ref: input.source.id,
-          namespace: "typesafe.question_type",
-          raw_value: "choice",
-          kind: "provider_type",
-        },
-      ];
-      model.capabilities.structured_output = true;
-    }
-    const inputLabel = fields.get("Input");
-    if (inputLabel?.startsWith("Text only.")) model.modalities.input = ["text"];
-    else signal(input, "/models/input");
-    const context = fields.get("Context length");
-    if (context !== undefined) {
-      model.model_card = { context_window: context.replace(/`/g, "") };
-      const total = context.match(/^(\d+)k tokens per request;/)?.[1];
-      if (total !== undefined) model.limits.context_tokens = Number(total) * 1000;
-      else signal(input, "/models/context-length");
-    }
-    model.pricing_state = "numeric";
-    model.price_facts = (
-      [
-        { meter: "input_text", price: million, raw_price: rawPrice },
-        { meter: "output_data", price: "0", raw_price: "Output tokens are free." },
-      ] as const
-    ).map((rate) => ({
-      ...rate,
-      currency: "USD",
-      unit: "million_tokens",
-      conditions: {},
-      source_ref: input.source.id,
-      source_locator: { kind: "provider_key", value: id },
-      derived: false,
-      raw_unit: "per Mtok",
-    }));
-    model.pricing_inputs = pricingInputs;
-    for (const rate of model.price_facts)
-      input.onPricingReconciliation?.({
-        disposition: "normalized",
-        reason_code: "exact_model_token_rate",
-        sample: `${id}:${rate.meter}`,
+      const rawPrice = fields.get("Price (per Btok / per Mtok)");
+      const prices = rawPrice?.match(/^\$(\d+(?:\.\d+)?)\s*\/\s*\$(\d+(?:\.\d+)?)$/);
+      const billion = prices?.[1];
+      const million = prices?.[2];
+      if (
+        million === undefined ||
+        billion === undefined ||
+        !decimalsEqual(multiplyDecimal(million, "1000"), billion)
+      )
+        throw new Error("TypeSafe token prices are missing or inconsistent");
+      const model = baseModel({
+        providerId: input.provider.id,
+        id,
+        name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
       });
-    if (fields.has("Rate limits"))
-      input.onPricingReconciliation?.({
-        disposition: "excluded",
-        reason_code: "rate_limits_not_billable_usage",
-      });
-    byId.set(id, model);
+      model.status = "active";
+      model.api_endpoints = [{ name: "System One", path: "/v1/systemone" }];
+      if (typed) {
+        model.tasks = ["classification"];
+        model.task_evidence = [
+          {
+            task: "classification",
+            source_ref: input.source.id,
+            namespace: "typesafe.question_type",
+            raw_value: "choice",
+            kind: "provider_type",
+          },
+        ];
+        model.capabilities.structured_output = true;
+      }
+      const inputLabel = fields.get("Input");
+      if (inputLabel === "Text" || inputLabel?.startsWith("Text only."))
+        model.modalities.input = ["text"];
+      else signal(input, "/models/input");
+      const context = fields.get("Context length");
+      if (context !== undefined) {
+        model.model_card = { context_window: context.replace(/`/g, "") };
+        const total = context.match(/^(\d+)k(?: tokens per request;| per-request(?: \/|$))/)?.[1];
+        if (total !== undefined) model.limits.context_tokens = Number(total) * 1000;
+        else signal(input, "/models/context-length");
+      }
+      model.pricing_state = "numeric";
+      model.price_facts = (
+        [
+          { meter: "input_text", price: million, raw_price: rawPrice },
+          { meter: "output_data", price: "0", raw_price: "Output tokens are free." },
+        ] as const
+      ).map((rate) => ({
+        ...rate,
+        currency: "USD",
+        unit: "million_tokens",
+        conditions: {},
+        source_ref: input.source.id,
+        source_locator: { kind: "provider_key", value: id },
+        derived: false,
+        raw_unit: "per Mtok",
+      }));
+      model.pricing_inputs = pricingInputs;
+      for (const rate of model.price_facts)
+        input.onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "exact_model_token_rate",
+          sample: `${id}:${rate.meter}`,
+        });
+      if (fields.has("Rate limits"))
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "rate_limits_not_billable_usage",
+        });
+      byId.set(id, model);
+    }
   }
   const aliases = tables(section(body, "Aliases"));
   if (aliases.length !== 1 || aliases[0]?.header.join("|") !== "Alias|Points to|Meaning")
