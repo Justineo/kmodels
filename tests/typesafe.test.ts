@@ -98,6 +98,38 @@ describe("TypeSafe AI", () => {
     ]);
   });
 
+  it("accepts the current horizontal model table and compact labels", async () => {
+    const { models, findings, reconciliation } = await parse({
+      models: await fixture("models-horizontal.md"),
+    });
+    expect(
+      models.map(({ model_id, name, aliases, limits, modalities }) => ({
+        model_id,
+        name,
+        aliases,
+        context_tokens: limits.context_tokens,
+        input: modalities.input,
+      })),
+    ).toEqual([
+      {
+        model_id: "jev-1.13.0",
+        name: "Jev 1.13",
+        aliases: ["jev-latest"],
+        context_tokens: 64000,
+        input: ["text"],
+      },
+      {
+        model_id: "jev-1.14.0",
+        name: "Jev 1.14",
+        aliases: ["jev-preview"],
+        context_tokens: 64000,
+        input: ["text"],
+      },
+    ]);
+    expect(findings).toEqual([]);
+    expect(reconciliation).toHaveLength(6);
+  });
+
   it("compiles request charges with response usage mappings", async () => {
     const { models } = await parse();
     const pricing = assembleParsedProviderPricing(
