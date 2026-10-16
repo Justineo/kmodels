@@ -1,0 +1,5 @@
+# Inference endpoints supported by Amazon Bedrock
+
+| **Endpoint**                    | **Supported APIs**                                                                                                                              | **Description**                                                                                                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bedrock-mantle.{region}.api.aws | [Responses API](inference-responses-api.md) / [Chat Completions API](inference-chat-completions.md) / [Messages API](inference-messages-api.md) | Region-specific endpoints for making inference requests for models hosted in Amazon Bedrock using the OpenAI-compatible endpoints and the Anthropic Messages API. |

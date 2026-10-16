@@ -10,6 +10,7 @@ import {
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
 import { formatPricingInterpretationSample } from "../src/catalog/bedrock.ts";
+import { parseMistralPricingCards } from "../src/catalog/mistral-commercial-source.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
@@ -1177,7 +1178,10 @@ async function azureCatalog(
     ["deployments-batch.md", "batch.md"],
   ] as const;
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("azure/openai.md") },
+    index: {
+      url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/models-azure-direct-openai.md",
+      body: await fixture("azure/openai.md"),
+    },
     documents: await Promise.all(
       documents
         .filter(([name]) => !omitted.has(name))
@@ -2181,7 +2185,7 @@ describe("model operation taxonomy", () => {
 describe("source taxonomy", () => {
   it("publishes a compact array of source kinds", () => {
     expect(manifest("azure").sources[0]).toMatchObject({
-      type: "repository",
+      type: "website",
     });
     expect(manifest("amazon-bedrock").sources[0]).toMatchObject({
       type: "website",
@@ -3014,6 +3018,92 @@ describe("Cohere adapters", () => {
 });
 
 describe("Mistral adapters", () => {
+  it("reads current sale amounts and keeps cached OCR cells separate from ordinary pages", async () => {
+    const value = manifest("mistral");
+    const configured = value.sources.find(({ id }) => id === "mistral-pricing");
+    if (configured === undefined) throw new Error("Missing Mistral pricing source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "mistral-pricing", minCards: 1, maxCards: 50 },
+    };
+    const catalogModels = [
+      {
+        ...baseModel({
+          providerId: "mistral",
+          id: "mistral-large-4",
+          name: "Mistral Large 4",
+          sourceId: "mistral-models",
+          observedAt,
+        }),
+        status: "active" as const,
+      },
+      {
+        ...baseModel({
+          providerId: "mistral",
+          id: "mistral-ocr-4-1",
+          name: "OCR 4.1",
+          sourceId: "mistral-models",
+          observedAt,
+        }),
+        status: "active" as const,
+      },
+    ];
+    const body = await fixture("mistral/pricing-sale.html");
+    expect(source.url).toBe("https://docs.mistral.ai/inference/pricing");
+    expect(parseMistralPricingCards(body)[0]?.modelUrls).toEqual([
+      "https://docs.mistral.ai/models/mistral-large-4-0",
+    ]);
+    expect(linkedDocumentUrls(body, source).map(({ href }) => href)).toContain(
+      "https://docs.mistral.ai/models/mistral-large-4-0",
+    );
+    const parse = (html: string) => {
+      const findings: PricingReconciliationItem[] = [];
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        catalogModels,
+        observedAt,
+        body: JSON.stringify({ index: { url: source.url, body: html }, documents: [] }),
+        onPricingReconciliation: (item) => findings.push(item),
+      });
+      return { models, findings };
+    };
+    const result = parse(body);
+    const large = result.models.find(({ model_id }) => model_id === "mistral-large-4");
+    const ocr = result.models.find(({ model_id }) => model_id === "mistral-ocr-4-1");
+    expect(large).toBeDefined();
+    expect(
+      large?.price_facts.map(({ meter, price, currency }) => ({ meter, price, currency })),
+    ).toEqual([
+      { meter: "input_text", price: "0.68", currency: "USD" },
+      { meter: "cache_read_text", price: "0.07", currency: "USD" },
+      { meter: "output_text", price: "2.09", currency: "USD" },
+    ]);
+    expect(ocr).toBeDefined();
+    expect(ocr?.price_facts).toEqual([
+      expect.objectContaining({ meter: "input_image", price: "4", unit: "thousand_pages" }),
+    ]);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        reason_code: "public_price_label_unsupported",
+        sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
+      }),
+    );
+    for (const bad of [
+      body.replace("$0.68", "$oops"),
+      body.replace("$0.68</ins>", "$0.68</ins><ins>$0.34</ins>"),
+      body.replace("$0.68</ins>", "$0.68</ins>unreviewed"),
+    ]) {
+      const parsed = parse(bad);
+      const model = parsed.models.find(({ model_id }) => model_id === "mistral-large-4");
+      expect(model).toBeDefined();
+      expect(model?.price_facts.some(({ meter }) => meter === "input_text")).toBe(false);
+      expect(
+        model?.price_facts.some(({ meter, price }) => meter === "output_text" && price === "2.09"),
+      ).toBe(true);
+    }
+  });
+
   it("binds renamed price cards through their linked official API identity", () => {
     const value = manifest("mistral");
     const configured = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -4273,9 +4363,9 @@ describe("Mistral adapters", () => {
       },
       {
         id: "mistral-pricing",
-        url: "https://mistral.ai/pricing/api/",
+        url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v5",
+        extractorVersion: "mistral-pricing-v6",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
@@ -6374,6 +6464,67 @@ describe("OpenAI adapters", () => {
 });
 
 describe("Azure adapters", () => {
+  it("reads published Learn pivots and expanded lifecycle and region companions", async () => {
+    const value = manifest("azure");
+    const configured = value.sources[0];
+    if (configured === undefined) throw new Error("Missing Azure source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "azure-catalog", minModels: 1, maxModels: 20 },
+    };
+    expect(new URL(source.url).searchParams.get("accept")).toBe("text/markdown");
+    expect(source.allowedHosts).toEqual(["learn.microsoft.com", "raw.githubusercontent.com"]);
+    const body = await fixture("azure/learn-models.md");
+    const documents = [
+      {
+        url: "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?accept=text/markdown",
+        body: await fixture("azure/lifecycle.md"),
+      },
+      {
+        url: "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure-region-availability?accept=text/markdown",
+        body: await fixture("azure/standard.md"),
+      },
+      {
+        url: "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-from-partners?accept=text/markdown",
+        body: await fixture("azure/partners.md"),
+      },
+    ];
+    const parse = (markdown: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        body: JSON.stringify({ index: { url: source.url, body: markdown }, documents }),
+      });
+    const models = parse(body);
+    expect(models.find(({ model_id }) => model_id === "gpt-6.1-sol")).toMatchObject({
+      version: "2026-09-29",
+      service_families: ["Azure OpenAI"],
+      api_endpoints: expect.arrayContaining([expect.objectContaining({ name: "createResponse" })]),
+      limits: { context_tokens: 1_050_000, max_output_tokens: 128_000 },
+    });
+    expect(models.find(({ model_id }) => model_id === "Cohere-parse-v5")).toMatchObject({
+      service_families: ["Foundry Models sold by Azure"],
+      tasks: ["ocr"],
+    });
+    expect(models.find(({ model_id }) => model_id === "gpt-old")).toMatchObject({
+      status: "retired",
+      replacement_model_ids: ["gpt-multi"],
+    });
+    expect(
+      models.find(({ model_id, version }) => model_id === "gpt-multi" && version === "2026-01-01"),
+    ).toMatchObject({
+      availability: expect.arrayContaining([
+        { region: "eastus", deployment_type: "Global Standard" },
+      ]),
+    });
+    expect(() => parse(body.replace('pivot="azure-direct-others"', 'pivot="unexpected"'))).toThrow(
+      "azure-direct-others pivot",
+    );
+    expect(() => parse(body + body)).toThrow("duplicated");
+    expect(() => parse(body.replaceAll("::: zone-end", ""))).toThrow("pivot");
+  });
+
   it("extracts fact-local accounting inputs from the reviewed Azure API contracts", async () => {
     const value = manifest("azure");
     const source = azureAccountingSource();
@@ -12693,7 +12844,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v29");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v30");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -12702,6 +12853,8 @@ describe("document adapter", () => {
       ]),
     ).toEqual([
       ["bedrock-mantle", true, undefined],
+      ["bedrock-endpoint-regions", true, undefined],
+      ["bedrock-endpoints", true, undefined],
       ["bedrock-rerank-supported", true, undefined],
       ["bedrock-public-pricing", true, undefined],
       ["bedrock-cohere-embed-v4-marketplace", true, undefined],
@@ -12814,6 +12967,78 @@ describe("document adapter", () => {
         disposition: "unsupported",
         reason_code: "optional_catalog_source_drifted",
       }),
+    );
+  });
+
+  it("reads relocated Mantle regions without requiring the optional Price List", async () => {
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    const responses = bundle.documents.find(({ url }) =>
+      url.endsWith("inference-responses-api.md"),
+    );
+    if (responses === undefined) throw new Error("Missing Bedrock Responses fixture");
+    responses.body =
+      "## Supported Regions and Endpoints\nSee [Regional availability by endpoints](endpoints-region-availability.md) and [Inference endpoints supported by Amazon Bedrock](endpoints.md).";
+    const regions = {
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.md",
+      body: await fixture("bedrock/endpoint-regions.md"),
+    };
+    const endpoints = {
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.md",
+      body: await fixture("bedrock/endpoints.md"),
+    };
+    bundle.documents = bundle.documents.filter(
+      ({ url }) => !url.includes("AmazonBedrockFoundationModels"),
+    );
+    bundle.documents.push(regions, endpoints);
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const replay = () => {
+      const findings: PricingReconciliationItem[] = [];
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(bundle),
+        observedAt,
+        onPricingReconciliation: (item) => findings.push(item),
+      });
+      const model = models.find(({ model_id }) => model_id === "anthropic.claude-haiku-4-5");
+      if (model === undefined) throw new Error("Missing Mantle model");
+      return { model, findings };
+    };
+    expect(replay().model.availability).toEqual([
+      { region: "us-east-1", deployment_type: "bedrock-mantle/in-region" },
+    ]);
+    expect(
+      replay().findings.some(
+        ({ reason_code }) => reason_code === "optional_catalog_source_drifted",
+      ),
+    ).toBe(false);
+    const card = bundle.documents.find(({ url }) => url.includes("model-card-anthropic-cl"));
+    if (card === undefined) throw new Error("Missing Claude card");
+    card.body = card.body.replaceAll("us-east-1", "eu-central-1");
+    expect(replay().model.availability).toEqual([
+      { region: "eu-central-1", deployment_type: "bedrock-mantle/in-region" },
+    ]);
+    card.body = card.body.replaceAll("eu-central-1", "us-west-1");
+    expect(replay().model.availability).toEqual([]);
+    card.body = card.body.replaceAll("us-west-1", "us-east-1");
+    const validRegions = regions.body;
+    regions.body = regions.body.replaceAll("icon-yes.png", "unknown.png");
+    expect(replay().model.availability).toEqual([]);
+    regions.body = validRegions + validRegions;
+    expect(replay().model.availability).toEqual([]);
+    regions.body = validRegions;
+    bundle.documents = bundle.documents.filter(({ url }) => url !== endpoints.url);
+    expect(replay().model.availability).toEqual([]);
+    bundle.documents.push(endpoints);
+    endpoints.body = endpoints.body.replace(
+      "bedrock-mantle.{region}.api.aws",
+      "bedrock-runtime.{region}.amazonaws.com",
+    );
+    expect(replay().model.availability).toEqual([]);
+    expect(replay().findings).toContainEqual(
+      expect.objectContaining({ reason_code: "optional_catalog_source_drifted" }),
     );
   });
 

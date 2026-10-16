@@ -4,11 +4,12 @@
 
 TypeSafe AI (`typesafe`) is a hosted provider. Its public
 [Models](https://docs.typesafe.ai/models.md) page is the exhaustive current catalog and
-first-party token price book. Each current-model table's code-formatted header establishes
-one exact callable model ID and its separate display name. The alias table attaches exact
-alternate request names to that model; aliases do not create duplicate catalog rows. The
-stable-release alias establishes maturity only for its current target. Version strings and
-release dates are not inferred from IDs or the provider launch date.
+first-party token price book. The current-model table may be vertical (one model per table)
+or horizontal (one column per model); in either layout, a code-formatted Model ID establishes
+one exact callable model and its table header supplies the separate display name. The alias
+table attaches exact alternate request names to that model; aliases do not create duplicate
+catalog rows. The stable-release alias establishes maturity only for its current target.
+Version strings and release dates are not inferred from IDs or the provider launch date.
 Markdown delimiter cells accept one or more hyphens with optional alignment colons, including
 the compact `:-` form. Header and row column counts and labeled fields remain strict.
 
@@ -56,9 +57,10 @@ price book. No unsupported cache discount or separate per-question charge is inf
 
 ## Validation
 
-`tests/fixtures/typesafe/` contains minimal reviewed excerpts of the official documents
-observed on 2026-09-22, with formatting retained where the parser depends on it. Adapter
-tests cover exact identity, aliases, capabilities, the two context constraints, decimal
-pricing, commercial assembly, malformed input, index drift and claim-local usage omissions.
+`tests/fixtures/typesafe/` contains minimal reviewed excerpts of the official documents,
+including the legacy vertical and current horizontal model-table layouts, with formatting
+retained where the parser depends on it. Adapter tests cover exact identity, aliases,
+capabilities, the two context constraints, decimal pricing, commercial assembly, malformed
+input, index drift and claim-local usage omissions.
 Registering this provider does not refresh durable `data/`; collection requires a separately
 authorized live refresh.

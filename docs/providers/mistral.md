@@ -21,7 +21,7 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 - Every imported definition document must be present exactly once. A malformed definition is
   isolated and signaled without hiding recognized siblings. The first API name is canonical, later
   API names are aliases, and definitions without an API name do not create catalog rows.
-- The official [API pricing page](https://mistral.ai/pricing/api/) is the preferred current amount
+- The official [API pricing page](https://docs.mistral.ai/inference/pricing) is the preferred current amount
   source. The repository remains the fallback amount source and owns model identity, lifecycle,
   capabilities, and routes. For the exact overlapping claim, a price-page amount supersedes a
   conflicting repository amount; the losing observation remains local conflict evidence.
@@ -30,8 +30,17 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   row still binds through its unique exact active catalog title. Dollar-prefixed cells publish USD
   only, so the parser does not manufacture an EUR amount. Explicit page units remain scoped to
   their row: tokens, OCR pages, audio minutes, or speech characters.
-  The configured URL redirects to the official
-  [inference pricing page](https://docs.mistral.ai/inference/pricing). That page's model tables
+  The manifest uses the canonical documentation URL directly. Relative model-card links resolve
+  on `docs.mistral.ai`; resolving them against the former `mistral.ai/pricing/api/` entry point
+  silently lost every discovered companion after its cross-host redirect. The Markdown view has
+  a different layout and is not the HTML parser's input.
+  A promotional cell's single `ins` amount is current; its paired `del` amount is the superseded
+  regular price. Screen-reader labels do not become part of either amount. Malformed, duplicate,
+  or otherwise unreadable sale markup is isolated to the affected cell and signaled.
+  Header semantics remain part of the meter: a cached-input page cell cannot overwrite ordinary
+  OCR pages. Cached non-token columns currently have no reviewed meter/quantity contract and are
+  signaled as unsupported, preserving ordinary page, minute, and character amounts.
+  The page's model tables
   alone do not establish current request-service rates or prove those rates were withdrawn.
   A missing service section requires first-party successor evidence before a source repair;
   until then the topology guard retains the accepted partition.

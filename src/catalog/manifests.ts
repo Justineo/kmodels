@@ -568,7 +568,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
-        extractorVersion: "typesafe-catalog-v2",
+        extractorVersion: "typesafe-catalog-v3",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -1148,7 +1148,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v29",
+        extractorVersion: "bedrock-catalog-v30",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1194,6 +1194,20 @@ export const manifests = [
             [
               "bedrock-mantle",
               "https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.md",
+              1,
+              "markdown",
+              true,
+            ],
+            [
+              "bedrock-endpoint-regions",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.md",
+              1,
+              "markdown",
+              true,
+            ],
+            [
+              "bedrock-endpoints",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.md",
               1,
               "markdown",
               true,
@@ -1693,13 +1707,13 @@ export const manifests = [
     sources: [
       {
         id: "azure-models",
-        url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/models-azure-direct-openai.md",
-        type: "repository",
+        url: "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure?accept=text/markdown",
+        type: "website",
         access: "public",
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
-        extractorVersion: "azure-catalog-v7",
+        extractorVersion: "azure-catalog-v8",
         fields: [
           "model_id",
           "version",
@@ -1715,7 +1729,7 @@ export const manifests = [
           "retired_at",
           "replacement_model_ids",
         ],
-        allowedHosts: ["raw.githubusercontent.com"],
+        allowedHosts: ["learn.microsoft.com", "raw.githubusercontent.com"],
         maxResponseBytes: mebibytes(8),
         scope: "global",
         exhaustive: false,
@@ -1728,32 +1742,20 @@ export const manifests = [
           optionalDocuments: true,
           documents: optionalFixedDocuments([
             [
-              "direct-others",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-azure-direct-others.md",
-            ],
-            [
               "partners",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-partners.md",
+              "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-from-partners?accept=text/markdown",
             ],
             [
               "lifecycle",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-model-retirement-schedule-content.md",
+              "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?accept=text/markdown",
             ],
             [
               "retired",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-retired-models-content.md",
+              "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/retired-models?accept=text/markdown",
             ],
             [
-              "standard",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-standard.md",
-            ],
-            [
-              "provisioned",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-provisioned.md",
-            ],
-            [
-              "batch",
-              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-batch.md",
+              "regions",
+              "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure-region-availability?accept=text/markdown",
             ],
           ]),
         },
@@ -2926,14 +2928,14 @@ export const manifests = [
       },
       {
         id: "mistral-pricing",
-        url: "https://mistral.ai/pricing/api/",
+        url: "https://docs.mistral.ai/inference/pricing",
         type: "website",
         source: ["website", "repository"],
         access: "public",
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v5",
+        extractorVersion: "mistral-pricing-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],

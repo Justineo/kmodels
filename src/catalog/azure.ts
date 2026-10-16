@@ -949,29 +949,56 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
   }
 }
 
-function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
+function document(bundle: z.infer<typeof linkedBundleSchema>, ...suffixes: string[]): string {
   return (
-    bundle.documents.find((candidate) => new URL(candidate.url).pathname.endsWith(suffix))?.body ??
-    ""
+    bundle.documents.find((candidate) =>
+      suffixes.some((suffix) => new URL(candidate.url).pathname.endsWith(suffix)),
+    )?.body ?? ""
   );
+}
+
+function catalogPivot(body: string, pivot: string): string {
+  const sections = [
+    ...body.matchAll(/^::: zone pivot="([a-z-]+)"\r?\n([\s\S]*?)^::: zone-end\s*$/gm),
+  ].filter((match) => match[1] === pivot);
+  const content = sections[0]?.[2];
+  if (sections.length !== 1 || content === undefined)
+    throw new Error(`Azure Learn catalog omitted or duplicated its ${pivot} pivot`);
+  return content;
 }
 
 export function parseAzureCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-catalog") throw new Error("Wrong Azure catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const openAi = bundle.index.body;
-  const others = document(bundle, "/models-azure-direct-others.md");
-  const partners = document(bundle, "/models-partners.md");
+  const learn = new URL(bundle.index.url).hostname === "learn.microsoft.com";
+  const openAi = learn ? catalogPivot(bundle.index.body, "azure-openai") : bundle.index.body;
+  const others = learn
+    ? catalogPivot(bundle.index.body, "azure-direct-others")
+    : document(bundle, "/models-azure-direct-others.md");
+  const partners = document(bundle, "/models-partners.md", "/models-from-partners");
   const models = new Map<string, ProviderModel>();
 
-  lifecycle(models, input, document(bundle, "/concepts-model-retirement-schedule-content.md"));
+  lifecycle(
+    models,
+    input,
+    document(
+      bundle,
+      "/concepts-model-retirement-schedule-content.md",
+      "/model-retirement-schedule",
+    ),
+  );
   for (const suffix of [
     "/deployments-standard.md",
     "/deployments-provisioned.md",
     "/deployments-batch.md",
   ])
     availability(models, input, document(bundle, suffix));
+  availability(
+    models,
+    input,
+    document(bundle, "/models-sold-directly-by-azure-region-availability"),
+  );
 
   for (const fact of [
     ...catalogFacts(openAi, serviceFamilies.openAi),
@@ -1007,7 +1034,11 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
     });
   }
   assistants(models, input, openAi);
-  retiredHistory(models, input, document(bundle, "/concepts-retired-models-content.md"));
+  retiredHistory(
+    models,
+    input,
+    document(bundle, "/concepts-retired-models-content.md", "/retired-models"),
+  );
 
   const values = [...models.values()].map((model) => ({
     ...model,
