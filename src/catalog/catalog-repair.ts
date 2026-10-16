@@ -72,6 +72,9 @@ type SourceAttempt = z.infer<typeof sourceAttemptSchema>;
 // These report missing contracts owned by an extractor, not ordinary unknown prices.
 const repairableReconciliationReasons = new Set([
   "unknown_public_pricing_card",
+  "public_price_shape_unsupported",
+  "public_price_label_unsupported",
+  "optional_catalog_source_drifted",
   "pricing_input_contract_partial",
   "pricing_input_contract_drift",
   "endpoint_reference_drift",

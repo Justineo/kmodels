@@ -98,6 +98,64 @@ it("prepares exact reviewed source commands instead of provider IDs", () => {
   ).toEqual([]);
 });
 
+it.each([
+  {
+    provider_id: "amazon-bedrock",
+    source_id: "bedrock-models",
+    reason: "optional_catalog_source_drifted",
+    sample: "Bedrock Mantle: Bedrock Mantle guide omitted its region table",
+  },
+  {
+    provider_id: "mistral",
+    source_id: "mistral-pricing",
+    reason: "public_price_shape_unsupported",
+    sample: "Mistral Large 4: Input",
+  },
+  {
+    provider_id: "mistral",
+    source_id: "mistral-pricing",
+    reason: "public_price_label_unsupported",
+    sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
+  },
+])(
+  "exposes $reason for independent repair even when source bytes and fallback are unchanged",
+  ({ provider_id, source_id, reason, sample }) => {
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          provider_id,
+          attempt: {
+            outcome: "accepted",
+            pricing: {
+              outcome: "failed",
+              failure_code: "pricing_validation_failed",
+              message: "Service topology retained",
+            },
+            sources: [
+              {
+                source_id,
+                outcome: "unchanged",
+                pricing_reconciliation: {
+                  reason_counts: { [reason]: 1 },
+                  diagnostics: [{ reason_code: reason, sample }],
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+    expect(candidates).toContainEqual(
+      expect.objectContaining({
+        source_id,
+        trigger: "source_pricing_structure",
+        message: expect.stringContaining(sample),
+      }),
+    );
+    expect(candidates).toContainEqual(expect.objectContaining({ trigger: "pricing_validation" }));
+  },
+);
+
 describe("catalog repair candidate selection", () => {
   it("reviews repeated public 404/410 failures for relocation without escalating transient transport", () => {
     const input = (message: string, failures: number) =>
@@ -455,6 +513,24 @@ describe("catalog repair candidate selection", () => {
                 { source_id: "openai-api", outcome: "skipped_not_configured" },
               ],
               validation_issue: { code: "model_count_drop", message: "model count dropped" },
+            },
+          }),
+          provider({
+            provider_id: "mistral",
+            attempt: {
+              outcome: "accepted",
+              sources: [
+                {
+                  source_id: "mistral-pricing",
+                  outcome: "unchanged",
+                  pricing_reconciliation: {
+                    reason_counts: { public_model_price_without_rate: 1 },
+                    diagnostics: [
+                      { reason_code: "public_model_price_without_rate", sample: "unpriced-model" },
+                    ],
+                  },
+                },
+              ],
             },
           }),
         ]),

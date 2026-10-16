@@ -33,8 +33,18 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
   require an exact labeled API ID whose visible text agrees with its copy payload. A unique active
   repository ID or alias binds the card; exact active names remain a fallback. The latest full
   refresh has no unbound public pricing cards, while unresolved identity still fails closed.
-- Bedrock: the removed `bedrock-mantle.md` companion is replaced by the official Responses API
-  guide's Mantle region table. Exact region/endpoint agreement remains mandatory. Where the Price
+  Current HTML tables publish Large 4's sale amounts in `ins` alongside struck-through `del`
+  originals. Parsing current amounts restores its USD input/cache/output rates without treating
+  the original price as a second tariff. Cached OCR cells no longer overwrite ordinary page
+  prices. The canonical documentation URL restores relative model-card acquisition: the former
+  company-domain entry point redirected but resolved every discovered card on the wrong host.
+  Current replay reads 67 catalog models, 14 priced models, and all discovered companions.
+- Bedrock: the Responses API guide now delegates Mantle regions to its linked endpoint-region
+  matrices and endpoint definition. Fixed companions read explicit Mantle support separately from
+  Runtime and require the exact documented Mantle hostname template. Historical combined tables
+  remain replayable. A missing optional Price List cannot justify skipping catalog parser replay;
+  repair run 38840690502 missed this independently reproducible relocation after treating the
+  omitted Foundation Models offer as a required parser dependency. Where the Price
   Lists have no model rate, exact model-card Standard token tables can supply scoped Kimi K3 and
   OpenAI rates. Kimi K3's day-first launch date and Runtime Responses route are read from its card.
   Modern cards' separate Runtime/Mantle availability tables are read without conflating endpoints;
@@ -64,6 +74,10 @@ semantic findings or repair candidates. Scheduled refresh and repair do not run 
 - Azure: a Claude cache-read amount followed by a numeric HTML footnote parses as the same
   published MTok price; the footnote is not part of the amount. Delegated Foundry geography stays
   explicitly scoped.
+  Unavailable public MicrosoftDocs inputs now use the independently linked Microsoft Learn
+  Markdown views. The sold-models article contains two explicit pivots; OpenAI and other Azure
+  models retain their own service families. Expanded regional, lifecycle, retired, and partner
+  tables replay to 262 models within the unchanged 120–300 bounds.
 - Kimi: formerly separate model pages now share a combined overview with two tables. Extraction
   deduplicates identical documents and preserves the new 5-minute/1-hour cache-write rates. The
   revised tools page contributes independent Search, Search Pro and Fetch fees while retaining the
@@ -105,6 +119,18 @@ manifest requires an independent first-party index/link and verified replacement
 transport/auth failures are not parser repairs. When source evidence is unavailable and no
 deterministic candidate exists, preparation reports incomplete rather than a healthy no-op.
 Missing optional credentials alone remains normal configured scope.
+
+Repair run 38840690502 stopped after its initial six-minute review without producing a patch.
+Its Bedrock assessment treated an optional Price List as required for catalog replay; its Azure
+assessment searched the unavailable GitHub repository without checking published Learn tables;
+its Mistral assessment treated missing service prices as blocking independent model-price repairs
+and did not inspect Large 4's rejected sale cell. These were investigation gaps, not evidence that
+every candidate was unrepairable. Preparation now admits the exact rejected-price and optional
+catalog-companion diagnostics on unchanged bytes, including their samples. Investigation must
+separate a reproducible parser defect from whether the entire provider partition can publish.
+The matching-refresh Mistral bundle `9f856baf7d161f24…` already contained the sale markup; this is
+not attributed only to newly fetched content. Existing topology checks still retain the complete
+Mistral pricing partition until independent first-party service-price evidence is available.
 
 The manifest-backed evidence CLI and reviewed source hosts are reachable in the remote sandbox:
 run 35484173155 fetched all 13 public candidates with no firewall denial. Its premature missing-data

@@ -29,6 +29,12 @@ Status: implemented
   parser failures. When transport or required commercial evidence is unavailable and no code-repair
   candidate exists, preparation reports incomplete instead of claiming a healthy no-op. Missing
   optional credentials alone remains a normal configured scope.
+  Rejected public price cells, unsupported price labels, and
+  drifted optional catalog companions also carry their exact diagnostic samples into admission,
+  even when source bytes are unchanged and a separate pricing partition remains retained. Replay
+  and local parser repair do not require the whole provider to become publishable. A GitHub-source
+  404 requires checking the provider's published documentation, and a rejected price requires
+  examining the actual markup and column semantics before declaring it unpublished.
 - Public 404/410 responses enter relocation review after two consecutive failures. Transient
   transport/auth failures do not. A source URL changes only after independent first-party evidence
   establishes its successor. The public evidence CLI reports omitted companions explicitly even

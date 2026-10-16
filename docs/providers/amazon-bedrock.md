@@ -81,10 +81,19 @@ percentage is applied. Exact Geo and Global CRIS rows apply to Runtime inference
 the In-Region row applies to Mantle where that endpoint is published.
 
 The [Responses API guide](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html)
-supplies Mantle service Regions through its `Supported Regions and Endpoints` table. The former
-`bedrock-mantle.md` URL returns 404; the fixed companion retains its `bedrock-mantle` dependency key
-but fetches `inference-responses-api.md`. Region codes must still agree with the exact Mantle endpoint
-hostname. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
+now links its former regional table to
+[Regional availability by endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.html)
+and [Inference endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html).
+Fixed companions fetch both pages. Mantle availability requires an explicit positive Mantle cell
+in the geography's table and the independently documented `bedrock-mantle.{region}.api.aws`
+endpoint template with Responses API support. Runtime-only rows, unknown support markers,
+duplicate regions, missing companions, or a changed hostname cannot establish Mantle availability.
+The model card must independently support that region and endpoint. The earlier combined
+Region/Endpoint table remains readable for historical replay when neither new companion exists.
+The `bedrock-mantle` dependency key still fetches `inference-responses-api.md`; the obsolete
+`bedrock-mantle.md` URL is not used. Missing optional Price Lists do not prevent catalog or
+regional-contract parser replay; pricing completeness separately protects publication.
+Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
 public ID, but it cannot create global catalog presence or publish account data.
 It uses the standard AWS credential chain. Long-lived access keys require the access-key ID and
 secret; temporary credentials additionally require `AWS_SESSION_TOKEN`. Rejected or revoked

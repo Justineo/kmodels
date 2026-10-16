@@ -949,6 +949,50 @@ function cardAvailability(body: string, observedAt: string): BedrockAvailability
 }
 
 function mantleRegions(documents: z.infer<typeof linkedBundleSchema>["documents"]): Set<string> {
+  const regional = exactDocument(
+    documents,
+    "/bedrock/latest/userguide/endpoints-region-availability.md",
+  );
+  const endpoints = exactDocument(documents, "/bedrock/latest/userguide/endpoints.md");
+  if (regional !== undefined || endpoints !== undefined) {
+    if (regional === undefined || endpoints === undefined)
+      throw new Error("Bedrock Mantle endpoint companions were incomplete");
+    const endpointTable = markdownTable(endpoints, ["Endpoint", "Supported APIs"]);
+    if (endpointTable === undefined)
+      throw new Error("Bedrock inference endpoint table was missing");
+    const mantle = endpointTable.rows.filter(
+      (row) => row[endpointTable.header.indexOf("Endpoint")] === "bedrock-mantle.{region}.api.aws",
+    );
+    if (
+      mantle.length !== 1 ||
+      !mantle[0]?.[endpointTable.header.indexOf("Supported APIs")]?.includes(
+        "[Responses API](inference-responses-api.md)",
+      )
+    )
+      throw new Error("Bedrock Mantle endpoint template changed");
+    const regions = new Set<string>();
+    const seen = new Set<string>();
+    for (const geography of regional.split(/^## /m).slice(1)) {
+      const table = markdownTable(geography, ["Region", "bedrock-runtime", "bedrock-mantle"]);
+      if (table === undefined)
+        throw new Error("Bedrock endpoint geography omitted its region table");
+      for (const row of table.rows) {
+        const region = row[table.header.indexOf("Region")]?.match(
+          /^([a-z]{2}(?:-[a-z0-9]+)+-\d) \([^)]+\)$/,
+        )?.[1];
+        const cell = row[table.header.indexOf("bedrock-mantle")] ?? "";
+        const yes = supported(cell);
+        const no = cell.includes("icon-no.png");
+        if (region === undefined || seen.has(region) || yes === no)
+          throw new Error("Invalid Bedrock Mantle regional support row");
+        seen.add(region);
+        if (yes) regions.add(region);
+      }
+    }
+    if (regions.size === 0)
+      throw new Error("Bedrock Mantle endpoint contained no supported regions");
+    return regions;
+  }
   const document = exactDocument(documents, "/bedrock/latest/userguide/inference-responses-api.md");
   if (document === undefined) throw new Error("Bedrock catalog omitted Mantle regions");
   const content = section(document, "Supported Regions and Endpoints");
