@@ -149,12 +149,35 @@ export function parseMistralPricingCards(
         if (title === "" || href === undefined || !/^\/models\/[a-z0-9-]+\/?$/u.test(href))
           continue;
         const rows = cells.slice(1).flatMap((cell, index): MistralPricingRow[] => {
-          const value = compact($(cell).text());
+          const content = $(cell).clone();
+          const sale = content.find("ins");
+          const original = content.find("del");
+          if (
+            (sale.length > 0 || original.length > 0) &&
+            (sale.length !== 1 || original.length !== 1)
+          ) {
+            reconcile?.({
+              disposition: "unsupported",
+              reason_code: "public_price_shape_unsupported",
+              sample: `${title}: ${headers[index + 1]}`,
+            });
+            return [];
+          }
+          // The page labels its struck-through amount as the original, superseded price.
+          content.find("del,.sr-only").remove();
+          const value = compact(content.text());
           if (value === "—" || value.toLowerCase() === "free") return [];
           const match = value.match(
             /^\$(\d+(?:\.\d+)?)(?:\s*(\/\s*1000\s*pages|\/\s*min|\/\s*m\s*chars))?$/iu,
           );
-          if (match?.[1] === undefined) return [];
+          if (match?.[1] === undefined) {
+            reconcile?.({
+              disposition: "unsupported",
+              reason_code: "public_price_shape_unsupported",
+              sample: `${title}: ${headers[index + 1]}`,
+            });
+            return [];
+          }
           const suffix = match[2]
             ?.toLowerCase()
             .replace(/^\/\s*/u, "/ ")
@@ -163,7 +186,9 @@ export function parseMistralPricingCards(
           if (column === undefined) return [];
           const label =
             suffix === "/ 1000 pages"
-              ? "OCR"
+              ? column === "Input"
+                ? "OCR"
+                : `${column} (/1000 pages)`
               : suffix === "/ min"
                 ? column === "Input"
                   ? "Audio Input/min"
@@ -189,7 +214,7 @@ export function parseMistralPricingCards(
           .every((cell) => compact($(cell).text()).toLowerCase() === "free");
         cards.push({
           id: "",
-          modelUrls: [new URL(href, "https://mistral.ai").href],
+          modelUrls: [new URL(href, "https://docs.mistral.ai").href],
           title,
           text: compact($(row).text()),
           rows,

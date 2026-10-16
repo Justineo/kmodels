@@ -341,6 +341,17 @@ then owned contract omissions. Correct invocation errors, inspect the exact reje
 the parser branch that rejects it, and try a concrete alternative explanation. A genuine external
 blocker may end a failed run, but only after exhausting the available independent repairs.
 
+Keep source-parser repair separate from provider publication. A missing optional Price List does
+not prevent replaying a catalog bundle or inspecting another companion's rejected region table.
+A retained service topology does not prevent fixing a model's independently unreadable price cell.
+For a missing GitHub documentation repository, inspect the provider's published documentation and
+its official Markdown representation as well as repository search; verify the published page's
+source metadata and authoritative navigation before migrating the manifest. For a rejected price,
+inspect the actual HTML cell, including `del`/`ins` sale amounts and its column header. A cached
+input cell cannot replace an ordinary input rate. Parser output saying no rate was recognized
+does not establish that the source publishes no rate. Reproduce these local defects and validate
+an independent repair even if another provider or service price book remains blocked.
+
 The scheduled workflow does not run Jev; the manual experiment has not demonstrated incremental
 production defect discovery. Use observed refresh evidence to establish the gap before proposing
 a semantic check; see `docs/refresh-repair-audit.md`. Record source URL, observation time, hash,
