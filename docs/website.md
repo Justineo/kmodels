@@ -91,7 +91,7 @@ Status: implemented core; provider pricing convergence is in progress
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
 - The detail flow is `[capacity charges when linked] → [Run mode when selectable] → model rates
-→ collapsed related services → pricing notes`. The first mechanism in
+  → collapsed related services → pricing notes`. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
   recommendation, or cheapest-offer choice. A sole mechanism is named as the Run mode in the model
   rate block so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
