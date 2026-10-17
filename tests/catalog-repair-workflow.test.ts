@@ -5,6 +5,19 @@ import { z } from "zod";
 const source = new URL("../.github/workflows/catalog-repair.md", import.meta.url);
 const compiled = new URL("../.github/workflows/catalog-repair.lock.yml", import.meta.url);
 
+it("exercises the same isolated repair bootstrap in CI, preparation, and publication", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const setup = "uses: ./.github/actions/setup-repair-toolchain";
+  expect(job(workflow, "agent")).toContain(setup);
+  expect(job(workflow, "commit_repair")).toContain(setup);
+  const smoke = job(ci, "repair-toolchain");
+  expect(smoke).toContain("${{ runner.temp }}/kmodels-vite-plus");
+  expect(smoke).toContain(setup);
+  expect(smoke.indexOf("vp env doctor")).toBeGreaterThan(smoke.indexOf(setup));
+  expect(smoke).not.toContain("COPILOT_GITHUB_TOKEN");
+});
+
 function job(workflow: string, name: string): string {
   const body = workflow.match(new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  \\w+:\\n|$)`))?.[1];
   if (body === undefined) throw new Error(`Missing workflow job: ${name}`);

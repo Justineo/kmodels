@@ -143,14 +143,7 @@ safe-outputs:
             filter: blob:none
             persist-credentials: false
         - name: Install the pinned toolchain
-          run: |
-            set -euo pipefail
-            VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
-            export VP_VERSION
-            curl --fail --silent --show-error --location --retry 3 https://viteplus.dev/install.sh | bash
-            echo "$VP_HOME/bin" >> "$GITHUB_PATH"
-            "$VP_HOME/bin/vp" env install
-            "$VP_HOME/bin/vp" install --frozen-lockfile
+          uses: ./.github/actions/setup-repair-toolchain
         - name: Apply the validated repair
           id: apply_repair
           env:
@@ -240,19 +233,8 @@ jobs:
           esac
 
 steps:
-  - name: Install Vite+ in the shared sandbox directory
-    run: |
-      set -euo pipefail
-      VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
-      export VP_VERSION
-      curl --fail --silent --show-error --location --retry 3 https://viteplus.dev/install.sh | bash
-      echo "$VP_HOME/bin" >> "$GITHUB_PATH"
-
   - name: Install the project runtime and dependencies
-    run: |
-      vp env install
-      vp install --frozen-lockfile
-      vp env doctor
+    uses: ./.github/actions/setup-repair-toolchain
 
   - name: Read the latest completed refresh evidence
     env:

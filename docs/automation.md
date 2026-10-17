@@ -101,7 +101,7 @@ Status: implemented
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
   for compilation, including its supported `threat-detection.report-as-issue` switch. Compile with
-  `--action-mode action --action-tag v0.90.0` to preserve the reviewed setup-action update. Keep the
+  `--action-mode action --action-tag v0.91.6` to preserve the reviewed setup-action update. Keep the
   generated action pins synchronized with that compiler; v0.87.10 cannot express this policy.
   Pin `sandbox.agent.version` to v0.28.27 so the Copilot Responses adapter normalizes replayed
   `apply_patch` item IDs from `ctc_` to `fc_` ([upstream fix](https://github.com/github/gh-aw-firewall/pull/8944)).
@@ -110,9 +110,21 @@ Status: implemented
   `.github/aw/actions-lock.json` supplies the v0.28.27 image digests from gh-aw v0.90.0's
   [published pins](https://github.com/github/gh-aw/blob/v0.90.0/pkg/actionpins/data/action_pins.json),
   keeping recompilation reproducible with the stable compiler.
+  The same lock records the currently adopted explicit artifact-action refs. Framework-injected
+  actions follow the pinned compiler's bundled versions; regenerate rather than editing their
+  emitted pins independently of the manifest.
 - Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
   `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
   stays outside the framework's log-redaction and artifact directories.
+  Preparation, publication, and a separate ordinary-CI smoke job use the same local
+  `.github/actions/setup-repair-toolchain` action. It sources the installer's generated `env`
+  file and persists the complete PATH for subsequent steps, including Vite+ 1's `fallback-bin`
+  directory. Adding only `VP_HOME/bin` leaves a seemingly usable CLI whose environment doctor
+  fails before inference. The shared action verifies runtime installation, frozen dependencies,
+  and `vp env doctor`; toolchain upgrades therefore exercise the actual repair bootstrap in CI
+  without spending inference credits. A setup failure records an explicit environment-failure
+  summary. Framework-generated missing-output/prompt-exhaustion messages cannot establish that
+  an agent investigation ran; diagnose the first failed setup or execution step.
   The setup action's `~/.vite-plus` installation is outside AWF's mounted home subdirectories.
   Vite+ installs the Node.js version from `.node-version` and the frozen dependency graph before
   inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's

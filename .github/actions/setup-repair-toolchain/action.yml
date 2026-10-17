@@ -1,0 +1,19 @@
+name: Set up the catalog repair toolchain
+description: Install and verify the pinned toolchain in the directory shared with the repair sandbox.
+runs:
+  using: composite
+  steps:
+    - name: Install and verify the shared runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        : "${VP_HOME:?VP_HOME must identify the shared toolchain directory}"
+        trap 'echo "::error::Catalog repair toolchain setup failed; inference or publication could not start. See the first failed command above."; echo "Catalog repair toolchain setup failed. This is an environment failure, not an incomplete model investigation; inspect the first failed command in the setup step." >> "$GITHUB_STEP_SUMMARY"' ERR
+        VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
+        export VP_VERSION
+        curl --fail --silent --show-error --location --retry 3 https://viteplus.dev/install.sh | bash
+        source "$VP_HOME/env"
+        echo "PATH=$PATH" >> "$GITHUB_ENV"
+        vp env install
+        vp install --frozen-lockfile
+        vp env doctor
