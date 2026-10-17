@@ -9,6 +9,22 @@ on:
     branches: [main]
 
 jobs:
+  repair-toolchain:
+    runs-on: ubuntu-latest
+    env:
+      VP_HOME: ${{ runner.temp }}/kmodels-vite-plus
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify the repair environment without inference
+        uses: ./.github/actions/setup-repair-toolchain
+
+      - name: Verify the environment persists to subsequent steps
+        run: |
+          vp env doctor
+          vp node --version
+
   verify:
     runs-on: ubuntu-latest
     steps:
