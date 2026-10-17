@@ -12,7 +12,7 @@ jobs:
   repair-toolchain:
     runs-on: ubuntu-latest
     env:
-      VP_HOME: ${{ runner.temp }}/kmodels-vite-plus
+      VP_HOME: /tmp/kmodels-vite-plus
     steps:
       - name: Checkout
         uses: actions/checkout@v7
