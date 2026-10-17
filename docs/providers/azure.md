@@ -192,6 +192,13 @@ sibling rates survive.
   These cooldowns also apply to the reviewed `Too many requests` response body returned with
   HTTP 200. A cooldown that exceeds the shared request retry budget fails the refresh rather
   than causing an early retry; the accepted pricing partition remains stale.
+- A pricing `source_unavailable` outcome can also wrap a parser rejection after a successful
+  fetch. Inspect the underlying warning and replay the Retail parser before diagnosing transport.
+  The public feed includes model SKUs absent from the documented catalog and versionless rows
+  with multiple possible catalog versions. These emit `retail_identity_not_unique` or
+  `retail_version_not_unique`; if exact bindings fall below the reviewed coverage guard, the
+  previous pricing partition remains stale. Fetch success does not justify guessing identities,
+  assigning an ambiguous family rate to every version, or lowering `minHandledRatio`.
 - A local Retail Prices failure can occur before any HTTP response: the observed local proxy
   path timed out during TLS, while the same public request completed directly. Diagnose curl exit
   code and phase before changing an extractor. Where direct access is verified and intended, add
