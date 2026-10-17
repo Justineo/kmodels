@@ -12,7 +12,7 @@ it("exercises the same isolated repair bootstrap in CI, preparation, and publica
   expect(job(workflow, "agent")).toContain(setup);
   expect(job(workflow, "commit_repair")).toContain(setup);
   const smoke = job(ci, "repair-toolchain");
-  expect(smoke).toContain("${{ runner.temp }}/kmodels-vite-plus");
+  expect(smoke).toContain("VP_HOME: /tmp/kmodels-vite-plus");
   expect(smoke).toContain(setup);
   expect(smoke.indexOf("vp env doctor")).toBeGreaterThan(smoke.indexOf(setup));
   expect(smoke).not.toContain("COPILOT_GITHUB_TOKEN");
