@@ -1729,8 +1729,7 @@ function commercialPricing(
       rates: rate === undefined ? [] : [rate],
       raw,
     });
-    if (code !== undefined && code.allowance_terms.length > 0)
-      codeFact.allowance_terms = code.allowance_terms;
+    if (code !== undefined && code.terms.length > 0) codeFact.terms = code.terms;
     facts.push(codeFact);
   }
   if (webAssisted && scope.length > 0)

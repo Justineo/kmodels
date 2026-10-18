@@ -4,6 +4,7 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
+  contributionVariantValue,
   rateVariantIdentity,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
@@ -394,21 +395,31 @@ function assembleContributionVariants(variants: AtomicContributionVariant[]): {
 } {
   const grouped = new Map<string, AtomicContributionVariant[]>();
   const raw: AtomicRawVariant[] = [];
+  const normalizedVariants: AtomicContributionVariant[] = [];
   for (const variant of variants) {
     const normalized = normalizeAtomicApplicability(variant);
     if (normalized === undefined) {
       raw.push(toRawAtomic(variant, "base_price", "selector_limit"));
       continue;
     }
-    const item = {
+    normalizedVariants.push({
       ...variant,
       target_rate_refs: sortUniqueStrings(variant.target_rate_refs),
-      charge_bindings: sortByCanonicalKey(variant.charge_bindings, (binding) => binding),
+      charge_bindings: mergedChargeBindings(variant.charge_bindings),
       ...normalized,
-    };
+    });
+  }
+  const conflicts = conflictIndexes(normalizedVariants, (variant) =>
+    canonicalJson(contributionVariantValue(variant)),
+  );
+  for (const [index, item] of normalizedVariants.entries()) {
+    if (conflicts.has(index)) {
+      raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
+      continue;
+    }
     append(
       grouped,
-      canonicalJson([item.target_rate_refs, item.charge_bindings, ...optionalValue(item.validity)]),
+      canonicalJson([contributionVariantValue(item), ...optionalValue(item.validity)]),
       item,
     );
   }
@@ -424,12 +435,14 @@ function assembleContributionVariants(variants: AtomicContributionVariant[]): {
       );
       continue;
     }
-    for (const { applicability, observations } of chunks)
+    for (const { items, applicability, observations } of chunks)
       result.push({
         target_rate_refs: first.target_rate_refs,
         applicability,
         ...optional("validity", first.validity),
-        charge_bindings: first.charge_bindings,
+        charge_bindings: mergedChargeBindings(
+          items.flatMap(({ charge_bindings }) => charge_bindings),
+        ),
         observations,
       });
   }
@@ -503,16 +516,27 @@ function mergedSelectorSources(variants: AtomicRateVariant[]): PriceSelectorSour
 }
 
 function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | undefined {
-  // The grouping key already guarantees identical binding semantics.
-  const binding = variants[0]?.charge_binding;
-  if (binding === undefined) return;
-  return {
-    ...binding,
-    observations: sortUnique(
-      variants.flatMap(({ charge_binding }) => charge_binding?.observations ?? []),
-      rawObservationKey,
+  return mergedChargeBindings(
+    variants.flatMap(({ charge_binding }) =>
+      charge_binding === undefined ? [] : [charge_binding],
     ),
-  };
+  )[0];
+}
+
+function mergedChargeBindings(bindings: readonly ChargeBinding[]): ChargeBinding[] {
+  const groups = new Map<string, ChargeBinding[]>();
+  for (const binding of bindings)
+    append(groups, canonicalJson(chargeBindingIdentity(binding)), binding);
+  return sortUnique(
+    [...groups.values()].map((group) => ({
+      ...group[0]!,
+      observations: sortUnique(
+        group.flatMap(({ observations }) => observations),
+        rawObservationKey,
+      ),
+    })),
+    canonicalJson,
+  );
 }
 
 function resolveRatePrecedence(variants: AtomicRateVariant[]): {
@@ -766,18 +790,40 @@ function finalizeProviderTerms(books: PricingBook[]): PricingBook[] {
     ...book,
     offers: book.offers.map((offer) => ({
       ...offer,
-      terms: applyAllowanceFallback(offer.terms, byId)
+      terms: applyTargetFallback(offer.terms, byId)
         .map(finalizeTerm)
         .sort((left, right) => compareUtf8(left.id, right.id)),
     })),
   }));
 }
 
-function applyAllowanceFallback(
+function applyTargetFallback(
   terms: PricingTerm[],
   byId: ReadonlyMap<string, PricingTerm>,
 ): PricingTerm[] {
   return terms.map((term) => {
+    if (term.kind === "contribution") {
+      const variants = term.variants.filter(({ target_rate_refs }) =>
+        target_rate_refs.every((ref) => {
+          const rate = byId.get(ref);
+          return rate?.kind === "rate" && rate.variants.length > 0;
+        }),
+      );
+      return {
+        ...term,
+        variants,
+        raw_variants: groupRaw([
+          ...term.raw_variants.flatMap(expandRaw),
+          ...term.variants
+            .filter((variant) => !variants.includes(variant))
+            .flatMap((variant) =>
+              expandRaw(
+                normalizedVariantToRaw(variant, "base_price", "target_rate_not_normalized"),
+              ),
+            ),
+        ]),
+      };
+    }
     if (term.kind !== "allowance") return term;
     const invalid = term.variants.some((variant) => {
       if (variant.target.kind !== "rate_terms") return false;

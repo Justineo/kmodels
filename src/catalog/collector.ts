@@ -256,6 +256,7 @@ function applyFields(
   const incomingPricing =
     incoming.price_facts.length > 0 ||
     incoming.raw_price_facts.length > 0 ||
+    (incoming.state_facts?.length ?? 0) > 0 ||
     incoming.pricing_state !== "unknown";
   const applyPricing =
     fields.has("pricing") && incomingPricing && (!fillOnly || current.pricing_state === "unknown");
@@ -423,6 +424,7 @@ function applyFields(
     pricing_state: applyPricing ? incoming.pricing_state : current.pricing_state,
     price_facts: applyPricing ? mergePriceFacts(current, incoming) : current.price_facts,
     raw_price_facts: applyPricing ? mergeRawPriceFacts(current, incoming) : current.raw_price_facts,
+    state_facts: applyPricing ? incoming.state_facts : current.state_facts,
     availability: fields.has("availability")
       ? mergeBy(
           current.availability,

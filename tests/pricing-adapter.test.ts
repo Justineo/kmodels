@@ -3672,7 +3672,7 @@ describe("parsed-source canonical pricing adapter", () => {
         commercial("web-fetch", "sync", "included"),
         {
           ...commercial("code-execution", "standalone", "numeric", [executionSource.rate]),
-          allowance_terms: executionSource.allowance_terms,
+          terms: executionSource.terms,
         },
         commercial("code-execution", "web-assisted", "included"),
         commercial("managed-agents-runtime", "managed-agents", "included"),

@@ -26,7 +26,7 @@ export function anthropicCodeExecution(
   freeHours: string | undefined,
 ): {
   rate: SourcePriceFact;
-  allowance_terms: PriceAllowanceTerm[];
+  terms: PriceAllowanceTerm[];
   vocabulary: ProviderAtomRegistryEntry[];
 } {
   const evidence = (fragment: string): RawPriceObservation => ({
@@ -103,7 +103,7 @@ export function anthropicCodeExecution(
     pricingBookId("anthropic", "service:code-execution"),
     "standalone",
   );
-  const allowance_terms: PriceAllowanceTerm[] =
+  const terms: PriceAllowanceTerm[] =
     freeHours === undefined
       ? []
       : [
@@ -141,5 +141,5 @@ export function anthropicCodeExecution(
             raw_variants: [],
           },
         ];
-  return { rate, allowance_terms, vocabulary };
+  return { rate, terms, vocabulary };
 }
