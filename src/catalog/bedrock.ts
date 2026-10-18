@@ -3,10 +3,10 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
+import { bedrockGroundingFact, bedrockServiceTerm } from "./bedrock-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
@@ -14,30 +14,13 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
   SourceRawPricingFact,
+  SourcePricingInputFact,
 } from "./pricing-source.ts";
-import {
-  zodContractEvidence,
-  type SourceContractEvidence,
-  type ZodContractObservation,
-} from "./source-contract.ts";
-import {
-  modalitySchema,
-  type Modality,
-  type ModelTask,
-  type Provider,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { PriceRateTerm, ProviderAtomRegistryEntry } from "./pricing-schema.ts";
+import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
+import { zodContractEvidence, type ZodContractObservation } from "./source-contract.ts";
+import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks } from "./task.ts";
-
-interface ParseInput {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-  onPricingDependencyFailure?: (url: string) => void;
-}
 
 interface CardId {
   aliases: Set<string>;
@@ -1492,19 +1475,20 @@ function conditions(
     attributes.imageresolution;
   const quality =
     inference.match(/\b(Standard|Premium)\b/i)?.[1]?.toLowerCase() ?? attributes.imagequality;
+  const resolvedSpeed = speed(lower);
   return {
-    region: attributes.regionCode,
-    endpoint,
-    deployment_scope: deploymentScope,
-    service_tier: serviceTier,
-    speed: speed(lower),
-    context_min_tokens: /long.?(?:context|ctx)/.test(lower) ? 200_001 : undefined,
-    cache_ttl_seconds: ttl,
-    capacity,
-    modality,
-    operation,
-    resolution,
-    quality,
+    ...(attributes.regionCode === undefined ? {} : { region: attributes.regionCode }),
+    ...(endpoint === undefined ? {} : { endpoint }),
+    ...(deploymentScope === undefined ? {} : { deployment_scope: deploymentScope }),
+    ...(serviceTier === undefined ? {} : { service_tier: serviceTier }),
+    ...(resolvedSpeed === undefined ? {} : { speed: resolvedSpeed }),
+    ...(/long.?(?:context|ctx)/.test(lower) ? { context_min_tokens: 200_001 } : {}),
+    ...(ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
+    ...(capacity === undefined ? {} : { capacity }),
+    ...(modality === undefined ? {} : { modality }),
+    ...(operation === undefined ? {} : { operation }),
+    ...(resolution === undefined ? {} : { resolution }),
+    ...(quality === undefined ? {} : { quality }),
   };
 }
 
@@ -1587,7 +1571,7 @@ function rate(
     conditions: rateConditions,
     source_ref: sourceId,
     derived: derivation !== undefined,
-    derivation,
+    ...(derivation === undefined ? {} : { derivation }),
     raw_price: price,
     raw_unit: unit,
     ...(effectiveDate === undefined ? {} : { raw_validity: effectiveDate }),
@@ -2005,24 +1989,23 @@ interface BedrockPriceDimension {
 interface CommercialSpec {
   bookKey: string;
   bookName: string;
-  resourceKind: SourceCommercialPricingFact["resource_kind"];
   resourceKey: string;
-  modelRefs: string[];
   offerKey: string;
   offerName: string;
-  billingMode: SourceCommercialPricingFact["billing_mode"];
   termKey: string;
 }
 
 interface CommercialBuilder {
   spec: CommercialSpec;
-  rates: SourceRawPricingFact[];
+  rawFacts: SourceRawPricingFact[];
+  terms: PriceRateTerm[];
 }
 
 interface BedrockPrices {
   modelRates: Map<string, SourcePriceFact[]>;
   modelRawFacts: Map<string, SourceRawPricingFact[]>;
   commercialFacts: SourceCommercialPricingFact[];
+  vocabulary: ProviderAtomRegistryEntry[];
 }
 
 function slug(value: string): string {
@@ -2058,12 +2041,9 @@ function coreCommercialSpec(
   return {
     bookKey: `service:${resourceKey}`,
     bookName,
-    resourceKind: "service",
     resourceKey,
-    modelRefs: [],
     offerKey,
     offerName: offerKey.replaceAll("-", " "),
-    billingMode: "usage",
     termKey: slug(attributes.policyType || feature || unit),
   };
 }
@@ -2098,10 +2078,11 @@ function commercialRawFact(
   sku: string,
   attributes: Record<string, string>,
   dimension: z.infer<typeof priceDimensionSchema>,
+  price: string,
   effectiveDate: string | undefined,
   termKey: string,
   sourceId: string,
-): SourceRawPricingFact | undefined {
+): SourceRawPricingFact {
   const evidenceAttributes = new Set([
     "batch",
     "feature",
@@ -2124,8 +2105,6 @@ function commercialRawFact(
   ]
     .filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== "")
     .sort(([left], [right]) => left.localeCompare(right));
-  const price = dimension.pricePerUnit.USD;
-  if (price === undefined) return;
   return {
     term_key: termKey,
     impact: "base_price",
@@ -2152,35 +2131,42 @@ function addCommercialRate(
   builders: Map<string, CommercialBuilder>,
   spec: CommercialSpec,
   raw: SourceRawPricingFact,
+  normalized: PriceRateTerm | undefined,
 ): void {
   const key = `${spec.bookKey}\0${spec.offerKey}\0${spec.termKey}`;
   const current = builders.get(key);
   if (current !== undefined) {
     if (stableJson(current.spec) !== stableJson(spec))
       throw new Error(`Bedrock commercial offer ${key} changed identity`);
-    current.rates.push(raw);
+    if (normalized === undefined) current.rawFacts.push(raw);
+    else current.terms.push(normalized);
     return;
   }
-  builders.set(key, { spec, rates: [raw] });
+  builders.set(key, {
+    spec,
+    rawFacts: normalized === undefined ? [raw] : [],
+    terms: normalized === undefined ? [] : [normalized],
+  });
 }
 
 function commercialFacts(
   builders: ReadonlyMap<string, CommercialBuilder>,
   sourceId: string,
 ): SourceCommercialPricingFact[] {
-  return [...builders.values()].map(({ spec, rates }) => ({
+  return [...builders.values()].map(({ spec, rawFacts, terms }) => ({
     source_ref: sourceId,
     book_key: spec.bookKey,
     book_name: spec.bookName,
-    resource_kind: spec.resourceKind,
+    resource_kind: "service",
     resource_key: spec.resourceKey,
-    model_refs: spec.modelRefs,
+    model_refs: [],
     offer_key: spec.offerKey,
     offer_name: spec.offerName,
-    billing_mode: spec.billingMode,
+    billing_mode: "usage",
     pricing_state: "numeric",
     price_facts: [],
-    raw_price_facts: rates,
+    raw_price_facts: rawFacts,
+    terms,
   }));
 }
 function productDimensions(
@@ -2222,6 +2208,7 @@ function parsePrices(
   documents: z.infer<typeof linkedBundleSchema>["documents"],
   cards: Card[],
   sourceId: string,
+  pricingInputs: readonly SourcePricingInputFact[],
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onPricingDependencyFailure?: (url: string) => void,
 ): BedrockPrices {
@@ -2233,6 +2220,7 @@ function parsePrices(
     return facts;
   };
   const commercial = new Map<string, CommercialBuilder>();
+  const vocabulary: ProviderAtomRegistryEntry[] = [];
   let requiredDimensions = 0;
   let handledDimensions = 0;
   const unbound = new Set<string>();
@@ -2313,16 +2301,8 @@ function parsePrices(
       for (const { dimension, term } of dimensions) {
         const spec = commercialSpec(list.offerCode, attributes, dimension.unit, modelRefs);
         if (spec !== undefined) {
-          const raw = commercialRawFact(
-            list.offerCode,
-            sku,
-            attributes,
-            dimension,
-            term.effectiveDate,
-            spec.termKey,
-            sourceId,
-          );
-          if (raw === undefined) {
+          const amount = dimension.pricePerUnit.USD;
+          if (amount === undefined) {
             unsupported.add(`${spec.bookName}: ${dimension.unit}`);
             onPricingReconciliation?.({
               disposition: "unsupported",
@@ -2331,11 +2311,37 @@ function parsePrices(
             });
             continue;
           }
-          addCommercialRate(commercial, spec, raw);
+          const raw = commercialRawFact(
+            list.offerCode,
+            sku,
+            attributes,
+            dimension,
+            amount,
+            term.effectiveDate,
+            spec.termKey,
+            sourceId,
+          );
+          const normalized = bedrockServiceTerm({
+            ...spec,
+            amount,
+            unit: dimension.unit,
+            attributes,
+            observation: {
+              source_ref: sourceId,
+              locator: { kind: "sku", value: `${list.offerCode}:${sku}` },
+              raw: raw.raw,
+            },
+            inputs: pricingInputs,
+            vocabulary,
+          });
+          addCommercialRate(commercial, spec, raw, normalized);
           handledDimensions++;
           onPricingReconciliation?.({
-            disposition: "normalized",
-            reason_code: "commercial_dimension_bound",
+            disposition: normalized === undefined ? "unsupported" : "normalized",
+            reason_code:
+              normalized === undefined
+                ? "commercial_unit_unsupported"
+                : "commercial_dimension_bound",
           });
           continue;
         }
@@ -2400,22 +2406,22 @@ function parsePrices(
             sku,
             attributes,
             dimension,
+            price,
             term.effectiveDate,
             `unclassified:${sku}:${dimension.rateCode ?? "rate"}`,
             sourceId,
           );
-          if (raw !== undefined)
-            for (const id of target.ids)
-              rawFor(id).push({
-                ...raw,
-                conditions: conditions(
-                  attributes,
-                  pricingText(attributes, dimension.description),
-                  `${attributes.inferenceType ?? ""} ${dimension.description}`.toLowerCase(),
-                  target.endpoint,
-                  "input_data",
-                ),
-              });
+          for (const id of target.ids)
+            rawFor(id).push({
+              ...raw,
+              conditions: conditions(
+                attributes,
+                pricingText(attributes, dimension.description),
+                `${attributes.inferenceType ?? ""} ${dimension.description}`.toLowerCase(),
+                target.endpoint,
+                "input_data",
+              ),
+            });
           continue;
         }
         if (parsed.meter === "provisioned_throughput") {
@@ -2845,6 +2851,7 @@ function parsePrices(
       ]),
     ),
     commercialFacts: commercialFacts(commercial, sourceId),
+    vocabulary,
   };
 }
 
@@ -2860,7 +2867,7 @@ export function formatPricingInterpretationSample(
   );
 }
 
-export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
+export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
   if (input.source.extractor.kind !== "bedrock-catalog")
     throw new Error("Bedrock catalog parser received the wrong extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
@@ -2909,10 +2916,16 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
     });
   }
   if (cards.length === 0) throw new Error("Bedrock catalog contained no model cards");
+  const pricingInputs = extractBedrockPricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
   const prices = parsePrices(
     bundle.documents,
     cards,
     input.source.id,
+    pricingInputs,
     input.onPricingReconciliation,
     input.onPricingDependencyFailure,
   );
@@ -2973,6 +2986,11 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
             `${right.deployment_type}\0${right.region}`,
           ),
         );
+      const grounding = bedrockGroundingFact(`amazon-bedrock/${id}`, pricing, prices.vocabulary);
+      if (grounding !== undefined) prices.commercialFacts.push(grounding);
+      const modelPricing = pricing.filter(
+        (rate) => rate.meter !== "tool_call" || rate.conditions.operation !== "grounding",
+      );
       const incoming: ProviderModel = {
         ...baseModel({
           providerId: input.provider.id,
@@ -2998,8 +3016,8 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         retired_at: card.retiredAt,
         status: card.status,
         release_stage: card.releaseStage,
-        pricing_state: pricing.length > 0 ? "numeric" : "unknown",
-        price_facts: pricing,
+        pricing_state: modelPricing.length > 0 ? "numeric" : "unknown",
+        price_facts: modelPricing,
         raw_price_facts: prices.modelRawFacts.get(id) ?? [],
         availability,
         scope: "regional_catalog",
@@ -3008,16 +3026,12 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
     }
   }
   const result = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
-  const carrier = result.find(({ price_facts }) => price_facts.length > 0) ?? result[0];
-  if (carrier !== undefined && prices.commercialFacts.length > 0)
-    carrier.commercial_facts = prices.commercialFacts;
-  const pricingInputs = extractBedrockPricingInputs(
-    bundle.documents,
-    input.source.id,
-    input.onPricingReconciliation,
-  );
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return result;
+  return {
+    models: result,
+    commercial_facts: prices.commercialFacts,
+    pricing_inputs: pricingInputs,
+    vocabulary: prices.vocabulary,
+  };
 }
 
 function apiModality(value: z.infer<typeof apiModalitySchema>): Modality {

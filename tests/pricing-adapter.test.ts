@@ -2512,17 +2512,6 @@ describe("parsed-source canonical pricing adapter", () => {
           raw_price: "3",
           raw_unit: "1K TPM Hour",
         },
-        {
-          meter: "tool_call",
-          price: "0.03",
-          currency: "USD",
-          unit: "request",
-          conditions: { region: "us-east-1", operation: "grounding" },
-          source_ref: sourceRef,
-          derived: false,
-          raw_price: "0.03",
-          raw_unit: "Requests",
-        },
       ],
       pricing_inputs: [
         bedrockPricingInput(
@@ -2557,7 +2546,64 @@ describe("parsed-source canonical pricing adapter", () => {
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
       observedAt,
-      [{ source: pricingSource, models: [bedrock] }],
+      [
+        {
+          source: pricingSource,
+          models: [bedrock],
+          commercial_facts: [
+            {
+              source_ref: sourceRef,
+              book_key: "service:nova-web-grounding:amazon-bedrock/test-model",
+              book_name: "Nova Web Grounding",
+              resource_kind: "service",
+              resource_key: "nova-web-grounding:amazon-bedrock/test-model",
+              model_refs: [bedrock.uid],
+              offer_key: "grounding",
+              offer_name: "Nova Web Grounding",
+              billing_mode: "usage",
+              pricing_state: "numeric",
+              raw_price_facts: [],
+              price_facts: [
+                {
+                  meter: "web_search",
+                  price: "0.03",
+                  currency: "USD",
+                  unit: "request",
+                  conditions: { region: "us-east-1", operation: "grounding" },
+                  source_ref: sourceRef,
+                  derived: false,
+                  raw_price: "0.03",
+                  raw_unit: "Requests",
+                  charge_binding: {
+                    signal: {
+                      namespace: "provider",
+                      provider_id: "amazon-bedrock",
+                      value: "nova_web_grounding_requests",
+                    },
+                    aggregation: "request",
+                    observations: [
+                      {
+                        source_ref: sourceRef,
+                        locator: { kind: "meter", value: "grounding" },
+                        raw: { amount: "0.03", unit: "Requests" },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+          vocabulary: [
+            {
+              kind: "usage_signal",
+              key: "nova_web_grounding_requests",
+              definition: "Nova Web Grounding requests realized by Amazon Bedrock",
+              unit: { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },
+              resolution_phase: "outcome",
+            },
+          ],
+        },
+      ],
       [bedrock],
     );
     const books = partition?.books ?? [];
@@ -2663,7 +2709,7 @@ describe("parsed-source canonical pricing adapter", () => {
     ).toBe(false);
   });
 
-  it("publishes only Bedrock services attributable to an upstream request", () => {
+  it("retains Bedrock invocation-service raw evidence without executing its payload", () => {
     const { source: pricingSource } = pricingManifest();
     const commercial = (
       resourceKey: string,
@@ -2747,45 +2793,24 @@ describe("parsed-source canonical pricing adapter", () => {
       ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "guardrails",
     )?.offers[0]?.terms[0];
     expect(guardrail).toMatchObject({
-      kind: "rate",
-      meter: { namespace: "kmodels", value: "content_safety" },
+      kind: "raw",
       variants: [
         expect.objectContaining({
-          price: expect.objectContaining({
-            value: { numerator: "3", denominator: "20000" },
-            denomination: { kind: "fiat", currency: "USD" },
-          }),
-          charge_binding: expect.objectContaining({
-            aggregation: "request",
-            signal: expect.objectContaining({ value: "guardrail_content_policy_units" }),
-            quantity_methods: [
-              {
-                input_sources: [
-                  expect.objectContaining({
-                    channel: "response",
-                    locator: { kind: "json_pointer", value: "/usage/contentPolicyUnits" },
-                  }),
-                ],
-              },
-            ],
-          }),
+          impact: "base_price",
+          reason: "unsupported_structure",
+          observations: [
+            expect.objectContaining({
+              raw: expect.objectContaining({ amount: "0.15", unit: "TextUnit" }),
+            }),
+          ],
         }),
       ],
     });
-
-    for (const resourceKey of ["web-search", "prompt-routing"]) {
-      const term = resources.find(
-        ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === resourceKey,
-      )?.offers[0]?.terms[0];
-      expect(term).toMatchObject({
-        kind: "rate",
-        variants: [
-          expect.objectContaining({
-            charge_binding: expect.objectContaining({ aggregation: "request" }),
-          }),
-        ],
-      });
-    }
+    expect(
+      resources.every(({ offers }) =>
+        offers.every(({ terms }) => terms.every(({ kind }) => kind === "raw")),
+      ),
+    ).toBe(true);
 
     expect(
       resources.find(

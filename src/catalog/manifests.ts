@@ -1148,7 +1148,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v31",
+        extractorVersion: "bedrock-catalog-v32",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",

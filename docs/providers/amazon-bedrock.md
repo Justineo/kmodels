@@ -193,6 +193,26 @@ The collector preserves exact AWS decimal amounts and normalizes only reviewed u
 - Guardrail text/image units by policy and API;
 - prompt-router and Bedrock Web Search requests.
 
+Services, acquisition contracts and provider vocabulary return independently of model rows. Native
+Price List service dimensions establish canonical rate terms at the parser boundary, including
+exact provider units, policy/API usage signals and region. Guardrail inputs must belong to the same
+source as their rate. A missing accounting field withholds only its acquisition method. Nova
+Grounding is a source-owned service with its exact compatible model reference; it is not recovered
+by interpreting a model-local raw marker during assembly.
+
+The machine `pricePerUnit.USD` amount applies to the Price List `unit` field. Descriptive prose is
+audit evidence and cannot change that denominator. For example, AWS can describe a TextUnit SKU as
+`$0.15 per 1K` while its machine amount is already `0.0001500000` per TextUnit; that amount must not
+be divided by 1,000 again. A denominator explicitly encoded by the unit itself, such as `Per 1000
+requests`, remains a scaled request unit. Unknown native units stay localized raw facts and emit
+unsupported-unit reconciliation instead of being reported as normalized. A machine zero remains an
+explicit numeric rate without inventing an offer-wide free state.
+
+Raw service payloads and annotations remain passive after extraction. Assembly accepts canonical
+service rates and preserves unknown raw evidence; it cannot construct charges or applicability from
+raw amount, unit, description or policyType fields. Old replay inputs with obsolete extractor
+versions retain the already accepted partition through the shared compilation version guard.
+
 Provisioned and Reserved dimensions are explicitly excluded before canonical pricing assembly. They
 never become capacity books or model-local rate choices.
 
