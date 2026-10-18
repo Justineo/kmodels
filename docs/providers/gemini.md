@@ -86,7 +86,7 @@ without converting an estimate into a published tariff.
 Search on Gemini 3 and newer models is priced per executed query. The monthly allowance cell also
 establishes Robotics membership in that shared pool; a model-name prefix does not override the cell.
 Older Search rows are priced per grounded prompt.
-The current [Maps pricing section](https://ai.google.dev/gemini-api/docs/maps-grounding#pricing_and_rate_limits)
+The current [Maps pricing section](https://ai.google.dev/gemini-api/docs/maps-grounding#pricing-and-rate-limits)
 separates generations: Gemini 3 and newer are billed per executed query, while the successful-result
 request rule applies to Gemini 2.5 and older. A scoped older-generation sentence never rewrites all
 Maps rates. The reviewed historical unscoped request paragraph may clarify a matching legacy
