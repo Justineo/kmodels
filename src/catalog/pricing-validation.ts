@@ -13,6 +13,7 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
+  contributionVariantValue,
   normalizeUnitExpression,
   rateVariantIdentity,
   selectorWeight,
@@ -583,7 +584,7 @@ function validateTerm(
     assertUniqueBy(term.variants, rawVariantGroupKey, `${path} raw variant grouping key`);
     term.variants.forEach((variant) => {
       if (variant.reason === "target_rate_not_normalized")
-        fail(path, "target-rate fallback may appear only on an allowance");
+        fail(path, "target-rate fallback requires an allowance or contribution");
       validateRawVariant(variant, book, context, path);
     });
     context.counts.variants += term.variants.length;
@@ -623,7 +624,7 @@ function validateRateTerm(
     )
       fail(path, "rate raw variant has invalid impact");
     if (variant.reason === "target_rate_not_normalized")
-      fail(path, "target-rate fallback may appear only on an allowance");
+      fail(path, "target-rate fallback requires an allowance or contribution");
     validateRawVariant(variant, book, context, path);
   });
   validateVariantConflicts(term.variants, (variant) => canonicalJson(variant.price), path);
@@ -701,9 +702,10 @@ function validateContributionTerm(
   term.raw_variants.forEach((variant) => validateRawVariant(variant, book, context, path));
   validateVariantConflicts(
     term.variants,
-    (variant) => canonicalJson([variant.target_rate_refs, variant.charge_bindings]),
+    (variant) => canonicalJson(contributionVariantValue(variant)),
     path,
   );
+  validateConflictFallback(term.variants, term.raw_variants, path);
 }
 
 function validateConflictFallback(

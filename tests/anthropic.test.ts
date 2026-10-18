@@ -203,7 +203,9 @@ describe("Anthropic adapters", () => {
       ],
       result: 1,
     });
-    expect(standalone?.allowance_terms?.[0]?.variants[0]?.benefit).toMatchObject({
+    expect(
+      standalone?.terms?.find((term) => term.kind === "allowance")?.variants[0]?.benefit,
+    ).toMatchObject({
       kind: "quantity",
       quantity: { value: { numerator: "5580000", denominator: "1" } },
     });
@@ -1647,7 +1649,7 @@ describe("Anthropic adapters", () => {
     );
     expect(service).toBeDefined();
     expect(service?.model_refs).toEqual(["anthropic/claude-fable-5", "anthropic/claude-opus-4-8"]);
-    expect(service?.allowance_terms).toContainEqual(
+    expect(service?.terms).toContainEqual(
       expect.objectContaining({ term_key: "monthly-container-allowance" }),
     );
     const malformedSource = await anthropicSource({

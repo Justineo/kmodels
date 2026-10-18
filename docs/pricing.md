@@ -91,9 +91,12 @@ model-carried facts in existing inputs. Services and accounting contracts can su
 model carrier. Source records used by the compilation input retain their exact hash and extractor
 binding even when no current rate consumes one of their observations. Recognized vocabulary is
 typed data; raw fragments provide evidence and never select an executable policy.
-Recognized charge bindings and supplemental allowance terms reuse the existing canonical quantity,
-term and evidence contracts in compilation input. Assembly checks their identity and provenance;
-it does not recover executable numbers from raw prose. This adds no second public pricing resource.
+Recognized charge bindings and supplemental allowance/contribution terms reuse the existing canonical
+quantity, term and evidence contracts in compilation input. Scoped source states use the same
+conditions and provenance as source rates. Compilation capture and replay check all native source
+references, including charge-binding observations; assembly checks supplemental term identity and
+source ownership. Assembly does not recover executable numbers or states from raw prose or marker
+keys. This adds no second public pricing resource.
 If retaining prices also requires rolling back the provider's catalog core, collection keeps the
 previous compilation input with that core, or omits the replay entry when no prior input exists.
 Rejected fresh input must not be rebound to the rolled-back source records.
@@ -293,7 +296,7 @@ The current contract keeps these raw:
 - formulas outside reviewed adapter calculations or the closed quantity-calculation grammar;
 - unsupported graduated, block, or contract structures;
 - conflicts that cannot be localized as one exact normalized value;
-- allowances whose normalized target rate is unavailable;
+- allowances or contributions whose normalized target rate is unavailable;
 - structures that exceed a fact-local normalization limit.
 
 Raw variants carry a commercial impact:
@@ -445,8 +448,11 @@ Normalized and raw variants may coexist under one term. An unequal overlap
 downgrades its complete applicability-and-validity overlap component, so a broad
 raw fallback never encloses a normalized value. Disjoint variants stay
 normalized.
-The fallback also cascades to dependent allowances so one unsupported component
-does not invalidate an otherwise useful provider partition.
+The fallback also cascades to dependent allowances and contributions so one unsupported component
+does not invalidate an otherwise useful provider partition. A contribution with an absent or entirely
+raw target rate keeps its source rule as a base-price raw variant. A target with surviving normalized
+variants retains its own applicability and partial-price limitations. Contribution conflicts compare
+target and calculation semantics; different native observations alone do not change their meaning.
 
 ### Rates, quantities, and allowances
 

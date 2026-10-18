@@ -365,7 +365,10 @@ Status: implemented
   Accounting-only OpenAI and Azure sources return no synthetic catalog rows. TypeSafe and
   DeepSeek return their usage contracts independently of model inventory. Anthropic also returns
   services, acquisition inputs and reviewed vocabulary at source level, including typed Code
-  Execution minimums and monthly allowances.
+  Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
+  fixed-search contributions and container calculations; service-only input needs no model carrier.
+  A fixed-search service still requires an exact admitted catalog identity. Scoped source states
+  survive capture and replay separately from whole-model pricing dispositions.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

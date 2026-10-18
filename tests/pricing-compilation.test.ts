@@ -868,6 +868,14 @@ describe("local canonical pricing compilation", () => {
     if (alternateFact === undefined) throw new Error("Missing alternate pricing fact");
     const alternate: ParsedProviderModel = {
       ...model,
+      state_facts: [
+        {
+          state: "not_supported",
+          conditions: { operation: "future_operation" },
+          source_ref: sourceId,
+          raw: { fragment: "This model does not support future_operation." },
+        },
+      ],
       price_facts: [
         {
           ...alternateFact,
@@ -883,7 +891,45 @@ describe("local canonical pricing compilation", () => {
 
     expect(captured?.[0]?.models).toHaveLength(1);
     expect(captured?.[0]?.models[0]?.price_facts).toHaveLength(2);
+    expect(captured?.[0]?.models[0]?.state_facts).toEqual(alternate.state_facts);
   });
+
+  it.each(["state", "binding"] as const)(
+    "rejects mismatched %s evidence during capture",
+    (kind) => {
+      const model = parsed("1");
+      if (kind === "state")
+        model.state_facts = [
+          {
+            state: "not_supported",
+            conditions: { service_tier: "fast" },
+            source_ref: "foreign-source",
+            raw: { fragment: "Fast is unsupported." },
+          },
+        ];
+      else {
+        const rate = model.price_facts[0];
+        if (rate === undefined) throw new Error("Missing test rate");
+        rate.charge_binding = {
+          signal: { namespace: "kmodels", value: "input_tokens" },
+          aggregation: "request",
+          observations: [
+            {
+              source_ref: "foreign-source",
+              locator: { kind: "fragment", value: "usage" },
+              raw: { fragment: "Input tokens" },
+            },
+          ],
+        };
+      }
+      expect(() =>
+        capturePricingReplaySources(
+          [{ source: sourceManifest, models: [model] }],
+          [sourceRecord()],
+        ),
+      ).toThrow(`Pricing compilation source ${sourceId} has mismatched provenance`);
+    },
+  );
 
   it("rejects conflicting states for a duplicate source identity", () => {
     const model: ParsedProviderModel = {

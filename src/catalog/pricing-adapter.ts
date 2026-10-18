@@ -2,6 +2,7 @@ import {
   assembleProviderPricing,
   type AtomicModelDisposition,
   type AtomicAllowanceTerm,
+  type AtomicContributionTerm,
   type AtomicPricingTerm,
   type AtomicPricingOffer,
   type AtomicPriceState,
@@ -25,7 +26,7 @@ import {
 } from "./pricing-units.ts";
 import type {
   PriceApplicability,
-  PriceAllowanceTerm,
+  NormalizedPriceObservation,
   PriceCondition,
   PriceDenomination,
   PriceDimension,
@@ -65,6 +66,7 @@ import {
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
+  type SourcePriceStateFact,
   type SourceCommercialPricingFact,
   type SourcePricingInputFact,
   type SourcePricingFacts,
@@ -407,7 +409,10 @@ function adapterContext(
 function addPricing(
   context: AdapterContext,
   sourceRef: string,
-  pricing: Pick<ParsedPricingModel, "uid" | "pricing_state" | "price_facts" | "raw_price_facts">,
+  pricing: Pick<
+    ParsedPricingModel,
+    "uid" | "pricing_state" | "price_facts" | "raw_price_facts" | "state_facts"
+  >,
   modelRefs: readonly string[],
   forcedOffer?: {
     key: string;
@@ -421,7 +426,13 @@ function addPricing(
   const publishesState =
     !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
   const hasBaseRaw = pricing.raw_price_facts.some(({ impact }) => impact === "base_price");
-  if (rates.length === 0 && !hasBaseRaw && !publishesState) return;
+  if (
+    rates.length === 0 &&
+    !hasBaseRaw &&
+    !publishesState &&
+    (pricing.state_facts?.length ?? 0) === 0
+  )
+    return;
 
   addScope(context, sourceRef, modelRefs);
   if (forcedOffer !== undefined) {
@@ -432,6 +443,8 @@ function addPricing(
     addRate(context, sourceRef, pricing.uid, sourceRate, normalizedRate, forcedOffer);
   for (const fact of pricing.raw_price_facts)
     addRaw(context, sourceRef, pricing.uid, fact, forcedOffer);
+  for (const fact of pricing.state_facts ?? [])
+    addStateFact(context, sourceRef, pricing.uid, fact, forcedOffer);
   if (publishesState) addState(context, sourceRef, state, forcedOffer);
 }
 
@@ -485,6 +498,7 @@ function commercialPricingBooks(
           : fact.pricing_state,
       price_facts: fact.price_facts,
       raw_price_facts: fact.raw_price_facts,
+      ...(fact.state_facts === undefined ? {} : { state_facts: fact.state_facts }),
     };
     const forcedOffer = {
       key: fact.offer_key,
@@ -492,11 +506,11 @@ function commercialPricingBooks(
       billingMode: fact.billing_mode,
     };
     addPricing(context, sourceRef, pricing, modelRefs, forcedOffer);
-    for (const term of fact.allowance_terms ?? []) {
+    for (const term of fact.terms ?? []) {
       addScope(context, sourceRef, modelRefs);
       const offer = forcedOfferBuilder(context, forcedOffer, "usage");
       for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
-      addAllowance(context, offer, term);
+      addSourceTerm(context, offer, term);
     }
     if (fact.pricing_state === "included" || fact.pricing_state === "externally_billed") {
       addScope(context, sourceRef, modelRefs);
@@ -539,37 +553,49 @@ function commercialPricingBooks(
   });
 }
 
-function addAllowance(
+function addSourceTerm(
   context: AdapterContext,
   offer: OfferBuilder,
-  term: PriceAllowanceTerm,
+  term: NonNullable<SourceCommercialPricingFact["terms"]>[number],
 ): void {
   const offerId = pricingOfferId(
     pricingBookId(context.providerId, context.bookKey),
     offer.offerKey,
   );
-  if (term.id !== pricingTermId(offerId, "allowance", term.term_key))
-    throw new Error(`Allowance ${term.term_key} has a mismatched source identity`);
+  if (term.id !== pricingTermId(offerId, term.kind, term.term_key))
+    throw new Error(`Pricing term ${term.term_key} has a mismatched source identity`);
   const existing = offer.terms.get(term.term_key);
-  if (existing !== undefined && existing.kind !== "allowance")
+  if (existing !== undefined && existing.kind !== term.kind)
     throw new Error(`Pricing term ${term.term_key} changed kind`);
-  const allowance: AtomicAllowanceTerm = existing ?? {
-    term_key: term.term_key,
-    kind: "allowance",
-    variants: [],
-    raw_variants: [],
-    source_refs: [],
-  };
-  allowance.variants.push(
-    ...term.variants.flatMap(({ observations, validity, ...variant }) =>
-      observations.map((observation) => ({
-        ...variant,
-        ...(validity === undefined ? {} : { validity }),
-        observation,
-      })),
-    ),
-  );
-  allowance.raw_variants.push(
+  let target: AtomicAllowanceTerm | AtomicContributionTerm;
+  if (term.kind === "allowance") {
+    const allowance: AtomicAllowanceTerm =
+      existing?.kind === "allowance"
+        ? existing
+        : {
+            term_key: term.term_key,
+            kind: "allowance",
+            variants: [],
+            raw_variants: [],
+            source_refs: [],
+          };
+    allowance.variants.push(...atomicNormalizedVariants(term.variants));
+    target = allowance;
+  } else {
+    const contribution: AtomicContributionTerm =
+      existing?.kind === "contribution"
+        ? existing
+        : {
+            term_key: term.term_key,
+            kind: "contribution",
+            variants: [],
+            raw_variants: [],
+            source_refs: [],
+          };
+    contribution.variants.push(...atomicNormalizedVariants(term.variants));
+    target = contribution;
+  }
+  target.raw_variants.push(
     ...term.raw_variants.flatMap(
       ({ observations, validity, possible_scope, resolution_policy, ...variant }) =>
         observations.map((observation) => ({
@@ -581,9 +607,24 @@ function addAllowance(
         })),
     ),
   );
-  allowance.source_refs.push(...term.source_refs);
+  target.source_refs.push(...term.source_refs);
   for (const sourceRef of term.source_refs) offer.sourceRefs.add(sourceRef);
-  offer.terms.set(term.term_key, allowance);
+  offer.terms.set(term.term_key, target);
+}
+
+function atomicNormalizedVariants<
+  T extends {
+    observations: NormalizedPriceObservation[];
+    validity?: PublishedValidity | undefined;
+  },
+>(variants: readonly T[]) {
+  return variants.flatMap(({ observations, validity, ...variant }) =>
+    observations.map((observation) => ({
+      ...variant,
+      ...(validity === undefined ? {} : { validity }),
+      observation,
+    })),
+  );
 }
 
 function addRaw(
@@ -620,6 +661,50 @@ function addRaw(
       },
       raw: fact.raw,
     },
+  });
+}
+
+function addStateFact(
+  context: AdapterContext,
+  sourceRef: string,
+  uid: string,
+  fact: SourcePriceStateFact,
+  forcedOffer?: Parameters<typeof addPricing>[4],
+): void {
+  const validity = publishedValidity(fact.conditions);
+  if (validity === false) {
+    addRaw(
+      context,
+      sourceRef,
+      uid,
+      {
+        term_key: `unparsed-state:${fact.state}`,
+        impact: "base_price",
+        reason: "unsupported_structure",
+        conditions: fact.conditions,
+        source_ref: sourceRef,
+        raw: fact.raw,
+      },
+      forcedOffer,
+    );
+    return;
+  }
+  const offer = forcedOfferBuilder(context, forcedOffer, "usage");
+  const applicability = rateApplicability(context, fact.conditions);
+  offer.sourceRefs.add(sourceRef);
+  offer.states.push({
+    state: fact.state,
+    applicability,
+    ...(validity === undefined ? {} : { validity }),
+    observation: normalizedObservation(
+      sourceRef,
+      fact.source_locator ?? {
+        kind: "provider_key",
+        value: JSON.stringify([uid, fact.state, fact.conditions]),
+      },
+      fact.raw,
+      applicability,
+    ),
   });
 }
 

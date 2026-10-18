@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { compareUtf8 } from "../src/catalog/canonical-value.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
@@ -17,6 +18,7 @@ import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricin
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { ModelTask, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
+import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
@@ -187,7 +189,7 @@ describe("OpenAI adapters", () => {
           }),
         ],
       };
-      const models = parseSource({
+      const modelsSource = parseSource({
         provider: provider(value),
         source,
         observedAt,
@@ -199,13 +201,14 @@ describe("OpenAI adapters", () => {
           "| --- | --- | --- |",
           ...[first, second, third].map((amount) => `| gpt-test | $${amount} | $100 |`),
         ].join("\n"),
-      }).models;
+      });
+      const models = modelsSource.models;
       const partition = assembleParsedProviderPricing(
         "openai",
         observedAt,
         [
           { source: overview, models: [card] },
-          { source, models },
+          { source, ...modelsSource },
         ],
         models,
       );
@@ -337,12 +340,13 @@ describe("OpenAI adapters", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
     if (source === undefined) throw new Error("Missing OpenAI pricing source");
-    const pricing =
-      (await fixture("openai/pricing.md")) +
-      "\nEligible container sessions will be billed by the minute, with a 5-minute minimum per session.\n";
+    const pricing = (await fixture("openai/pricing.md")).replace(
+      "Tools\n",
+      "Tools\n\nEligible container sessions will be billed by the minute, with a 5-minute minimum per session.\n",
+    );
     const changelog = await fixture("openai/container-billing.md");
     const catalogModels = [openAiModel("gpt-5", ["text_generation"])];
-    const models = parseSource({
+    const modelsSource = parseSource({
       provider: provider(value),
       source,
       body: JSON.stringify({
@@ -353,11 +357,17 @@ describe("OpenAI adapters", () => {
       }),
       observedAt,
       catalogModels,
-    }).models;
+    });
+    const models = modelsSource.models;
+    const minuteFact = modelsSource.commercial_facts
+      ?.find(({ resource_key }) => resource_key === "containers")
+      ?.price_facts.find(({ unit }) => unit === "minute");
+    if (minuteFact === undefined) throw new Error("Missing source minute rate");
+    minuteFact.raw_unit = "per minute; minimum 999 minutes per session";
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...modelsSource }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -397,6 +407,120 @@ describe("OpenAI adapters", () => {
         },
       ]),
     ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "250" } });
+  });
+
+  it.each([
+    "changed-minimum",
+    "equal",
+    "conflicting-page",
+    "conflicting-date",
+    "unknown-page",
+    "invalid-date",
+    "missing-page",
+    "missing-companion",
+    "outside-tools",
+    "unknown-companion",
+  ] as const)("contains container billing declaration drift: %s", async (scenario) => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    let quote =
+      "Eligible container sessions will be billed by the minute, with a 5-minute minimum per session.";
+    let changelog = await fixture("openai/container-billing.md");
+    switch (scenario) {
+      case "changed-minimum":
+        quote = quote.replace("5-minute", "7-minute");
+        changelog = changelog.replace("5-minute", "7-minute");
+        break;
+      case "equal":
+        quote += `\n${quote}`;
+        changelog += `\n${changelog}`;
+        break;
+      case "conflicting-page":
+        quote += `\n${quote.replace("5-minute", "7-minute")}`;
+        break;
+      case "conflicting-date":
+        changelog += `\n${changelog.replace("Starting June 2", "Starting July 2")}`;
+        break;
+      case "unknown-page":
+        quote = quote.replace("5-minute", "several-minute");
+        break;
+      case "invalid-date":
+        changelog = changelog.replace("Starting June 2", "Starting February 30");
+        break;
+      case "missing-page":
+        quote = "";
+        break;
+      case "missing-companion":
+        changelog = "";
+        break;
+      case "outside-tools":
+        break;
+      case "unknown-companion":
+        changelog = changelog.replace("will remain the same", "is subject to a separate agreement");
+        break;
+    }
+    const body = await fixture("openai/pricing.md");
+    const pricing =
+      scenario === "outside-tools"
+        ? `${body}\n${quote}`
+        : body.replace("Tools\n", `Tools\n\n${quote}\n`);
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [],
+      body: JSON.stringify({
+        index: { url: source.url, body: pricing },
+        documents:
+          changelog.length === 0
+            ? []
+            : [{ url: "https://developers.openai.com/api/docs/changelog.md", body: changelog }],
+      }),
+    });
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, result.models, partition);
+    const terms =
+      partition?.books
+        .find(({ book_key }) => book_key === "service:containers")
+        ?.offers.flatMap(({ terms }) => terms) ?? [];
+    const minute = terms
+      .flatMap((term) => (term.kind === "rate" ? term.variants : []))
+      .find(({ price }) => price.value.numerator === "1" && price.value.denominator === "40000");
+    if (scenario === "changed-minimum" || scenario === "equal") {
+      if (minute === undefined) throw new Error("Missing container minute rate");
+      expect(
+        evaluateRateCost(minute, [
+          {
+            signal: {
+              namespace: "provider",
+              provider_id: "openai",
+              value: "container_session_seconds_before_minimum",
+            },
+            value: { numerator: "1", denominator: "1" },
+          },
+        ]),
+      ).toMatchObject({
+        kind: "resolved",
+        amount:
+          scenario === "changed-minimum"
+            ? { numerator: "21", denominator: "2000" }
+            : { numerator: "3", denominator: "400" },
+      });
+      expect(terms.some((term) => term.kind === "raw")).toBe(false);
+    } else {
+      expect(minute).toBeUndefined();
+      expect(terms).toContainEqual(
+        expect.objectContaining({ kind: "raw", term_key: "billing-minimum" }),
+      );
+    }
+    expect(partition?.books.some(({ book_key }) => book_key === "model:openai/gpt-5.4")).toBe(true);
   });
 
   it("combines the complete model index with rich model pages", async () => {
@@ -835,8 +959,9 @@ describe("OpenAI adapters", () => {
         observedAt,
         catalogModels: [...pricedCatalog, image, transcribe, tokenTranscribe, whisper],
         ...(reconcile ? { onPricingReconciliation: (item) => reconciliation.push(item) } : {}),
-      }).models;
-    const models = parsePricing(pricingBody, true);
+      });
+    const parsedSource = parsePricing(pricingBody, true);
+    const { models } = parsedSource;
     const gpt = models.find(({ model_id }) => model_id === "gpt-5.4");
     const imageRates = models.find(({ model_id }) => model_id === "gpt-image-2")?.price_facts;
     const transcribeRates = models.find(
@@ -903,7 +1028,7 @@ describe("OpenAI adapters", () => {
       reason_code: "commercial_fact_outside_invocation_scope",
       sample: "File search",
     });
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = parsedSource.commercial_facts ?? [];
     expect(commercial).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -942,8 +1067,9 @@ describe("OpenAI adapters", () => {
       commercial
         .filter(({ resource_key }) => resource_key === "web-search")
         .flatMap(({ price_facts }) => price_facts)
-        .map(({ conditions }) => conditions.operation),
-    ).toEqual(["search", "image", "preview_reasoning", "preview_non_reasoning"]);
+        .map(({ conditions }) => conditions.operation ?? "")
+        .sort(compareUtf8),
+    ).toEqual(["image", "preview_non_reasoning", "preview_reasoning", "search"]);
     expect(models.find(({ model_id }) => model_id === "gpt-4o-transcribe")?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ meter: "input_audio", price: "2.50" }),
@@ -960,7 +1086,7 @@ describe("OpenAI adapters", () => {
     const assembled = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...parsedSource }],
       models,
     );
     const fineTuned = assembled?.books.find(
@@ -983,7 +1109,7 @@ describe("OpenAI adapters", () => {
         ),
       ),
     ).toEqual([]);
-    const resolved = parsePricing(pricingBody.replace("$5.00", "$5.01"));
+    const resolved = parsePricing(pricingBody.replace("$5.00", "$5.01")).models;
     expect(
       resolved
         .find(({ model_id }) => model_id === "gpt-5.4")
@@ -1147,13 +1273,14 @@ describe("OpenAI adapters", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
     if (source === undefined) throw new Error("Missing OpenAI pricing source");
-    const models = parseSource({
+    const modelsSource = parseSource({
       provider: provider(value),
       source,
       body: await fixture("openai/live-session-pricing.md"),
       observedAt,
       catalogModels: [openAiModel("gpt-live-1", ["speech_to_speech"])],
-    }).models;
+    });
+    const models = modelsSource.models;
     expect(models[0]?.price_facts).toEqual([
       expect.objectContaining({
         meter: "session_runtime",
@@ -1165,7 +1292,7 @@ describe("OpenAI adapters", () => {
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...modelsSource }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -1211,17 +1338,18 @@ describe("OpenAI adapters", () => {
       "Fast mode is unavailable for GPT-6 Astra with EU data residency. Use Standard processing for those requests.",
       "Regional processing (data residency) endpoints are charged a 10% uplift.",
     ].join("\n");
-    const models = parseSource({
+    const modelsSource = parseSource({
       provider: provider(value),
       source,
       body,
       observedAt,
       catalogModels: [model],
-    }).models;
+    });
+    const models = modelsSource.models;
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...modelsSource }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -1439,7 +1567,7 @@ describe("OpenAI adapters", () => {
       release_date: "2026-03-04",
       availability: [{ region: "United States", deployment_type: "regional_processing" }],
     } satisfies ProviderModel;
-    const models = parseSource({
+    const modelsSource = parseSource({
       provider: provider(value),
       source,
       body: [
@@ -1453,7 +1581,8 @@ describe("OpenAI adapters", () => {
       ].join("\n"),
       observedAt,
       catalogModels: [model, oldModel],
-    }).models;
+    });
+    const models = modelsSource.models;
     expect(
       models
         .find(({ model_id }) => model_id === "gpt-test")
@@ -1492,7 +1621,7 @@ describe("OpenAI adapters", () => {
     const assembled = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...modelsSource }],
       [model, oldModel],
       value.pricingCategoricalLabels,
     );
@@ -1715,33 +1844,65 @@ describe("OpenAI adapters", () => {
 });
 
 describe("OpenAI fixed search content", () => {
+  it("admits a model-bound content rule without a model row in that pricing source", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const model = openAiModel("gpt-4o-mini", ["text_generation"]);
+    const quote = (await fixture("openai/fixed-search.md")).match(/For gpt-4o-mini[^\n]+/)?.[0];
+    if (quote === undefined) throw new Error("Missing fixed-content quote");
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [model],
+      body: `Tools\n${quote}`,
+    });
+    expect(result.models).toEqual([]);
+    expect(result.commercial_facts).toEqual([
+      expect.objectContaining({
+        resource_key: "web-search-content:gpt-4o-mini",
+        model_refs: [model.uid],
+      }),
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, ...result }],
+      [model],
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, [model], partition);
+    expect(partition?.books[0]?.offers[0]?.terms[0]).toMatchObject({
+      kind: "contribution",
+      variants: [],
+      raw_variants: [expect.objectContaining({ reason: "target_rate_not_normalized" })],
+    });
+  });
+
   it.each([false, true])(
     "preserves unrecognized fixed-content evidence alongside normalized rules: %s",
     async (includeKnown) => {
       const value = manifest("openai");
       const source = value.sources.find(({ id }) => id === "openai-pricing");
       if (source === undefined) throw new Error("Missing OpenAI pricing source");
-      const models = parseSource({
+      const body = await fixture("openai/fixed-search.md");
+      const fragment =
+        "For gpt-4o-mini and gpt-4.1-mini with the non-preview web search tool, search content tokens have an unpublished fixed block size.";
+      const modelsSource = parseSource({
         provider: provider(value),
         source,
-        body: await fixture("openai/fixed-search.md"),
+        body: includeKnown
+          ? `${body}\n${fragment}`
+          : body.replace(/For gpt-4o-mini[^\n]+/, fragment),
         observedAt,
         catalogModels: [],
-      }).models;
-      const fact = models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .find(({ resource_key }) => resource_key === "web-search-content:gpt-4o-mini");
-      const known = fact?.raw_price_facts[0];
-      if (fact === undefined || known === undefined) throw new Error("Missing fixed-content fact");
-      const fragment = "Fixed content block size is not published.";
-      fact.raw_price_facts = [
-        ...(includeKnown ? [known] : []),
-        { ...known, raw: { ...known.raw, fragment } },
-      ];
+      });
+      const models = modelsSource.models;
       const partition = assembleParsedProviderPricing(
         "openai",
         observedAt,
-        [{ source, models }],
+        [{ source, ...modelsSource }],
         models,
         value.pricingCategoricalLabels,
       );
@@ -1749,14 +1910,14 @@ describe("OpenAI fixed search content", () => {
       const term = partition?.books.find(
         ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
       )?.offers[0]?.terms[0];
-      expect(term?.kind).toBe(includeKnown ? "contribution" : "raw");
-      if (term === undefined) throw new Error("Missing fixed-content term");
-      const raw = term.kind === "raw" ? term.variants : term.raw_variants;
+      expect(term?.kind).toBe("contribution");
+      if (term?.kind !== "contribution") throw new Error("Missing fixed-content term");
+      const raw = term.raw_variants;
       expect(raw).toHaveLength(1);
       expect(raw[0]?.observations).toEqual([
         expect.objectContaining({ raw: expect.objectContaining({ fragment }) }),
       ]);
-      if (term.kind === "contribution") expect(term.variants).toHaveLength(1);
+      expect(term.variants).toHaveLength(includeKnown ? 1 : 0);
     },
   );
 
@@ -1766,27 +1927,34 @@ describe("OpenAI fixed search content", () => {
     if (source === undefined) throw new Error("Missing OpenAI pricing source");
     const body = await fixture("openai/fixed-search.md");
     const parse = (text: string) =>
-      parseSource({ provider: provider(value), source, body: text, observedAt, catalogModels: [] })
-        .models;
-    const models = parse(body);
-    const facts = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+      parseSource({ provider: provider(value), source, body: text, observedAt, catalogModels: [] });
+    const parsedSource = parse(body);
+    const facts = parsedSource.commercial_facts ?? [];
     expect(
       facts
         .filter(({ resource_key }) => resource_key.startsWith("web-search-content:"))
         .map(({ model_refs }) => model_refs),
     ).toEqual([["openai/gpt-4.1-mini"], ["openai/gpt-4o-mini"]]);
-    const assemble = (models: ProviderModel[]) =>
+    const assemble = (result: SourceParseResult) =>
       assembleParsedProviderPricing(
         "openai",
         observedAt,
-        [{ source, models }],
-        models,
+        [{ source, ...result }],
+        result.models,
         value.pricingCategoricalLabels,
       );
-    const cost = (text: string) => {
-      const models = parse(text);
-      const partition = assemble(models);
-      validateParsedPricing(value, source, models, partition);
+    const cost = (text: string, evidence?: string) => {
+      const result = parse(text);
+      if (evidence !== undefined) {
+        const term = result.commercial_facts?.find(
+          ({ resource_key }) => resource_key === "web-search-content:gpt-4o-mini",
+        )?.terms?.[0];
+        const observation = term?.variants[0]?.observations[0];
+        if (observation === undefined) throw new Error("Missing fixed-content observation");
+        observation.raw["fragment"] = evidence;
+      }
+      const partition = assemble(result);
+      validateParsedPricing(value, source, result.models, partition);
       const term = partition?.books.find(
         ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
       )?.offers[0]?.terms[0];
@@ -1818,10 +1986,72 @@ describe("OpenAI fixed search content", () => {
     expect(cost(body.replace("$0.15", "$0.25"))).toMatchObject({
       amount: { numerator: "1", denominator: "250" },
     });
-    expect(
-      parse(body.replace("8,000", "9,000"))
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .some(({ resource_key }) => resource_key.startsWith("web-search-content:")),
-    ).toBe(false);
+    expect(cost(body.replace("8,000", "9,000"))).toMatchObject({
+      amount: { numerator: "27", denominator: "10000" },
+    });
+    expect(cost(body, "A 999,000-token fixed block.")).toEqual(cost(body));
   });
+
+  it.each(["missing", "unreadable", "conflicting", "equal", "outside-tools"] as const)(
+    "contains fixed-content dependency and source ownership failures: %s",
+    async (scenario) => {
+      const value = manifest("openai");
+      const source = value.sources.find(({ id }) => id === "openai-pricing");
+      if (source === undefined) throw new Error("Missing OpenAI pricing source");
+      let body = await fixture("openai/fixed-search.md");
+      const quote = body.match(/For gpt-4o-mini[^\n]+/)?.[0];
+      if (quote === undefined) throw new Error("Missing fixed-content fixture quote");
+      switch (scenario) {
+        case "missing":
+          body = body.replace("$0.15", "-");
+          break;
+        case "unreadable":
+          body = body.replace("$0.15", "TBD");
+          break;
+        case "conflicting":
+          body += `\n${quote.replace("8,000", "9,000")}`;
+          break;
+        case "equal":
+          body += `\n${quote.replace("8,000", "8000")}`;
+          break;
+        case "outside-tools":
+          body = body.replace(quote, `Finetuning\n${quote}`);
+          break;
+      }
+      const items: PricingReconciliationItem[] = [];
+      const result = parseSource({
+        provider: provider(value),
+        source,
+        body,
+        observedAt,
+        catalogModels: [],
+        onPricingReconciliation: (item) => items.push(item),
+      });
+      const partition = assembleParsedProviderPricing(
+        "openai",
+        observedAt,
+        [{ source, ...result }],
+        result.models,
+        value.pricingCategoricalLabels,
+      );
+      validateParsedPricing(value, source, result.models, partition);
+      const term = partition?.books.find(
+        ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
+      )?.offers[0]?.terms[0];
+      if (scenario === "outside-tools") {
+        expect(term).toBeUndefined();
+        return;
+      }
+      if (term?.kind !== "contribution") throw new Error("Missing fixed-content contribution");
+      expect(term.variants).toHaveLength(scenario === "equal" ? 1 : 0);
+      expect(term.raw_variants.map(({ reason }) => reason)).toEqual(
+        scenario === "equal"
+          ? []
+          : [scenario === "conflicting" ? "conflicting_values" : "target_rate_not_normalized"],
+      );
+      expect(
+        items.filter(({ reason_code }) => reason_code === "fixed_search_content_rule"),
+      ).toHaveLength(scenario === "equal" || scenario === "conflicting" ? 2 : 1);
+    },
+  );
 });

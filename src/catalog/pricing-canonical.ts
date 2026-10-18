@@ -12,6 +12,7 @@ import {
   type PriceCondition,
   type PriceDimension,
   type PriceRateVariant,
+  type PriceContributionVariant,
   type UnitExpression,
 } from "./pricing-schema.ts";
 
@@ -37,6 +38,17 @@ export function rateVariantIdentity(
           ),
         }),
   };
+}
+
+export function contributionVariantValue(
+  variant: Pick<PriceContributionVariant, "target_rate_refs" | "charge_bindings">,
+) {
+  return [
+    variant.target_rate_refs,
+    uniqueCanonicalValues(
+      variant.charge_bindings.map(({ observations: _observations, ...binding }) => binding),
+    ),
+  ];
 }
 
 const exactClauseIndexes = new WeakMap<PriceApplicability, ReadonlySet<string>>();

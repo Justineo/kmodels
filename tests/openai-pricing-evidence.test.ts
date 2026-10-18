@@ -6,7 +6,7 @@ import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { SourceManifest } from "../src/catalog/manifests.ts";
-import type { ParsedProviderModel } from "../src/catalog/pricing-source.ts";
+import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
@@ -14,11 +14,12 @@ import {
 import { z } from "zod";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
-function validatedPricing(models: ParsedProviderModel[], source: SourceManifest) {
+function validatedPricing(result: SourceParseResult, source: SourceManifest) {
+  const { models } = result;
   const partition = assembleParsedProviderPricing(
     "openai",
     observedAt,
-    [{ source, models }],
+    [{ source, ...result }],
     models,
   );
   if (partition === undefined) throw new Error("Missing parsed OpenAI pricing");
@@ -71,7 +72,7 @@ function fixtureSource(id = "openai-pricing") {
 function parse(body: string) {
   const { provider, source } = fixtureSource();
   const items: PricingReconciliationItem[] = [];
-  const models = parseSource({
+  const result = parseSource({
     provider,
     source,
     body,
@@ -86,8 +87,13 @@ function parse(body: string) {
       }),
     ],
     onPricingReconciliation: (item) => items.push(item),
-  }).models;
-  return { models, items, source, report: sourcePricingReconciliation(models, items, true) };
+  });
+  return {
+    ...result,
+    items,
+    source,
+    report: sourcePricingReconciliation(result.models, items, true),
+  };
 }
 const tokenTable = (input: string, output: string) =>
   [
@@ -114,7 +120,7 @@ async function parseCards(change: (body: string) => string) {
   if (doc === undefined) throw new Error("Missing Sol fixture");
   doc.body = change(doc.body);
   const items: PricingReconciliationItem[] = [];
-  const models = parseSource({
+  const result = parseSource({
     provider,
     source,
     body: JSON.stringify(bundle),
@@ -123,11 +129,60 @@ async function parseCards(change: (body: string) => string) {
       baseModel({ providerId: "openai", id, name: id, sourceId: "openai-models", observedAt }),
     ),
     onPricingReconciliation: (item) => items.push(item),
-  }).models;
-  return { models, items, source, report: sourcePricingReconciliation(models, items, true) };
+  });
+  return {
+    ...result,
+    items,
+    source,
+    report: sourcePricingReconciliation(result.models, items, true),
+  };
 }
 
 describe("OpenAI source pricing evidence", () => {
+  it("rejects a service-only page whose pricing positions contain no quote", () => {
+    const { provider, source } = fixtureSource();
+    expect(() =>
+      parseSource({
+        provider,
+        source,
+        observedAt,
+        catalogModels: [],
+        body: "Tools\n| Tool | Details | Pricing |\n| --- | --- | --- |\n| Web search | Web search (all models) | - |",
+      }),
+    ).toThrow("contained no admitted facts");
+  });
+
+  it("keeps a service-only price source without inventing a model carrier", () => {
+    const { provider, source } = fixtureSource();
+    const result = parseSource({
+      provider,
+      source,
+      observedAt,
+      catalogModels: [],
+      body: "Tools\n| Tool | Details | Pricing |\n| --- | --- | --- |\n| Web search | Web search (all models) | $10 / 1k calls |",
+    });
+    expect(result.models).toEqual([]);
+    expect(result.commercial_facts).toEqual([
+      expect.objectContaining({
+        resource_key: "web-search",
+        model_refs: [],
+        price_facts: [expect.objectContaining({ price: "10", unit: "thousand_events" })],
+      }),
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, ...result }],
+      [],
+    );
+    expect(partition?.books).toEqual([
+      expect.objectContaining({
+        book_key: "service:web-search",
+        scope: expect.objectContaining({ kind: "provider_resource", model_refs: [] }),
+      }),
+    ]);
+  });
+
   it.each(["$2", "EUR 2"])("counts the same two source cells for %s", (output) => {
     const { report, models } = parse(tokenTable("$1", output));
     expect(report.basis).toBe("source_item");
@@ -142,7 +197,7 @@ describe("OpenAI source pricing evidence", () => {
   });
 
   it("preserves raw cell scope through canonical assembly", () => {
-    const { models, source } = parse(
+    const modelsSource = parse(
       [
         "Flagship models",
         "Standard",
@@ -151,7 +206,8 @@ describe("OpenAI source pricing evidence", () => {
         "| gpt-test | $1 | $2 | $3 | EUR 9 |",
       ].join("\n"),
     );
-    const partition = validatedPricing(models, source);
+    const { source } = modelsSource;
+    const partition = validatedPricing(modelsSource, source);
     expect(
       partition?.books[0]?.offers
         .flatMap(({ terms }) => terms)
@@ -246,7 +302,8 @@ describe("OpenAI source pricing evidence", () => {
   });
 
   it("preserves a Free quote when regional applicability cannot be established", () => {
-    const { models, report, source } = parse(tokenTable("Free", "$3").replace("Standard", "Fast"));
+    const modelsSource = parse(tokenTable("Free", "$3").replace("Standard", "Fast"));
+    const { models, report, source } = modelsSource;
     expect(report.observed_items).toBe(2);
     expect(report.disposition_counts.raw).toBe(2);
     expect(models[0]?.raw_price_facts).toContainEqual(
@@ -255,7 +312,7 @@ describe("OpenAI source pricing evidence", () => {
         raw: expect.objectContaining({ amount: "Free", unit: "per 1M tokens" }),
       }),
     );
-    validatedPricing(models, source);
+    validatedPricing(modelsSource, source);
   });
 
   it.each([
@@ -263,7 +320,7 @@ describe("OpenAI source pricing evidence", () => {
     ["File search", "Tool call", "$2 / 1M calls", "unknown_unit"],
     ["Web search", "Web search (all models)", "EUR 10 / 1k calls", "unknown_amount"],
   ])("preserves unsupported %s invocation prices (%s, %s)", (tool, details, price, reason) => {
-    const { models, source, report } = parse(
+    const modelsSource = parse(
       tokenTable("$1", "$2") +
         "\n\nTools\n" +
         [
@@ -272,20 +329,19 @@ describe("OpenAI source pricing evidence", () => {
           `| ${tool} | ${details} | ${price} |`,
         ].join("\n"),
     );
+    const { source, report } = modelsSource;
     expect(report.observed_items).toBe(3);
     expect(report.disposition_counts.raw).toBe(1);
     expect(
-      models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .flatMap(({ raw_price_facts }) => raw_price_facts),
+      (modelsSource.commercial_facts ?? []).flatMap(({ raw_price_facts }) => raw_price_facts),
     ).toContainEqual(
       expect.objectContaining({ reason, raw: expect.objectContaining({ fragment: price }) }),
     );
-    expect(() => validatedPricing(models, source)).not.toThrow();
+    expect(() => validatedPricing(modelsSource, source)).not.toThrow();
   });
 
   it("counts each declared container capacity and preserves an unreadable sibling", () => {
-    const { models, report } = parse(
+    const modelsSource = parse(
       tokenTable("$1", "$2") +
         "\n\nTools\n" +
         [
@@ -294,10 +350,11 @@ describe("OpenAI source pricing evidence", () => {
           "| Containers | Hosted Shell and Code Interpreter | 1 GB $0.03, 4 GB EUR 0.12, 16 GB $0.48, 64 GB $1.92 per 20-minute session per container. |",
         ].join("\n"),
     );
+    const { report } = modelsSource;
     expect(report.observed_items).toBe(6);
-    const container = models
-      .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-      .find(({ resource_key }) => resource_key === "containers");
+    const container = (modelsSource.commercial_facts ?? []).find(
+      ({ resource_key }) => resource_key === "containers",
+    );
     expect(container?.price_facts).toHaveLength(3);
     expect(container?.raw_price_facts).toContainEqual(
       expect.objectContaining({
@@ -308,7 +365,7 @@ describe("OpenAI source pricing evidence", () => {
   });
 
   it("keeps malformed fine-tuned inference evidence in its service book", () => {
-    const { models, source, report } = parse(
+    const modelsSource = parse(
       [
         "Finetuning",
         "Standard",
@@ -317,25 +374,25 @@ describe("OpenAI source pricing evidence", () => {
         "| gpt-test | $5 | EUR 2 | - | $3 |",
       ].join("\n"),
     );
+    const { source, report } = modelsSource;
     expect(report.observed_items).toBe(4);
-    const service = models.flatMap(({ commercial_facts }) => commercial_facts ?? [])[0];
+    const service = (modelsSource.commercial_facts ?? [])[0];
     expect(service?.raw_price_facts).toContainEqual(
       expect.objectContaining({
         raw: expect.objectContaining({ amount: "EUR 2", meter: "input_text" }),
         conditions: { service_tier: "standard", account_eligibility: "default" },
       }),
     );
-    expect(() => validatedPricing(models, source)).not.toThrow();
+    expect(() => validatedPricing(modelsSource, source)).not.toThrow();
   });
 
   it.each([
     ["Free", "$2"],
     ["$2", "Free"],
   ])("keeps Free and paid conflicts in either order (%s, %s)", (first, second) => {
-    const { models, source } = parse(
-      tokenTable(first, "$3") + "\n| gpt-test | " + second + " | $3 |",
-    );
-    const partition = validatedPricing(models, source);
+    const modelsSource = parse(tokenTable(first, "$3") + "\n| gpt-test | " + second + " | $3 |");
+    const { source } = modelsSource;
+    const partition = validatedPricing(modelsSource, source);
     const input = partition?.books[0]?.offers
       .flatMap(({ terms }) => terms)
       .find(({ term_key }) => term_key === "input_text");
@@ -347,7 +404,8 @@ describe("OpenAI source pricing evidence", () => {
   });
 
   it("preserves a bad HTML cell while counting actual card cells", async () => {
-    const { models, report, source } = await parseCards((body) => body.replace("$10.00", "EUR 10"));
+    const modelsSource = await parseCards((body) => body.replace("$10.00", "EUR 10"));
+    const { models, report, source } = modelsSource;
     expect(report).toMatchObject({
       basis: "source_item",
       // Four Sol prices, two explicit multiplier rules, and one Live price.
@@ -358,7 +416,7 @@ describe("OpenAI source pricing evidence", () => {
         raw: expect.objectContaining({ amount: "EUR 10", meter: "output_text" }),
       }),
     );
-    expect(() => validatedPricing(models, source)).not.toThrow();
+    expect(() => validatedPricing(modelsSource, source)).not.toThrow();
   });
 
   it.each([

@@ -4,6 +4,8 @@ import {
   priceSourceLocatorSchema,
   chargeBindingSchema,
   priceAllowanceTermSchema,
+  priceContributionTermSchema,
+  priceStateVariantSchema,
   providerAtomRegistryEntrySchema,
   rawPriceFactSchema,
   rawPricingReasonSchema,
@@ -194,6 +196,14 @@ export const sourceRawPricingFactSchema = z.strictObject({
   resolution_policy: resolutionPolicySchema.optional(),
 });
 
+export const sourcePriceStateFactSchema = z.strictObject({
+  state: priceStateVariantSchema.shape.state,
+  conditions: sourcePriceConditionsSchema,
+  source_ref: z.string().min(1),
+  source_locator: priceSourceLocatorSchema.optional(),
+  raw: rawPriceFactSchema,
+});
+
 export const sourceCommercialPricingFactSchema = z.strictObject({
   source_ref: z.string().min(1),
   book_key: z.string().min(1),
@@ -220,7 +230,8 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
   ]),
   price_facts: z.array(sourcePriceFactSchema),
   raw_price_facts: z.array(sourceRawPricingFactSchema),
-  allowance_terms: z.array(priceAllowanceTermSchema).optional(),
+  state_facts: z.array(sourcePriceStateFactSchema).optional(),
+  terms: z.array(z.union([priceAllowanceTermSchema, priceContributionTermSchema])).optional(),
 });
 
 export const sourcePricingInputFactSchema = z.strictObject({
@@ -287,6 +298,7 @@ export const parsedPricingModelSchema = providerModelSchema
     pricing_state: parsedPricingStateSchema,
     price_facts: z.array(sourcePriceFactSchema),
     raw_price_facts: z.array(sourceRawPricingFactSchema),
+    state_facts: z.array(sourcePriceStateFactSchema).optional(),
     commercial_facts: z.array(sourceCommercialPricingFactSchema).optional(),
     pricing_inputs: z.array(sourcePricingInputFactSchema).optional(),
   })
@@ -294,32 +306,52 @@ export const parsedPricingModelSchema = providerModelSchema
 
 export type SourcePriceFact = z.infer<typeof sourcePriceFactSchema>;
 export type SourceRawPricingFact = z.infer<typeof sourceRawPricingFactSchema>;
+export type SourcePriceStateFact = z.infer<typeof sourcePriceStateFactSchema>;
 export type SourceCommercialPricingFact = z.infer<typeof sourceCommercialPricingFactSchema>;
 export type SourcePricingInputFact = z.infer<typeof sourcePricingInputFactSchema>;
 export type ParsedPricingState = z.infer<typeof parsedPricingStateSchema>;
 export type ParsedPricingModel = z.infer<typeof parsedPricingModelSchema>;
-export type ParsedProviderModel = ProviderModel & {
-  pricing_state: ParsedPricingState;
-  price_facts: SourcePriceFact[];
-  raw_price_facts: SourceRawPricingFact[];
-  commercial_facts?: SourceCommercialPricingFact[];
-  pricing_inputs?: SourcePricingInputFact[];
-};
+export type ParsedProviderModel = ProviderModel &
+  Pick<
+    ParsedPricingModel,
+    | "pricing_state"
+    | "price_facts"
+    | "raw_price_facts"
+    | "state_facts"
+    | "commercial_facts"
+    | "pricing_inputs"
+  >;
 
 export function commercialFactSourceRefs(fact: SourceCommercialPricingFact): string[] {
   return [
     fact.source_ref,
-    ...fact.price_facts.flatMap((rate) => [
-      rate.source_ref,
-      ...(rate.charge_binding?.observations ?? []).map(({ source_ref }) => source_ref),
-    ]),
-    ...fact.raw_price_facts.map(({ source_ref }) => source_ref),
-    ...(fact.allowance_terms ?? []).flatMap((term) => [
+    ...pricingFactSourceRefs(fact),
+    ...(fact.terms ?? []).flatMap((term) => [
       ...term.source_refs,
       ...[...term.variants, ...term.raw_variants].flatMap(({ observations }) =>
         observations.map(({ source_ref }) => source_ref),
       ),
+      ...(term.kind === "contribution"
+        ? term.variants.flatMap(({ charge_bindings }) =>
+            charge_bindings.flatMap(({ observations }) =>
+              observations.map(({ source_ref }) => source_ref),
+            ),
+          )
+        : []),
     ]),
+  ];
+}
+
+export function pricingFactSourceRefs(
+  facts: Pick<ParsedPricingModel, "price_facts" | "raw_price_facts" | "state_facts">,
+): string[] {
+  return [
+    ...facts.price_facts.flatMap((rate) => [
+      rate.source_ref,
+      ...(rate.charge_binding?.observations ?? []).map(({ source_ref }) => source_ref),
+    ]),
+    ...facts.raw_price_facts.map(({ source_ref }) => source_ref),
+    ...(facts.state_facts ?? []).map(({ source_ref }) => source_ref),
   ];
 }
 
@@ -377,6 +409,7 @@ export function parsedPricingModel(model: ParsedPricingModel): ParsedPricingMode
     pricing_state: model.pricing_state,
     price_facts: model.price_facts.map(parsedPriceFact),
     raw_price_facts: model.raw_price_facts.map((fact) => sourceRawPricingFactSchema.parse(fact)),
+    ...(model.state_facts === undefined ? {} : { state_facts: model.state_facts }),
   });
 }
 
@@ -385,6 +418,7 @@ export function publishedModel(model: ParsedProviderModel): ProviderModel {
     pricing_state: _pricingState,
     price_facts: _priceFacts,
     raw_price_facts: _rawPriceFacts,
+    state_facts: _stateFacts,
     commercial_facts: _commercialFacts,
     pricing_inputs: _pricingInputs,
     ...published

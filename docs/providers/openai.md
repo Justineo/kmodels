@@ -132,6 +132,13 @@ The source parser retains all distinct observations of the same page rate. Share
 turns unequal values into `conflicting_values` raw pricing, including third and later observations,
 without restoring a fallback card tariff or using an assembly-reserved reason in adapter input.
 
+Pricing sources return service facts, reviewed vocabulary and supplemental terms independently of
+model observations. A service-only page can be admitted without a catalog carrier; a fixed-content
+service binds only an exact model already established by the catalog or a reviewed price row.
+Container minimums become typed charge calculations, fixed-search blocks become canonical
+contributions, and Fast/EU exclusions become scoped state facts. Later assembly never decodes their
+amounts or states from raw evidence.
+
 Unknown sections, tiers, table shapes, rows, cells, tools, and modalities are reconciled locally.
 They never reject already parsed tables. A refresh still fails atomically when the required pricing
 source yields no admitted model or service fact at all; that protects the previous verified
@@ -245,7 +252,10 @@ block per call. A model-specific `web-search-content:<model>` service contribute
 contribution references that term rather than copying its price, so its tier and other conditions
 remain authoritative. The ordinary
 search call fee remains independently payable. No block is inferred for another model or the
-preview tool. An unresolved target input rate leaves the fixed-block rule raw.
+preview tool. An unresolved target input rate leaves the fixed-block rule raw. The source parser
+reads the block size as data from this reviewed sentence in the Tools section. Unknown wording keeps
+a scoped raw rule; unequal declarations downgrade the conflicting contribution locally. Equal
+quantities with different source formatting merge their native observations.
 
 The fixed-content charge takes the number of billable calls whose content blocks are excluded
 from separately priced model input usage. Consumers either exclude these blocks from ordinary
@@ -260,7 +270,9 @@ both claims agree, the published 20-minute price divides by 20 and a session-lev
 to the provider-billed duration. Minute billing and session-block billing are mutually exclusive
 eligibility variants. The caller supplies eligibility and provider-billed duration at the provider's
 minute granularity; no wall-clock rounding or acquisition field is invented. The legacy variant
-still uses billed 20-minute blocks. If the companion is absent or disagrees, the minimum stays raw.
+still uses billed 20-minute blocks. The pricing declaration must belong to Tools, and every recognized
+peer in the page and changelog must agree on the minimum and effective date. Missing, unreadable or
+contradictory claims keep the native rules raw without affecting unrelated services or models.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary
