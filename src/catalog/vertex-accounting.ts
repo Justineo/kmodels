@@ -35,6 +35,8 @@ const chatPath = "/gemini-enterprise-agent-platform/models/maas/call-open-model-
 const imagePath = "/vertex-ai/generative-ai/docs/image/generate-images";
 const imageResolutionPath = "/vertex-ai/generative-ai/docs/image/set-output-resolution";
 const videoPath = "/vertex-ai/generative-ai/docs/model-reference/veo-video-generation";
+const videoParametersPath =
+  "/gemini-enterprise-agent-platform/reference/rest/Shared.Types/VideoGenerationModelParams";
 
 const discoverySchema = z.object({
   resources: z.object({
@@ -499,6 +501,8 @@ function mediaInputs(
   );
 
   const video = normalizedText(bodies.get(videoPath));
+  const parametersPath = bodies.has(videoParametersPath) ? videoParametersPath : videoPath;
+  const parameters = normalizedText(bodies.get(parametersPath));
   for (const [key, field] of [
     ["video.request.duration_seconds", "durationSeconds"],
     ["video.request.videos", "sampleCount"],
@@ -508,13 +512,13 @@ function mediaInputs(
     addDocumentedFact(
       facts,
       sourceRef,
-      video,
+      parameters,
       field,
       key,
       "request",
       { kind: "json_pointer", value: `/parameters/${field}` },
       onFinding,
-      videoPath,
+      parametersPath,
       { availability: "conditional" },
     );
   addDocumentedFact(

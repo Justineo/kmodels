@@ -29,7 +29,7 @@ concurrency:
   group: catalog-repair
   cancel-in-progress: false
 
-# Public source hosts reviewed in manifests.ts. The CLI enforces exact source/companion URLs.
+# Reviewed public hosts. The evidence CLI bounds source, companion, and linked research fetches.
 network:
   allowed:
     - defaults
@@ -396,6 +396,15 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    Copy the exact prepared evidence commands. `amazon-bedrock` is a provider ID;
    `bedrock-models` is its public source ID. Unknown-source, bad-argument, JSON/HTML decoding, and
    missing-local-file errors require correcting the command, not reporting unavailable credentials.
+   For a successor linked by a reviewed HTML companion, use
+   `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL`.
+   Use `--index` as the parent for a supported raw index. This refetches the reviewed parent,
+   checks the actual link, and saves one bounded target within the existing public host policy;
+   it does not add the target to collection. A non-fixed-URL rejection from the ordinary mode
+   is a command limitation, not evidence that the provider's contract is unavailable. Follow
+   method-page links to parameter/result types: a generic method may omit the very fields its
+   linked type explicitly documents. Verify the content, then update the fixed URL and extraction
+   with a regression. Keep independent partial repairs even if other inputs remain undocumented.
    For each parser rejection, inspect its structured diagnostic and the relevant table/row/field.
    Matching hashes establish persistence, not that code is correct; changed hashes still permit a
    current-source repair. Compare labeled input IDs with parsed IDs, including Markdown/HTML
@@ -443,7 +452,7 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    report the specific source inspected, parser result, and repair/no-repair/unresolved rationale;
    grouping all remaining candidates as "localized drift" is not adequate investigation.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
-   `src/catalog/*.ts` (excluding repair infrastructure), `tests/*.test.ts` (excluding repair infrastructure),
+   `src/catalog/*.ts` and `tests/*.test.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
    Workflow, script, dependency, generated-data, executable, symlink, and submodule changes are rejected.
    If a new source host requires a workflow allowlist change, report it as incomplete.

@@ -83,6 +83,19 @@ it("reads raw journals and collected framework outputs without admitting other m
   ).toThrow("incomplete");
 });
 
+it("preserves a bounded, escaped blocker reason in the failed publication step", () => {
+  const reason = "Azure identity is ambiguous\nMistral service rates remain unverified";
+  expect(() => parseRepairOutcome(JSON.stringify({ type: "report_incomplete", reason }))).toThrow(
+    `Catalog repair incomplete (report_incomplete): ${JSON.stringify(reason)}`,
+  );
+  expect(() =>
+    parseRepairOutcome(JSON.stringify({ type: "missing_data", reason: "x".repeat(2000) })),
+  ).toThrow(`Catalog repair incomplete (missing_data): ${JSON.stringify("x".repeat(1000))}`);
+  expect(() =>
+    parseRepairOutcome(JSON.stringify({ type: "report_incomplete", reason: {} })),
+  ).toThrow("Catalog repair incomplete (report_incomplete)");
+});
+
 it("admits parser repairs and reviewed fixtures while rejecting publication and infrastructure changes", () => {
   for (const path of [
     "src/catalog/cohere-accounting.ts",
@@ -96,6 +109,8 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
     "data/catalog.json",
     ".github/workflows/catalog.yml",
     "scripts/catalog-repair-publication.ts",
+    "src/catalog/public-evidence.ts",
+    "tests/public-evidence.test.ts",
     "package.json",
     "pnpm-lock.yaml",
     "src/catalog/catalog-repair.ts",

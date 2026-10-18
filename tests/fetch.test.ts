@@ -2,7 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
-import { reviewedPublicSource } from "../src/catalog/public-evidence.ts";
+import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -100,6 +100,25 @@ it("keeps raw repair indexes within the redirect and response byte limits", asyn
   ]);
   await expect(fetchSource(source)).rejects.toThrow("byte limit");
   expect(transport.calls).toEqual([source.url, source.url]);
+});
+
+it("keeps successor research within the existing transport and redirect budget", async () => {
+  const parent = reviewedPublicSource("vertex-pricing", "--index");
+  const target = "https://docs.cloud.google.com/linked-parameters";
+  transport.responses.set("cloud.google.com", [
+    `HTTP/1.1 200 OK\r\n\r\n<a href="${target}">Parameters</a>`,
+  ]);
+  const origin = await fetchSource(parent);
+  const successor = linkedPublicSource(parent, origin.body, target);
+  transport.responses.set("docs.cloud.google.com", [
+    "HTTP/1.1 302 Found\r\nlocation: https://unreviewed.test/parameters\r\n\r\n",
+  ]);
+  await expect(fetchSource(successor)).rejects.toThrow("allowlist");
+  expect(transport.calls).toEqual([parent.url, target]);
+  transport.responses.set("docs.cloud.google.com", [
+    `HTTP/1.1 200 OK\r\ncontent-length: ${successor.maxResponseBytes + 1}\r\n\r\nx`,
+  ]);
+  await expect(fetchSource(successor)).rejects.toThrow("byte limit");
 });
 
 function retailResponse(status: number, headers = ""): string {

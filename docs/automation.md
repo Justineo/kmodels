@@ -70,10 +70,13 @@ Status: implemented
   unresolved candidate does not prevent a validated independent repair commit; unresolved candidates
   are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
   empty, unsupported, or contradictory final outputs even when the model process exits successfully.
+  Incomplete admission errors include the bounded, JSON-escaped blocker reason so the failed-step
+  log distinguishes an investigated source blocker from an unexplained engine failure.
   A `commit_repair` intent runs all four required validations and the portable package checks in
   deterministic post-execution steps. The actual working-tree patch is bounded to 100 files and
   4 MiB and admitted only for catalog TypeScript, unit-test files, reviewed fixtures, provider
-  guides, and the manual semantic-disposition file. Repair infrastructure, scripts, dependencies,
+  guides, and the manual semantic-disposition file. Repair infrastructure (including the public
+  evidence helper and its tests), scripts, dependencies,
   workflows, generated data, executables, symlinks, and submodules cannot enter automatic repairs.
   New source hosts that require a network-policy change remain incomplete.
   Safe outputs run only after the complete agent job succeeds. Empty patches fail instead of
@@ -177,6 +180,15 @@ Status: implemented
   inside the sandbox. A missing fake token must not strand an otherwise valid source repair.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
   (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
+  For relocation research, `SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL` fetches the
+  reviewed HTML companion afresh, requires an actual anchor to the target, and fetches just that
+  target within the same public host/redirect boundary and a maximum 4 MiB response budget.
+  `--index` may replace the parent URL for a supported raw index. The artifact records both
+  parent bytes/hash and target bytes/hash with `scope: linked`; it has no whole-source baseline
+  comparison and does not admit a new collection dependency. Never treat a fixed-companion
+  rejection as evidence that a linked first-party contract is unavailable. Verify the successor
+  content before changing its manifest URL and parser. A method reference may delegate its
+  actual fields to linked parameter/result types; inspect those types before declaring omission.
   For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
   reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
   smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts

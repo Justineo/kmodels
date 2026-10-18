@@ -1,7 +1,44 @@
 import { readFile } from "node:fs/promises";
 import { expect, it } from "vite-plus/test";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
-import { publicEvidenceBaseline, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
+import {
+  linkedPublicSource,
+  publicEvidenceBaseline,
+  reviewedPublicSource,
+} from "../src/catalog/public-evidence.ts";
+
+it("inspects a first-party successor linked by reviewed HTML without admitting it to collection", () => {
+  const parent = reviewedPublicSource("vertex-pricing", "--index");
+  const target =
+    "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/Shared.Types/VideoGenerationModelParams";
+  const body = `<a href="${target}#fields">Parameters</a>`;
+  const source = linkedPublicSource(parent, body, target);
+  expect(source.url).toBe(target);
+  expect(source.allowedHosts).toEqual(parent.allowedHosts);
+  expect(source.maxResponseBytes).toBeLessThanOrEqual(parent.maxResponseBytes);
+  expect(source.maxResponseBytes).toBeLessThanOrEqual(4 * 1024 * 1024);
+  expect(source.linkedDocuments).toBeUndefined();
+  expect(source.transport).toBeUndefined();
+  expect(() => reviewedPublicSource("vertex-pricing", target + "/unreviewed")).toThrow(
+    "not a fixed reviewed companion",
+  );
+  expect(() => linkedPublicSource(parent, body, target + "/unlinked")).toThrow("not linked");
+  for (const url of [
+    "http://docs.cloud.google.com/page",
+    "https://docs.cloud.google.com.evil.test/page",
+    "https://secret@docs.cloud.google.com/page",
+    "https://docs.cloud.google.com:444/page",
+  ])
+    expect(() => linkedPublicSource(parent, `<a href="${url}">Link</a>`, url)).toThrow(
+      "host boundary",
+    );
+  expect(() => linkedPublicSource({ ...parent, access: "authenticated" }, body, target)).toThrow(
+    "public HTML parent",
+  );
+  expect(() =>
+    linkedPublicSource(reviewedPublicSource("cohere-models", "--index"), body, target),
+  ).toThrow("public HTML parent");
+});
 
 it("distinguishes a provider-ID mistake from authentication and names the public source", () => {
   expect(() => reviewedPublicSource("amazon-bedrock")).toThrow(
