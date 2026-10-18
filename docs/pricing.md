@@ -305,10 +305,13 @@ Raw variants carry a commercial impact:
 - `allowance`: may change benefits and blocks a complete allowance summary;
 - `informational`: retained for audit but excluded from commercial equality.
 
-An explicit offer state, a normalized rate, a normalized allowance or contribution, or a
-`base_price` raw fact establishes an offer. Normalized benefits and contributions must reference
-valid targets. Allowance and informational **raw** facts may annotate an established offer, but
-cannot create an otherwise empty offer or imply that an unknown price is available.
+An explicit offer state, a normalized rate, a recognized allowance or contribution term, or a
+`base_price` raw fact establishes an offer. A recognized adjustment can retain its identity when
+its commercial variants become entirely raw, including when a target rate cannot be normalized.
+That preserves the observed pool or usage rule without inventing a priced, free or included state.
+Normalized benefits and contributions must reference valid targets. Generic **raw** terms with only
+allowance or informational impact may annotate an established offer; informational evidence alone
+cannot create one or imply that an unknown price is available.
 
 ## Public semantics
 
