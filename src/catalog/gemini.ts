@@ -2,9 +2,16 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractGeminiCommercialFacts } from "./gemini-commercial-source.ts";
+import {
+  geminiGroundingAllowance,
+  geminiGroundingAllowances,
+  geminiGroundingOperation,
+  geminiGroundingQuantity,
+  type GeminiGroundingClaim,
+} from "./gemini-grounding-allowances.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
-import type { SourceManifest } from "./manifests.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
@@ -15,26 +22,8 @@ import {
   type SourcePriceFact,
   type SourcePricingInputFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
-import {
-  modalitySchema,
-  type Modality,
-  type ModelTask,
-  type Provider,
-  unknownCapabilities,
-} from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly Pick<
-    ProviderModel,
-    "aliases" | "model_id" | "name" | "tasks" | "uid" | "version"
-  >[];
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { assertItemCount, recognizeItems, contractExtensionEvidence } from "./source-contract.ts";
+import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
 interface Card {
   name: string;
@@ -64,6 +53,11 @@ interface PriceCandidate {
   descriptor: string;
   segment: string;
   unit: SourcePriceFact["unit"];
+}
+
+interface MapsGroundingBilling {
+  unscopedRequest: boolean;
+  monthlyQueries: string | undefined;
 }
 
 interface PriceCandidates {
@@ -615,10 +609,8 @@ function priceUnit(
     )
   )
     return value.includes("song") ? "request" : "image";
-  if (
-    /1,000 (?:search queries|grounded prompts)|1k (?:search queries|grounded prompts)/.test(value)
-  )
-    return "thousand_requests";
+  if (/(?:1,000|1k) search queries/.test(value)) return "thousand_search_units";
+  if (/(?:1,000|1k) grounded prompts/.test(value)) return "thousand_requests";
   if (/(?:1,000|1k) requests/.test(value)) return "thousand_requests";
   const lower = header.toLowerCase();
   if (lower.includes("per image")) return "image";
@@ -750,6 +742,8 @@ function conditions(
   const result: SourcePriceFact["conditions"] = {
     account_eligibility: accountEligibility,
   };
+  const grounding = geminiGroundingOperation(row);
+  if (grounding !== undefined) result.operation = grounding;
   const normalizedTier = tier.toLowerCase();
   if (normalizedTier !== "" && normalizedTier !== "standard") result.service_tier = normalizedTier;
   if (/prompts?\s*(?:<=|≤)\s*200k/i.test(descriptor)) result.context_max_tokens = 200_000;
@@ -779,13 +773,14 @@ function meterRates(
   baseConditions: SourcePriceFact["conditions"],
 ): { meter: SourcePriceFact["meter"]; conditions: SourcePriceFact["conditions"] }[] {
   const lower = row.toLowerCase();
-  if (lower.includes("grounding with google"))
+  const grounding = geminiGroundingOperation(row);
+  if (grounding !== undefined)
     return [
       {
         meter: "tool_call",
         conditions: {
           ...baseConditions,
-          operation: lower.includes("maps") ? "google_maps" : "google_search",
+          operation: grounding,
         },
       },
     ];
@@ -898,7 +893,12 @@ function targets(codes: string[], row: string): string[] {
   return codes;
 }
 
-function candidates(header: string, row: string, cell: Selection): PriceCandidates {
+function candidates(
+  header: string,
+  row: string,
+  cell: Selection,
+  searchPerQuery: boolean,
+): PriceCandidates {
   const values: PriceCandidate[] = [];
   const unknownUnits: string[] = [];
   const equivalences: string[] = [];
@@ -914,7 +914,16 @@ function candidates(header: string, row: string, cell: Selection): PriceCandidat
       if (price === undefined) throw new Error("Gemini pricing amount changed");
       const start = (match.index ?? 0) + match[0].length;
       const descriptor = text(segment.slice(start, matches[index + 1]?.index ?? segment.length));
-      const unit = priceUnit(header, descriptor, row);
+      const nativeUnit = priceUnit(header, descriptor, row);
+      const ambiguousSearchRequest =
+        geminiGroundingOperation(row) === "google_search" &&
+        nativeUnit === "thousand_requests" &&
+        !/grounded prompts/i.test(descriptor);
+      const unit = ambiguousSearchRequest
+        ? searchPerQuery
+          ? "thousand_search_units"
+          : undefined
+        : nativeUnit;
       if (unit === undefined) unknownUnits.push(segment);
       else values.push({ price, descriptor, segment, unit });
     }
@@ -980,6 +989,7 @@ function addRates(
   accountEligibility: "free_tier" | "paid_tier",
   values: PriceCandidate[],
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  mapsRequestBilling = false,
 ): void {
   for (const { price, descriptor, segment, unit } of values) {
     const rates = meterRates(
@@ -1006,21 +1016,30 @@ function addRates(
     for (const rate of rates) {
       const billedUnit =
         rate.meter === "tool_call" &&
-        unit === "thousand_requests" &&
-        /^gemini-3(?:[.-])/.test(model.model_id)
-          ? "thousand_search_units"
+        mapsRequestBilling &&
+        rate.conditions.operation === "google_maps" &&
+        unit === "thousand_search_units"
+          ? "thousand_requests"
           : unit;
+      const fact = publishedRate(
+        rate.meter,
+        price,
+        billedUnit,
+        sourceId,
+        accountEligibility === "free_tier"
+          ? `Free Tier; ${row}; Free of charge`
+          : `${header}; ${row}; ${descriptor || segment}`,
+        rate.conditions,
+      );
       model.price_facts.push(
-        publishedRate(
-          rate.meter,
-          price,
-          billedUnit,
-          sourceId,
-          accountEligibility === "free_tier"
-            ? `Free Tier; ${row}; Free of charge`
-            : `${header}; ${row}; ${descriptor || segment}`,
-          rate.conditions,
-        ),
+        billedUnit === unit
+          ? fact
+          : {
+              ...fact,
+              derived: true,
+              derivation:
+                "The owned Maps pricing companion establishes billed requests for this native allowance row",
+            },
       );
     }
     onPricingReconciliation?.({
@@ -1035,9 +1054,11 @@ function applyPricing(
   models: Map<string, ProviderModel>,
   sourceId: string,
   body: string,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): void {
+  onPricingReconciliation: Input["onPricingReconciliation"],
+  mapsBilling: MapsGroundingBilling,
+): GeminiGroundingClaim[] {
   const $ = load(body);
+  const claims: GeminiGroundingClaim[] = [];
   $(".devsite-article-body .models-section").each((_index, section) => {
     const codes = unique(
       $(section)
@@ -1048,6 +1069,10 @@ function applyPricing(
     );
     if (codes.length === 0) return;
     const siblings = $(section).nextUntil(".models-section");
+    const searchPerQuery =
+      /A customer-submitted request to Gemini may result in one or more queries to Google Search\. You will be charged for each individual search query performed\./.test(
+        text(siblings.filter("p").add(siblings.find("p")).text()),
+      );
     const tables = siblings.filter("table.pricing-table").add(siblings.find("table.pricing-table"));
     tables.each((_tableIndex, table) => {
       const headers = $(table)
@@ -1104,7 +1129,7 @@ function applyPricing(
             });
             return;
           }
-          const parsed = candidates(header, row, cells.eq(2));
+          const parsed = candidates(header, row, cells.eq(2), searchPerQuery);
           const paid = selectedCandidates(header, parsed.values);
           const selectedModels = targets(codes, row).flatMap((id) => {
             const model = pricingModel(models, id);
@@ -1118,20 +1143,28 @@ function applyPricing(
           });
           for (const model of selectedModels) {
             const allowanceText = text(cells.eq(2).text());
-            if (
-              /Grounding with Google (?:Search|Maps)/i.test(row) &&
-              /\b(?:free|RPD)\b/i.test(allowanceText)
-            )
-              model.raw_price_facts.push({
-                term_key: "grounding-allowance",
-                impact: "allowance",
-                reason: "unsupported_structure",
-                conditions: {
-                  ...conditions(tier, "paid_tier", "", row),
-                  operation: /Maps/i.test(row) ? "google_maps" : "google_search",
-                },
-                source_ref: sourceId,
-                raw: { label: row, fragment: allowanceText },
+            const operation = geminiGroundingOperation(row);
+            const allowanceRule =
+              operation === undefined
+                ? undefined
+                : geminiGroundingAllowance(
+                    allowanceText,
+                    model.uid,
+                    operation,
+                    mapsBilling.monthlyQueries,
+                  );
+            const mapsRequestBilling =
+              operation === "google_maps" &&
+              mapsBilling.unscopedRequest &&
+              allowanceRule?.unit === "request";
+            if (operation !== undefined && /\b(?:free|RPD)\b/i.test(allowanceText))
+              claims.push({
+                model_ref: model.uid,
+                operation,
+                conditions: conditions(tier, "paid_tier", "", row),
+                tier_label: tier,
+                fragment: allowanceText,
+                rule: allowanceRule,
               });
             for (const fragment of parsed.unknownUnits)
               preserveRawPricing(
@@ -1159,6 +1192,7 @@ function applyPricing(
               "paid_tier",
               paid,
               onPricingReconciliation,
+              mapsRequestBilling,
             );
             if (text(cells.eq(1).text()) !== "Free of charge") {
               onPricingReconciliation?.({
@@ -1195,6 +1229,7 @@ function applyPricing(
               "free_tier",
               free,
               onPricingReconciliation,
+              mapsRequestBilling,
             );
           }
         });
@@ -1229,6 +1264,7 @@ function applyPricing(
     )
   )
     throw new Error("Gemini pricing produced no usable or raw facts");
+  return claims;
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
@@ -1878,7 +1914,51 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   return values;
 }
 
-export function parseGeminiPricing(input: Input): ProviderModel[] {
+function geminiMapsBilling(
+  body: string,
+  onFinding: Input["onContractFinding"],
+): MapsGroundingBilling {
+  const absent = { unscopedRequest: false, monthlyQueries: undefined };
+  if (body.length === 0) return absent;
+  const $ = load(body);
+  const headings = $(".devsite-article-body h2").filter(
+    (_index, element) => text($(element).text()) === "Pricing and rate limits",
+  );
+  if (headings.length !== 1) {
+    onFinding?.(contractExtensionEvidence(["/pricing/maps/billing/section"]));
+    return absent;
+  }
+  const section = headings.first().nextUntil("h2");
+  const unscopedRequest = section
+    .filter("p")
+    .toArray()
+    .some(
+      (element) =>
+        text($(element).text()) ===
+        "A request is only billed if the prompt successfully returns at least one Google Maps grounded result, regardless of how many individual search queries the model performed internally to get that result.",
+    );
+  const queryRules = section
+    .filter("ul")
+    .children("li")
+    .toArray()
+    .map((element) => text($(element).text()))
+    .filter((fragment) => fragment.startsWith("Gemini 3 and newer models:"));
+  const quantities = queryRules.map((fragment) =>
+    geminiGroundingQuantity(
+      fragment.match(
+        /^Gemini 3 and newer models: Your project is billed for each search query that the model decides to execute, with ([\d,]+) free requests per month shared across all Gemini 3 and newer models, and then \$[\d.]+ per 1,000 search queries\. A single search prompt \(your API request to the model\) might result in the model executing multiple search queries to find the necessary information\. Each of these queries counts as a billable use of the tool\.$/,
+      )?.[1],
+    ),
+  );
+  const monthlyQueries = quantities[0];
+  const known =
+    monthlyQueries !== undefined && quantities.every((quantity) => quantity === monthlyQueries);
+  if (queryRules.length > 0 && !known)
+    onFinding?.(contractExtensionEvidence(["/pricing/maps/billing/monthly_queries"]));
+  return { unscopedRequest, monthlyQueries: known ? monthlyQueries : undefined };
+}
+
+export function parseGeminiPricing(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "gemini-pricing")
     throw new Error("Wrong Gemini pricing extractor");
   if (input.catalogModels === undefined)
@@ -1901,58 +1981,41 @@ export function parseGeminiPricing(input: Input): ProviderModel[] {
       return [model.model_id, model] as const;
     }),
   );
-  applyPricing(models, input.source.id, bundle.index.body, input.onPricingReconciliation);
-  const mapsGuide =
-    bundle.documents.find(
-      ({ url }) => url === "https://ai.google.dev/gemini-api/docs/maps-grounding",
-    )?.body ?? "";
-  const mapsRequestBilling =
-    /A request is only billed if the prompt successfully returns at least one Google Maps grounded result, regardless of how many individual search queries the model performed internally to get that result\./.test(
-      text(load(mapsGuide)("body").text()),
-    );
-  for (const model of models.values()) {
-    const monthlySearch = model.raw_price_facts.some(
-      (fact) =>
-        fact.conditions.operation === "google_search" &&
-        typeof fact.raw.fragment === "string" &&
-        /^([\d,]+) free search requests per month \(shared across all Gemini 3\.x models\)/.test(
-          fact.raw.fragment,
-        ),
-    );
-    model.price_facts = model.price_facts.map((rate) => {
-      if (rate.meter !== "tool_call") return rate;
-      if (
-        mapsRequestBilling &&
-        rate.conditions.operation === "google_maps" &&
-        rate.unit === "thousand_search_units"
-      )
-        return {
-          ...rate,
-          unit: "thousand_requests",
-          derived: true,
-          derivation:
-            "Maps grounding guide: billed once per request that returns at least one grounded result, regardless of internal search queries",
-        };
-      if (
-        monthlySearch &&
-        rate.conditions.operation === "google_search" &&
-        rate.unit === "thousand_requests"
-      )
-        return { ...rate, unit: "thousand_search_units" };
-      return rate;
-    });
-  }
-  extractGeminiCommercialFacts(models, input.source.id);
+  const mapsGuides = bundle.documents.filter(
+    ({ url }) => url === "https://ai.google.dev/gemini-api/docs/maps-grounding",
+  );
+  const mapsBilling = geminiMapsBilling(
+    mapsGuides.length === 1 ? (mapsGuides[0]?.body ?? "") : "",
+    input.onContractFinding,
+  );
+  if (mapsGuides.length > 1)
+    input.onContractFinding?.(contractExtensionEvidence(["/pricing/maps/billing/duplicate"]));
+  const claims = applyPricing(
+    models,
+    input.source.id,
+    bundle.index.body,
+    input.onPricingReconciliation,
+    mapsBilling,
+  );
+  const commercial = geminiGroundingAllowances(
+    extractGeminiCommercialFacts(models, input.source.id, claims),
+    claims,
+    input.source.id,
+  );
   const pricingInputs = extractPricingInputs(
     bundle,
     input.source.id,
     input.onPricingReconciliation,
   );
-  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return [...models.values()]
-    .map((model) => ({ ...model, aliases: [] }))
-    .sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: [...models.values()]
+      .filter((model) => model.price_facts.length + model.raw_price_facts.length > 0)
+      .map((model) => ({ ...model, aliases: [] }))
+      .sort((left, right) => left.uid.localeCompare(right.uid)),
+    commercial_facts: commercial.facts,
+    vocabulary: commercial.vocabulary,
+    pricing_inputs: pricingInputs,
+  };
 }
 
 export function parseGeminiApi(input: Input): ProviderModel[] {

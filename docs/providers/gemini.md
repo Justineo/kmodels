@@ -83,25 +83,38 @@ An equivalence without a surviving primary token amount stays raw with an unknow
 not acquire the table's token denominator by fallback. This isolates a damaged primary cell
 without converting an estimate into a published tariff.
 
-Gemini 3 Search is priced per executed search query. The same monthly Search allowance cell also
+Search on Gemini 3 and newer models is priced per executed query. The monthly allowance cell also
 establishes Robotics membership in that shared pool; a model-name prefix does not override the cell.
-Older Search rows are priced per grounded prompt. Maps' independent grounding guide establishes
-one billable request when at least one Maps result is returned, regardless of internal query count.
-That exact companion claim resolves the Maps pricing table's mixed prompts/requests/search-query
-wording. It is a billing-unit clarification, not an assumed prompt-to-query multiplier.
-An explicitly shared Gemini 3 monthly free-search allowance is one quantity benefit targeting all
-documented compatible rate terms in that service book. The Gemini 2.5 Flash/Flash-Lite daily shared
+Older Search rows are priced per grounded prompt.
+The current [Maps pricing section](https://ai.google.dev/gemini-api/docs/maps-grounding#pricing_and_rate_limits)
+separates generations: Gemini 3 and newer are billed per executed query, while the successful-result
+request rule applies to Gemini 2.5 and older. A scoped older-generation sentence never rewrites all
+Maps rates. The reviewed historical unscoped request paragraph may clarify a matching legacy
+allowance row only within its owned pricing section. A Maps query allowance requires the owned
+modern companion claim and an agreeing published quota; its absence leaves the allowance raw while
+the explicit query rate survives. No prompt-to-query multiplier is assumed.
+The monthly Search pool is one quantity benefit targeting all exact service-rate terms established
+by its source cells. The Gemini 2.5 Flash/Flash-Lite daily shared
 grounding allowance likewise has one pool, and an unshared daily RPD allowance targets its own
 model's rate. Search and Maps have separate service pools. These allowances use the published
 amount and daily/monthly reset; they do not create a fresh allowance for each model or each
 request. Consumers supply the remaining shared quota and apply it once across the target terms.
 
-Allowance normalization requires a compatible billing unit. The Maps monthly prompt/request
-allowance targets the request-based Maps rate only while the independent guide establishes that
-unit. If that companion is absent or its contract changes, the ambiguous Maps allowance stays raw.
-Unknown sharing rules and disagreeing quantities within one stated pool also stay raw while the
-known overage rate remains usable. An allowance's unavailable runtime counter does not invalidate
+Allowance normalization requires compatible rate units and agreeing quantities, resets and units
+across the observed members of one stated pool. Unknown sharing or unresolved companion claims
+remain raw while known overage rates stay usable. Ambiguous Search request wording without its
+owned per-query clarification remains a base-price raw quote, rather than acquiring a grounded-prompt
+counter. Numbers with malformed grouping remain raw rather than being
+repaired by stripping arbitrary commas. An allowance's unavailable runtime counter does not invalidate
 its published quantity, scope, reset, or rate.
+
+Pricing returns independent service facts, acquisition inputs and reviewed vocabulary. Native
+grounding cells produce typed shared-pool claims and canonical allowance terms at the source
+boundary. The commercial adapter binds quantities and compatible offers without reparsing raw
+fragments. Explicit query/prompt denominators and model-local Search footnotes establish units;
+model-name prefixes never select them. Distinct source prices survive extraction for ordinary
+conflict assembly. A target-price conflict keeps the separate allowance record unresolved without
+rejecting unrelated provider pricing or inventing a free state.
 
 ## Charge bindings
 
@@ -123,7 +136,9 @@ rather than invented normalized provider keys:
   generated-video result item; resolution and generated-audio applicability come from the same
   request configuration;
 - online service tier uses `UsageMetadata.serviceTier`;
-- Interactions Search/Maps use `usage.grounding_tool_count` filtered by tool type;
+- Interactions `usage.grounding_tool_count` remains a captured native counter, but its generic
+  [reference description](https://ai.google.dev/api/interactions-api) does not establish billed-query
+  cardinality, so it does not supply an exact Search/Maps query method;
 - GenerateContent Search query pricing counts unique non-empty
   `groundingMetadata.webSearchQueries`; older Search request pricing and Maps grounded-prompt pricing
   use their respective successful grounded-result marker.
@@ -132,7 +147,8 @@ Batch locators refer only to each successful inline/file result's contained Gene
 embedding response, never Interactions usage or the job submission count. A rate whose denominator
 has no exact documented request/result quantity remains unbound; publishing a rate does not require
 fabricating observability. In particular, GenerateContent does not expose an exact Maps query count,
-and a Veo request that omits `durationSeconds` has no exact duration input mapping. Known modality
+and a Veo request that omits `durationSeconds` has no exact duration input mapping. Maps query
+quantities remain caller inputs even when a generic tool counter is available. Known modality
 subtraction, document/image sums, and output/thinking sums remain alongside surviving locators if
 an accounting field drifts. The caller must supply unmapped required signals. Stream interruption
 and usage retention policy remain downstream runtime concerns.

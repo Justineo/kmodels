@@ -3,7 +3,7 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
 } from "./pricing-source.ts";
-import { sourcePriceFactKey } from "./pricing-source.ts";
+import type { GeminiGroundingClaim } from "./gemini-grounding-allowances.ts";
 
 type MutableFact = Omit<SourceCommercialPricingFact, "source_ref">;
 
@@ -14,7 +14,8 @@ type MutableFact = Omit<SourceCommercialPricingFact, "source_ref">;
 export function extractGeminiCommercialFacts(
   models: Map<string, ParsedProviderModel>,
   sourceId: string,
-): void {
+  claims: readonly GeminiGroundingClaim[],
+): SourceCommercialPricingFact[] {
   const facts = new Map<string, MutableFact>();
   for (const model of models.values()) {
     model.price_facts = model.price_facts.filter((rate) => {
@@ -27,32 +28,24 @@ export function extractGeminiCommercialFacts(
         ...rate,
         meter: operation === "google_search" ? "web_search" : "maps_search",
       };
-      if (
-        !fact.price_facts.some(
-          (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(mapped),
-        )
-      )
-        fact.price_facts.push(mapped);
+      fact.price_facts.push(mapped);
       return false;
     });
     model.raw_price_facts = model.raw_price_facts.filter((raw) => {
       if (raw.term_key === "agent_usage_formula") return false;
       const operation = raw.conditions.operation;
-      if (
-        raw.impact !== "allowance" ||
-        (operation !== "google_search" && operation !== "google_maps")
-      )
-        return true;
+      if (operation !== "google_search" && operation !== "google_maps") return true;
       groundingFact(facts, model, operation).raw_price_facts.push(raw);
       return false;
     });
   }
-  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && facts.size > 0)
-    carrier.commercial_facts = [...facts.values()].map((fact) => ({
-      source_ref: sourceId,
-      ...fact,
-    }));
+  const byUid = new Map([...models.values()].map((model) => [model.uid, model]));
+  for (const claim of claims) {
+    const model = byUid.get(claim.model_ref);
+    if (model === undefined) throw new Error("Grounding claim lost its catalog identity");
+    groundingFact(facts, model, claim.operation);
+  }
+  return [...facts.values()].map((fact) => ({ source_ref: sourceId, ...fact }));
 }
 
 function groundingFact(

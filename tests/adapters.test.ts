@@ -27,6 +27,7 @@ import { applyGroups, applySupplementGroups, retainSourceFacts } from "../src/ca
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { normalizeDeliveryModes } from "../src/catalog/delivery.ts";
+import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
@@ -807,11 +808,11 @@ async function huggingFaceHub(
   }).models;
 }
 
-async function geminiCatalog(
+async function geminiSource(
   overrides: Readonly<Record<string, string>> = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   omitPricingDocuments: ReadonlySet<string> = new Set(),
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const value = manifest("gemini");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "gemini-catalog")
@@ -905,38 +906,31 @@ async function geminiCatalog(
           ]),
     ],
   });
-  const priced = parseSource({
+  const pricedSource = parseSource({
     provider: provider(value),
     source: pricingSource,
     body: pricingBody,
     observedAt,
     catalogModels: catalog,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
-  }).models;
-  const pricedByUid = new Map(priced.map((model) => [model.uid, model]));
-  return applyGroups(
-    catalog,
-    [
-      {
-        source: pricingSource,
-        models: priced,
-      },
-    ],
-    false,
-  ).map((model) => {
-    const pricing = pricedByUid.get(model.uid);
-    if (pricing === undefined) return model;
-    return {
-      ...model,
-      pricing_state: pricing.pricing_state,
-      price_facts: pricing.price_facts,
-      raw_price_facts: pricing.raw_price_facts,
-      ...(pricing.pricing_inputs === undefined ? {} : { pricing_inputs: pricing.pricing_inputs }),
-      ...(pricing.commercial_facts === undefined
-        ? {}
-        : { commercial_facts: pricing.commercial_facts }),
-    };
   });
+  return {
+    ...pricedSource,
+    models: applyGroups(
+      catalog,
+      [
+        {
+          source: pricingSource,
+          ...pricedSource,
+        },
+      ],
+      false,
+    ),
+  };
+}
+
+async function geminiCatalog(...args: Parameters<typeof geminiSource>): Promise<ProviderModel[]> {
+  return (await geminiSource(...args)).models;
 }
 
 async function vertexModels(
@@ -3268,9 +3262,10 @@ describe("Gemini adapters", () => {
   });
 
   it("joins labeled model pages, lifecycle, changelog, and pricing", async () => {
-    const models = await geminiCatalog();
+    const result = await geminiSource();
+    const models = result.models;
     const model = models.find((item) => item.model_id === "gemini-test-preview");
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = result.commercial_facts ?? [];
     const search = commercial.find(
       (fact) =>
         fact.resource_key === "google-search" && fact.offer_key === `grounding:${model?.uid}`,
@@ -3296,7 +3291,10 @@ describe("Gemini adapters", () => {
           rate.meter === "input_text" && rate.conditions.account_eligibility === "free_tier",
       )?.price,
       searchUnit: search?.price_facts.find((rate) => rate.meter === "web_search")?.unit,
-      cached: model?.price_facts.find((rate) => rate.meter === "cache_read_text")?.price,
+      cached: model?.price_facts.find(
+        (rate) =>
+          rate.meter === "cache_read_text" && rate.conditions.account_eligibility === "paid_tier",
+      )?.price,
       resources: commercial.map(({ resource_key }) => resource_key).sort(),
     }).toEqual({
       name: "Gemini Test",
@@ -3432,10 +3430,11 @@ describe("Gemini adapters", () => {
 
   it("uses explicit grounding units and reconciles every pricing claim", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = await geminiCatalog({}, (item) => reconciliation.push(item));
+    const result = await geminiSource({}, (item) => reconciliation.push(item));
+    const models = result.models;
     const legacy = models.find((model) => model.model_id === "gemini-test-preview");
     const current = models.find((model) => model.model_id === "gemini-3-test-preview");
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = result.commercial_facts ?? [];
     const groundingUnit = (modelRef: string | undefined) =>
       commercial
         .find(
@@ -3482,7 +3481,7 @@ describe("Gemini adapters", () => {
     );
     const body = await fixture("gemini/allowances.html");
     const assemble = (text: string, mapsGuide?: string) => {
-      const models = parseSource({
+      const result = parseSource({
         provider: provider(value),
         source,
         body: JSON.stringify({
@@ -3494,15 +3493,15 @@ describe("Gemini adapters", () => {
         }),
         observedAt,
         catalogModels,
-      }).models;
+      });
       const partition = assembleParsedProviderPricing(
         "gemini",
         observedAt,
-        [{ source, models }],
-        models,
+        [{ source, ...result }],
+        catalogModels,
         value.pricingCategoricalLabels,
       );
-      validateParsedPricing(value, source, models, partition);
+      validateParsedPricing(value, source, catalogModels, partition);
       return partition;
     };
     const partition = assemble(body);
@@ -3579,9 +3578,7 @@ describe("Gemini adapters", () => {
 
   it("reads Interactions signature fields without treating example prose as a field definition", async () => {
     const body = await fixture("gemini/interactions-fields.html");
-    const inputs = (await geminiCatalog({ "interactions-api.html": body })).flatMap(
-      (model) => model.pricing_inputs ?? [],
-    );
+    const inputs = (await geminiSource({ "interactions-api.html": body })).pricing_inputs ?? [];
     expect(inputs.filter(({ key }) => key.startsWith("interaction."))).toHaveLength(21);
     const drifted =
       body.replace(
@@ -3589,20 +3586,19 @@ describe("Gemini adapters", () => {
         '<span class="field-name">renamed_input_tokens</span>',
       ) +
       '<p>total_input_tokens</p><div class="signature"><span class="field-name">total_input_tokens</span></div>';
-    const changed = (await geminiCatalog({ "interactions-api.html": drifted })).flatMap(
-      (model) => model.pricing_inputs ?? [],
-    );
+    const changed = (await geminiSource({ "interactions-api.html": drifted })).pricing_inputs ?? [];
     expect(changed.some(({ key }) => key === "interaction.prompt.total")).toBe(false);
     expect(changed.some(({ key }) => key === "interaction.cache.total")).toBe(true);
   });
 
   it("keeps only selectors documented by the relocated Veo parameter guide", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
-    const inputs = (
-      await geminiCatalog({ "video.html": await fixture("gemini/veo-parameters.html") }, (item) =>
-        reconciliation.push(item),
-      )
-    ).flatMap((model) => model.pricing_inputs ?? []);
+    const inputs =
+      (
+        await geminiSource({ "video.html": await fixture("gemini/veo-parameters.html") }, (item) =>
+          reconciliation.push(item),
+        )
+      ).pricing_inputs ?? [];
     expect(
       inputs
         .filter(({ key }) => key.startsWith("video.request."))
@@ -3617,9 +3613,7 @@ describe("Gemini adapters", () => {
   });
 
   it("publishes localized GenerateContent, embedding, Batch, and Interactions inputs", async () => {
-    const pricingInputs = (await geminiCatalog()).flatMap(
-      ({ pricing_inputs }) => pricing_inputs ?? [],
-    );
+    const pricingInputs = (await geminiSource()).pricing_inputs ?? [];
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3733,11 +3727,10 @@ describe("Gemini adapters", () => {
   });
 
   it("does not turn agent composition or account resources into price-book offers", async () => {
-    const models = await geminiCatalog();
+    const result = await geminiSource();
+    const models = result.models;
     const agent = models.find((model) => model.model_id === "deep-research-test");
-    const resources = models
-      .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-      .map(({ resource_key }) => resource_key);
+    const resources = (result.commercial_facts ?? []).map(({ resource_key }) => resource_key);
     expect(agent).toMatchObject({
       pricing_state: "unknown",
       price_facts: [],
@@ -3916,17 +3909,17 @@ describe("Gemini adapters", () => {
       }),
     ).rejects.toThrow("create endpoint changed");
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = await geminiCatalog(
+    const result = await geminiSource(
       {
         "discovery.json": discovery.replace('"promptTokenCount": {}', '"promptTokenCountV2": {}'),
       },
       (item) => reconciliation.push(item),
     );
-    expect(models.find(({ model_id }) => model_id === "gemini-test-preview")).toMatchObject({
+    expect(result.models.find(({ model_id }) => model_id === "gemini-test-preview")).toMatchObject({
       pricing_state: "numeric",
       raw_price_facts: [],
     });
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs.some(({ key }) => key === "generate.prompt.total")).toBe(false);
     expect(pricingInputs.some(({ key }) => key === "generate.cache.total")).toBe(true);
     expect(reconciliation).toContainEqual(
@@ -3942,25 +3935,23 @@ describe("Gemini adapters", () => {
       omitted.find(({ model_id }) => model_id === "gemini-test-preview")?.raw_price_facts,
     ).not.toEqual([expect.objectContaining({ term_key: "charge_binding_unavailable" })]);
 
-    const interactionDrift = await geminiCatalog({
+    const interactionDrift = await geminiSource({
       "interactions-api.html": interactionsApi.replace(
         "<code>total_output_tokens</code>",
         "<code>total_output_tokens_v2</code>",
       ),
     });
-    const interactionInputs = interactionDrift.flatMap(
-      ({ pricing_inputs }) => pricing_inputs ?? [],
-    );
+    const interactionInputs = interactionDrift.pricing_inputs ?? [];
     expect(interactionInputs.some(({ key }) => key === "interaction.candidates.total")).toBe(false);
     expect(interactionInputs.some(({ key }) => key === "interaction.prompt.total")).toBe(true);
 
-    const batchDrift = await geminiCatalog({
+    const batchDrift = await geminiSource({
       "batch-api.html": (await fixture("gemini/batch-api.html")).replace(
         "GenerateContentResponse",
         "GenerateContentResponseV2",
       ),
     });
-    const batchInputs = batchDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const batchInputs = batchDrift.pricing_inputs ?? [];
     expect(
       batchInputs.some(
         ({ key, locator }) =>

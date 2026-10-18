@@ -1,0 +1,21 @@
+<!-- Reviewed billing section from https://ai.google.dev/gemini-api/docs/maps-grounding (2026-10-19). -->
+<div class="devsite-article-body">
+  <h2>Pricing and rate limits</h2>
+  <p>Grounding with Google Maps pricing differs depending on the model generation:</p>
+  <ul>
+    <li>
+      Gemini 3 and newer models: Your project is billed for each search query that the model decides
+      to execute, with 5,000 free requests per month shared across all Gemini 3 and newer models,
+      and then $14 per 1,000 search queries. A single search prompt (your API request to the model)
+      might result in the model executing multiple search queries to find the necessary information.
+      Each of these queries counts as a billable use of the tool.
+    </li>
+    <li>
+      Gemini 2.5 and older models: Your project is billed per search prompt ($25 per 1,000 grounded
+      prompts). A request is only billed if the prompt successfully returns at least one Google Maps
+      grounded result, regardless of how many individual search queries the model performed
+      internally to get that result.
+    </li>
+  </ul>
+  <h2>Supported models</h2>
+</div>

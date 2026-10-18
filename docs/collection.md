@@ -369,6 +369,9 @@ Status: implemented
   fixed-search contributions and container calculations; service-only input needs no model carrier.
   A fixed-search service still requires an exact admitted catalog identity. Scoped source states
   survive capture and replay separately from whole-model pricing dispositions.
+  Gemini pricing also returns grounding services, canonical allowance pools, acquisition contracts
+  and vocabulary at source level. Its pricing result contains only observed model pricing facts;
+  service and accounting facts do not require an arbitrary model row.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for
