@@ -21,6 +21,43 @@ it("routes repair and threat detection to DeepSeek without exposing the inferenc
   expect(job(workflow, "agent")).toContain(String.raw`\"modelFallback\":{\"enabled\":false}`);
 });
 
+it("supplies DeepSeek pricing to both proxies with per-token units and a cache-read discount", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const encoded = workflow.match(/^\s+GH_AW_INFO_MODEL_COSTS: '(.*)'$/m)?.[1];
+  if (encoded === undefined) throw new Error("Missing BYOK model pricing overlay");
+  const raw = z.record(z.string(), z.unknown()).parse(JSON.parse(encoded));
+  const price = z.string().transform(Number).pipe(z.number().nonnegative());
+  const overlay = z
+    .object({
+      providers: z.object({
+        "github-copilot": z.object({
+          models: z.object({
+            "deepseek-flash": z.object({
+              cost: z.object({
+                input: price,
+                output: price,
+                cache_read: price,
+                cache_write: price,
+              }),
+            }),
+          }),
+        }),
+      }),
+    })
+    .parse(raw);
+  const cost = overlay.providers["github-copilot"].models["deepseek-flash"].cost;
+  expect((cost.input + cost.cache_read + cost.output) * 1_000_000).toBeCloseTo(1.506, 12);
+  expect(cost.cache_read / cost.input).toBeCloseTo(0.02, 12);
+  expect(cost.cache_write).toBe(0);
+  expect(job(workflow, "activation")).toContain("/tmp/gh-aw/models.json");
+  const proxyPricing = JSON.stringify(raw.providers).replaceAll('"', '\\"');
+  for (const name of ["agent", "detection"]) {
+    const phase = job(workflow, name);
+    expect(phase).toContain(`${String.raw`\"providers\":`}${proxyPricing}`);
+    expect(phase).toContain('export GH_AW_MODELS_JSON_PATH="/tmp/gh-aw/models.json"');
+  }
+});
+
 it("exercises the same isolated repair bootstrap in CI, preparation, and publication", async () => {
   const workflow = await readFile(compiled, "utf8");
   const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");

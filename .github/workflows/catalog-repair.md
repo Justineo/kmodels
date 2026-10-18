@@ -21,6 +21,19 @@ engine:
     COPILOT_PROVIDER_TYPE: openai
     COPILOT_PROVIDER_WIRE_API: responses
 
+# AWF's bundled Copilot price table does not include this BYOK model. Rates are USD/token,
+# using DeepSeek's peak rates as a conservative budget ceiling (off-peak is half).
+models:
+  providers:
+    github-copilot:
+      models:
+        deepseek-flash:
+          cost:
+            input: "0.0000003"
+            output: "0.0000012"
+            cache_read: "0.000000006"
+            cache_write: "0"
+
 sandbox:
   agent:
     id: awf
