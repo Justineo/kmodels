@@ -1,6 +1,18 @@
 openapi: 3.1.0
 components:
   schemas:
+    Response:
+      allOf:
+        - type: object
+          properties:
+            usage:
+              anyOf:
+                - $ref: "#/components/schemas/ResponseUsage"
+                - type: "null"
+    ResponseCompletedEvent:
+      properties:
+        response:
+          $ref: "#/components/schemas/Response"
     ResponseUsage:
       properties:
         input_tokens:

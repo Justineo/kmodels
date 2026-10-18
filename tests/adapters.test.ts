@@ -638,13 +638,13 @@ async function huggingFaceRouterBody(
   });
 }
 
-async function huggingFaceRouter(
+async function huggingFaceRouterResult(
   path: string,
   edit: (body: string) => string = (body) => body,
   editDocument: (path: string, body: string) => string = (_path, body) => body,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (item: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const value = manifest("huggingface");
   const source = huggingFaceRouterSource(value);
   return parseSource({
@@ -654,7 +654,13 @@ async function huggingFaceRouter(
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
+  });
+}
+
+async function huggingFaceRouter(
+  ...args: Parameters<typeof huggingFaceRouterResult>
+): Promise<ProviderModel[]> {
+  return (await huggingFaceRouterResult(...args)).models;
 }
 
 async function huggingFaceFeatherless(
@@ -9512,7 +9518,7 @@ describe("Hugging Face adapter", () => {
         },
       ],
     });
-    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v11");
+    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v12");
     expect(sources[1]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     expect(sources[1]?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual([
       "pricing",
@@ -9877,18 +9883,19 @@ describe("Hugging Face adapter", () => {
     const value = manifest("huggingface");
     const routerSource = huggingFaceRouterSource(value);
     const featherlessSource = huggingFaceFeatherlessSource(value);
-    const router = await huggingFaceRouter("huggingface/pricing.json", (body) =>
+    const routerResult = await huggingFaceRouterResult("huggingface/pricing.json", (body) =>
       body
         .replace('"status": "error"', '"status": "live"')
         .replace(',\n          "pricing": { "input": 9, "output": 9 }', ""),
     );
+    const router = routerResult.models;
     const native = await huggingFaceFeatherless();
     const published = applyGroups(router, [{ source: featherlessSource, models: native }], false);
     const partition = assembleParsedProviderPricing(
       "huggingface",
       observedAt,
       [
-        { source: routerSource, models: router },
+        { source: routerSource, ...routerResult },
         { source: featherlessSource, models: native },
       ],
       published,
@@ -9947,18 +9954,19 @@ describe("Hugging Face adapter", () => {
 
     const source = huggingFaceFeatherlessSource(manifest("huggingface"));
     const routerSource = huggingFaceRouterSource(manifest("huggingface"));
-    const router = await huggingFaceRouter("huggingface/pricing.json", (body) =>
+    const routerResult = await huggingFaceRouterResult("huggingface/pricing.json", (body) =>
       body.replace(
         '"context_length": 32768',
         '"context_length": 32768, "pricing": { "input": 9, "output": 9 }',
       ),
     );
+    const router = routerResult.models;
     const published = applyGroups(router, [{ source, models: [model] }], false);
     const partition = assembleParsedProviderPricing(
       "huggingface",
       observedAt,
       [
-        { source: routerSource, models: router },
+        { source: routerSource, ...routerResult },
         { source, models: [model] },
       ],
       published,
@@ -10380,7 +10388,8 @@ describe("Hugging Face adapter", () => {
   });
 
   it("keeps every router price and route-derived fact", async () => {
-    const models = await huggingFaceRouter("huggingface/pricing.json");
+    const result = await huggingFaceRouterResult("huggingface/pricing.json");
+    const models = result.models;
     const model = models.find((item) => item.model_id === "org/model-1");
     const free = models.find((item) => item.model_id === "org/free-model");
     expect({
@@ -10408,8 +10417,8 @@ describe("Hugging Face adapter", () => {
       { name: "Chat Completions", path: "/v1/chat/completions" },
       { name: "Responses", path: "/v1/responses" },
     ]);
-    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(9);
-    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual(
+    expect(result.pricing_inputs).toHaveLength(9);
+    expect(result.pricing_inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "chat.response.prompt_tokens",
@@ -10447,9 +10456,9 @@ describe("Hugging Face adapter", () => {
       ["input_text", "0", false],
       ["output_text", "0.0", false],
     ]);
-    expect(free?.raw_price_facts).toContainEqual(
+    expect(free?.state_facts).toContainEqual(
       expect.objectContaining({
-        term_key: "route_promotional_free",
+        state: "free",
         conditions: { route_provider: "publicai", promotion: true },
       }),
     );
@@ -10496,17 +10505,18 @@ describe("Hugging Face adapter", () => {
   });
 
   it("publishes only routed request rates and charge bindings", async () => {
-    const models = await huggingFaceRouter(
+    const result = await huggingFaceRouterResult(
       "huggingface/pricing.json",
       (body) => body,
       (_path, body) => body,
     );
-    expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual([]);
+    const models = result.models;
+    expect(result.commercial_facts).toBeUndefined();
 
     const partition = assembleParsedProviderPricing(
       "huggingface",
       observedAt,
-      [{ source: huggingFaceRouterSource(manifest("huggingface")), models }],
+      [{ source: huggingFaceRouterSource(manifest("huggingface")), ...result }],
       models,
       manifest("huggingface").pricingCategoricalLabels,
     );
@@ -10579,7 +10589,7 @@ describe("Hugging Face adapter", () => {
 
   it("keeps Hugging Face pricing-input drift field-local", async () => {
     const findings: SourceContractEvidence[] = [];
-    const models = await huggingFaceRouter(
+    const result = await huggingFaceRouterResult(
       "huggingface/pricing.json",
       (body) => body,
       (path, body) =>
@@ -10589,7 +10599,7 @@ describe("Hugging Face adapter", () => {
       undefined,
       (finding) => findings.push(finding),
     );
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const inputs = result.pricing_inputs ?? [];
     expect(inputs).toHaveLength(7);
     expect(inputs.some(({ key }) => key === "responses.response.input_tokens")).toBe(false);
     expect(inputs.some(({ key }) => key === "responses.stream.input_tokens")).toBe(false);
@@ -10602,7 +10612,7 @@ describe("Hugging Face adapter", () => {
     );
     expect(findings).toHaveLength(2);
 
-    const withoutPinnedRoute = await huggingFaceRouter(
+    const withoutPinnedRoute = await huggingFaceRouterResult(
       "huggingface/pricing.json",
       (body) => body,
       (path, body) =>
@@ -10611,16 +10621,16 @@ describe("Hugging Face adapter", () => {
           : body,
     );
     expect(
-      withoutPinnedRoute
-        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
-        .some(({ key }) => key === "routing.pinned_provider"),
+      (withoutPinnedRoute.pricing_inputs ?? []).some(
+        ({ key }) => key === "routing.pinned_provider",
+      ),
     ).toBe(false);
     const value = manifest("huggingface");
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source: huggingFaceRouterSource(value), models: withoutPinnedRoute }],
-      withoutPinnedRoute,
+      [{ source: huggingFaceRouterSource(value), ...withoutPinnedRoute }],
+      withoutPinnedRoute.models,
       value.pricingCategoricalLabels,
     );
     expect(

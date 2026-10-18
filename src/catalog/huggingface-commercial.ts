@@ -40,28 +40,11 @@ function modelBook(book: AtomicPricingBook, inputIndex: PricingInputIndex): Atom
   if (book.scope.kind !== "models") return [];
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== "usage") return [];
-    const states = [...offer.states];
     const terms = offer.terms.flatMap((term) => {
       if (term.kind === "raw" && term.term_key === "route_price_not_published") {
         const unresolved = term.variants.filter(
           (variant) => !nativeRoutePricingComplete(offer.terms, variant),
         );
-        return unresolved.length === 0 ? [] : [{ ...term, variants: unresolved }];
-      }
-      if (term.kind === "raw" && term.term_key === "route_promotional_free") {
-        const unresolved = term.variants.filter((variant) => {
-          const { possible_scope } = variant;
-          if (possible_scope === undefined) return true;
-          states.push({
-            state: "free",
-            applicability: possible_scope,
-            observation: {
-              ...variant.observation,
-              establishes_applicability: possible_scope,
-            },
-          });
-          return false;
-        });
         return unresolved.length === 0 ? [] : [{ ...term, variants: unresolved }];
       }
       return [bindTerm(term, inputIndex)];
@@ -71,7 +54,6 @@ function modelBook(book: AtomicPricingBook, inputIndex: PricingInputIndex): Atom
         ...offer,
         offer_key: "routed-inference",
         name: "Routed inference",
-        states,
         terms,
         enrollment: [],
         relations: [],
