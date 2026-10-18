@@ -4,6 +4,7 @@ import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bun
 import { modelIdSchema } from "./identity.ts";
 import {
   extractKimiCommercialFacts,
+  bindKimiBatchPrices,
   type KimiCommercialEvidence,
 } from "./kimi-commercial-source.ts";
 import {
@@ -18,17 +19,9 @@ import type {
   SourcePriceFact,
   SourceCommercialPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
-import { type Provider, unknownCapabilities } from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { unknownCapabilities } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
 const modelsPath = "/v1/models";
 const chatPath = "/v1/chat/completions";
@@ -319,7 +312,7 @@ function requestFacts(
   };
 }
 
-export function parseKimiOpenApi(input: Input): ProviderModel[] {
+export function parseKimiOpenApi(input: Input): SourceParseResult {
   const spec = openApiSchema.parse(JSON.parse(input.body));
   const extractor = input.source.extractor;
   if (extractor.kind !== "kimi-openapi") throw new Error("Wrong kimi-openapi extractor");
@@ -402,10 +395,10 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       status: "active",
     } satisfies ProviderModel;
   });
-  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && accounting.pricingInputs.length > 0)
-    carrier.pricing_inputs = accounting.pricingInputs;
-  return bounded(input, "kimi-openapi", models);
+  return {
+    models: bounded(input, "kimi-openapi", models),
+    pricing_inputs: accounting.pricingInputs,
+  };
 }
 
 interface MarkdownTable {
@@ -964,11 +957,21 @@ function guideModels(body: string, models: Map<string, ProviderModel>, label: st
 }
 
 function batchGuideModels(body: string): string[] {
-  const support = body.split(/\r?\n/).find((line) => /Batch API (?:supports|支持)/i.test(line));
-  if (support === undefined) throw new Error("Kimi Batch guide omitted its supported models");
-  const supportedClause = support.split(/;|；|，暂不支持/)[0] ?? "";
-  const ids = exactDocumentModelIds(supportedClause);
-  if (ids.length === 0) throw new Error("Kimi Batch guide omitted exact supported model IDs");
+  const claims = body
+    .split(/\r?\n/)
+    .filter(
+      (line) => /Batch API (?:supports|支持)/i.test(line) && exactDocumentModelIds(line).length > 0,
+    );
+  const claim = claims[0];
+  if (claims.length !== 1 || claim === undefined)
+    throw new Error("Kimi Batch guide omitted or duplicated its exact supported model claim");
+  const clause = claim.split(/;|；|，暂不支持/)[0] ?? "";
+  const list = clause.match(
+    /Batch API (?:supports|支持)\s*(?:(?:both|the)\s+)*(`[^`]+`(?:\s*(?:,\s*(?:and\s+)?|and\s+|和|与|、)\s*`[^`]+`)*)\s*(?:models?|模型)?[.。]?\s*$/i,
+  )?.[1];
+  if (list === undefined) throw new Error("Kimi Batch guide changed its positive model list");
+  const ids = exactDocumentModelIds(list);
+  if (ids.length === 0) throw new Error("Kimi Batch guide omitted exact model IDs");
   return ids.sort();
 }
 
@@ -1320,8 +1323,14 @@ function commercialEvidence(
       reason_code: "batch_cached_tokens_not_documented",
     });
   const batchScopeConflicts: string[] = [];
-  if (batchGuide !== undefined) {
-    const batchGuideModelIds = new Set(batchGuideModels(batchGuide));
+  const batchModels =
+    batchGuide === undefined
+      ? []
+      : (reviewClaim(reconciliation, "batch_model_scope_drift", () =>
+          batchGuideModels(batchGuide),
+        ) ?? []);
+  if (batchModels.length > 0) {
+    const batchGuideModelIds = new Set(batchModels);
     for (const id of batchModelIds(models).filter((modelId) => !batchGuideModelIds.has(modelId))) {
       batchScopeConflicts.push(id);
       reconciliation.push({
@@ -1347,6 +1356,7 @@ function commercialEvidence(
         }));
   return {
     region: extractor.region,
+    batchModels,
     batchScopeConflicts,
     fileService: billing !== undefined && fileDocuments.every((document) => document !== undefined),
     formulaModels: formula?.models ?? [],
@@ -1358,7 +1368,7 @@ function commercialEvidence(
   };
 }
 
-export function parseKimiPricing(input: Input): ProviderModel[] {
+export function parseKimiPricing(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "kimi-pricing") throw new Error("Wrong kimi-pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
@@ -1447,24 +1457,23 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
       capabilities: { ...model.capabilities, tool_call: true },
     });
   }
-  extractKimiCommercialFacts(models, input.source.id, evidence);
-  const toolsBody = bundle.documents.find(
-    ({ url }) => new URL(url).pathname === "/docs/pricing/tools",
-  )?.body;
-  const serviceCarrier = [...models.values()][0];
-  if (toolsBody !== undefined && serviceCarrier !== undefined) {
-    const rest = reviewClaim(rowReconciliation, "rest_tool_pricing_drift", () =>
-      restToolPrices(input, extractor, toolsBody),
-    );
-    if (rest !== undefined && rest.length > 0) {
-      serviceCarrier.commercial_facts = [...(serviceCarrier.commercial_facts ?? []), ...rest];
-      for (const fact of rest)
-        rowReconciliation.push({
-          disposition: "normalized",
-          reason_code: "rest_tool_service_normalized",
-          sample: `${extractor.region}:${fact.resource_key}`,
-        });
-    }
+  bindKimiBatchPrices(models, evidence.batchModels, pricingInputs);
+  const commercialFacts = extractKimiCommercialFacts(models, input.source.id, evidence);
+  const rest =
+    reviewClaim(rowReconciliation, "rest_tool_pricing_drift", () =>
+      restToolPrices(
+        input,
+        extractor,
+        companion(bundle, "/docs/pricing/tools", "REST tool prices"),
+      ),
+    ) ?? [];
+  commercialFacts.push(...rest);
+  for (const fact of rest) {
+    rowReconciliation.push({
+      disposition: "normalized",
+      reason_code: "rest_tool_service_normalized",
+      sample: `${extractor.region}:${fact.resource_key}`,
+    });
   }
   const result = [...models.values()].map((model): ProviderModel => ({
     ...model,
@@ -1476,8 +1485,6 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
     ),
     raw_price_facts: model.raw_price_facts,
   }));
-  const carrier = result.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const model of result) {
     for (const rate of model.price_facts)
       input.onPricingReconciliation?.({
@@ -1505,7 +1512,11 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
     });
   for (const item of [...rowReconciliation, ...evidence.reconciliation])
     input.onPricingReconciliation?.(item);
-  return bounded(input, "kimi-pricing", result);
+  return {
+    models: bounded(input, "kimi-pricing", result),
+    commercial_facts: commercialFacts,
+    pricing_inputs: pricingInputs,
+  };
 }
 
 function htmlText(value: string): string {

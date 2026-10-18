@@ -10,6 +10,8 @@ import {
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
+import { extractKimiCommercialPricingInputs } from "../src/catalog/kimi-accounting.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { decimalsEqual } from "../src/catalog/pricing.ts";
@@ -12556,12 +12558,12 @@ describe("Kimi adapters", () => {
     if (result === undefined) throw new Error(`Missing Kimi source ${id}`);
     return result;
   };
-  const parse = (
+  const parseResult = (
     configured: SourceManifest,
     body: string,
     onPricingReconciliation?: (item: PricingReconciliationItem) => void,
     onContractFinding?: (evidence: SourceContractEvidence) => void,
-  ): ProviderModel[] =>
+  ): SourceParseResult =>
     parseSource({
       provider: provider(value),
       source: configured,
@@ -12569,7 +12571,9 @@ describe("Kimi adapters", () => {
       observedAt,
       ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
       ...(onContractFinding === undefined ? {} : { onContractFinding }),
-    }).models;
+    });
+  const parse = (...args: Parameters<typeof parseResult>): ProviderModel[] =>
+    parseResult(...args).models;
 
   const chinaOpenApi = (body: string): string =>
     body
@@ -12616,7 +12620,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v6",
+      extractorVersion: "kimi-openapi-v7",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({
@@ -12632,7 +12636,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v11",
+      extractorVersion: "kimi-pricing-v12",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -12696,6 +12700,10 @@ describe("Kimi adapters", () => {
   }
 
   async function pricing(options: KimiPricingOptions = {}): Promise<ProviderModel[]> {
+    return (await pricingResult(options)).models;
+  }
+
+  async function pricingResult(options: KimiPricingOptions = {}): Promise<SourceParseResult> {
     const {
       batchApi,
       indexBody,
@@ -12732,7 +12740,7 @@ describe("Kimi adapters", () => {
       ["/docs/guide/use-batch-api", "batch-guide"],
       ["/docs/llms.txt", "llms", "txt"],
     ] as const;
-    return parse(
+    return parseResult(
       configured,
       JSON.stringify({
         index: {
@@ -12791,10 +12799,11 @@ describe("Kimi adapters", () => {
           tools,
         },
       };
-      const models = await pricing({
+      const result = await pricingResult({
         ...options,
         onPricingReconciliation: (item) => reconciliation.push(item),
       });
+      const { models } = result;
       expect(models.map(({ model_id }) => model_id).sort()).toEqual([
         "kimi-k2.6",
         "kimi-k2.7-code",
@@ -12818,11 +12827,11 @@ describe("Kimi adapters", () => {
       const partition = assembleParsedProviderPricing(
         "kimi",
         observedAt,
-        [{ source: configured, models }],
+        [{ source: configured, ...result }],
         models,
       );
       validateParsedPricing(value, configured, models, partition);
-      const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+      const commercial = result.commercial_facts ?? [];
       for (const [key, amount] of [
         ["web-search-basic", search],
         ["web-search-pro", pro],
@@ -12861,17 +12870,17 @@ describe("Kimi adapters", () => {
           /pricing_row_rejected|billing_contract_drift|web_search_warning_drift/.test(reason_code),
         ),
       ).toEqual([]);
-      const drifted = await pricing({
+      const drifted = await pricingResult({
         ...options,
         overrides: { ...options.overrides, tools: tools.replaceAll("HTTP 200", "HTTP 202") },
       });
-      expect(drifted.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toEqual(
+      expect(drifted.models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toEqual(
         models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts,
       );
       expect(
-        drifted
-          .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-          .some(({ resource_key }) => resource_key === "web-search-basic"),
+        (drifted.commercial_facts ?? []).some(
+          ({ resource_key }) => resource_key === "web-search-basic",
+        ),
       ).toBe(false);
     },
   );
@@ -12903,7 +12912,8 @@ describe("Kimi adapters", () => {
   it("uses exact OpenAPI model enums without a product-prefix rule", async () => {
     const body = await fixture("kimi/openapi.json");
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = parse(source("kimi-openapi"), body, (item) => reconciliation.push(item));
+    const result = parseResult(source("kimi-openapi"), body, (item) => reconciliation.push(item));
+    const { models } = result;
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "kimi-k2.6",
       "kimi-k2.7-code",
@@ -12931,7 +12941,7 @@ describe("Kimi adapters", () => {
       { name: "Responses", path: "/v1/responses" },
       { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
     ]);
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(16);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -12987,24 +12997,22 @@ describe("Kimi adapters", () => {
     expect(() => parse(source("kimi-openapi"), body.replace('"function"', '"service"'))).toThrow(
       "tool schema",
     );
-    const cachedDrift = parse(
+    const cachedDrift = parseResult(
       source("kimi-openapi"),
       body.replace('"cached_tokens"', '"cache_tokens"'),
     );
-    expect(
-      cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []).map(({ key }) => key),
-    ).not.toContain("chat.cached_input_tokens");
-    expect(
-      cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []).map(({ key }) => key),
-    ).toContain("chat.stream.cached_input_tokens");
-    const interruptedDrift = parse(
+    expect(cachedDrift.pricing_inputs?.map(({ key }) => key)).not.toContain(
+      "chat.cached_input_tokens",
+    );
+    expect(cachedDrift.pricing_inputs?.map(({ key }) => key)).toContain(
+      "chat.stream.cached_input_tokens",
+    );
+    const interruptedDrift = parseResult(
       source("kimi-openapi"),
       body.replace("if the stream is interrupted", "eventually"),
     );
     expect(
-      interruptedDrift
-        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
-        .filter(({ key }) => key.startsWith("chat.stream.")),
+      interruptedDrift.pricing_inputs?.filter(({ key }) => key.startsWith("chat.stream.")),
     ).toEqual([]);
     const responsesDriftReconciliation: PricingReconciliationItem[] = [];
     const responsesDrift = parse(
@@ -13042,9 +13050,9 @@ describe("Kimi adapters", () => {
       ),
     ).toThrow("List Models item fields");
     const china = chinaOpenApi(body);
-    const chinaModels = parse(source("kimi-china-openapi"), china);
-    expect(chinaModels).toHaveLength(4);
-    expect(chinaModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual(
+    const chinaResult = parseResult(source("kimi-china-openapi"), china);
+    expect(chinaResult.models).toHaveLength(4);
+    expect(chinaResult.pricing_inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "request.api_origin.china" }),
         expect.objectContaining({ key: "responses.input_tokens" }),
@@ -13123,7 +13131,8 @@ describe("Kimi adapters", () => {
   });
 
   it("keeps model rates separate from provider services", async () => {
-    const models = await pricing();
+    const result = await pricingResult();
+    const { models } = result;
     expect(models).toHaveLength(11);
     expect(models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")).toMatchObject({
       name: "Kimi K2.7 Code HighSpeed",
@@ -13150,7 +13159,7 @@ describe("Kimi adapters", () => {
       ]),
     );
     expect(k26?.price_facts.some(({ meter }) => meter === "tool_call")).toBe(false);
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = result.commercial_facts ?? [];
     expect({
       search: commercial.find(
         ({ resource_key, offer_key }) =>
@@ -13187,7 +13196,8 @@ describe("Kimi adapters", () => {
     expect(
       models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.api_endpoints,
     ).toBeUndefined();
-    const international = await pricing({ sourceId: "kimi-international-pricing" });
+    const internationalResult = await pricingResult({ sourceId: "kimi-international-pricing" });
+    const international = internationalResult.models;
     expect(international.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -13205,12 +13215,10 @@ describe("Kimi adapters", () => {
       ]),
     );
     expect(
-      international
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .find(
-          ({ resource_key, offer_key }) =>
-            resource_key === "web-search" && offer_key === "built-in:kimi/kimi-k3",
-        )?.price_facts[0],
+      (internationalResult.commercial_facts ?? []).find(
+        ({ resource_key, offer_key }) =>
+          resource_key === "web-search" && offer_key === "built-in:kimi/kimi-k3",
+      )?.price_facts[0],
     ).toMatchObject({
       meter: "web_search",
       price: "0.005",
@@ -13268,6 +13276,257 @@ describe("Kimi adapters", () => {
         expect.objectContaining({ input_sources: expect.any(Array) }),
       ]),
     });
+  });
+
+  it("keeps Batch acquisition evidence within its regional source", async () => {
+    const china = await pricingResult();
+    const international = await pricingResult({
+      sourceId: "kimi-international-pricing",
+      batchApi: (await fixture("kimi/batch-api-global.md")).replace(
+        "POST /v1/batches",
+        "POST /v1/jobs",
+      ),
+    });
+    const sources = [
+      { source: source("kimi-pricing"), ...china },
+      { source: source("kimi-international-pricing"), ...international },
+    ];
+    const partition = assembleParsedProviderPricing("kimi", observedAt, sources, china.models);
+    const variants =
+      partition?.books
+        .find(({ book_key }) => book_key === "model:kimi/kimi-k2.6")
+        ?.offers.find(({ offer_key }) => offer_key === "batch")
+        ?.terms.flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "output_text" ? term.variants : [],
+        ) ?? [];
+    expect(variants).toHaveLength(2);
+    expect(
+      variants.find(({ observations }) =>
+        observations.some(({ source_ref }) => source_ref === "kimi-pricing"),
+      )?.charge_binding,
+    ).toMatchObject({
+      quantity_methods: [{ input_sources: [expect.objectContaining({ channel: "result" })] }],
+      observations: expect.arrayContaining([
+        expect.objectContaining({ source_ref: "kimi-pricing" }),
+      ]),
+    });
+    expect(
+      variants.find(({ observations }) =>
+        observations.some(({ source_ref }) => source_ref === "kimi-international-pricing"),
+      )?.charge_binding,
+    ).toMatchObject({
+      signal: { namespace: "kmodels", value: "output_tokens" },
+      aggregation: "result_item",
+    });
+    expect(
+      variants.find(({ observations }) =>
+        observations.some(({ source_ref }) => source_ref === "kimi-international-pricing"),
+      )?.charge_binding?.quantity_methods,
+    ).toBeUndefined();
+    expect(
+      variants.every(({ observations, charge_binding }) =>
+        charge_binding?.observations.every(({ source_ref }) =>
+          observations.some((observation) => observation.source_ref === source_ref),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["missing", "duplicate", "unparsed exclusion"])(
+    "retains Batch quantities when the model-scope claim is %s",
+    async (drift) => {
+      const guide = await fixture("kimi/batch-guide.md");
+      const reconciliation: PricingReconciliationItem[] = [];
+      const parsed = await pricingResult({
+        overrides: {
+          "batch-guide":
+            drift === "missing"
+              ? guide.replace("Batch API 支持", "Supported models:")
+              : drift === "duplicate"
+                ? `${guide}\nBatch API 支持 \`kimi-k2.7-code\`。`
+                : guide.replace(
+                    "Batch API 支持 `kimi-k2.6` 和 `kimi-k2.5` 模型，暂不支持 `kimi-k3`。",
+                    "Batch API supports `kimi-k2.6` models, excluding `kimi-k2.7-code`.",
+                  ),
+        },
+        onPricingReconciliation: (item) => reconciliation.push(item),
+      });
+      const rates =
+        parsed.models
+          .find(({ model_id }) => model_id === "kimi-k2.6")
+          ?.price_facts.filter(({ conditions }) => conditions.service_tier === "batch") ?? [];
+      expect(rates).toHaveLength(3);
+      expect(
+        rates.every(
+          ({ charge_binding }) =>
+            charge_binding?.aggregation === "result_item" &&
+            charge_binding.quantity_methods === undefined,
+        ),
+      ).toBe(true);
+      expect(reconciliation).toContainEqual(
+        expect.objectContaining({ reason_code: "batch_model_scope_drift", disposition: "unbound" }),
+      );
+    },
+  );
+
+  it("does not execute raw Batch markers or borrow methods for old replay rates", async () => {
+    const parsed = await pricingResult();
+    const configured = source("kimi-pricing");
+    const outputBindings = (input: SourceParseResult) =>
+      assembleParsedProviderPricing(
+        "kimi",
+        observedAt,
+        [{ source: configured, ...input }],
+        input.models,
+      )
+        ?.books.find(({ book_key }) => book_key === "model:kimi/kimi-k2.6")
+        ?.offers.find(({ offer_key }) => offer_key === "batch")
+        ?.terms.flatMap((term) =>
+          term.kind === "rate" ? term.variants.map(({ charge_binding }) => charge_binding) : [],
+        );
+    const marked = {
+      ...parsed,
+      models: parsed.models.map((model) => ({
+        ...model,
+        raw_price_facts: [
+          {
+            source_ref: configured.id,
+            term_key: "batch_applicability_conflict",
+            impact: "informational",
+            reason: "unknown_applicability",
+            conditions: { region: "China", service_tier: "batch" },
+            raw: { fragment: "Unrecognized passive scope annotation" },
+          },
+        ],
+      })),
+    } satisfies SourceParseResult;
+    expect(outputBindings(marked)).toEqual(outputBindings(parsed));
+    const legacy = {
+      ...marked,
+      models: marked.models.map((model) => ({
+        ...model,
+        price_facts: model.price_facts.map(({ charge_binding: _binding, ...rate }) => rate),
+      })),
+    };
+    const bindings = outputBindings(legacy);
+    expect(bindings).toHaveLength(3);
+    expect(
+      bindings?.every(
+        (binding) =>
+          binding?.aggregation === "result_item" && binding.quantity_methods === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["native", "detached", "string", "negative", "fractional", "duplicate"])(
+    "checks owned integer Batch result examples: %s",
+    async (shape) => {
+      const guide = await fixture("kimi/batch-guide.md");
+      const changed =
+        shape === "native"
+          ? guide.replace("```json", "```json theme={null}")
+          : shape === "detached"
+            ? guide.replace(
+                '"usage": { "prompt_tokens": 128, "completion_tokens": 32, "total_tokens": 160 }',
+                '"usage": { "prompt_tokens": 128 }, "other": { "completion_tokens": 32, "total_tokens": 160 }',
+              )
+            : shape === "duplicate"
+              ? `${guide}\n${guide}`
+              : guide.replace(
+                  '"completion_tokens": 32',
+                  `"completion_tokens": ${shape === "string" ? '"32"' : shape === "negative" ? "-1" : "0.5"}`,
+                );
+      const parsed = await pricingResult({ overrides: { "batch-guide": changed } });
+      const rate = parsed.models
+        .find(({ model_id }) => model_id === "kimi-k2.6")
+        ?.price_facts.find(
+          ({ conditions, meter }) => conditions.service_tier === "batch" && meter === "output_text",
+        );
+      expect(rate?.charge_binding?.aggregation).toBe("result_item");
+      expect(rate?.charge_binding?.quantity_methods !== undefined).toBe(shape === "native");
+      expect(parsed.pricing_inputs?.some(({ key }) => key === "batch.result.input_tokens")).toBe(
+        shape !== "duplicate",
+      );
+    },
+  );
+
+  it("withholds inputs owned by duplicate companion documents", async () => {
+    const guide = {
+      url: "https://platform.kimi.com/docs/guide/use-batch-api",
+      body: await fixture("kimi/batch-guide.md"),
+    };
+    const batch = {
+      url: "https://platform.kimi.com/docs/api/batch-create",
+      body: await fixture("kimi/batch-api.md"),
+    };
+    const inputs = extractKimiCommercialPricingInputs({
+      documents: [guide, guide, batch],
+      sourceRef: "kimi-pricing",
+    });
+    expect(inputs.filter(({ key }) => key.startsWith("batch."))).toEqual([]);
+  });
+
+  it("captures independent REST services with no model carrier", async () => {
+    const configured = {
+      ...source("kimi-pricing"),
+      extractor: {
+        kind: "kimi-pricing",
+        minModels: 0,
+        maxModels: 20,
+        region: "China",
+        currency: "CNY",
+        symbol: "¥",
+      },
+    } satisfies SourceManifest;
+    const parsed = parseResult(
+      configured,
+      JSON.stringify({
+        index: { url: configured.url, body: "# Service prices" },
+        documents: [
+          {
+            url: "https://platform.kimi.com/docs/pricing/tools",
+            body: await fixture("kimi/pricing-cn-rest-tools.md"),
+          },
+        ],
+      }),
+    );
+    expect(parsed.models).toEqual([]);
+    expect(parsed.commercial_facts?.map(({ resource_key }) => resource_key)).toEqual([
+      "web-fetch",
+      "web-search-basic",
+      "web-search-pro",
+    ]);
+    const record = {
+      id: configured.id,
+      provider_id: "kimi",
+      url: configured.url,
+      source: [configured.type],
+      stability: configured.stability,
+      scope: configured.scope ?? "global",
+      exhaustive: false,
+      role: configured.role ?? "catalog",
+      field_paths: configured.fields,
+      pricing_evidence: configured.pricingEvidence,
+      content_hash: "1".repeat(64),
+      extractor_version: configured.extractorVersion,
+      observed_at: observedAt,
+    };
+    const captured = capturePricingReplaySources(
+      [{ source: configured, ...parsed }],
+      [record],
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    if (captured === undefined) throw new Error("Missing Kimi service compilation input");
+    const partition = assembleParsedProviderPricing(
+      "kimi",
+      observedAt,
+      [{ source: configured, ...parsed }],
+      [],
+    );
+    expect(partition?.books).toHaveLength(3);
+    expect(
+      assembleParsedProviderPricing("kimi", observedAt, [{ source: configured, ...captured }], []),
+    ).toEqual(partition);
   });
 
   it("keeps independent prices when Batch accounting evidence drifts", async () => {
@@ -13393,16 +13652,16 @@ describe("Kimi adapters", () => {
   });
 
   it("publishes provider-native inference, search, Formula, and Files topology", async () => {
-    const china = await pricing();
-    const international = await pricing({ sourceId: "kimi-international-pricing" });
+    const china = await pricingResult();
+    const international = await pricingResult({ sourceId: "kimi-international-pricing" });
     const openapiBody = await fixture("kimi/openapi.json");
-    const openapi = parse(source("kimi-openapi"), openapiBody);
-    const chinaOpenapi = parse(source("kimi-china-openapi"), chinaOpenApi(openapiBody));
+    const openapi = parseResult(source("kimi-openapi"), openapiBody);
+    const chinaOpenapi = parseResult(source("kimi-china-openapi"), chinaOpenApi(openapiBody));
     const sources = [
-      { source: source("kimi-openapi"), models: openapi },
-      { source: source("kimi-china-openapi"), models: chinaOpenapi },
-      { source: source("kimi-pricing"), models: china },
-      { source: source("kimi-international-pricing"), models: international },
+      { source: source("kimi-openapi"), ...openapi },
+      { source: source("kimi-china-openapi"), ...chinaOpenapi },
+      { source: source("kimi-pricing"), ...china },
+      { source: source("kimi-international-pricing"), ...international },
     ];
     const published = applyGroups([], sources, true);
     const partition = assembleParsedProviderPricing("kimi", observedAt, sources, published);
@@ -13537,7 +13796,15 @@ describe("Kimi adapters", () => {
       k27?.offers
         .find(({ offer_key }) => offer_key === "batch")
         ?.terms.filter((term) => term.kind === "rate")
-        .every((term) => term.kind === "rate" && term.variants[0]?.charge_binding === undefined),
+        .every(
+          (term) =>
+            term.kind === "rate" &&
+            term.variants.every(
+              ({ charge_binding }) =>
+                charge_binding?.aggregation === "result_item" &&
+                charge_binding.quantity_methods === undefined,
+            ),
+        ),
     ).toBe(true);
     expect(
       sync?.terms

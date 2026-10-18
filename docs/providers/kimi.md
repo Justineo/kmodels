@@ -48,6 +48,9 @@ and bounded semantic markers are accepted; Markdown-escaped emphasis in a review
 is normalized at the marker boundary, and an LLM is never used during refresh. Identity
 contradictions fail the source. Price rows and calculation inputs are claim-local: one malformed row
 or field suppresses only that fact while valid siblings remain.
+OpenAPI accounting contracts and pricing services are source-level results; an arbitrary model row
+does not carry them. Model-count bounds still apply to model observations. Independent REST services
+can be compiled and replayed without a model carrier when the source's model-count contract permits it.
 Markdown tables accept one or more hyphens in each delimiter cell, with optional alignment colons.
 Compact separators preserve catalog, official-tool and release identities; header and row widths
 and the semantic labels remain validated.
@@ -111,11 +114,19 @@ payload escape hatch.
 | Built-in Chat web search         | exact billed `$web_search` call count | Response `KimiChatResponse.billable_builtin_web_search_calls` | Count calls satisfying the documented finish reason and exact function name. This provider field avoids an unsafe unfiltered array-length rule. |
 | Formula web search               | successful created web-search Fibers  | Response `KimiFormulaFiber.created_web_search_fibers`         | One per successful creation of the exact Formula URI. Failed-call billing remains unbound.                                                      |
 
-The Batch API documents result-level prompt and completion totals. Current K2.7 Code and K2.6
-Batch offers bind output to the completion total. Cache-hit and cache-miss inputs remain caller
-signals because the Batch result does not document the cached-token split. A price/guide model
-scope disagreement withholds only that source's affected binding, rather than hard-coding a model
-exclusion after the guide changes.
+The regional [Chinese](https://platform.kimi.com/docs/guide/use-batch-api) and
+[English](https://platform.kimi.ai/docs/guide/use-batch-api) Batch guides positively admit K2.7 Code
+and K2.6. The source parser binds each admitted model's output rate to its own regional result
+completion total. It requires one unambiguous model-support claim, one owned JSON result example
+with a nonnegative integer at `response.body.usage.completion_tokens`, and the native Batch creation
+endpoint contract. Native Markdown fence attributes are accepted. Duplicate companion documents,
+duplicate result examples, detached fields and wrong types withhold only the dependent inputs.
+Cache-hit and cache-miss inputs remain caller signals because the result does not document the
+cached-token split. Missing or conflicting scope evidence preserves every published rate and its
+`result_item` quantity semantics while withholding unproved acquisition methods. Other regional
+sources cannot fill this gap. Raw applicability annotations remain passive diagnostics. Old replay
+rates without typed source bindings retain their quantity semantics and require caller quantities;
+assembly does not reconstruct model eligibility from raw prose or globally indexed Batch inputs.
 
 Search-result tokens reported inside built-in tool arguments are explanatory. They are billed only
 when submitted in the next Chat request, whose authoritative prompt usage already includes them;
