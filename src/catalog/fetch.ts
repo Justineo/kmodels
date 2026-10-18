@@ -21,7 +21,20 @@ import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { sha256 } from "./io.ts";
-import { assertItemCount } from "./source-contract.ts";
+import {
+  assertItemCount,
+  assertSourceConstraint,
+  parseSourceJson,
+  recognizeValue,
+  SourceContractError,
+  invalidJsonContractEvidence,
+} from "./source-contract.ts";
+import {
+  SourceFetchError,
+  sourceFailure,
+  sourceErrorMessage,
+  type DependencyFailure,
+} from "./source-failure.ts";
 import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 
 const execute = promisify(execFile);
@@ -201,15 +214,14 @@ export type FetchObservation = Omit<FetchPayload, "body"> & { key: string };
 
 export interface FetchResult extends FetchPayload {
   dependencies: FetchObservation[];
-  omittedOptionalDependencies?: string[];
-  omittedOptionalDocuments?: string[];
+  dependencyFailures?: DependencyFailure[];
 }
 
-class TransientFetchError extends Error {
+class TransientFetchError extends SourceFetchError {
   retryAfter: number;
 
-  constructor(message: string, retryAfter = 0) {
-    super(message);
+  constructor(message: string, retryAfter = 0, status?: number) {
+    super(message, status);
     this.retryAfter = retryAfter;
   }
 }
@@ -419,6 +431,7 @@ async function cloudJson(
   maxResponseBytes: number,
   headers: string[],
   form: { name: string; value: string }[] = [],
+  purpose: "catalog" | "authentication" = "catalog",
 ): Promise<unknown> {
   const args = [
     "--silent",
@@ -454,7 +467,11 @@ async function cloudJson(
     if (Buffer.byteLength(body) > maxResponseBytes)
       throw new Error("Cloud response exceeded byte limit");
     if (response.status === 429 || response.status >= 500)
-      throw new TransientFetchError(`${label} HTTP ${response.status}`, retryDelay(response));
+      throw new TransientFetchError(
+        `${label} HTTP ${response.status}`,
+        retryDelay(response),
+        response.status,
+      );
     if (!response.ok) {
       let code: string | undefined;
       try {
@@ -466,14 +483,19 @@ async function cloudJson(
       } catch {
         // The status remains sufficient when the error body is not JSON.
       }
-      throw new Error(`${label} HTTP ${response.status}${code === undefined ? "" : ` (${code})`}`);
+      throw new SourceFetchError(
+        `${label} HTTP ${response.status}${code === undefined ? "" : ` (${code})`}`,
+        response.status,
+      );
     }
     try {
       return JSON.parse(body);
     } catch {
       if (/^Too many requests\b/i.test(body.trim()))
         throw new TransientFetchError(`${label} was throttled`, retryDelay(response));
-      throw new Error(`${label} returned invalid JSON`);
+      if (purpose === "authentication")
+        throw new Error("Authentication service returned invalid JSON");
+      throw new SourceContractError(label, invalidJsonContractEvidence());
     }
   });
 }
@@ -505,7 +527,9 @@ async function fetchAzureArmItems(
   let pages = 0;
   while (next !== undefined) {
     if (pages === limits.pages) throw new Error(`${label} exceeded page limit`);
-    const page = azureArmPageSchema.parse(
+    const page: z.infer<typeof azureArmPageSchema> = recognizeValue(
+      label,
+      azureArmPageSchema,
       await cloudJson(label, next, source.maxResponseBytes, headers),
     );
     items.push(...page.value);
@@ -542,7 +566,9 @@ async function fetchAzureRetailPages(
   const prices: unknown[] = [];
   let next: URL | undefined = first;
   for (let pageCount = 0; next !== undefined && pageCount < limits.pages; pageCount += 1) {
-    const page = azurePricesPageSchema.parse(
+    const page: z.infer<typeof azurePricesPageSchema> = recognizeValue(
+      label,
+      azurePricesPageSchema,
       await cloudJson(label, next, source.maxResponseBytes, ["Accept: application/json"]),
     );
     prices.push(...page.Items);
@@ -586,6 +612,7 @@ async function fetchAzureModels(
         { name: "grant_type", value: "client_credentials" },
         { name: "scope", value: "https://management.azure.com/.default" },
       ],
+      "authentication",
     ),
   );
   const authorizationHeaders = [
@@ -633,7 +660,7 @@ async function fetchAzureModels(
     return { location, models };
   });
   const modelCount = regions.reduce((sum, { models }) => sum + models.length, 0);
-  if (modelCount === 0) throw new Error("Azure Models API returned no models");
+  assertItemCount("Azure Models API", modelCount, 1);
   if (modelCount > transport.maxModels)
     throw new Error("Azure Models API exceeded total item limit");
 
@@ -681,7 +708,7 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
     items: 50_000,
     pages: 50,
   });
-  if (prices.length === 0) throw new Error("Azure Retail Prices API returned no prices");
+  assertItemCount("Azure Retail Prices API", prices.length, 1);
   const body = JSON.stringify({ prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure Retail Prices bundle exceeded byte limit");
@@ -756,14 +783,15 @@ async function fetchAzurePortalModels(
     });
     const response = await fetchPost(source, requestBody);
     if (response.status !== 200)
-      throw new Error(`Azure portal model search HTTP ${response.status}`);
-    let value: unknown;
-    try {
-      value = JSON.parse(response.body);
-    } catch {
-      throw new Error("Azure portal model search returned invalid JSON");
-    }
-    const page = azurePortalPageSchema.parse(value);
+      throw new SourceFetchError(
+        `Azure portal model search HTTP ${response.status}`,
+        response.status,
+      );
+    const page = recognizeValue(
+      "Azure portal model search",
+      azurePortalPageSchema,
+      parseSourceJson(response.body),
+    );
     const { totalCount, value: items, continuationToken: rawToken } = page.indexEntitiesResponse;
     if (expectedTotal === undefined) {
       expectedTotal = totalCount;
@@ -775,26 +803,52 @@ async function fetchAzurePortalModels(
       );
       if (expectedTotal > transport.maxModels)
         throw new Error("Azure portal model search exceeded item limit");
-    } else if (totalCount !== expectedTotal) {
-      throw new Error("Azure portal model-search total changed during pagination");
+    } else {
+      assertSourceConstraint(
+        "Azure portal model-search total changed during pagination",
+        totalCount === expectedTotal,
+        totalCount,
+        ["indexEntitiesResponse", "totalCount"],
+      );
     }
-    if (items.length === 0 && models.length < expectedTotal)
-      throw new Error("Azure portal model search returned an empty intermediate page");
+    assertSourceConstraint(
+      "Azure portal model search returned an empty intermediate page",
+      items.length !== 0 || models.length >= expectedTotal,
+      items,
+      ["indexEntitiesResponse", "value"],
+    );
     models.push(...items);
-    if (models.length > expectedTotal || models.length > transport.maxModels)
-      throw new Error("Azure portal model search exceeded its declared total");
+    assertSourceConstraint(
+      "Azure portal model search exceeded its declared total",
+      models.length <= expectedTotal && models.length <= transport.maxModels,
+      models.length,
+      ["indexEntitiesResponse", "value"],
+    );
     const next = rawToken === null || rawToken.trim() === "" ? undefined : rawToken;
     if (models.length === expectedTotal) {
-      if (next !== undefined)
-        throw new Error("Azure portal model search continued past its declared total");
+      assertSourceConstraint(
+        "Azure portal model search continued past its declared total",
+        next === undefined,
+        next,
+        ["indexEntitiesResponse", "continuationToken"],
+      );
       const body = JSON.stringify({ models });
       if (Buffer.byteLength(body) > source.maxResponseBytes)
         throw new Error("Azure portal model bundle exceeded byte limit");
       return body;
     }
-    if (next === undefined)
-      throw new Error("Azure portal model search ended before its declared total");
-    if (seenTokens.has(next)) throw new Error("Azure portal model search repeated a page token");
+    assertSourceConstraint(
+      "Azure portal model search ended before its declared total",
+      next !== undefined,
+      next,
+      ["indexEntitiesResponse", "continuationToken"],
+    );
+    assertSourceConstraint(
+      "Azure portal model search repeated a page token",
+      !seenTokens.has(next),
+      next,
+      ["indexEntitiesResponse", "continuationToken"],
+    );
     seenTokens.add(next);
     continuationToken = next;
   }
@@ -848,6 +902,7 @@ async function googleAccessToken(
         { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
         { name: "assertion", value: assertion },
       ],
+      "authentication",
     ),
   );
   return { token: token.access_token, project: account.project_id };
@@ -879,8 +934,12 @@ async function fetchGoogleModelGarden(
       const requestedPageTokens = new Set<string>();
       for (let pageCount = 0; pageCount < transport.maxPages; pageCount += 1) {
         if (pageToken !== undefined) {
-          if (requestedPageTokens.has(pageToken))
-            throw new Error("Model Garden publisher repeated a page token");
+          assertSourceConstraint(
+            "Model Garden publisher repeated a page token",
+            !requestedPageTokens.has(pageToken),
+            pageToken,
+            ["nextPageToken"],
+          );
           requestedPageTokens.add(pageToken);
         }
         const url = new URL(
@@ -892,7 +951,9 @@ async function fetchGoogleModelGarden(
         url.searchParams.set("languageCode", "en");
         url.searchParams.set("listAllVersions", "false");
         if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
-        const page = googleModelsPageSchema.parse(
+        const page = recognizeValue(
+          "Google Model Garden",
+          googleModelsPageSchema,
           await cloudJson("Google Model Garden", url, source.maxResponseBytes, [
             "Accept: application/json",
             `Authorization: Bearer ${credential.token}`,
@@ -910,8 +971,11 @@ async function fetchGoogleModelGarden(
       return { publisher, models };
     },
   );
-  if (results.every((result) => result.models.length === 0))
-    throw new Error("Agent Platform Model Garden API returned no models");
+  assertItemCount(
+    "Agent Platform Model Garden API",
+    results.reduce((count, result) => count + result.models.length, 0),
+    1,
+  );
   const body = JSON.stringify({ publishers: results });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Agent Platform Model Garden inventory exceeded byte limit");
@@ -984,8 +1048,12 @@ async function attemptFetch(
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
   const response = await request(source);
   if (response.status === 429 || response.status >= 500)
-    throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    throw new TransientFetchError(
+      `Transient HTTP ${response.status}`,
+      retryDelay(response),
+      response.status,
+    );
+  if (!response.ok) throw new SourceFetchError(`HTTP ${response.status}`, response.status);
   const body = await readLimited(response, source.maxResponseBytes);
   if (body.trim() === "") throw new Error("Source returned an empty body");
   return {
@@ -1002,8 +1070,13 @@ async function attemptFetch(
 async function attemptPost(source: SourceManifest, body: string): Promise<StatusPayload> {
   const response = await request(source, body);
   if (response.status === 429 || response.status >= 500)
-    throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
-  if (![200, 404, 410].includes(response.status)) throw new Error(`HTTP ${response.status}`);
+    throw new TransientFetchError(
+      `Transient HTTP ${response.status}`,
+      retryDelay(response),
+      response.status,
+    );
+  if (![200, 404, 410].includes(response.status))
+    throw new SourceFetchError(`HTTP ${response.status}`, response.status);
   const responseBody = await readLimited(response, source.maxResponseBytes);
   if (responseBody.trim() === "") throw new Error("Source returned an empty body");
   return {
@@ -1221,7 +1294,11 @@ async function fetchHuggingFacePartnerModels(source: SourceManifest): Promise<Fe
       const payload = await fetchPayload(
         requestSource(source, key, url, "json", transport.maxPartnerBytes),
       );
-      const models = z.record(z.string(), z.unknown()).parse(JSON.parse(payload.body));
+      const models = recognizeValue(
+        "Hugging Face partner response",
+        z.record(z.string(), z.unknown()),
+        json(payload.body),
+      );
       return { provider, models, payload, key };
     }),
     fetchPayload(
@@ -1281,7 +1358,11 @@ async function fetchHuggingFacePage(
   const pageSource = requestSource(source, key, url, "json", source.maxResponseBytes);
   const { payload, link } = await fetchResponse(pageSource);
   const nextLinks = [...(link ?? "").matchAll(/<([^>]+)>;\s*rel="?next"?/g)];
-  if (nextLinks.length > 1) throw new Error("Hugging Face Hub returned duplicate next links");
+  assertSourceConstraint(
+    "Hugging Face Hub returned duplicate next links",
+    nextLinks.length <= 1,
+    nextLinks,
+  );
   const nextRaw = nextLinks[0]?.[1];
   return {
     payload,
@@ -1299,7 +1380,13 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
   for (let index = 0; next !== undefined && index < transport.maxPages; index += 1) {
     const key = `${source.id}/page-${index + 1}`;
     const page = await fetchHuggingFacePage(source, key, next);
-    models.push(...huggingFaceModelsPageSchema.parse(JSON.parse(page.payload.body)));
+    models.push(
+      ...recognizeValue(
+        "Hugging Face Hub page",
+        huggingFaceModelsPageSchema,
+        json(page.payload.body),
+      ),
+    );
     assertItemCount("Hugging Face Hub transport models", models.length, 0, transport.maxModels);
     pages.push({ key, payload: page.payload });
     next = page.next;
@@ -1372,9 +1459,17 @@ async function fetchFeatherlessModels(source: SourceManifest): Promise<FetchResu
     const payload = await fetchPayload(
       requestSource(source, key, url, "json", transport.maxPageBytes),
     );
-    const parsed = featherlessModelsPageSchema.parse(JSON.parse(payload.body));
-    if (parsed.pagination.current_page !== page)
-      throw new Error("Featherless returned a mismatched page number");
+    const parsed = recognizeValue(
+      "Featherless models page",
+      featherlessModelsPageSchema,
+      json(payload.body),
+    );
+    assertSourceConstraint(
+      "Featherless returned a mismatched page number",
+      parsed.pagination.current_page === page,
+      parsed.pagination.current_page,
+      ["pagination", "current_page"],
+    );
     return { key, payload, parsed };
   };
 
@@ -1472,7 +1567,11 @@ async function fetchTokenPaginatedModels(
       pageToken = undefined;
       break;
     }
-    if (tokens.has(page.nextPageToken)) throw new Error(`${name} pagination repeated a token`);
+    assertSourceConstraint(
+      `${name} pagination repeated a token`,
+      !tokens.has(page.nextPageToken),
+      page.nextPageToken,
+    );
     tokens.add(page.nextPageToken);
     pageToken = page.nextPageToken;
   }
@@ -1520,7 +1619,7 @@ async function fetchGeminiModels(source: SourceManifest): Promise<FetchResult> {
     "Gemini models",
     (pageToken) => geminiModelsUrl(source, transport, pageToken),
     (body) => {
-      const page = geminiModelsPageSchema.parse(JSON.parse(body));
+      const page = recognizeValue("Gemini models page", geminiModelsPageSchema, json(body));
       return {
         models: page.models,
         ...(page.nextPageToken === undefined ? {} : { nextPageToken: page.nextPageToken }),
@@ -1559,9 +1658,13 @@ async function fetchCohereModels(source: SourceManifest): Promise<FetchResult> {
     "Cohere models",
     (pageToken) => cohereModelsUrl(source, transport, pageToken),
     (body) => {
-      const page = cohereModelsPageSchema.parse(JSON.parse(body));
-      if (page.models.length === 0 && page.next_page_token !== undefined)
-        throw new Error("Cohere models pagination returned an empty intermediate page");
+      const page = recognizeValue("Cohere models page", cohereModelsPageSchema, json(body));
+      assertSourceConstraint(
+        "Cohere models pagination returned an empty intermediate page",
+        page.models.length !== 0 || page.next_page_token === undefined,
+        page.models,
+        ["models"],
+      );
       return {
         models: page.models,
         ...(page.next_page_token === undefined ? {} : { nextPageToken: page.next_page_token }),
@@ -1624,15 +1727,17 @@ async function fetchDashscopeDeployableModels(source: SourceManifest): Promise<F
     const payload = await fetchPayload(
       requestSource(source, key, url, "json", source.maxResponseBytes),
     );
-    let value: unknown;
-    try {
-      value = JSON.parse(payload.body);
-    } catch {
-      throw new Error("DashScope deployment API returned invalid JSON");
-    }
-    const page = dashscopeDeploymentPageSchema.parse(value);
-    if (page.output.page_no !== pageNo || page.output.page_size !== transport.pageSize)
-      throw new Error("DashScope deployment API contradicted the requested page");
+    const page = recognizeValue(
+      "DashScope deployment API",
+      dashscopeDeploymentPageSchema,
+      json(payload.body),
+    );
+    assertSourceConstraint(
+      "DashScope deployment API contradicted the requested page",
+      page.output.page_no === pageNo && page.output.page_size === transport.pageSize,
+      page.output,
+      ["output"],
+    );
     if (expectedTotal === undefined) {
       expectedTotal = page.output.total;
       requestId = page.request_id;
@@ -1644,15 +1749,28 @@ async function fetchDashscopeDeployableModels(source: SourceManifest): Promise<F
       );
       if (expectedTotal > transport.maxModels)
         throw new Error("DashScope deployment API exceeded item limit");
-    } else if (page.output.total !== expectedTotal) {
-      throw new Error("DashScope deployment total changed during pagination");
+    } else {
+      assertSourceConstraint(
+        "DashScope deployment total changed during pagination",
+        page.output.total === expectedTotal,
+        page.output.total,
+        ["output", "total"],
+      );
     }
     const expectedPageItems = Math.min(transport.pageSize, expectedTotal - models.length);
-    if (page.output.models.length !== expectedPageItems)
-      throw new Error("DashScope deployment API returned a partial page");
+    assertSourceConstraint(
+      "DashScope deployment API returned a partial page",
+      page.output.models.length === expectedPageItems,
+      page.output.models,
+      ["output", "models"],
+    );
     for (const model of page.output.models) {
-      if (ids.has(model.model_name))
-        throw new Error("DashScope deployment API repeated a model ID");
+      assertSourceConstraint(
+        "DashScope deployment API repeated a model ID",
+        !ids.has(model.model_name),
+        model.model_name,
+        ["output", "models", "model_name"],
+      );
       ids.add(model.model_name);
       models.push(model);
     }
@@ -1701,19 +1819,22 @@ interface DocumentEntry {
 async function fetchDocumentEntry(
   source: SourceManifest,
   entry: DocumentEntry,
-): Promise<FetchedDocument | undefined> {
+): Promise<FetchedDocument | DependencyFailure> {
   try {
     const payload = await fetchPayload(
       linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),
     );
     return { key: entry.key, url: entry.url.href, payload };
   } catch (error) {
-    if (entry.optional === true) return;
-    throw new Error(
-      `Linked document ${entry.key} failed: ${
-        error instanceof Error ? error.message : "unknown fetch failure"
-      }`,
-    );
+    if (entry.optional === true)
+      return {
+        dependency_id: entry.key,
+        impact: entry.claimLocal === true ? "claim" : "bundle",
+        ...sourceFailure(error),
+      };
+    throw new Error(`Linked document ${entry.key} failed: ${sourceErrorMessage(error)}`, {
+      cause: error,
+    });
   }
 }
 
@@ -1732,29 +1853,12 @@ function documentEntry(
   };
 }
 
-function omittedDocuments(
-  entries: readonly DocumentEntry[],
-  documents: readonly (FetchedDocument | undefined)[],
-): Pick<FetchResult, "omittedOptionalDependencies" | "omittedOptionalDocuments"> {
-  const omittedOptionalDependencies = entries.flatMap((entry, index) =>
-    documents[index] === undefined && entry.claimLocal !== true ? [entry.key] : [],
-  );
-  const omittedOptionalDocuments = entries.flatMap((entry, index) =>
-    documents[index] === undefined && entry.claimLocal === true ? [entry.key] : [],
-  );
-  return {
-    ...(omittedOptionalDependencies.length === 0 ? {} : { omittedOptionalDependencies }),
-    ...(omittedOptionalDocuments.length === 0 ? {} : { omittedOptionalDocuments }),
-  };
-}
-
 async function fetchConfiguredDocuments(
   source: SourceManifest,
   label: string,
 ): Promise<{
   documents: FetchedDocument[];
-  omittedDependencies: string[];
-  omittedDocuments: string[];
+  dependencyFailures: DependencyFailure[];
 }> {
   const crawl = source.linkedDocuments;
   if (
@@ -1768,14 +1872,10 @@ async function fetchConfiguredDocuments(
   const documents = await mapConcurrent(entries, crawl.concurrency, (entry) =>
     fetchDocumentEntry(source, entry),
   );
-  const omitted = omittedDocuments(entries, documents);
   return {
-    documents: documents.filter((document): document is FetchedDocument => document !== undefined),
-    omittedDependencies: (omitted.omittedOptionalDependencies ?? []).map((key) =>
-      key.slice(`${source.id}/`.length),
-    ),
-    omittedDocuments: (omitted.omittedOptionalDocuments ?? []).map((key) =>
-      key.slice(`${source.id}/`.length),
+    documents: documents.filter((document): document is FetchedDocument => "payload" in document),
+    dependencyFailures: documents.filter(
+      (document): document is DependencyFailure => "dependency_id" in document,
     ),
   };
 }
@@ -1798,7 +1898,7 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     ),
     fetchConfiguredDocuments(source, "Vercel"),
   ]);
-  const list = vercelModelsTransportSchema.parse(json(index.body));
+  const list = recognizeValue("Vercel model index", vercelModelsTransportSchema, json(index.body));
   assertItemCount(
     "Vercel models transport",
     list.data.length,
@@ -1806,14 +1906,17 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     extractor.maxModels,
   );
   const ids = list.data.map(({ id }) => id);
-  if (new Set(ids).size !== ids.length) throw new Error("Vercel model IDs were not unique");
+  assertSourceConstraint("Vercel model IDs were not unique", new Set(ids).size === ids.length, ids);
   const slugOwners = new Map<string, string>();
   for (const id of ids) {
     const slug = id.split("/")[1];
-    if (slug === undefined) throw new Error("Vercel model ID omitted its slug");
+    assertSourceConstraint("Vercel model ID omitted its slug", slug !== undefined, id);
     const owner = slugOwners.get(slug);
-    if (owner !== undefined && owner !== id)
-      throw new Error(`Vercel model page slug ${slug} was ambiguous`);
+    assertSourceConstraint(
+      `Vercel model page slug ${slug} was ambiguous`,
+      owner === undefined || owner === id,
+      id,
+    );
     slugOwners.set(slug, id);
   }
 
@@ -1829,8 +1932,8 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       const body = normalizeVercelEndpointResponse(raw.body);
       const payload = { ...raw, body, contentHash: sha256(body) };
       return { key, url: url.href, payload };
-    } catch {
-      return { omitted: key } as const;
+    } catch (error) {
+      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
     }
   });
 
@@ -1846,7 +1949,7 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
   );
   const modelPages = await mapConcurrent(missing, transport.concurrency, async ({ id }) => {
     const slug = id.split("/")[1];
-    if (slug === undefined) throw new Error("Vercel model ID omitted its page slug");
+    assertSourceConstraint("Vercel model ID omitted its page slug", slug !== undefined, id);
     const key = `${source.id}/model-page/${sha256(id)}`;
     const url = checkedUrl(new URL(slug, modelPageBase).href, source);
     if (url.hostname !== "vercel.com" || url.pathname !== `/ai-gateway/models/${slug}`)
@@ -1858,13 +1961,13 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       const body = normalizeVercelModelPage(raw.body);
       const payload = { ...raw, body, contentHash: sha256(body) };
       return { key, url: url.href, payload, rawBody: raw.body };
-    } catch {
-      return { omitted: key } as const;
+    } catch (error) {
+      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
     }
   });
 
   const fetchedModelPages = modelPages.flatMap((document) =>
-    "omitted" in document ? [] : [document],
+    "dependency_id" in document ? [] : [document],
   );
   const pricingScriptUrls = vercelPricingScriptUrls(
     fetchedModelPages.map(({ rawBody }) => rawBody),
@@ -1888,22 +1991,39 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
         const body = normalizeVercelPricingScript(raw.body);
         if (body === undefined) return undefined;
         return { key, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
-      } catch {
-        return undefined;
+      } catch (error) {
+        return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
       }
     },
   );
   const pricingScripts = pricingScriptCandidates.flatMap((document) =>
-    document === undefined ? [] : [document],
+    document === undefined || "dependency_id" in document ? [] : [document],
   );
   const missingPricingRegistry =
     pricingScripts.length === 0 &&
     fetchedModelPages.some(({ rawBody }) => /\+\d+ more/u.test(rawBody));
+  const pricingScriptFailures = pricingScriptCandidates.flatMap((document) =>
+    document !== undefined && "dependency_id" in document ? [document] : [],
+  );
 
   const fetched = [...endpointDocuments, ...modelPages, ...pricingScripts];
-  const omitted = fetched.flatMap((document) => ("omitted" in document ? [document.omitted] : []));
+  const dependencyFailures: DependencyFailure[] = [
+    ...documentation.dependencyFailures,
+    ...fetched.flatMap((document) => ("dependency_id" in document ? [document] : [])),
+    ...pricingScriptFailures,
+    ...(missingPricingRegistry && pricingScriptFailures.length === 0
+      ? [
+          {
+            dependency_id: `${source.id}/model-page-pricing`,
+            impact: "claim" as const,
+            outcome: "parse_failed" as const,
+            message: "Expanded model pricing registry was not recognized",
+          },
+        ]
+      : []),
+  ];
   const documents = [
-    ...fetched.flatMap((document) => ("omitted" in document ? [] : [document])),
+    ...fetched.flatMap((document) => ("dependency_id" in document ? [] : [document])),
     ...documentation.documents,
   ];
   const body = JSON.stringify({
@@ -1921,19 +2041,7 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       observation(indexKey, index),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
-    ...(documentation.omittedDependencies.length === 0
-      ? {}
-      : { omittedOptionalDependencies: documentation.omittedDependencies }),
-    ...(documentation.omittedDocuments.length + omitted.length + Number(missingPricingRegistry) ===
-    0
-      ? {}
-      : {
-          omittedOptionalDocuments: [
-            ...documentation.omittedDocuments,
-            ...omitted,
-            ...(missingPricingRegistry ? [`${source.id}/model-page-pricing`] : []),
-          ].sort(),
-        }),
+    ...(dependencyFailures.length === 0 ? {} : { dependencyFailures }),
   };
 }
 
@@ -1958,7 +2066,7 @@ function ollamaCloudIds(body: string): string[] {
 }
 
 function json(body: string): unknown {
-  return JSON.parse(body);
+  return parseSourceJson(body);
 }
 
 function normalizedText(value: string): string {
@@ -1969,8 +2077,11 @@ export function normalizeVercelModelPage(body: string): string {
   const $ = load(body);
   const title = normalizedText($("h1").first().text());
   const tables = $("table");
-  if (title === "" || tables.length < 3 || normalizedText(tables.eq(0).text()) !== "Provider")
-    throw new Error("Vercel model page changed its primary pricing table");
+  assertSourceConstraint(
+    "Vercel model page changed its primary pricing table",
+    title !== "" && tables.length >= 3 && normalizedText(tables.eq(0).text()) === "Provider",
+    body,
+  );
   const headers = [
     "Provider",
     ...tables
@@ -1985,20 +2096,29 @@ export function normalizeVercelModelPage(body: string): string {
     headers.pop();
     values.pop();
   }
-  if (
-    headers.length !== values.length ||
-    headers.some((header) => header === "") ||
-    new Set(headers).size !== headers.length
-  )
-    throw new Error("Vercel model page pricing columns changed shape");
+  assertSourceConstraint(
+    "Vercel model page pricing columns changed shape",
+    headers.length === values.length &&
+      headers.every((header) => header !== "") &&
+      new Set(headers).size === headers.length,
+    body,
+  );
   const providerLinks = cells
     .eq(0)
     .find('a[href^="/ai-gateway/models/providers/"]')
     .map((_index, anchor) => $(anchor).attr("href"))
     .get();
-  if (providerLinks.length !== 1) throw new Error("Vercel model page omitted its route provider");
+  assertSourceConstraint(
+    "Vercel model page omitted its route provider",
+    providerLinks.length === 1,
+    providerLinks,
+  );
   const provider = providerLinks[0]?.match(/^\/ai-gateway\/models\/providers\/([^/]+)$/)?.[1];
-  if (provider === undefined) throw new Error("Vercel model page route provider changed shape");
+  assertSourceConstraint(
+    "Vercel model page route provider changed shape",
+    provider !== undefined,
+    providerLinks,
+  );
   const titles = cells
     .toArray()
     .slice(0, values.length)
@@ -2069,8 +2189,11 @@ function setVercelPricingDetail(
 ): void {
   const model = models.get(slug) ?? {};
   const previous = model[key];
-  if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(value))
-    throw new Error(`Vercel pricing script disagreed for ${slug}:${key}`);
+  assertSourceConstraint(
+    `Vercel pricing script disagreed for ${slug}:${key}`,
+    previous === undefined || JSON.stringify(previous) === JSON.stringify(value),
+    value,
+  );
   model[key] = value;
   models.set(slug, model);
 }
@@ -2176,7 +2299,11 @@ export function normalizeVercelPricingScript(body: string): string | undefined {
 }
 
 export function normalizeVercelEndpointResponse(body: string): string {
-  const parsed = vercelEndpointTransportSchema.parse(json(body));
+  const parsed = recognizeValue(
+    "Vercel endpoint response",
+    vercelEndpointTransportSchema,
+    json(body),
+  );
   const endpoints = parsed.data.endpoints
     .map(
       ({
@@ -2216,7 +2343,13 @@ function ollamaListKey(value: unknown): string {
 }
 
 export function normalizeOllamaResponse(status: 200 | 404 | 410, body: string): unknown {
-  const value = json(body);
+  let value: unknown;
+  try {
+    value = json(body);
+  } catch (error) {
+    if (status !== 200) throw new SourceFetchError(`HTTP ${status}`, status);
+    throw error;
+  }
   if (status !== 410) return value;
   if (value === null || typeof value !== "object") return value;
   const error = Reflect.get(value, "error");
@@ -2321,35 +2454,50 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   if (transport?.kind !== "ollama-cloud") throw new Error("Invalid Ollama cloud transport");
   const indexKey = `${source.id}/index`;
   const catalogKey = `${source.id}/catalog`;
-  const indexSource = requestSource(
-    source,
-    indexKey,
-    checkedUrl(source.url, source),
-    "json",
-    source.maxResponseBytes,
-  );
+  const indexUrl = checkedUrl(source.url, source);
   const catalogUrl = checkedUrl(transport.catalogUrl, source);
   if (catalogUrl.href !== "https://ollama.com/search?c=cloud")
     throw new Error("Ollama cloud catalog URL is not reviewed");
-  const catalogSource = requestSource(
-    source,
-    catalogKey,
-    catalogUrl,
-    "html",
-    source.maxResponseBytes,
-  );
-  const [rawIndex, catalog, documentation] = await Promise.all([
-    fetchPayload(indexSource).catch(() => undefined),
-    fetchPayload(catalogSource).catch(() => undefined),
+  const [indexResult, catalogResult, documentation] = await Promise.all([
+    fetchDocumentEntry(source, {
+      key: indexKey,
+      url: indexUrl,
+      format: "json",
+      maxResponseBytes: source.maxResponseBytes,
+      optional: true,
+      claimLocal: true,
+    }),
+    fetchDocumentEntry(source, {
+      key: catalogKey,
+      url: catalogUrl,
+      format: "html",
+      maxResponseBytes: source.maxResponseBytes,
+      optional: true,
+      claimLocal: true,
+    }),
     fetchConfiguredDocuments(source, "Ollama"),
   ]);
+  const rawIndex = "payload" in indexResult ? indexResult.payload : undefined;
+  const catalog = "payload" in catalogResult ? catalogResult.payload : undefined;
+  const dependencyFailures: DependencyFailure[] = [
+    ...documentation.dependencyFailures,
+    ...[indexResult, catalogResult].flatMap((result) =>
+      "dependency_id" in result ? [result] : [],
+    ),
+  ];
   if (rawIndex === undefined && catalog === undefined)
     throw new Error("Ollama Cloud inventory witnesses were unavailable");
   let indexBody = "{}";
   if (rawIndex !== undefined)
     try {
+      recognizeValue("Ollama cloud model list", ollamaListSchema, json(rawIndex.body));
       indexBody = normalizeOllamaList(rawIndex.body);
-    } catch {
+    } catch (error) {
+      dependencyFailures.push({
+        dependency_id: indexKey,
+        impact: "claim",
+        ...sourceFailure(error, "parse_failed"),
+      });
       indexBody = "{}";
     }
   const index: FetchPayload = {
@@ -2382,25 +2530,26 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   );
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
   const detailResults = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
+    const key = `${source.id}/show/${sha256(model)}`;
     try {
-      const key = `${source.id}/show/${sha256(model)}`;
       const showSource = {
         ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
       } satisfies SourceManifest;
       const payload = await fetchPost(showSource, JSON.stringify({ model }));
       const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
       return { key, model, payload: { ...payload, body, contentHash: sha256(body) } };
-    } catch {
-      return;
+    } catch (error) {
+      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
     }
   });
-  const details = detailResults.filter((item) => item !== undefined);
+  const details = detailResults.flatMap((item) => ("dependency_id" in item ? [] : [item]));
+  dependencyFailures.push(...detailResults.filter((item) => "dependency_id" in item));
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
   if (modelPageBase.href !== "https://ollama.com/library/")
     throw new Error("Ollama model-page base URL is not reviewed");
   const pageResults = await mapConcurrent(catalogIds, transport.concurrency, async (model) => {
+    const key = `${source.id}/model-page/${sha256(model)}`;
     try {
-      const key = `${source.id}/model-page/${sha256(model)}`;
       const url = checkedUrl(new URL(model, modelPageBase).href, source);
       if (url.hostname !== "ollama.com" || url.pathname !== `/library/${model}`) return;
       const raw = await fetchPayload(
@@ -2408,11 +2557,16 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
       );
       const body = normalizeOllamaModelPage(model, raw.body);
       return { key, model, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
-    } catch {
-      return;
+    } catch (error) {
+      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
     }
   });
-  const pages = pageResults.filter((item) => item !== undefined);
+  const pages = pageResults.flatMap((item) =>
+    item === undefined || "dependency_id" in item ? [] : [item],
+  );
+  dependencyFailures.push(
+    ...pageResults.flatMap((item) => (item !== undefined && "dependency_id" in item ? [item] : [])),
+  );
   const documents = documentation.documents;
   const body = JSON.stringify({
     list: json(index.body),
@@ -2443,12 +2597,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
       ...details.map(({ key, payload }) => observation(key, payload)),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
-    ...(documentation.omittedDependencies.length === 0
-      ? {}
-      : { omittedOptionalDependencies: documentation.omittedDependencies }),
-    ...(documentation.omittedDocuments.length === 0
-      ? {}
-      : { omittedOptionalDocuments: documentation.omittedDocuments }),
+    ...(dependencyFailures.length === 0 ? {} : { dependencyFailures }),
   };
 }
 
@@ -2585,11 +2734,9 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
         const payload = await fetchPayload(linkedSource(source, key, url));
         return { key, url: url.href, payload };
       } catch (error) {
-        throw new Error(
-          `Nested linked index ${key} failed: ${
-            error instanceof Error ? error.message : "unknown fetch failure"
-          }`,
-        );
+        throw new Error(`Nested linked index ${key} failed: ${sourceErrorMessage(error)}`, {
+          cause: error,
+        });
       }
     },
   );
@@ -2616,6 +2763,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       format: source.format,
       maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
       ...(crawl.optionalDocuments === true ? { optional: true } : {}),
+      claimLocal: true,
     };
   });
   const entries = [...discovered, ...configured];
@@ -2625,7 +2773,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     fetchDocumentEntry(source, entry),
   );
   const documents = [...discoveredDocuments, ...configuredDocuments].filter(
-    (document): document is FetchedDocument => document !== undefined,
+    (document): document is FetchedDocument => "payload" in document,
   );
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
@@ -2636,10 +2784,9 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Linked documents exceeded aggregate byte limit");
-  const omittedDiscovered = discovered.flatMap((entry, index) =>
-    discoveredDocuments[index] === undefined ? [entry.key] : [],
+  const dependencyFailures = [...discoveredDocuments, ...configuredDocuments].filter(
+    (document): document is DependencyFailure => "dependency_id" in document,
   );
-  const configuredOmissions = omittedDocuments(configured, configuredDocuments);
   return {
     body,
     contentHash: sha256(body),
@@ -2650,14 +2797,6 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       ...nestedIndexes.map((document) => observation(document.key, document.payload)),
       ...documents.map((document) => observation(document.key, document.payload)),
     ],
-    ...configuredOmissions,
-    ...(omittedDiscovered.length === 0
-      ? {}
-      : {
-          omittedOptionalDocuments: [
-            ...omittedDiscovered,
-            ...(configuredOmissions.omittedOptionalDocuments ?? []),
-          ],
-        }),
+    ...(dependencyFailures.length === 0 ? {} : { dependencyFailures }),
   };
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assertSourceConstraint, recognizeValue } from "./source-contract.ts";
 
 const azureProviderResourceTypesSchema = z.object({
   value: z.array(
@@ -23,16 +24,32 @@ export function azureModelLocations(
   providerResourceTypes: unknown,
   subscriptionLocations: unknown,
 ): string[] {
-  const provider = azureProviderResourceTypesSchema.parse(providerResourceTypes);
-  const subscription = z.array(azureSubscriptionLocationSchema).parse(subscriptionLocations);
+  const provider = recognizeValue(
+    "Azure resource-type metadata",
+    azureProviderResourceTypesSchema,
+    providerResourceTypes,
+  );
+  const subscription = recognizeValue(
+    "Azure subscription locations",
+    z.array(azureSubscriptionLocationSchema),
+    subscriptionLocations,
+  );
   const accountTypes = provider.value.filter(
     ({ resourceType }) => resourceType.toLowerCase() === "accounts",
   );
-  if (accountTypes.length !== 1)
-    throw new Error("Azure Cognitive Services account location metadata is ambiguous");
+  assertSourceConstraint(
+    "Azure Cognitive Services account location metadata is ambiguous",
+    accountTypes.length === 1,
+    accountTypes,
+    ["value"],
+  );
   const advertised = accountTypes[0]?.locations;
-  if (advertised === undefined || advertised.length === 0)
-    throw new Error("Azure Cognitive Services advertised no account locations");
+  assertSourceConstraint(
+    "Azure Cognitive Services advertised no account locations",
+    advertised !== undefined && advertised.length > 0,
+    advertised,
+    ["value", "locations"],
+  );
 
   const namesByDisplay = new Map<string, string>();
   for (const location of subscription) {
@@ -40,8 +57,12 @@ export function azureModelLocations(
     const key = displayKey(location.displayName);
     const name = location.name.toLowerCase();
     const existing = namesByDisplay.get(key);
-    if (existing !== undefined && existing !== name)
-      throw new Error("Azure subscription location display name is ambiguous");
+    assertSourceConstraint(
+      "Azure subscription location display name is ambiguous",
+      existing === undefined || existing === name,
+      location,
+      ["displayName"],
+    );
     namesByDisplay.set(key, name);
   }
 
@@ -50,10 +71,19 @@ export function azureModelLocations(
     const key = displayKey(displayName);
     if (key === "global") continue;
     const location = namesByDisplay.get(key);
-    if (location === undefined)
-      throw new Error(`Azure Cognitive Services location ${displayName} has no canonical name`);
+    assertSourceConstraint(
+      `Azure Cognitive Services location ${displayName} has no canonical name`,
+      location !== undefined,
+      displayName,
+      ["value", "locations"],
+    );
     locations.add(location);
   }
-  if (locations.size === 0) throw new Error("Azure Models API had no regional locations");
+  assertSourceConstraint(
+    "Azure Models API had no regional locations",
+    locations.size > 0,
+    [...locations],
+    ["value", "locations"],
+  );
   return [...locations].sort();
 }

@@ -3,8 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { canonicalJson } from "../catalog/canonical-value.ts";
 import { isPricingDecimal } from "../catalog/pricing-constants.ts";
 import {
-  evaluateApplicability,
-  evaluateModelApplicability,
   formatCategoricalValue,
   formatRecurringTimeSchedule,
   formatDimension,
@@ -12,8 +10,12 @@ import {
   formatUnitExpression,
   isModelDimension,
   isWholeNumberDimension,
-  type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
+import {
+  evaluateApplicability,
+  evaluateModelApplicability,
+  type PricingSelection,
+} from "../catalog/pricing-applicability.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import { formatLocalDateTime } from "../catalog/presentation.ts";
 import {
@@ -52,7 +54,6 @@ const displayOffer = computed(() =>
 );
 const selectors = computed(() => displayOffer.value.selectors);
 type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
-type CategoricalSelector = Extract<WebsitePricingSelector, { kind: "categorical" }>;
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
@@ -379,20 +380,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
   );
 }
 
-function isInferenceGeo(selector: WebsitePricingSelector): boolean {
-  return selector.dimension.namespace === "kmodels" && selector.dimension.value === "inference_geo";
-}
-
-function selectorOptionLabel(
-  selector: CategoricalSelector,
-  option: CategoricalSelector["values"][number],
-): string {
-  if (!isInferenceGeo(selector)) return option.label;
-  if (option.value.value === "global") return `${option.label} (default)`;
-  if (option.value.value === "us") return "US-only";
-  return option.label;
-}
-
 function noteExplanation(reason: string, impact: string): string {
   if (impact === "base_price") return "May change the price in the matching context.";
   if (impact === "allowance") return "May change the included usage in the matching context.";
@@ -439,15 +426,12 @@ function showNoteScope(scope: ScopeCopy): boolean {
               :options="
                 selector.values.map((option) => ({
                   value: option.key,
-                  label: selectorOptionLabel(selector, option),
+                  label: option.label,
                 }))
               "
               placeholder="Choose…"
               @update:model-value="setInput(selector.key, $event)"
             />
-            <small v-if="isInferenceGeo(selector)" class="selector-hint">
-              Choose one routing geography for this request.
-            </small>
             <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
               <summary>
                 <span

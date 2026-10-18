@@ -7,8 +7,7 @@ type TopologyFeature =
   | "binding"
   | "allowance"
   | "contribution"
-  | "settlement"
-  | "disposition";
+  | "settlement";
 
 export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["amazon-bedrock", ["resource", "binding"]],
@@ -16,17 +15,17 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["anthropic", ["resource", "binding", "allowance"]],
   ["azure", ["resource", "binding"]],
   ["cerebras", ["resource", "binding"]],
-  ["cohere", ["binding", "disposition"]],
-  ["dashscope", ["resource", "binding", "disposition"]],
+  ["cohere", ["binding"]],
+  ["dashscope", ["resource", "binding"]],
   ["databricks", ["binding"]],
   ["deepseek", ["binding"]],
   ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
   ["kimi", ["resource", "relation", "binding", "settlement"]],
   ["llama", []],
-  ["mistral", ["resource", "binding", "disposition"]],
+  ["mistral", ["resource", "binding"]],
   ["ollama", ["binding"]],
-  ["openai", ["resource", "binding", "contribution", "disposition"]],
+  ["openai", ["resource", "binding", "contribution"]],
   ["typesafe", ["binding"]],
   ["vercel", ["resource", "binding"]],
   ["vertex", ["resource", "relation", "binding", "allowance"]],
@@ -54,7 +53,6 @@ function pricingTopology(pricing: ProviderPricingPartition): TopologyFeature[] {
   if (terms.some(({ kind }) => kind === "allowance")) result.push("allowance");
   if (terms.some(({ kind }) => kind === "contribution")) result.push("contribution");
   if (offers.some(({ settlement }) => settlement.length > 0)) result.push("settlement");
-  if (pricing.model_dispositions.length > 0) result.push("disposition");
   return result;
 }
 
@@ -63,19 +61,13 @@ export function validateAdoptedTopology(pricing: ProviderPricingPartition): void
   const expected = adoptedTopologies.get(providerId);
   if (expected === undefined) throw new Error(`${providerId} has no adopted commercial topology`);
   const actual = pricingTopology(pricing);
-  // DashScope's current price book can omit every discontinued model. Explicit
-  // non-numeric states are preserved when published, not required as inventory.
-  const required =
-    providerId === "dashscope" && !actual.includes("disposition")
-      ? expected.filter((feature) => feature !== "disposition")
-      : expected;
   if (
-    actual.length === required.length &&
-    actual.every((feature, index) => feature === required[index])
+    actual.length === expected.length &&
+    actual.every((feature, index) => feature === expected[index])
   )
     return;
   throw new Error(
-    `${providerId} commercial topology changed: expected ${format(required)}, received ${format(actual)}`,
+    `${providerId} commercial topology changed: expected ${format(expected)}, received ${format(actual)}`,
   );
 }
 

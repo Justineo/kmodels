@@ -4,7 +4,9 @@ import {
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
   catalogRepairEvidenceCommands,
+  scheduledCatalogReview,
 } from "../src/catalog/catalog-repair.ts";
+import { manifests } from "../src/catalog/manifests.ts";
 
 const assertCatalogRepairOutcome = (output: string) => parseRepairOutcome(output).type;
 
@@ -75,6 +77,30 @@ const report = (providers: Record<string, unknown>[]): Record<string, unknown> =
   providers,
 });
 
+it("reviews every provider and global consistency once in each daily cycle without error signals", () => {
+  const firstDay = Date.parse("2026-10-19T00:00:00Z");
+  const cycle = Array.from({ length: manifests.length + 1 }, (_, index) =>
+    scheduledCatalogReview(new Date(firstDay + index * 86_400_000)),
+  );
+  expect(
+    cycle
+      .filter(({ trigger }) => trigger === "scheduled_provider_review")
+      .map(({ provider_id }) => provider_id)
+      .sort(),
+  ).toEqual(manifests.map(({ provider }) => provider.id).sort());
+  expect(cycle.filter(({ trigger }) => trigger === "scheduled_architecture_review")).toHaveLength(
+    1,
+  );
+  expect(scheduledCatalogReview(new Date(firstDay + 86_399_999))).toEqual(cycle[0]);
+  expect(scheduledCatalogReview(new Date(firstDay + cycle.length * 86_400_000))).toEqual(cycle[0]);
+  expect(() => scheduledCatalogReview(new Date("invalid"))).toThrow("valid date");
+  const openai = cycle.find(({ provider_id }) => provider_id === "openai");
+  if (openai === undefined) throw new Error("Missing OpenAI review");
+  const commands = catalogRepairEvidenceCommands([openai]);
+  expect(commands).toContain("vp node scripts/fetch-catalog-evidence.ts openai-models");
+  expect(commands).not.toContain("vp node scripts/fetch-catalog-evidence.ts openai-api");
+});
+
 it("prepares exact reviewed source commands instead of provider IDs", () => {
   const candidates = catalogRepairCandidates(
     report([
@@ -96,6 +122,82 @@ it("prepares exact reviewed source commands instead of provider IDs", () => {
       candidates.map((candidate) => ({ ...candidate, source_id: "mistral-api" })),
     ),
   ).toEqual([]);
+});
+
+it.each([
+  {
+    outcome: "parse_failed",
+    status: undefined,
+    failures: 1,
+    trigger: "source_parse_failure",
+    incomplete: false,
+  },
+  { outcome: "fetch_failed", status: 404, failures: 1, trigger: undefined, incomplete: true },
+  {
+    outcome: "fetch_failed",
+    status: 404,
+    failures: 2,
+    trigger: "source_location_change",
+    incomplete: true,
+  },
+  { outcome: "fetch_failed", status: 503, failures: 3, trigger: undefined, incomplete: true },
+])(
+  "investigates dependency contracts and persistent relocation without turning transport failure into parser repair: $outcome/$status/$failures",
+  ({ outcome, status, failures, trigger, incomplete }) => {
+    const input = report([
+      provider({
+        attempt: {
+          outcome: "accepted",
+          sources: [
+            {
+              source_id: "openai-models",
+              outcome: "unchanged",
+              content_changed: false,
+              dependency_failures: [
+                {
+                  dependency_id: "openai-models/companion",
+                  impact: "claim",
+                  outcome,
+                  message: "Companion unavailable or changed",
+                  consecutive_failures: failures,
+                  ...(status === undefined ? {} : { http_status: status }),
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ]);
+    const candidates = catalogRepairCandidates(input);
+    if (trigger === undefined) expect(candidates).toEqual([]);
+    else {
+      expect(candidates).toEqual([
+        expect.objectContaining({ source_id: "openai-models", trigger }),
+      ]);
+      expect(candidates[0]?.message).toContain("openai-models/companion");
+    }
+    expect(catalogRepairEvidenceIncomplete(input)).toBe(incomplete);
+  },
+);
+
+it("keeps native HTTP status authoritative over legacy message matching", () => {
+  const input = report([
+    provider({
+      attempt: {
+        outcome: "accepted",
+        sources: [
+          {
+            source_id: "openai-models",
+            outcome: "fetch_failed",
+            http_status: 503,
+            message: "HTTP 404",
+            consecutive_failures: 3,
+          },
+        ],
+      },
+    }),
+  ]);
+  expect(catalogRepairCandidates(input)).toEqual([]);
 });
 
 it.each([
@@ -286,7 +388,12 @@ describe("catalog repair candidate selection", () => {
       }),
     ]);
     expect(catalogRepairCandidates(input("unreviewed_pricing_tier", 20))).toEqual([]);
-    for (const reason of ["open_model_pricing_rejected", "partner_model_pricing_rejected"])
+    for (const reason of [
+      "open_model_pricing_rejected",
+      "partner_model_pricing_rejected",
+      "pricing_policy_unavailable",
+      "served_tier_contract_unavailable",
+    ])
       expect(catalogRepairCandidates(input(reason, 1))).toEqual([
         expect.objectContaining({ trigger: "source_pricing_structure" }),
       ]);
@@ -337,6 +444,60 @@ describe("catalog repair candidate selection", () => {
     ]);
   });
 
+  it.each(["unchanged", "changed"])("reviews consumed contract drift on %s bytes", (outcome) => {
+    const source = {
+      source_id: "openai-models",
+      outcome,
+      content_changed: false,
+      contract_findings: [
+        {
+          disposition: "accept_with_signal",
+          diagnostics: [
+            { kind: "missing_required_field", path: "/usage/input_tokens", affected_items: 1 },
+          ],
+        },
+      ],
+    };
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          attempt: { outcome: "accepted", sources: [source] },
+        }),
+      ]),
+    );
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        trigger: "source_contract_change",
+        source_id: "openai-models",
+        diagnostics: source.contract_findings[0]?.diagnostics,
+      }),
+    ]);
+    expect(
+      catalogRepairCandidates(
+        report([
+          provider({
+            attempt: {
+              outcome: "accepted",
+              sources: [
+                {
+                  ...source,
+                  contract_findings: [
+                    {
+                      disposition: "accept_with_signal",
+                      diagnostics: [
+                        { kind: "unknown_field", path: "/future_field", affected_items: 1 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
   it("lets the agent inspect every changed source around a rejected validation", () => {
     expect(
       catalogRepairCandidates(
@@ -367,6 +528,68 @@ describe("catalog repair candidate selection", () => {
         message: "model_count_drop: model count dropped by more than 10%",
       }),
     ]);
+  });
+
+  it("does not overwrite a source pricing finding when provider validation also rejects", () => {
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          attempt: {
+            outcome: "rejected",
+            sources: [
+              {
+                source_id: "openai-pricing",
+                outcome: "changed",
+                content_changed: true,
+                pricing_reconciliation: {
+                  reason_counts: { public_price_shape_unsupported: 1 },
+                  diagnostics: [
+                    {
+                      reason_code: "public_price_shape_unsupported",
+                      sample: "Unreadable reviewed sale cell",
+                    },
+                  ],
+                },
+              },
+            ],
+            validation_issue: { code: "model_count_drop", message: "Model count dropped" },
+          },
+        }),
+      ]),
+    );
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ trigger: "source_pricing_structure" });
+    expect(candidates[0]?.message).toContain("Unreadable reviewed sale cell");
+    expect(candidates[0]?.message).toContain("Provider validation: model_count_drop");
+  });
+
+  it("does not dismiss truncated contract evidence as a persistent harmless extension", () => {
+    for (const extra of [{ contract_findings_omitted: 1 }, {}]) {
+      const candidates = catalogRepairCandidates(
+        report([
+          provider({
+            attempt: {
+              outcome: "accepted",
+              sources: [
+                {
+                  source_id: "openai-models",
+                  outcome: "unchanged",
+                  contract_findings: [
+                    {
+                      disposition: "accept_with_signal",
+                      diagnostic_count: 2,
+                      diagnostics: [{ kind: "unknown_field", path: "/future", affected_items: 1 }],
+                    },
+                  ],
+                  ...extra,
+                },
+              ],
+            },
+          }),
+        ]),
+      );
+      expect(candidates[0]?.trigger).toBe("source_contract_change");
+    }
   });
 
   it("selects a changed contract extension and an authenticated parser failure", () => {

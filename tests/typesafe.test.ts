@@ -4,6 +4,7 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
+import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { projectPricingTableCell } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { sourcePriceFactSchema } from "../src/catalog/pricing-source.ts";
@@ -23,7 +24,7 @@ async function parse(overrides: { models?: string; api?: string | null; index?: 
   const api = overrides.api === undefined ? await fixture("api.md") : overrides.api;
   const findings: SourceContractEvidence[] = [];
   const reconciliation: PricingReconciliationItem[] = [];
-  const models = parseSource({
+  const parsed = parseSource({
     provider,
     source,
     observedAt,
@@ -40,7 +41,7 @@ async function parse(overrides: { models?: string; api?: string | null; index?: 
     onContractFinding: (finding) => findings.push(finding),
     onPricingReconciliation: (item) => reconciliation.push(item),
   });
-  return { models, findings, reconciliation };
+  return { ...parsed, findings, reconciliation };
 }
 
 describe("TypeSafe AI", () => {
@@ -57,7 +58,7 @@ describe("TypeSafe AI", () => {
   });
 
   it("publishes the exact current model, aliases and typed evaluation facts", async () => {
-    const { models, findings, reconciliation } = await parse();
+    const { models, pricing_inputs, findings, reconciliation } = await parse();
     expect(models).toHaveLength(1);
     const model = models[0];
     if (model === undefined) throw new Error("Missing TypeSafe model");
@@ -86,7 +87,7 @@ describe("TypeSafe AI", () => {
       { meter: "input_text", price: "0.042", unit: "million_tokens" },
       { meter: "output_data", price: "0", unit: "million_tokens" },
     ]);
-    expect(model.pricing_inputs?.map(({ locator }) => locator.value)).toEqual([
+    expect(pricing_inputs?.map(({ locator }) => locator.value)).toEqual([
       "/usage/input_tokens",
       "/usage/output_tokens",
     ]);
@@ -131,11 +132,12 @@ describe("TypeSafe AI", () => {
   });
 
   it("compiles request charges with response usage mappings", async () => {
-    const { models } = await parse();
+    const parsed = await parse();
+    const { models } = parsed;
     const pricing = assembleParsedProviderPricing(
       "typesafe",
       observedAt,
-      [{ source, models }],
+      [{ source, ...parsed }],
       models,
     );
     expect(pricing).toBeDefined();
@@ -211,23 +213,109 @@ describe("TypeSafe AI", () => {
   });
 
   it("keeps model and price evidence if the optional API document is unavailable", async () => {
-    const { models } = await parse({ api: null });
+    const parsed = await parse({ api: null });
+    const { models } = parsed;
     expect(models[0]).toMatchObject({
       model_id: "jev-1.13.0",
       pricing_state: "numeric",
       tasks: [],
-      pricing_inputs: [],
     });
+    expect(parsed.pricing_inputs).toEqual([]);
     expect(models[0]?.price_facts).toHaveLength(2);
+    const pricing = assembleParsedProviderPricing(
+      "typesafe",
+      observedAt,
+      [{ source, ...parsed }],
+      models,
+    );
+    if (pricing === undefined) throw new Error("Missing TypeSafe pricing");
+    const rate = pricing.books
+      .flatMap(({ offers }) => offers)
+      .flatMap(({ terms }) => terms)
+      .find((term) => term.kind === "rate" && term.meter.value === "input_text");
+    if (rate?.kind !== "rate" || rate.variants[0] === undefined)
+      throw new Error("Missing TypeSafe input rate");
+    const variant = rate.variants[0];
+    expect(variant.charge_binding).toMatchObject({
+      signal: { namespace: "kmodels", value: "input_tokens" },
+      aggregation: "request",
+    });
+    expect(variant.charge_binding?.quantity_methods).toBeUndefined();
+    expect(evaluateRateCost(variant, [])).toMatchObject({ kind: "missing_input" });
+    expect(
+      evaluateRateCost(variant, [
+        {
+          signal: { namespace: "kmodels", value: "input_tokens" },
+          value: { numerator: "1000000", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({
+      kind: "resolved",
+      amount: { numerator: "21", denominator: "500" },
+      denomination: { kind: "fiat", currency: "USD" },
+    });
   });
 
-  it("isolates usage-field drift from prices and sibling usage fields", async () => {
-    const { models, findings } = await parse({
-      api: (await fixture("api.md")).replace('name="input_tokens"', 'name="changed_tokens"'),
+  it.each([
+    ["renamed", '<ResponseField name="changed_tokens" type="integer" />'],
+    ["retyped", '<ResponseField name="input_tokens" type="string" />'],
+    [
+      "contradictory",
+      '<ResponseField name="input_tokens" type="integer" /><ResponseField name="input_tokens" type="string" />',
+    ],
+  ])("isolates %s usage fields from prices and sibling usage fields", async (_label, field) => {
+    const { models, pricing_inputs, findings } = await parse({
+      api: (await fixture("api.md")).replace(
+        '<ResponseField name="input_tokens" type="integer" />',
+        field,
+      ),
     });
     expect(models[0]?.price_facts).toHaveLength(2);
-    expect(models[0]?.pricing_inputs?.map(({ key }) => key)).toEqual(["systemone.output_tokens"]);
+    expect(pricing_inputs?.map(({ key }) => key)).toEqual(["systemone.output_tokens"]);
     expect(findings).toHaveLength(1);
+  });
+
+  it("does not map a counter nested under another usage property", async () => {
+    const api = (await fixture("api.md")).replace(
+      '<ResponseField name="input_tokens" type="integer" />',
+      '<ResponseField name="details" type="object"><ResponseField name="input_tokens" type="integer" /></ResponseField>',
+    );
+    const { models, pricing_inputs, findings } = await parse({ api });
+    const model = models[0];
+    if (model === undefined) throw new Error("Missing TypeSafe model");
+    expect(model.price_facts).toHaveLength(2);
+    expect(pricing_inputs?.map(({ locator }) => locator.value)).toEqual(["/usage/output_tokens"]);
+    expect(findings).toHaveLength(1);
+  });
+
+  it("ignores nested lookalikes beside the directly owned usage counters", async () => {
+    const api = (await fixture("api.md")).replace(
+      '<ResponseField name="input_tokens" type="integer" />',
+      '<ResponseField name="input_tokens" type="integer" /><ResponseField name="details" type="object"><ResponseField name="input_tokens" type="integer" /></ResponseField>',
+    );
+    const { models, pricing_inputs, findings } = await parse({ api });
+    const model = models[0];
+    if (model === undefined) throw new Error("Missing TypeSafe model");
+    expect(pricing_inputs?.map(({ locator }) => locator.value)).toEqual([
+      "/usage/input_tokens",
+      "/usage/output_tokens",
+    ]);
+    expect(findings).toEqual([]);
+  });
+
+  it("does not map a usage object nested under a different response property", async () => {
+    const api = (await fixture("api.md"))
+      .replace(
+        '<ResponseField name="usage" type="object" required>',
+        '<ResponseField name="details" type="object"><ResponseField name="usage" type="object" required>',
+      )
+      .replace("\n## Answer types", "</ResponseField>\n\n## Answer types");
+    const { models, pricing_inputs, findings } = await parse({ api });
+    const model = models[0];
+    if (model === undefined) throw new Error("Missing TypeSafe model");
+    expect(pricing_inputs).toEqual([]);
+    expect(model.price_facts).toHaveLength(2);
+    expect(findings).toHaveLength(2);
   });
 
   it("fails closed when the index adds an unreviewed commercial surface", async () => {

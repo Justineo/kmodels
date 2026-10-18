@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { extractCoherePricingInputs } from "../src/catalog/cohere-accounting.ts";
-import { extractDeepseekPricingInputs } from "../src/catalog/deepseek-accounting.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 
 const fixture = (name: string) => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -18,7 +17,7 @@ it("accepts reviewed path-based DashScope recommendations without relaxing the l
       source,
       body,
       observedAt: "2026-09-20T02:06:07.280Z",
-    });
+    }).models;
   const models = parse(body);
   expect(models).toHaveLength(28);
   expect(models.find(({ model_id }) => model_id === "ZHIPU/GLM-5.3")).toMatchObject({
@@ -34,54 +33,6 @@ it("accepts reviewed path-based DashScope recommendations without relaxing the l
     body.replaceAll("/ap-southeast-1/model/", "/unknown-region/model/"),
   ])
     expect(() => parse(invalid)).toThrow();
-});
-
-it("reads DeepSeek terminal usage through inline HTML and preserves nested cache ownership", async () => {
-  const chat = await fixture("deepseek/chat-accounting-inline.html");
-  const responses = await fixture("deepseek/responses-accounting-nested.html");
-  const parse = (body: string) =>
-    extractDeepseekPricingInputs(
-      [
-        { url: "https://api-docs.deepseek.com/api/create-chat-completion", body: chat },
-        { url: "https://api-docs.deepseek.com/api/create-completion", body: chat },
-        { url: "https://api-docs.deepseek.com/api/create-response", body },
-      ],
-      "deepseek-catalog",
-    );
-  const inputs = parse(responses);
-  expect(inputs).toHaveLength(18);
-  expect(inputs).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        key: "chat.stream.cached_input_tokens",
-        locator: { kind: "json_pointer", value: "/usage/prompt_cache_hit_tokens" },
-      }),
-      expect.objectContaining({
-        key: "responses.stream.cached_input_tokens",
-        locator: {
-          kind: "json_pointer",
-          value: "/response/usage/input_tokens_details/cached_tokens",
-        },
-      }),
-    ]),
-  );
-  for (const invalid of [
-    responses.replaceAll("input_tokens_details", "output_tokens_details"),
-    responses.replaceAll(">usage<", ">unbilled_usage<"),
-    responses.replaceAll("cached_tokens", "other_tokens"),
-  ])
-    expect(
-      parse(invalid).some(
-        ({ key }) => key.startsWith("responses.") && key.endsWith("cached_input_tokens"),
-      ),
-    ).toBe(false);
-  const incompleteStream = responses.replaceAll("response.failed", "response.other");
-  expect(
-    parse(incompleteStream).some(({ key }) => key === "responses.stream.cached_input_tokens"),
-  ).toBe(false);
-  expect(parse(incompleteStream).some(({ key }) => key === "responses.cached_input_tokens")).toBe(
-    true,
-  );
 });
 
 it("recognizes Cohere billed image tokens only under the documented response path", async () => {

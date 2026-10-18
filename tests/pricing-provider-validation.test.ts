@@ -110,4 +110,56 @@ describe("provider pricing validation", () => {
         providerPartition(pricing.data, providerId, modelProvider),
       );
   }, 300_000);
+
+  it.each(["cohere", "mistral", "openai", "dashscope"])(
+    "keeps %s topology independent of current disposition inventory without losing structural guards",
+    async (providerId) => {
+      const { catalog, pricing } = await generatedData();
+      const owners = new Map(catalog.models.map(({ uid, provider_id }) => [uid, provider_id]));
+      const partition = providerPartition(pricing.data, providerId, (ref) => {
+        const owner = owners.get(ref);
+        if (owner === undefined) throw new Error(`Unresolved model ${ref}`);
+        return owner;
+      });
+      if (partition === undefined) throw new Error(`Missing ${providerId} partition`);
+      const withoutDispositions = { ...partition, model_dispositions: [] };
+      expect(() => validateAdoptedTopology(withoutDispositions)).not.toThrow();
+      if (providerId !== "cohere")
+        expect(() =>
+          validateAdoptedTopology({
+            ...withoutDispositions,
+            books: partition.books.filter(({ scope }) => scope.kind === "models"),
+          }),
+        ).toThrow("commercial topology changed");
+      expect(() =>
+        validateAdoptedTopology({
+          ...withoutDispositions,
+          books: partition.books.map((book) => ({
+            ...book,
+            offers: book.offers.map((offer) => ({
+              ...offer,
+              terms: offer.terms.map((term) =>
+                term.kind === "rate"
+                  ? {
+                      ...term,
+                      variants: term.variants.map(
+                        ({ charge_binding: _binding, ...variant }) => variant,
+                      ),
+                    }
+                  : term.kind === "contribution"
+                    ? {
+                        ...term,
+                        variants: term.variants.map((variant) => ({
+                          ...variant,
+                          charge_bindings: [],
+                        })),
+                      }
+                    : term,
+              ),
+            })),
+          })),
+        }),
+      ).toThrow("commercial topology changed");
+    },
+  );
 });

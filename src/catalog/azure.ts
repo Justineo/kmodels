@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   armCostMeterId,
   azureArmSkuSchema,
+  azurePriceAmountSchema,
   type AzureArmCost,
   type AzureArmSku,
 } from "./azure-commercial.ts";
@@ -156,13 +157,9 @@ const azureModelSchema = z.object({
   }),
 });
 
-const decimalValue = z
-  .union([z.string(), z.number().finite().nonnegative()])
-  .transform((value) => String(value));
-
 const retailPriceSchema = z.object({
   currencyCode: z.string().min(1),
-  retailPrice: decimalValue,
+  retailPrice: azurePriceAmountSchema,
   armRegionName: z.string(),
   effectiveStartDate: z.string().min(1).optional(),
   effectiveEndDate: z.string().min(1).optional(),
@@ -282,7 +279,7 @@ type AzurePortalModel = z.infer<typeof azurePortalModelSchema>;
 const azurePortalBundleSchema = z.object({ models: z.array(z.unknown()).min(1) });
 
 const azurePublicPriceAmountSchema = z.object({
-  regional: z.record(z.string().min(1), decimalValue),
+  regional: z.record(z.string().min(1), azurePriceAmountSchema),
 });
 
 function azurePublicAmounts(raw: string): z.infer<typeof azurePublicPriceAmountSchema> | undefined {
@@ -753,7 +750,12 @@ function mergeModel(left: ProviderModel, right: ProviderModel): ProviderModel {
       ),
       computer_use: mergeKnown(left.capabilities.computer_use, right.capabilities.computer_use),
     },
-    limits: { ...left.limits, ...right.limits },
+    limits: {
+      ...left.limits,
+      ...Object.fromEntries(
+        Object.entries(right.limits).filter(([, value]) => value !== undefined),
+      ),
+    },
     availability: availability.length === 0 ? undefined : availability,
     source_refs: unique([...left.source_refs, ...right.source_refs]),
   };
@@ -2496,31 +2498,23 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
                 ...base(input, identity.id, identity.version),
                 pricing_state: "numeric",
               } satisfies ProviderModel);
-            const existing = new Map(
-              current.price_facts.map((fact) => [sourcePriceFactKey(fact), fact]),
-            );
             for (const fact of rates) {
               const key = sourcePriceFactKey(fact);
+              const siblings = current.price_facts.filter(
+                (candidate) => sourcePriceFactKey(candidate) === key,
+              );
+              if (siblings.some((candidate) => decimalsEqual(candidate.price, fact.price)))
+                continue;
               const conflictKey = `${uid}\0${key}`;
-              if (conflicts.has(conflictKey)) continue;
-              const previous = existing.get(key);
-              if (previous !== undefined && !decimalsEqual(previous.price, fact.price)) {
-                current.price_facts = current.price_facts.filter(
-                  (candidate) => sourcePriceFactKey(candidate) !== key,
-                );
-                existing.delete(key);
-                conflicts.add(conflictKey);
+              if (siblings.length > 0 && !conflicts.has(conflictKey)) {
                 input.onPricingReconciliation?.({
                   disposition: "unresolved",
                   reason_code: "public_price_conflict",
                   sample,
                 });
-                continue;
+                conflicts.add(conflictKey);
               }
-              if (previous === undefined) {
-                current.price_facts.push(fact);
-                existing.set(key, fact);
-              }
+              current.price_facts.push(fact);
             }
             models.set(uid, current);
             if (rates.length > 0)
@@ -2705,14 +2699,7 @@ function pricesFor(
       });
     }
   }
-  return [
-    ...new Map(
-      rates.map((rate) => [
-        `${rate.meter}\u0000${rate.currency}\u0000${rate.unit}\u0000${JSON.stringify(rate.conditions)}`,
-        rate,
-      ]),
-    ).values(),
-  ];
+  return [...new Map(rates.map((rate) => [stableCompactJson(rate), rate])).values()];
 }
 
 function azureApiModelId(item: unknown): string | undefined {
@@ -2727,56 +2714,80 @@ function uniqueAzureApiModels(models: z.infer<typeof azureModelSchema>[]) {
   return [...new Map(models.map((item) => [stableCompactJson(item), item])).values()];
 }
 
-function mergeScopedOptional<T>(left: T | undefined, right: T | undefined): T | undefined {
-  if (left === undefined) return right;
-  if (right === undefined || stableCompactJson(left) === stableCompactJson(right)) return left;
-  return undefined;
+function mergeScopedOptional<T>(values: readonly (T | undefined)[]): T | undefined {
+  const known = values.filter((value): value is T => value !== undefined);
+  const first = known[0];
+  if (first === undefined) return;
+  const key = stableCompactJson(first);
+  return known.every((value) => stableCompactJson(value) === key) ? first : undefined;
 }
 
 function mergeAzureApiModels(models: ProviderModel[]): ProviderModel[] {
-  const merged = new Map<string, ProviderModel>();
-  for (const incoming of models) {
-    const current = merged.get(incoming.uid);
-    if (current === undefined) {
-      merged.set(incoming.uid, incoming);
-      continue;
-    }
-    const priceFacts = new Map<string, SourcePriceFact>();
-    for (const fact of [...current.price_facts, ...incoming.price_facts]) {
-      const key = sourcePriceFactKey(fact);
-      const existing = priceFacts.get(key);
-      if (existing !== undefined && stableCompactJson(existing) !== stableCompactJson(fact))
-        throw new Error(`Azure API price facts disagreed across locations for ${incoming.uid}`);
-      priceFacts.set(key, fact);
-    }
-    const prices = [...priceFacts.values()].sort((left, right) =>
-      sourcePriceFactKey(left).localeCompare(sourcePriceFactKey(right)),
-    );
-    const contextTokens = mergeScopedOptional(
-      current.limits.context_tokens,
-      incoming.limits.context_tokens,
-    );
-    const maxOutputTokens = mergeScopedOptional(
-      current.limits.max_output_tokens,
-      incoming.limits.max_output_tokens,
-    );
-    merged.set(incoming.uid, {
-      ...mergeModel(current, incoming),
-      description: mergeScopedOptional(current.description, incoming.description),
-      raw_type: mergeScopedOptional(current.raw_type, incoming.raw_type),
-      tasks: orderedTasks([...current.tasks, ...incoming.tasks]),
-      limits: {
-        ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
-        ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
-      },
-      retired_at: mergeScopedOptional(current.retired_at, incoming.retired_at),
-      status: mergeKnown(current.status, incoming.status),
-      release_stage: mergeKnown(current.release_stage, incoming.release_stage),
-      pricing_state: prices.length === 0 ? "unknown" : "numeric",
-      price_facts: prices,
-    });
-  }
-  return [...merged.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const groups = new Map<string, ProviderModel[]>();
+  for (const model of models) groups.set(model.uid, [...(groups.get(model.uid) ?? []), model]);
+  return [...groups.values()]
+    .flatMap((observed): ProviderModel[] => {
+      const [first, ...rest] = observed;
+      if (first === undefined) return [];
+      const merged = rest.reduce(mergeModel, first);
+      const prices = [
+        ...new Map(
+          observed.flatMap(({ price_facts }) =>
+            price_facts.map((fact) => [stableCompactJson(fact), fact] as const),
+          ),
+        ).values(),
+      ].sort((left, right) => stableCompactJson(left).localeCompare(stableCompactJson(right)));
+      const capability = (key: keyof ProviderModel["capabilities"]): boolean | "unknown" =>
+        mergeScopedOptional(
+          observed.map(({ capabilities }) =>
+            capabilities[key] === "unknown" ? undefined : capabilities[key],
+          ),
+        ) ?? "unknown";
+      return [
+        {
+          ...merged,
+          description: mergeScopedOptional(observed.map(({ description }) => description)),
+          raw_type: mergeScopedOptional(observed.map(({ raw_type }) => raw_type)),
+          tasks: orderedTasks(observed.flatMap(({ tasks }) => tasks)),
+          capabilities: {
+            reasoning: capability("reasoning"),
+            tool_call: capability("tool_call"),
+            structured_output: capability("structured_output"),
+            streaming: capability("streaming"),
+            batch: capability("batch"),
+            prompt_cache: capability("prompt_cache"),
+            fine_tuning: capability("fine_tuning"),
+            citations: capability("citations"),
+            code_execution: capability("code_execution"),
+            context_management: capability("context_management"),
+            effort_control: capability("effort_control"),
+            computer_use: capability("computer_use"),
+          },
+          limits: {
+            context_tokens: mergeScopedOptional(
+              observed.map(({ limits }) => limits.context_tokens),
+            ),
+            max_output_tokens: mergeScopedOptional(
+              observed.map(({ limits }) => limits.max_output_tokens),
+            ),
+          },
+          retired_at: mergeScopedOptional(observed.map(({ retired_at }) => retired_at)),
+          status:
+            mergeScopedOptional(
+              observed.map(({ status }) => (status === "unknown" ? undefined : status)),
+            ) ?? "unknown",
+          release_stage:
+            mergeScopedOptional(
+              observed.map(({ release_stage }) =>
+                release_stage === "unknown" ? undefined : release_stage,
+              ),
+            ) ?? "unknown",
+          pricing_state: prices.length === 0 ? "unknown" : "numeric",
+          price_facts: prices,
+        },
+      ];
+    })
+    .sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 export function parseAzureApi(input: Input): ProviderModel[] {

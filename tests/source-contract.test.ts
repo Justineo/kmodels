@@ -5,6 +5,9 @@ import {
   assertCoverage,
   invalidJsonContractEvidence,
   recognizeItems,
+  createContractFindingCollector,
+  contractExtensionEvidence,
+  maxContractFindings,
   contractEvidence,
   sourceContractEvidenceSchema,
   SourceContractError,
@@ -28,6 +31,29 @@ function observation(value: unknown, itemIndex: number, modelId: string): ZodCon
 }
 
 describe("source contract diagnostics", () => {
+  it("bounds independent callback cohorts deterministically and keeps rejected evidence first", () => {
+    const findings = Array.from({ length: maxContractFindings + 2 }, (_, index) => {
+      const evidence = contractExtensionEvidence([`/field_${index}`]);
+      if (evidence === undefined) throw new Error("Missing evidence");
+      return evidence;
+    });
+    const first = findings[0];
+    if (first === undefined) throw new Error("Missing first evidence");
+    const rejected: SourceContractEvidence = { ...first, disposition: "reject" };
+    const collect = (events: SourceContractEvidence[]) => {
+      const collector = createContractFindingCollector();
+      for (const evidence of events) collector.add(evidence);
+      return collector.summary();
+    };
+    const events = [...findings, rejected];
+    const result = collect(events);
+    expect(result).toEqual(collect(events.toReversed()));
+    expect(result.contract_findings_omitted).toBe(3);
+    expect(result.contract_findings).toHaveLength(maxContractFindings);
+    expect(result.contract_findings?.[0]).toEqual(rejected);
+    expect(collect([first, first]).contract_findings).toEqual([first, first]);
+    expect(collect([])).toEqual({});
+  });
   it("aggregates bounded, actionable evidence without copying response bodies", () => {
     const observations = [
       observation({ id: "acme/one", video: { operation: "generate" } }, 0, "acme/one"),

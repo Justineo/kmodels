@@ -4,6 +4,7 @@ import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { sha256, stableCompactJson } from "./io.ts";
 
 const maxDiagnostics = 8;
+export const maxContractFindings = 16;
 const maxSampleModelIds = 3;
 const publicModelIdSchema = modelIdSchema.refine((value) => !isCredentialLikeIdentifier(value));
 
@@ -53,11 +54,99 @@ export const sourceContractEvidenceSchema = z.object({
 });
 export type SourceContractEvidence = z.infer<typeof sourceContractEvidenceSchema>;
 
+export function isContractDrift(finding: {
+  disposition: SourceContractDisposition;
+  diagnostics: readonly { kind: string }[];
+}): boolean {
+  return (
+    finding.disposition === "reject" ||
+    finding.diagnostics.some(({ kind }) => kind !== "unknown_field")
+  );
+}
+
+export interface SourceContractFindings {
+  contract_findings?: SourceContractEvidence[];
+  contract_findings_omitted?: number;
+}
+
+/** Read the previous report format without keeping a dual-write path in collection. */
+export function contractFindings<T>(source: {
+  contract_findings?: T[] | undefined;
+  contract_finding?: T | undefined;
+}): T[] {
+  return (
+    source.contract_findings ??
+    (source.contract_finding === undefined ? [] : [source.contract_finding])
+  );
+}
+
+export function createContractFindingCollector() {
+  // Callback populations may overlap or describe different things. Never sum their item counts.
+  const findings: { evidence: SourceContractEvidence; key: string }[] = [];
+  let omitted = 0;
+  return {
+    add(this: void, evidence: SourceContractEvidence): void {
+      findings.push({ evidence, key: stableCompactJson(evidence) });
+      findings.sort(
+        (left, right) =>
+          Number(right.evidence.disposition === "reject") -
+            Number(left.evidence.disposition === "reject") || compareUtf8(left.key, right.key),
+      );
+      if (findings.length > maxContractFindings) {
+        findings.pop();
+        omitted += 1;
+      }
+    },
+    summary(): SourceContractFindings {
+      return {
+        ...(findings.length === 0
+          ? {}
+          : { contract_findings: findings.map(({ evidence }) => evidence) }),
+        ...(omitted === 0 ? {} : { contract_findings_omitted: omitted }),
+      };
+    },
+  };
+}
+
 export interface ZodContractObservation {
   error: z.ZodError<unknown>;
   input?: unknown;
   itemIndex: number;
   modelId?: string;
+}
+
+export function parseSourceJson(body: string, label = "Source JSON"): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new SourceContractError(label, invalidJsonContractEvidence());
+  }
+}
+
+export function recognizeValue<T>(label: string, schema: z.ZodType<T>, input: unknown): T {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) return parsed.data;
+  throw new SourceContractError(
+    label,
+    zodContractEvidence([{ error: parsed.error, input, itemIndex: 0 }], 1),
+  );
+}
+
+export function assertSourceConstraint(
+  label: string,
+  valid: boolean,
+  input: unknown,
+  path: readonly PropertyKey[] = [],
+): asserts valid {
+  if (valid) return;
+  throw new SourceContractError(
+    label,
+    singleEvidence(
+      rawDiagnostic("constraint_violation", path, input, "reviewed source contract"),
+      1,
+      1,
+    ),
+  );
 }
 
 interface DiagnosticObservation {
@@ -482,5 +571,9 @@ export class SourceContractError extends Error {
 }
 
 export function contractEvidence(error: unknown): SourceContractEvidence | undefined {
-  return error instanceof SourceContractError ? error.evidence : undefined;
+  for (let depth = 0; depth < 8 && error instanceof Error; depth += 1) {
+    if (error instanceof SourceContractError) return error.evidence;
+    error = error.cause;
+  }
+  return undefined;
 }

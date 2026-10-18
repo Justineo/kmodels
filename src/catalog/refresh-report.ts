@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { modelLimitFields } from "./catalog-vocabulary.ts";
-import { sourceContractEvidenceSchema } from "./source-contract.ts";
+import {
+  contractFindings,
+  maxContractFindings,
+  sourceContractEvidenceSchema,
+} from "./source-contract.ts";
+import { dependencyFailureSchema, maxDependencyFailures } from "./source-failure.ts";
 import {
   sourcePricingExtractionSchema,
   sourcePricingReconciliationSchema,
@@ -68,9 +73,18 @@ const attemptSchema = z.object({
         "skipped_not_configured",
       ]),
       message: z.string().optional(),
+      http_status: z.number().int().min(100).max(599).optional(),
+      dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
+      dependency_failures_omitted: z.number().int().positive().optional(),
       consecutive_failures: z.number().int().positive().optional(),
       last_success_at: z.iso.datetime({ offset: true }).optional(),
       contract_finding: sourceContractEvidenceSchema.optional(),
+      contract_findings: z
+        .array(sourceContractEvidenceSchema)
+        .min(1)
+        .max(maxContractFindings)
+        .optional(),
+      contract_findings_omitted: z.number().int().positive().optional(),
       pricing_extraction: sourcePricingExtractionSchema.optional(),
       pricing_reconciliation: sourcePricingReconciliationSchema.optional(),
     }),
@@ -189,6 +203,7 @@ const signalDisplay: Record<string, string> = {
   catalog_count_decrease: "↘️",
   drift_guard_triggered: "🛡️",
   breaking_contract_mismatch: "⚠️",
+  partial_contract_mismatch: "🔎",
   unreviewed_extension: "🧩",
   coverage_regression: "📉",
   possible_structural_change: "🧱",
@@ -492,6 +507,7 @@ const legend = [
   "| ↘️ | Count decrease | Accepted count decrease; diagnostic only |",
   "| 🛡️ | Drift guard | Historical count-based rejection from an older collector |",
   "| ⚠️ | Contract mismatch | Owned source field or value became uninterpretable |",
+  "| 🔎 | Partial contract mismatch | Local owned contract gap; independently valid data accepted |",
   "| 🧩 | Unreviewed extension | Fresh data accepted after unrelated extension was stripped |",
   "| 📉 | Coverage regression | Reviewed item or field coverage fell below threshold |",
   "| 🧱 | Possible structural change | Unclassified parse failure |",
@@ -541,23 +557,47 @@ function sourceAttemptValue(source: SourceAttempt, generatedAt: string): string 
 }
 
 function contractFindingRows(source: SourceAttempt): ProviderDetailRow[] {
-  const evidence = source.contract_finding;
-  if (evidence === undefined) return [];
-  const rows: ProviderDetailRow[] = evidence.diagnostics.map((diagnostic) => {
-    const observed = `${diagnostic.observed}${diagnostic.observed_value === undefined ? "" : ` \`${diagnostic.observed_value}\``}`;
-    const samples = diagnostic.sample_model_ids?.map((id) => `\`${id}\``).join(", ");
-    return [
-      "Contract",
-      `\`${source.source_id}\``,
-      `\`${evidence.disposition}\` · \`${diagnostic.kind}\` · \`${diagnostic.path}\` · ${diagnostic.affected_items}/${evidence.observed_items} · expected ${diagnostic.expected ?? "reviewed shape"} · observed ${observed}${samples === undefined ? "" : ` · ${samples}`} · \`${diagnostic.fingerprint}\``,
-    ];
+  const rows = contractFindings(source).flatMap((evidence): ProviderDetailRow[] => {
+    const rows: ProviderDetailRow[] = evidence.diagnostics.map((diagnostic) => {
+      const observed = `${diagnostic.observed}${diagnostic.observed_value === undefined ? "" : ` \`${diagnostic.observed_value}\``}`;
+      const samples = diagnostic.sample_model_ids?.map((id) => `\`${id}\``).join(", ");
+      return [
+        "Contract",
+        `\`${source.source_id}\``,
+        `\`${evidence.disposition}\` · \`${diagnostic.kind}\` · \`${diagnostic.path}\` · ${diagnostic.affected_items}/${evidence.observed_items} · expected ${diagnostic.expected ?? "reviewed shape"} · observed ${observed}${samples === undefined ? "" : ` · ${samples}`} · \`${diagnostic.fingerprint}\``,
+      ];
+    });
+    const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
+    if (omitted > 0)
+      rows.push([
+        "Contract",
+        `\`${source.source_id}\``,
+        `\`${evidence.disposition}\` · +${omitted} diagnostics omitted`,
+      ]);
+    return rows;
   });
-  const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
-  if (omitted > 0)
+  if ((source.contract_findings_omitted ?? 0) > 0)
     rows.push([
       "Contract",
       `\`${source.source_id}\``,
-      `\`${evidence.disposition}\` · +${omitted} diagnostics omitted`,
+      `+${source.contract_findings_omitted} contract findings omitted; observation cohorts are reported separately and may overlap`,
+    ]);
+  return rows;
+}
+
+function dependencyFailureRows(source: SourceAttempt, generatedAt: string): ProviderDetailRow[] {
+  const rows = (source.dependency_failures ?? []).map((failure): ProviderDetailRow => [
+    "Dependency",
+    `\`${failure.dependency_id}\``,
+    `\`${failure.impact}\` · ${sourceAttemptValue({ ...failure, source_id: source.source_id }, generatedAt)}${failure.http_status === undefined ? "" : ` · HTTP ${failure.http_status}`} · ${inlineCode(failure.message)}`,
+  ]);
+  for (const failure of source.dependency_failures ?? [])
+    rows.push(...contractFindingRows({ ...failure, source_id: failure.dependency_id }));
+  if ((source.dependency_failures_omitted ?? 0) > 0)
+    rows.push([
+      "Dependency",
+      `\`${source.source_id}\``,
+      `+${source.dependency_failures_omitted} dependency failures omitted`,
     ]);
   return rows;
 }
@@ -646,13 +686,19 @@ function pricingReconciliationWarnings(providerId: string, source: SourceAttempt
 }
 
 function contractFindingWarnings(providerId: string, source: SourceAttempt): string[] {
-  const evidence = source.contract_finding;
-  const first = evidence?.diagnostics[0];
-  return evidence === undefined || first === undefined
-    ? []
-    : [
-        `${providerId}/${source.source_id}: ${evidence.disposition} ${first.kind} at ${first.path} (${first.affected_items}/${evidence.observed_items} items; ${first.fingerprint})`,
-      ];
+  const warnings = contractFindings(source).flatMap((evidence) => {
+    const first = evidence.diagnostics[0];
+    return first === undefined
+      ? []
+      : [
+          `${providerId}/${source.source_id}: ${evidence.disposition} ${first.kind} at ${first.path} (${first.affected_items}/${evidence.observed_items} items; ${first.fingerprint})`,
+        ];
+  });
+  if ((source.contract_findings_omitted ?? 0) > 0)
+    warnings.push(
+      `${providerId}/${source.source_id}: ${source.contract_findings_omitted} additional contract findings omitted`,
+    );
+  return warnings;
 }
 
 function persistentFailureWarning(
@@ -752,8 +798,16 @@ export function refreshReport(value: unknown): RefreshReportOutput {
 
   for (const provider of providers) {
     const findingSources =
-      provider.attempt?.sources.filter(({ contract_finding: finding }) => finding !== undefined) ??
-      [];
+      provider.attempt?.sources.filter(
+        (source) =>
+          contractFindings(source).length > 0 || (source.contract_findings_omitted ?? 0) > 0,
+      ) ?? [];
+    const dependencySources =
+      provider.attempt?.sources.filter(
+        (source) =>
+          (source.dependency_failures?.length ?? 0) > 0 ||
+          (source.dependency_failures_omitted ?? 0) > 0,
+      ) ?? [];
     const pricingSources =
       provider.attempt?.sources.filter(
         ({ pricing_extraction: pricing }) => pricing !== undefined,
@@ -768,6 +822,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       provider.models.changed === 0 &&
       failedSources.length === 0 &&
       findingSources.length === 0 &&
+      dependencySources.length === 0 &&
       (provider.count_decreases?.length ?? 0) === 0 &&
       provider.attempt?.validation_issue === undefined &&
       provider.attempt?.pricing?.outcome !== "failed" &&
@@ -818,6 +873,8 @@ export function refreshReport(value: unknown): RefreshReportOutput {
         sourceAttemptValue(source, report.generated_at),
       ]);
     for (const source of findingSources) detailRows.push(...contractFindingRows(source));
+    for (const source of dependencySources)
+      detailRows.push(...dependencyFailureRows(source, report.generated_at));
     if (provider.attempt?.validation_issue !== undefined)
       detailRows.push(["Validation", "—", `\`${provider.attempt.validation_issue.code}\``]);
     if (provider.attempt?.failure !== undefined)
@@ -849,6 +906,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
               ![
                 "catalog_count_decrease",
                 "breaking_contract_mismatch",
+                "partial_contract_mismatch",
                 "unreviewed_extension",
                 "persistent_source_failure",
               ].includes(signal),
@@ -870,6 +928,20 @@ export function refreshReport(value: unknown): RefreshReportOutput {
           attempt?.sources.flatMap((source) =>
             persistentFailureWarning(provider_id, source, report.generated_at),
           ) ?? [],
+      ),
+      ...providers.flatMap(
+        ({ provider_id, attempt }) =>
+          attempt?.sources.flatMap((source) => [
+            ...(source.dependency_failures ?? []).map(
+              (failure) =>
+                `${provider_id}/${failure.dependency_id}: ${failure.impact} dependency ${failure.outcome}${failure.http_status === undefined ? "" : ` HTTP ${failure.http_status}`}`,
+            ),
+            ...((source.dependency_failures_omitted ?? 0) === 0
+              ? []
+              : [
+                  `${provider_id}/${source.source_id}: ${source.dependency_failures_omitted} additional dependency failures omitted`,
+                ]),
+          ]) ?? [],
       ),
       ...providers.flatMap(({ provider_id, attempt }) =>
         attempt?.pricing?.outcome === "failed"

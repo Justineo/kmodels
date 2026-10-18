@@ -159,7 +159,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("$3");
   });
 
-  it("labels mutually exclusive inference geographies explicitly", async () => {
+  it("uses published geography labels without inventing defaults or rewriting their meaning", async () => {
     const pricedOffer = offer(
       [
         { amount: "$2", scope: categoricalContext("inference_geo", "global") },
@@ -169,8 +169,8 @@ describe("model pricing details", () => {
         selector: {
           dimension: "inference_geo",
           values: [
-            { value: "global", label: "Global" },
-            { value: "us", label: "US" },
+            { value: "global", label: "Worldwide inference" },
+            { value: "us", label: "United States routing" },
           ],
         },
       },
@@ -178,9 +178,10 @@ describe("model pricing details", () => {
 
     const html = await render([pricedOffer]);
 
-    expect(html).toContain("Choose one routing geography for this request.");
-    expect(html).toContain("Global (default)");
-    expect(html).toContain("US-only");
+    expect(html).toContain("Worldwide inference");
+    expect(html).toContain("United States routing");
+    expect(html).not.toContain("(default)");
+    expect(html).not.toContain("US-only");
     expect(html).toContain("ui-select");
     expect(html).not.toContain('type="radio"');
   });

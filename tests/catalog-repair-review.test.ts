@@ -80,6 +80,31 @@ it("rejects missing, duplicate, unknown, or stale candidate reviews", async () =
   );
 });
 
+it("permits an admitted no-op only when every candidate has verified no-defect evidence", async () => {
+  const s = scenario();
+  const healthy = { ...s.blocked(), status: "not_a_defect" };
+  expect(
+    await validateRepairReview(s.admission, s.report([healthy]), s.read, { requireNoDefect: true }),
+  ).toMatchObject({ not_a_defect: 1 });
+  for (const row of [s.repaired(), s.blocked()])
+    await expect(
+      validateRepairReview(s.admission, s.report([row]), s.read, { requireNoDefect: true }),
+    ).rejects.toThrow("every admitted candidate");
+  await expect(
+    validateRepairReview(
+      s.admission,
+      s.report([
+        {
+          ...healthy,
+          checks: [s.check("alternative"), s.check("navigation")],
+        },
+      ]),
+      s.read,
+      { requireNoDefect: true },
+    ),
+  ).rejects.toThrow("successful parser replay");
+});
+
 it("rejects the Veo early-stop pattern: a non-fixed URL error does not establish missing contracts", async () => {
   const s = scenario();
   const row = {

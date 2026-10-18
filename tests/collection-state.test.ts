@@ -386,7 +386,7 @@ describe("collection state", () => {
             message: "schema changed",
             consecutive_failures: 2,
             last_success_at: previousAt,
-            contract_finding: contractFinding("reject", "/new_field"),
+            contract_findings: [contractFinding("reject", "/new_field")],
           },
         ],
         candidate_models: [],
@@ -425,11 +425,13 @@ describe("collection state", () => {
               {
                 source_id: "test-catalog",
                 consecutive_failures: 2,
-                contract_finding: {
-                  disposition: "reject",
-                  observed_items: 1,
-                  diagnostic_count: 1,
-                },
+                contract_findings: [
+                  {
+                    disposition: "reject",
+                    observed_items: 1,
+                    diagnostic_count: 1,
+                  },
+                ],
               },
             ],
             validation_issue: { code: "model_count_drop" },
@@ -461,7 +463,7 @@ describe("collection state", () => {
             parsed_models: 1,
             content_changed: true,
             extractor_changed: false,
-            contract_finding: contractFinding("accept_with_signal", "/future_field"),
+            contract_findings: [contractFinding("accept_with_signal", "/future_field")],
           },
         ],
         candidate_models: [model],
@@ -482,13 +484,62 @@ describe("collection state", () => {
               {
                 source_id: "test-catalog",
                 outcome: "changed",
-                contract_finding: { disposition: "accept_with_signal" },
+                contract_findings: [{ disposition: "accept_with_signal" }],
               },
             ],
           },
         },
       ],
     });
+  });
+
+  it("distinguishes local consumed-contract drift from additive extensions and unclassified failures", () => {
+    const model = baseModel({
+      providerId: "test",
+      id: "model",
+      name: "Model",
+      sourceId: "test-catalog",
+      observedAt: currentAt,
+    });
+    const current = catalog("a", currentAt, [model], "b");
+    const extension = contractFinding("accept_with_signal", "/future_field");
+    const drift: SourceContractEvidence = {
+      ...extension,
+      diagnostics: extension.diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        kind: "missing_required_field",
+      })),
+    };
+    const summary = summarizeRefresh(current, current, noPricing, noPricing, [
+      {
+        provider_id: "test",
+        outcome: "accepted",
+        sources: [
+          {
+            source_id: "test-catalog",
+            outcome: "unchanged",
+            contract_findings: [extension, drift],
+          },
+        ],
+      },
+    ]);
+    expect(summary.providers[0]?.signals).toEqual([
+      "partial_contract_mismatch",
+      "unreviewed_extension",
+    ]);
+    const failed = summarizeRefresh(current, current, noPricing, noPricing, [
+      {
+        provider_id: "test",
+        outcome: "rejected",
+        sources: [
+          { source_id: "test-catalog", outcome: "parse_failed", contract_findings: [extension] },
+        ],
+      },
+    ]);
+    expect(failed.providers[0]?.signals).toEqual([
+      "unreviewed_extension",
+      "possible_structural_change",
+    ]);
   });
 
   it("separates canonical pricing commercial and provenance outcomes", () => {

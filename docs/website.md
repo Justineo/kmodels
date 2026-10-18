@@ -133,8 +133,9 @@ Status: implemented core; provider pricing convergence is in progress
   filtering never hides or reorders the choices above it. Each related offer owns independent child
   context. Context controls remain visible and rely on their own labels and empty choices. A
   categorical control uses the shared customizable-select component regardless of option count.
-  This gives every pricing-context value the same interaction while keeping specialized labels,
-  such as `Global (default)` and `US-only`, explicit in the menu.
+  This gives every pricing-context value the same interaction. Menus retain the labels provided by
+  reviewed vocabulary/projection data; components do not infer defaults or rewrite a value's meaning
+  from a dimension name or a short value such as `global` or `us`.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.

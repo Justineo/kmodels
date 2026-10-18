@@ -42,6 +42,7 @@ import {
   type PricingInputIndex,
 } from "./pricing-input.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
+import { preferOpenAiPricingPage } from "./openai-price-authority.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type PublishedModel = Pick<ProviderModel, "capabilities" | "tasks" | "uid">;
@@ -226,94 +227,17 @@ function splitModelBook(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
+  const [ref] = book.scope.model_refs;
   const model =
-    book.scope.model_refs.length === 1 ? models.get(book.scope.model_refs[0]!) : undefined;
+    book.scope.model_refs.length === 1 && ref !== undefined ? models.get(ref) : undefined;
   return partitionBook(
-    preferPricingPage(book),
+    preferOpenAiPricingPage(book),
     "usage",
     modelMechanism(model).name,
     model,
     input,
     inputIndex,
   );
-}
-
-function preferPricingPage(book: AtomicPricingBook): AtomicPricingBook {
-  return {
-    ...book,
-    offers: book.offers.map((offer) => ({
-      ...offer,
-      terms: offer.terms.map((term) => {
-        if (term.kind !== "rate") return term;
-        const authoritative: Array<{ applicability: PriceApplicability; price?: string }> = [
-          ...term.variants.flatMap((variant) =>
-            variant.observation.source_ref === "openai-pricing"
-              ? [{ applicability: variant.applicability, price: JSON.stringify(variant.price) }]
-              : [],
-          ),
-          ...term.raw_variants.flatMap((variant) =>
-            variant.observation.source_ref === "openai-pricing" &&
-            variant.reason === "conflicting_values" &&
-            variant.possible_scope !== undefined
-              ? [{ applicability: variant.possible_scope }]
-              : [],
-          ),
-        ];
-        if (authoritative.length === 0) return term;
-        const removed = term.variants.filter(
-          (variant) =>
-            variant.observation.source_ref === "openai-overview" &&
-            authoritative.some(({ applicability }) =>
-              sameTier(variant.applicability, applicability),
-            ),
-        );
-        if (removed.length === 0) return term;
-        return {
-          ...term,
-          variants: term.variants.filter((variant) => !removed.includes(variant)),
-          raw_variants: [
-            ...term.raw_variants,
-            ...removed.flatMap((variant) =>
-              authoritative.some(
-                ({ applicability, price }) =>
-                  sameTier(variant.applicability, applicability) &&
-                  price !== undefined &&
-                  price !== JSON.stringify(variant.price),
-              )
-                ? [supersededCardRate(variant)]
-                : [],
-            ),
-          ],
-        };
-      }),
-    })),
-  };
-}
-
-function sameTier(left: PriceApplicability, right: PriceApplicability): boolean {
-  const tiers = (applicability: PriceApplicability): Set<string> =>
-    new Set(
-      applicability.any_of.flatMap(({ all_of }) => {
-        const tier = all_of.find(isServedTier);
-        return tier?.kind === "categorical" ? tier.values.map(({ value }) => value) : ["standard"];
-      }),
-    );
-  const rightTiers = tiers(right);
-  return [...tiers(left)].some((tier) => rightTiers.has(tier));
-}
-
-function supersededCardRate(variant: AtomicRateVariant) {
-  return {
-    impact: "informational" as const,
-    reason: "superseded_value" as const,
-    resolution_policy: "openai_pricing_page_over_model_card",
-    possible_scope: variant.applicability,
-    observation: {
-      source_ref: variant.observation.source_ref,
-      locator: variant.observation.locator,
-      raw: variant.observation.raw,
-    },
-  };
 }
 
 function partitionBook(

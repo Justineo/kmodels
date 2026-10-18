@@ -1,4 +1,14 @@
 import { z } from "zod";
+import { scaleDecimal } from "./pricing.ts";
+import { decimalSchema } from "./pricing-schema.ts";
+
+export const azurePriceAmountSchema = z
+  .union([z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/), z.number().finite().nonnegative()])
+  .transform((value) => {
+    const [coefficient = "0", exponent = "0"] = String(value).split("e");
+    return scaleDecimal(coefficient, Number(exponent));
+  })
+  .pipe(decimalSchema);
 
 const armCostSchema = z.object({
   name: z.string().optional(),

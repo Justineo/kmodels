@@ -22,6 +22,7 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 - Read `design.md` first, then only the linked topic or provider documents relevant to the change.
 - Treat those documents as the source of truth. Update the relevant guide in the same change whenever behavior or understanding changes.
 - Record only the current decision and its rationale; replace obsolete guidance instead of appending history.
+- Keep task plans, progress boards, and execution history in ignored local task state. Versioned documentation describes the current design, its rationale, and known implementation limits.
 - Keep repository-wide rules here, domain decisions in `docs/*.md`, and provider decisions in `docs/providers/*.md`. Keep `design.md` links synchronized.
 
 ## Repository map

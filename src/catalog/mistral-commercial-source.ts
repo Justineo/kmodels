@@ -1,12 +1,11 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { publishedRate } from "./pricing.ts";
+import { attachCommercialFacts, commercialResource, publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
-  SourceRawPricingFact,
 } from "./pricing-source.ts";
 
 interface Input {
@@ -242,9 +241,7 @@ export function extractMistralCommercialFacts(
     .map(({ uid }) => uid)
     .sort();
   for (const card of cards) addCard(input, facts, card, agentModels);
-  const carrier = [...input.models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && facts.length > 0)
-    carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
+  attachCommercialFacts(input.models, facts);
 }
 
 function addCard(
@@ -270,8 +267,8 @@ function addCard(
       unresolved(input, title);
       return;
     }
-    facts.push(
-      fact(
+    facts.push({
+      ...commercialResource(
         input.sourceId,
         `service:${simple.key}`,
         simple.name,
@@ -279,13 +276,13 @@ function addCard(
         simple.key,
         agentModels,
         "usage",
-        simple.name,
-        "usage",
-        "numeric",
-        rates,
-        [],
       ),
-    );
+      offer_key: "usage",
+      offer_name: simple.name,
+      pricing_state: "numeric",
+      price_facts: rates,
+      raw_price_facts: [],
+    });
     normalized(input, rates.length);
     return;
   }
@@ -369,8 +366,8 @@ function addLibraryRetrieval(
     unresolved(input, "Libraries: retrieval");
     return;
   }
-  facts.push(
-    fact(
+  facts.push({
+    ...commercialResource(
       input.sourceId,
       "service:library-retrieval",
       "Document Library retrieval",
@@ -378,14 +375,14 @@ function addLibraryRetrieval(
       "library-retrieval",
       modelRefs,
       "usage",
-      "Document Library retrieval",
-      "usage",
-      "numeric",
-      rowRates(input.sourceId, row, "retrieval", "request"),
-      [],
     ),
-  );
-  normalized(input, 2);
+    offer_key: "usage",
+    offer_name: "Document Library retrieval",
+    pricing_state: "numeric",
+    price_facts: rowRates(input.sourceId, row, "retrieval", "request"),
+    raw_price_facts: [],
+  });
+  normalized(input, row.priceEur === undefined ? 1 : 2);
 }
 
 function rowRates(
@@ -407,36 +404,6 @@ function rowRates(
       raw_price: price,
     };
   });
-}
-
-function fact(
-  source_ref: string,
-  book_key: string,
-  book_name: string,
-  resource_kind: SourceCommercialPricingFact["resource_kind"],
-  resource_key: string,
-  model_refs: string[],
-  offer_key: string,
-  offer_name: string,
-  billing_mode: SourceCommercialPricingFact["billing_mode"],
-  pricing_state: SourceCommercialPricingFact["pricing_state"],
-  price_facts: SourcePriceFact[],
-  raw_price_facts: SourceRawPricingFact[],
-): SourceCommercialPricingFact {
-  return {
-    source_ref,
-    book_key,
-    book_name,
-    resource_kind,
-    resource_key,
-    model_refs,
-    offer_key,
-    offer_name,
-    billing_mode,
-    pricing_state,
-    price_facts,
-    raw_price_facts,
-  };
 }
 
 function parseJson<T>(value: string | undefined, schema: z.ZodType<T>): T | undefined {

@@ -56,6 +56,10 @@ a freshness warning.
 - Merge repeated exact tuples across catalog tables, deployment matrices, the optional portal, and
   authenticated inventory. Known public lifecycle wins over portal lifecycle; fill-only supplements
   cannot replace a known scalar.
+  An omitted limit in another documented capability row cannot erase an already known limit.
+  ARM location observations are reconciled as a complete group: missing values can be filled, but
+  two distinct known values remain unresolved even if a third location repeats one side. This
+  applies independently to descriptions, context/output limits, lifecycle, and each capability.
 - Treat OpenAI, models sold directly by Azure, and partner/community models as service-family
   evidence, not as different identity namespaces.
 - Derive tasks and endpoints only from explicit table types and endpoint text. The portal's
@@ -76,6 +80,8 @@ a freshness warning.
 Kmodels is a price book, not a request observer. The optional `azure-accounting` source publishes
 the first-party data contract a calculator may consume; it does not intercept streams, persist
 usage, detect retries, or reconcile an invoice.
+Its acquisition contracts are independent source facts. They require no catalog carrier and do
+not create a placeholder model observation.
 
 Current exact acquisition paths are:
 
@@ -102,6 +108,17 @@ priced text output is similarly `total output - audio output`. Each API family r
 calculation and only its independently verified input locators, even when that mapping is partial.
 Chat and Responses remain separate acquisition methods; missing signals must be supplied by the
 caller rather than filled with a field from another family.
+The usage recognizer also verifies the declared field type and its reviewed direct or flattened
+position. Retyped counters, contradictory duplicate properties, nested lookalikes for direct
+fields, and duplicate schema headings withhold that mapping; recognized sibling fields survive.
+The published [Chat schema](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/chat#openaicompletionusage)
+separates the root usage counters from their detail schemas.
+
+Quantity equations use only related meters in the selected tariff's currency, applicability and
+published validity. A cache rate in one region cannot make another region subtract cached tokens.
+If a related component covers only part of a broader input-rate scope, automatic acquisition is
+withheld and the caller supplies the billable quantity; the known rate and semantic signal remain.
+Token equations are not inferred from a related rate with a different billing unit.
 
 The current Azure contracts do not establish an exact response selector for priority versus
 standard deployment pricing, a request/result field for region or deployment scope, a filtered
@@ -176,14 +193,25 @@ unbound row is reported but does not reject recognized siblings.
 
 For an exact overlapping claim, authority is:
 
-1. authenticated direct ARM meter ID joined to the public Retail Prices row for its exact scope;
-2. public Retail Prices SKU/meter for its exact model, region, deployment, tier, and validity scope;
-3. the exact Microsoft model-family pricing row; and
-4. an explicitly delegated first-party price book, currently Anthropic for Claude.
+1. public Retail Prices SKU/meter for its exact model, region, deployment, tier, and validity scope;
+2. a first-party price book: an exact Microsoft model-family row or an explicitly delegated
+   provider price book, currently Anthropic for Claude.
+
+Exact-version pricing takes precedence over a base-model fallback for that version. There is no
+additional automatic winner between two conflicting price books at the same authority and binding
+scope. Authenticated ARM joins can confirm an exact public tuple and meter meaning, but the
+account-scoped inventory is outside the public canonical pricing dependency set. It cannot raise
+the authority of a public rate or introduce account-only pricing into offline replay.
 
 Different region, deployment mechanism, seller, tier, or validity is not a conflict. A conflict with
 no deterministic winner withholds only the disputed rate and emits reconciliation evidence; valid
 sibling rates survive.
+Public-page and direct ARM parsing preserve unequal observations for the same price scope instead
+of discarding them or keeping the last amount. Canonical public assembly retains a bounded raw
+conflict with both amounts while preserving disjoint regional prices and readable meters.
+Price amounts accept nonnegative decimal strings or finite nonnegative JSON numbers. Shared Azure
+amount parsing expands numeric scientific notation with exact decimal operations and rejects
+placeholders such as `Pending` before they can enter a numeric fact.
 
 ## Resilient refresh
 

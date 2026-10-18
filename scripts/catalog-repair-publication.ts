@@ -239,14 +239,23 @@ export async function runRepairPublication(operation: string | undefined): Promi
       const required = environment("REPAIR_REQUIRED");
       if (!["true", "false"].includes(required))
         throw new Error("Invalid repair admission decision");
-      if (outcome.type === "noop" && required === "true")
-        throw new Error(
-          "Catalog repair was required; a no-op cannot complete the admitted repair. Continue diagnosis and stage a validated fix.",
+      if (outcome.type === "noop" && required === "true") {
+        const review = spawnSync(
+          "vp",
+          ["node", join(environment("RUNNER_TEMP"), "catalog-repair-review.ts"), "check-no-defect"],
+          { stdio: "inherit" },
         );
+        if (review.error !== undefined) throw review.error;
+        if (review.status !== 0)
+          throw new Error(
+            "A no-op cannot complete admitted work without independently checked no-defect evidence for every candidate",
+          );
+      }
       git(["add", "--all"]);
       const patch = stagedPatch(baseSha());
       if (outcome.type === "noop") {
         if (patch !== "") throw new Error("Catalog repair no-op contains code changes");
+        await rm(patchPath, { force: true });
       } else {
         admitStagedPatch(baseSha(), patch);
         if ((await readFile(patchPath, "utf8")) !== patch)

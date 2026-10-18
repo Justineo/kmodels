@@ -7,8 +7,6 @@ import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
   applicableRateCount,
   displayUnitPrice,
-  evaluateApplicability,
-  evaluateModelApplicability,
   formatAllowanceBenefit,
   formatCategoricalValue,
   formatDimension,
@@ -23,6 +21,7 @@ import {
   projectPricingTableCellFromView,
   type ModelPricingView,
 } from "./pricing-presentation.ts";
+import { evaluateApplicability, evaluateModelApplicability } from "./pricing-applicability.ts";
 import type {
   AllowanceReset,
   BillingMode,

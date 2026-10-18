@@ -18,7 +18,7 @@ import type {
   UsageInputSource,
 } from "../src/catalog/pricing-schema.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
-import { evaluateApplicability } from "../src/catalog/pricing-presentation.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
 
 const providerId = "test";
 const modelId = "model";

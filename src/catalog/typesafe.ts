@@ -12,6 +12,7 @@ import {
   contractExtensionEvidence,
   type SourceContractEvidence,
 } from "./source-contract.ts";
+import type { SourceParseResult } from "./source-parse.ts";
 
 interface Input {
   provider: Provider;
@@ -137,13 +138,16 @@ function accounting(input: Input, body: string | undefined): SourcePricingInputF
     signal(input, "/api/response-body");
     return [];
   }
-  const $ = load(section(body, "Response body"));
-  const usage = $('responsefield[name="usage"][type="object"]');
+  // MDX self-closing fields must not acquire later fields as children during HTML recovery.
+  const $ = load(section(body, "Response body"), { xml: { lowerCaseTags: true } });
+  const usage = $('responsefield[name="usage"][type="object"]').filter(
+    (_index, field) => $(field).parents("responsefield").length === 0,
+  );
   return (["input_tokens", "output_tokens"] as const).flatMap((key) => {
-    if (
-      usage.length !== 1 ||
-      usage.find(`responsefield[name="${key}"][type="integer"]`).length !== 1
-    ) {
+    const fields = usage
+      .find(`responsefield[name="${key}"]`)
+      .filter((_index, field) => $(field).parents("responsefield").first().is(usage));
+    if (usage.length !== 1 || fields.length !== 1 || fields.attr("type") !== "integer") {
       signal(input, `/api/usage/${key}`);
       return [];
     }
@@ -159,7 +163,7 @@ function accounting(input: Input, body: string | undefined): SourcePricingInputF
   });
 }
 
-export function parseTypesafeCatalog(input: Input): ParsedProviderModel[] {
+export function parseTypesafeCatalog(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "typesafe-catalog")
     throw new Error("Wrong TypeSafe extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
@@ -256,7 +260,6 @@ export function parseTypesafeCatalog(input: Input): ParsedProviderModel[] {
         derived: false,
         raw_unit: "per Mtok",
       }));
-      model.pricing_inputs = pricingInputs;
       for (const rate of model.price_facts)
         input.onPricingReconciliation?.({
           disposition: "normalized",
@@ -292,5 +295,8 @@ export function parseTypesafeCatalog(input: Input): ParsedProviderModel[] {
     input.source.extractor.minModels,
     input.source.extractor.maxModels,
   );
-  return [...byId.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
+  return {
+    models: [...byId.values()].sort((left, right) => left.model_id.localeCompare(right.model_id)),
+    pricing_inputs: pricingInputs,
+  };
 }

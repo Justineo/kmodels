@@ -1,5 +1,4 @@
 import type {
-  AtomicAllowanceTerm,
   AtomicPricingBook,
   AtomicPricingOffer,
   AtomicPricingTerm,
@@ -9,15 +8,13 @@ import type {
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import {
   addAtom,
   isStandardUnit,
   rawEvidence,
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
-import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
-import { multiplyRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import type {
   ChargeBinding,
   PriceApplicability,
@@ -25,7 +22,6 @@ import type {
   PriceDimension,
   PriceMeter,
   PriceSelectorSource,
-  RawPriceObservation,
   UnitExpression,
   UsageSignal,
 } from "./pricing-schema.ts";
@@ -42,9 +38,6 @@ type Mechanism = "sync" | "batch";
 
 const tokenUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
-};
-const secondUnit: UnitExpression = {
-  factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }],
 };
 const admittedResources = new Set(["web-search", "code-execution"]);
 
@@ -116,7 +109,17 @@ function partitionTerm(
   inputIndex: PricingInputIndex,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
-    const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
+    const variants = term.variants
+      .flatMap((variant) => partitionRaw(variant, mechanism))
+      .map((variant) => {
+        const ttl =
+          variant.possible_scope === undefined ? undefined : exactCacheTtl(variant.possible_scope);
+        return ttl !== undefined &&
+          variant.possible_scope !== undefined &&
+          term.term_key === `unparsed:cache_write_text:${ttl}`
+          ? { ...variant, possible_scope: withoutCacheTtl(variant.possible_scope) }
+          : variant;
+      });
     return variants.length === 0 ? [] : [{ ...term, variants }];
   }
   if (term.kind !== "rate") return mechanism === "sync" ? [term] : [];
@@ -172,19 +175,23 @@ function partitionCacheWriteTerms(
 }
 
 function removeCacheTtlSelector(variant: AtomicRateVariant): AtomicRateVariant {
-  const clauses = variant.applicability.any_of.map(({ all_of }) => ({
+  const applicability = withoutCacheTtl(variant.applicability);
+  return {
+    ...variant,
+    applicability,
+    observation: withApplicability(variant.observation, applicability),
+  };
+}
+
+function withoutCacheTtl(applicability: PriceApplicability): PriceApplicability {
+  const clauses = applicability.any_of.map(({ all_of }) => ({
     all_of: all_of.filter(
       (condition) =>
         condition.dimension.namespace !== "kmodels" ||
         condition.dimension.value !== "cache_ttl_seconds",
     ),
   }));
-  const applicability = canonicalizeApplicability({ any_of: clauses });
-  return {
-    ...variant,
-    applicability,
-    observation: withApplicability(variant.observation, applicability),
-  };
+  return canonicalizeApplicability({ any_of: clauses });
 }
 
 function partitionRaw(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {
@@ -263,7 +270,9 @@ function selectorSources(
         ? "messages.usage.selector.inference_geo"
         : dimension.value === "served_service_tier"
           ? "messages.usage.selector.served_service_tier"
-          : undefined;
+          : dimension.value === "speed"
+            ? "messages.usage.selector.speed"
+            : undefined;
     if (key === undefined) continue;
     for (const fact of pricingInputFacts(inputIndex, [key]))
       sources.push({
@@ -337,18 +346,9 @@ function bindRequestService(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): void {
-  if (book.scope.kind !== "provider_resource") return;
-  if (book.scope.resource_key === "web-search") {
-    for (const offer of book.offers) {
-      const facts = pricingInputFacts(inputIndex, ["messages.usage.successful_web_searches"]);
-      if (facts.length > 0) bindWebSearch(offer, facts, input);
-    }
-    return;
-  }
-  for (const offer of book.offers) {
-    bindCodeRate(offer, input);
-    bindCodeAllowance(book, offer);
-  }
+  if (book.scope.kind !== "provider_resource" || book.scope.resource_key !== "web-search") return;
+  const facts = pricingInputFacts(inputIndex, ["messages.usage.successful_web_searches"]);
+  if (facts.length > 0) for (const offer of book.offers) bindWebSearch(offer, facts, input);
 }
 
 function bindWebSearch(
@@ -388,133 +388,6 @@ function bindWebSearch(
       },
     }));
   }
-}
-
-function bindCodeRate(offer: AtomicPricingOffer, input: AtomicProviderPricing): void {
-  if (offer.offer_key !== "standalone") return;
-  const minimum = rawTermObservation(offer, "minimum-runtime");
-  const runtime = rawTermObservation(offer, "runtime-observation");
-  const minutes = minimum?.raw.fragment?.match(/^(\d+)-minute minimum execution time$/)?.[1];
-  if (minimum === undefined || runtime === undefined || minutes === undefined) return;
-
-  const rates = offer.terms.filter(isContainerRate);
-  if (rates.length === 0) return;
-
-  addAtom(input, {
-    kind: "usage_signal",
-    key: "code_execution_active_seconds",
-    definition:
-      "Standalone Code Execution duration tracked by Anthropic accounting but not reported by Messages usage",
-    unit: secondUnit,
-    resolution_phase: "account",
-  });
-  addAtom(input, {
-    kind: "usage_signal",
-    key: "code_execution_billable_seconds",
-    definition: "Standalone Code Execution duration after the published per-container minimum",
-    unit: secondUnit,
-    resolution_phase: "account",
-  });
-  addAtom(input, {
-    kind: "aggregation",
-    key: "code_execution_container",
-    definition: "One independently billed standalone Code Execution container",
-  });
-
-  const active = providerSignal("code_execution_active_seconds");
-  const billable = providerSignal("code_execution_billable_seconds");
-  const minimumSeconds = multiplyRationals(rationalFromDecimal(minutes), {
-    numerator: "60",
-    denominator: "1",
-  });
-  for (const term of rates) {
-    term.variants = term.variants.map((variant) => ({
-      ...variant,
-      charge_binding: {
-        signal: billable,
-        aggregation: {
-          namespace: "provider",
-          provider_id: "anthropic",
-          value: "code_execution_container",
-        },
-        quantity_methods: [
-          {
-            calculation: {
-              nodes: [
-                { op: "signal", signal: active },
-                { op: "minimum", input: 0, value: minimumSeconds },
-              ],
-              result: 1,
-            },
-          },
-        ],
-        observations: [rawEvidence(variant.observation), minimum, runtime],
-      },
-    }));
-  }
-  offer.terms = offer.terms.filter(
-    ({ term_key }) => !["minimum-runtime", "runtime-observation"].includes(term_key),
-  );
-}
-
-function bindCodeAllowance(book: AtomicPricingBook, offer: AtomicPricingOffer): void {
-  if (offer.offer_key !== "standalone") return;
-  const observation = rawTermObservation(offer, "monthly-container-allowance");
-  const fragment = observation?.raw["fragment"];
-  const hours = typeof fragment === "string" ? fragment.match(/^([\d,]+) /)?.[1] : undefined;
-  const offerId = pricingOfferId(pricingBookId("anthropic", book.book_key), offer.offer_key);
-  const targets = offer.terms.flatMap((term) =>
-    isContainerRate(term) ? [pricingTermId(offerId, "rate", term.term_key)] : [],
-  );
-  if (observation === undefined || hours === undefined || targets.length === 0) return;
-  const allowance: AtomicAllowanceTerm = {
-    term_key: "monthly-container-allowance",
-    kind: "allowance",
-    variants: [
-      {
-        benefit: {
-          kind: "quantity",
-          quantity: {
-            value: multiplyRationals(rationalFromDecimal(hours.replaceAll(",", "")), {
-              numerator: "3600",
-              denominator: "1",
-            }),
-            unit: secondUnit,
-          },
-        },
-        target: { kind: "rate_terms", term_refs: targets },
-        reset: { namespace: "kmodels", value: "monthly" },
-        applicability: unconditionalApplicability,
-        observation: { ...observation, establishes_applicability: unconditionalApplicability },
-      },
-    ],
-    raw_variants: [],
-    source_refs: [observation.source_ref],
-  };
-  offer.terms = [
-    ...offer.terms.filter(({ term_key }) => term_key !== "monthly-container-allowance"),
-    allowance,
-  ];
-}
-
-function rawTermObservation(
-  offer: AtomicPricingOffer,
-  termKey: string,
-): RawPriceObservation | undefined {
-  const term = offer.terms.find(
-    (candidate) => candidate.kind === "raw" && candidate.term_key === termKey,
-  );
-  return term?.kind === "raw" ? term.variants[0]?.observation : undefined;
-}
-
-function isContainerRate(
-  term: AtomicPricingTerm,
-): term is Extract<AtomicPricingTerm, { kind: "rate" }> {
-  return (
-    term.kind === "rate" &&
-    term.meter.namespace === "kmodels" &&
-    term.meter.value === "container_runtime"
-  );
 }
 
 function providerSignal(value: string): Extract<UsageSignal, { namespace: "provider" }> {

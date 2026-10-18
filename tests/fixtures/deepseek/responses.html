@@ -1,33 +1,78 @@
 <article>
   <h1 class="openapi__heading">Responses API</h1>
-  <pre class="openapi__method-endpoint">
-    <span class="badge badge--success">POST</span>
-    <h2 class="openapi__method-endpoint-path">/responses</h2>
-  </pre>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">model</strong>
-    <span class="openapi-schema__name">string</span>
+  <pre
+    class="openapi__method-endpoint"
+  ><span class="badge badge--success">POST</span><h2 class="openapi__method-endpoint-path">/responses</h2></pre>
+  <div class="openapi-markdown__details mime">
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">model</strong
+      ><span class="openapi-schema__name">string</span>
+      <p>
+        Possible values: [<code>deepseek-v4-flash</code>, <code>deepseek-v4-pro</code>,
+        <code>deepseek-v4-flash-vision-exp</code>]
+      </p>
+    </div>
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">tools</strong
+      ><span class="openapi-schema__name">object[]</span>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">type</strong
+        ><span class="openapi-schema__name">string</span>
+        <p>
+          Possible values: [<code>function</code>, <code>web_search</code>,
+          <code>web_search_2025_08_26</code>]
+        </p>
+      </div>
+    </div>
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">stream</strong
+      ><span class="openapi-schema__name">boolean</span>
+      <p>
+        The final stream event is response.completed, response.incomplete, or response.failed and
+        carries the full response object including usage.
+      </p>
+    </div>
+  </div>
+  <div class="openapi-markdown__details response">
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">usage</strong
+      ><span class="openapi-schema__name">object</span>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">input_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">input_tokens_details</strong
+        ><span class="openapi-schema__name">object</span>
+        <div class="openapi-schema__list-item">
+          <strong class="openapi-schema__property">cached_tokens</strong
+          ><span class="openapi-schema__name">integer</span>
+        </div>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">output_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">output_tokens_details</strong
+        ><span class="openapi-schema__name">object</span>
+        <div class="openapi-schema__list-item">
+          <strong class="openapi-schema__property">reasoning_tokens</strong
+          ><span class="openapi-schema__name">integer</span>
+        </div>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">total_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+    </div>
     <p>
-      Possible values: [<code>deepseek-v4-flash</code>, <code>deepseek-v4-pro</code>,
-      <code>deepseek-v4-flash-vision-exp</code>]
+      The final stream event is response.completed, response.incomplete, or response.failed and
+      carries the full response object including usage.
     </p>
   </div>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">tools</strong>
-    <p>
-      Possible values: [<code>function</code>, <code>web_search</code>,
-      <code>web_search_2025_08_26</code>]. Web search is executed on the server side.
-    </p>
+  <div class="openapi-code__response-samples-container">
+    <pre><code>event: response.completed
+data: {"type":"response.completed","response":{"object":"response","usage":{}}}</code></pre>
   </div>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">usage</strong>
-    <p>
-      input_tokens, input_tokens_details.cached_tokens, output_tokens,
-      output_tokens_details.reasoning_tokens, and total_tokens.
-    </p>
-  </div>
-  <p>
-    The final stream event is response.completed, response.incomplete, or response.failed and
-    carries the full response object including usage.
-  </p>
 </article>

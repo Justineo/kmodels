@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { manifests, type SourceManifest } from "./manifests.ts";
+import { compareUtf8 } from "./canonical-value.ts";
+import { contractFindings, isContractDrift, maxContractFindings } from "./source-contract.ts";
+import { dependencyFailureSchema, maxDependencyFailures } from "./source-failure.ts";
 
 const diagnosticSchema = z.object({
   kind: z.string(),
@@ -7,6 +10,12 @@ const diagnosticSchema = z.object({
   expected: z.string().optional(),
   observed: z.string().optional(),
   affected_items: z.number().int().nonnegative(),
+});
+
+const contractFindingSchema = z.object({
+  disposition: z.enum(["reject", "accept_with_signal"]),
+  diagnostic_count: z.number().int().positive().optional(),
+  diagnostics: z.array(diagnosticSchema),
 });
 
 const sourceAttemptSchema = z.object({
@@ -19,6 +28,9 @@ const sourceAttemptSchema = z.object({
     "skipped_not_configured",
   ]),
   content_changed: z.boolean().optional(),
+  http_status: z.number().int().min(100).max(599).optional(),
+  dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
+  dependency_failures_omitted: z.number().int().positive().optional(),
   message: z.string().optional(),
   consecutive_failures: z.number().int().nonnegative().optional(),
   pricing_reconciliation: z
@@ -29,12 +41,9 @@ const sourceAttemptSchema = z.object({
         .optional(),
     })
     .optional(),
-  contract_finding: z
-    .object({
-      disposition: z.enum(["reject", "accept_with_signal"]),
-      diagnostics: z.array(diagnosticSchema),
-    })
-    .optional(),
+  contract_finding: contractFindingSchema.optional(),
+  contract_findings: z.array(contractFindingSchema).min(1).max(maxContractFindings).optional(),
+  contract_findings_omitted: z.number().int().positive().optional(),
 });
 
 const providerSummarySchema = z.object({
@@ -77,6 +86,8 @@ const repairableReconciliationReasons = new Set([
   "optional_catalog_source_drifted",
   "pricing_input_contract_partial",
   "pricing_input_contract_drift",
+  "pricing_policy_unavailable",
+  "served_tier_contract_unavailable",
   "endpoint_reference_drift",
   "endpoint_model_list_drift",
   "model_card_identity_drift",
@@ -99,6 +110,8 @@ export interface CatalogRepairCandidate {
     | "source_pricing_structure"
     | "provider_validation"
     | "pricing_validation"
+    | "scheduled_provider_review"
+    | "scheduled_architecture_review"
     | "semantic_coverage_review";
   message: string;
   diagnostics: z.infer<typeof diagnosticSchema>[];
@@ -108,14 +121,45 @@ export interface CatalogRepairCandidate {
 export function catalogRepairEvidenceCommands(
   candidates: readonly CatalogRepairCandidate[],
 ): string[] {
-  const sources = [...new Set(candidates.flatMap(({ source_id }) => source_id ?? []))];
+  const sources = new Set(
+    candidates.flatMap((candidate) =>
+      candidate.trigger === "scheduled_provider_review"
+        ? (manifests
+            .find(({ provider }) => provider.id === candidate.provider_id)
+            ?.sources.map(({ id }) => id) ?? [])
+        : (candidate.source_id ?? []),
+    ),
+  );
   return manifests.flatMap(({ sources: configured }) =>
     configured.flatMap((source: SourceManifest) =>
-      sources.includes(source.id) && source.access === "public" && !source.auth
+      sources.has(source.id) && source.access === "public" && !source.auth
         ? [`vp node scripts/fetch-catalog-evidence.ts ${source.id}`]
         : [],
     ),
   );
+}
+
+/** One provider per UTC day, followed by a global consistency review; independent of refresh errors. */
+export function scheduledCatalogReview(at: Date): CatalogRepairCandidate {
+  if (!Number.isFinite(at.getTime()))
+    throw new Error("Periodic catalog review requires a valid date");
+  const providers = manifests.map(({ provider }) => provider.id).sort(compareUtf8);
+  const day = Math.floor(at.getTime() / 86_400_000);
+  const cycleLength = providers.length + 1;
+  const slot = ((day % cycleLength) + cycleLength) % cycleLength;
+  const providerId = providers[slot];
+  return {
+    provider_id: providerId ?? "catalog",
+    scope: "provider",
+    subject_id: "scheduled-review",
+    trigger:
+      providerId === undefined ? "scheduled_architecture_review" : "scheduled_provider_review",
+    message:
+      providerId === undefined
+        ? "Review global price-model consistency, source/parse/publication boundaries, repair feedback and shared simplification using current provider evidence. A healthy refresh is not proof of semantic completeness."
+        : `Review ${providerId} end to end against current first-party evidence: discovery, identity/lifecycle, price inventory/scopes, accounting, retention/replay, calculator/display and simplicity. Do not limit investigation to existing error signals.`,
+    diagnostics: [],
+  };
 }
 
 function sourceIndex(): ReadonlyMap<string, ReadonlyMap<string, SourceManifest>> {
@@ -152,7 +196,10 @@ function sourceCandidate(
     extractor: source.extractor.kind,
     trigger,
     message: attempt.message ?? fallbackMessage,
-    diagnostics: attempt.contract_finding?.diagnostics ?? [],
+    diagnostics: [
+      ...contractFindings(attempt),
+      ...(attempt.dependency_failures ?? []).flatMap((failure) => failure.contract_findings ?? []),
+    ].flatMap(({ diagnostics }) => diagnostics),
   };
 }
 
@@ -184,8 +231,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       if (
         source.access === "public" &&
         sourceAttempt.outcome === "fetch_failed" &&
-        (sourceAttempt.consecutive_failures ?? 0) >= 2 &&
-        /^HTTP (?:404|410)$/.test(sourceAttempt.message ?? "")
+        repeatedMissingSource(sourceAttempt)
       ) {
         const value = sourceCandidate(
           provider.provider_id,
@@ -208,6 +254,33 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
       }
+      const dependencies = sourceAttempt.dependency_failures ?? [];
+      const structural = dependencies.filter(({ outcome }) => outcome === "parse_failed");
+      const relocated =
+        source.access === "public" ? dependencies.filter(repeatedMissingSource) : [];
+      if (
+        ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
+        (structural.length > 0 ||
+          relocated.length > 0 ||
+          (sourceAttempt.dependency_failures_omitted ?? 0) > 0)
+      ) {
+        const value = sourceCandidate(
+          provider.provider_id,
+          source,
+          {
+            ...sourceAttempt,
+            message: `Dependency evidence requires investigation: ${[...structural, ...relocated].map(({ dependency_id, message }) => `${dependency_id}: ${message}`).join("; ")}${(sourceAttempt.dependency_failures_omitted ?? 0) > 0 ? "; additional failures omitted" : ""}`,
+          },
+          structural.length > 0
+            ? "source_parse_failure"
+            : relocated.length > 0
+              ? "source_location_change"
+              : "source_contract_change",
+          "Inspect failed source dependencies.",
+        );
+        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        // The reconciliation branch below may add independent native price evidence.
+      }
       const reconciliation = sourceAttempt.pricing_reconciliation;
       const missingContracts = Object.entries(reconciliation?.reason_counts ?? {}).filter(
         ([reason, count]) => count > 0 && repairableReconciliationReasons.has(reason),
@@ -224,22 +297,45 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           "source_pricing_structure",
           `Missing reviewed source contracts: ${missingContracts.map(([reason, count]) => `${reason}: ${count}`).join(", ")}.${details.length === 0 ? "" : ` ${details.join("; ")}`}`,
         );
-        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        const key = `${value.provider_id}\0${value.subject_id}`;
+        const existing = candidates.get(key);
+        candidates.set(
+          key,
+          existing === undefined
+            ? value
+            : { ...value, message: `${existing.message} ${value.message}` },
+        );
         continue;
       }
+      const findings = contractFindings(sourceAttempt);
+      const consumedContractDrift = findings.some(isContractDrift);
+      const incompleteFindings =
+        (sourceAttempt.contract_findings_omitted ?? 0) > 0 ||
+        findings.some(
+          ({ diagnostic_count, diagnostics }) =>
+            (diagnostic_count ?? diagnostics.length) > diagnostics.length,
+        );
       if (
-        sourceAttempt.outcome === "changed" &&
-        sourceAttempt.content_changed === true &&
-        sourceAttempt.contract_finding !== undefined
+        ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
+        (consumedContractDrift ||
+          incompleteFindings ||
+          (sourceAttempt.content_changed === true && findings.length > 0))
       ) {
         const value = sourceCandidate(
           provider.provider_id,
           source,
           sourceAttempt,
           "source_contract_change",
-          "The changed source contains a new reviewed contract finding.",
+          "The source contains unresolved contract evidence; investigate before deciding whether a code repair is needed.",
         );
-        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        const key = `${value.provider_id}\0${value.subject_id}`;
+        const existing = candidates.get(key);
+        candidates.set(
+          key,
+          existing === undefined
+            ? value
+            : { ...existing, message: `${existing.message} ${value.message}` },
+        );
       }
     }
 
@@ -257,7 +353,17 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           "provider_validation",
           `${attempt.validation_issue.code}: ${attempt.validation_issue.message}`,
         );
-        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        const key = `${value.provider_id}\0${value.subject_id}`;
+        const existing = candidates.get(key);
+        candidates.set(
+          key,
+          existing === undefined
+            ? value
+            : {
+                ...existing,
+                message: `${existing.message} Provider validation: ${attempt.validation_issue.code}: ${attempt.validation_issue.message}`,
+              },
+        );
       }
       if (
         changedSources.length === 0 &&
@@ -300,8 +406,22 @@ export function catalogRepairEvidenceIncomplete(input: unknown): boolean {
     .parse(input)
     .providers.some(
       ({ attempt }) =>
-        attempt?.sources.some(({ outcome }) => outcome === "fetch_failed") === true ||
+        attempt?.sources.some(
+          ({ outcome, dependency_failures, dependency_failures_omitted }) =>
+            outcome === "fetch_failed" ||
+            dependency_failures?.some(({ outcome }) => outcome === "fetch_failed") === true ||
+            (dependency_failures_omitted ?? 0) > 0,
+        ) === true ||
         (attempt?.pricing?.outcome === "failed" &&
           attempt.pricing.failure_code === "source_unavailable"),
     );
+}
+
+function repeatedMissingSource(
+  attempt: Pick<SourceAttempt, "outcome" | "http_status" | "consecutive_failures" | "message">,
+): boolean {
+  if (attempt.outcome !== "fetch_failed" || (attempt.consecutive_failures ?? 0) < 2) return false;
+  return attempt.http_status === undefined
+    ? /^HTTP (?:404|410)$/.test(attempt.message ?? "")
+    : attempt.http_status === 404 || attempt.http_status === 410;
 }

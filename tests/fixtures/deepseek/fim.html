@@ -1,27 +1,57 @@
 <article>
   <h1 class="openapi__heading">Create FIM Completion (Beta)</h1>
-  <pre class="openapi__method-endpoint">
-    <span class="badge badge--success">POST</span>
-    <h2 class="openapi__method-endpoint-path">/completions</h2>
-  </pre>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">model</strong>
-    <span class="openapi-schema__name">string</span>
-    <p>Possible values: [<code>deepseek-v4-pro</code>]</p>
+  <pre
+    class="openapi__method-endpoint"
+  ><span class="badge badge--success">POST</span><h2 class="openapi__method-endpoint-path">/completions</h2></pre>
+  <div class="openapi-markdown__details mime">
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">model</strong
+      ><span class="openapi-schema__name">string</span>
+      <p>Possible values: [<code>deepseek-v4-pro</code>]</p>
+    </div>
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">stream</strong
+      ><span class="openapi-schema__name">boolean</span>
+      <p>If set, partial message deltas will be sent as data-only server-sent events.</p>
+    </div>
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">stream_options</strong
+      ><span class="openapi-schema__name">object</span>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">include_usage</strong
+        ><span class="openapi-schema__name">boolean</span>
+        <p>
+          The last content chunk before the data: [DONE] message carries the token usage statistics
+          for the entire request. Its choices array always contains exactly one element that carries
+          no new content and a non-null finish_reason.
+        </p>
+      </div>
+    </div>
   </div>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">usage</strong>
-    <p>
-      completion_tokens, prompt_tokens, prompt_cache_hit_tokens, prompt_cache_miss_tokens, and
-      total_tokens.
-    </p>
-  </div>
-  <div class="openapi-schema__list-item">
-    <strong class="openapi-schema__property">stream</strong>
-    <p>
-      The last content chunk before the data: [DONE] message carries the token usage statistics for
-      the entire request. Its choices array always contains exactly one element that carries no new
-      content and a non-null finish_reason.
-    </p>
+  <div class="openapi-markdown__details response">
+    <div class="openapi-schema__list-item">
+      <strong class="openapi-schema__property">usage</strong
+      ><span class="openapi-schema__name">object</span>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">completion_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">prompt_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">prompt_cache_hit_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">prompt_cache_miss_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+      <div class="openapi-schema__list-item">
+        <strong class="openapi-schema__property">total_tokens</strong
+        ><span class="openapi-schema__name">integer</span>
+      </div>
+    </div>
   </div>
 </article>

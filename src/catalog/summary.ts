@@ -8,7 +8,8 @@ import type {
   SourcePricingExtraction,
   SourcePricingReconciliation,
 } from "./pricing-reconciliation.ts";
-import type { SourceContractEvidence } from "./source-contract.ts";
+import { isContractDrift, type SourceContractFindings } from "./source-contract.ts";
+import type { DependencyFailure } from "./source-failure.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
 import {
   providerCountDecreases,
@@ -112,16 +113,18 @@ type SourceRefreshOutcome =
   | "parse_failed"
   | "skipped_not_configured";
 
-export interface SourceRefreshAttempt {
+export interface SourceRefreshAttempt extends SourceContractFindings {
   source_id: string;
   outcome: SourceRefreshOutcome;
   parsed_models?: number;
   content_changed?: boolean;
   extractor_changed?: boolean;
   message?: string;
+  http_status?: number;
+  dependency_failures?: DependencyFailure[];
+  dependency_failures_omitted?: number;
   consecutive_failures?: number;
   last_success_at?: string;
-  contract_finding?: SourceContractEvidence;
   pricing_extraction?: SourcePricingExtraction;
   pricing_reconciliation?: SourcePricingReconciliation;
 }
@@ -153,6 +156,7 @@ type ProviderRefreshSignal =
   | "catalog_count_decrease"
   | "drift_guard_triggered"
   | "breaking_contract_mismatch"
+  | "partial_contract_mismatch"
   | "unreviewed_extension"
   | "coverage_regression"
   | "possible_structural_change"
@@ -484,8 +488,8 @@ export function summarizeRefresh(
     const validationIssue = attempt?.validation_issue;
     const sourceAttempts = attempt?.sources ?? [];
     const countDropped = validationIssue?.code.endsWith("_count_drop") === true;
-    const contractFindings = sourceAttempts.flatMap(({ contract_finding: finding }) =>
-      finding === undefined ? [] : [finding],
+    const contractFindings = sourceAttempts.flatMap(
+      ({ contract_findings }) => contract_findings ?? [],
     );
     const rejectedFindings = contractFindings.filter(({ disposition }) => disposition === "reject");
     const acceptedFindings = contractFindings.filter(
@@ -509,16 +513,31 @@ export function summarizeRefresh(
     if (status === "fresh" && countDecreases.length > 0) signals.push("catalog_count_decrease");
     if (countDropped) signals.push("drift_guard_triggered");
     if (breakingFinding) signals.push("breaking_contract_mismatch");
-    if (acceptedFindings.length > 0) signals.push("unreviewed_extension");
+    if (
+      acceptedFindings.some(isContractDrift) ||
+      sourceAttempts.some(({ dependency_failures }) =>
+        dependency_failures?.some(({ outcome }) => outcome === "parse_failed"),
+      )
+    )
+      signals.push("partial_contract_mismatch");
+    if (acceptedFindings.some((finding) => !isContractDrift(finding)))
+      signals.push("unreviewed_extension");
     if (countDropped || coverageFinding) signals.push("coverage_regression");
     if (
       sourceAttempts.some(
-        ({ outcome, contract_finding: finding }) =>
-          outcome === "parse_failed" && finding === undefined,
+        ({ outcome, contract_findings }) =>
+          outcome === "parse_failed" &&
+          !contract_findings?.some(({ disposition }) => disposition === "reject"),
       )
     )
       signals.push("possible_structural_change");
-    if (sourceAttempts.some(({ consecutive_failures: failures }) => (failures ?? 0) >= 2))
+    if (
+      sourceAttempts.some(
+        ({ consecutive_failures: failures, dependency_failures }) =>
+          (failures ?? 0) >= 2 ||
+          dependency_failures?.some(({ consecutive_failures }) => (consecutive_failures ?? 0) >= 2),
+      )
+    )
       signals.push("persistent_source_failure");
     const currentCoverage = pricingCoverage(providerId, current, currentPricing);
     const previousCoverage =

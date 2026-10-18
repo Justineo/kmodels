@@ -22,39 +22,39 @@
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html",
-      "body": "<main><h1>Converse</h1><pre><code>{ usage: TokenUsage, performanceConfig: { latency }, serviceTier: { type } }</code></pre></main>"
+      "body": "<main> <h1 id=\"API_runtime_Converse\">Converse</h1> <h2 id=\"API_runtime_Converse_ResponseElements\">Response Elements</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-runtime_Converse-response-usage\"> <span class=\"term\"> <b>usage</b> </span> </dt> <dd> <p>Type: TokenUsage object</p> </dd> <dt id=\"bedrock-runtime_Converse-response-performanceConfig\"> <span class=\"term\"> <b>performanceConfig</b> </span> </dt> <dd> <p>Type: PerformanceConfiguration object</p> </dd> <dt id=\"bedrock-runtime_Converse-response-serviceTier\"> <span class=\"term\"> <b>serviceTier</b> </span> </dt> <dd> <p>Type: ServiceTier object</p> </dd> </dl> </div> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStreamMetadataEvent.html",
-      "body": "<main><h1>ConverseStreamMetadataEvent</h1><pre><code>{ usage: TokenUsage, performanceConfig: { latency }, serviceTier: { type } }</code></pre></main>"
+      "body": "<main> <h1 id=\"API_runtime_ConverseStreamMetadataEvent\">ConverseStreamMetadataEvent</h1> <h2 id=\"API_runtime_ConverseStreamMetadataEvent_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_ConverseStreamMetadataEvent-usage\"> <span class=\"term\"> <b>usage</b> </span> </dt> <dd> <p>Type: TokenUsage object</p> </dd> <dt id=\"bedrock-Type-runtime_ConverseStreamMetadataEvent-performanceConfig\"> <span class=\"term\"> <b>performanceConfig</b> </span> </dt> <dd> <p>Type: PerformanceConfiguration object</p> </dd> <dt id=\"bedrock-Type-runtime_ConverseStreamMetadataEvent-serviceTier\"> <span class=\"term\"> <b>serviceTier</b> </span> </dt> <dd> <p>Type: ServiceTier object</p> </dd> </dl> </div> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html",
-      "body": "<main><h1>TokenUsage</h1><pre><code>{ inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheWriteInputTokens, cacheDetails }</code></pre></main>"
+      "body": "<main> <h1 id=\"API_runtime_TokenUsage\">TokenUsage</h1> <h2 id=\"API_runtime_TokenUsage_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_TokenUsage-inputTokens\"> <span class=\"term\"> <b>inputTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_TokenUsage-outputTokens\"> <span class=\"term\"> <b>outputTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_TokenUsage-totalTokens\"> <span class=\"term\"> <b>totalTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_TokenUsage-cacheReadInputTokens\"> <span class=\"term\"> <b>cacheReadInputTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_TokenUsage-cacheWriteInputTokens\"> <span class=\"term\"> <b>cacheWriteInputTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_TokenUsage-cacheDetails\"> <span class=\"term\"> <b>cacheDetails</b> </span> </dt> <dd> <p>Type: Array of CacheDetail objects</p> </dd> </dl> </div> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CacheDetail.html",
-      "body": "<main><h1>CacheDetail</h1><p>TTL duration has valid values <code>5m</code> and <code>1h</code>.</p><pre><code>{ inputTokens, ttl }</code></pre></main>"
+      "body": "<main> <h1 id=\"API_runtime_CacheDetail\">CacheDetail</h1> <h2 id=\"API_runtime_CacheDetail_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_CacheDetail-inputTokens\"> <span class=\"term\"> <b>inputTokens</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_CacheDetail-ttl\"> <span class=\"term\"> <b>ttl</b> </span> </dt> <dd> <p>Type: String</p> <p>Valid Values: 5m | 1h</p> </dd> </dl> </div> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
-      "body": "<main><h1>Prompt caching for faster model inference</h1><p>When prompt caching is enabled, the inputTokens field represents only the non-cached input tokens.</p><code>total input tokens = inputTokens + cacheReadInputTokens + cacheWriteInputTokens</code></main>"
+      "body": "<main> <h1>Prompt caching for faster model inference</h1> <p>When prompt caching is enabled, the inputTokens field represents only the non-cached input tokens.</p> <code>total input tokens = inputTokens + cacheReadInputTokens + cacheWriteInputTokens</code> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-results.html",
-      "body": "<main><h1>View the results of a batch inference job</h1><p>A terminal <code>manifest.json.out</code> contains aggregate counters.</p><pre><code>{ totalRecordCount, processedRecordCount, successRecordCount, errorRecordCount, inputTokenCount, outputTokenCount }</code></pre></main>"
+      "body": "<main> <h1>View the results of a batch inference job</h1> <ol> <li>The manifest.json.out aggregate results:<pre> <code>{ \"totalRecordCount\": number, \"inputTokenCount\": number, \"outputTokenCount\": number }</code> </pre> </li> </ol> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
-      "body": "<main><h1>Model invocation logging</h1><p>Only calls through the bedrock-runtime endpoint are captured.</p><pre><code>{ schemaType: ModelInvocationLog, schemaVersion: 1.0, region, requestId, operation, modelId, input: { inputTokenCount }, output: { outputTokenCount } }</code></pre></main>"
+      "body": "<main> <h1>Model invocation logging</h1> <p>Calls through bedrock-runtime are captured.</p> <h2>Log entry format</h2> <pre> <code>{ \"schemaType\": \"ModelInvocationLog\", \"schemaVersion\": \"1.0\", \"region\": \"us-east-1\", \"requestId\": \"example\", \"operation\": \"Converse\", \"modelId\": \"example\", \"input\": { \"inputTokenCount\": 42 }, \"output\": { \"outputTokenCount\": 10 } }</code> </pre> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html",
-      "body": "<main><h1>ApplyGuardrail</h1><pre><code>{ usage: { automatedReasoningPolicyUnits, contentPolicyImageUnits, contentPolicyUnits, contextualGroundingPolicyUnits, sensitiveInformationPolicyFreeUnits, sensitiveInformationPolicyUnits, topicPolicyUnits, wordPolicyUnits } }</code></pre></main>"
+      "body": "<main> <h1 id=\"API_runtime_ApplyGuardrail\">ApplyGuardrail</h1> <h2 id=\"API_runtime_ApplyGuardrail_ResponseElements\">Response Elements</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-runtime_ApplyGuardrail-response-usage\"> <span class=\"term\"> <b>usage</b> </span> </dt> <dd> <p>Type: GuardrailUsage object</p> </dd> </dl> </div> </main>"
     },
     {
       "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use-invoke-guardrail-checks-using.html",
-      "body": "<main><h1>Using the InvokeGuardrailChecks API</h1><pre><code>{ usage: { contentFilter: { textUnits }, promptAttack: { textUnits }, sensitiveInformation: { textUnits } } }</code></pre></main>"
+      "body": "<main> <h1>Using the API</h1> <p>InvokeGuardrailChecks</p> <h2>Response format</h2> <pre> <code>{ \"results\": { \"contentFilter\": { \"results\": [ ... ] } }, \"usage\": { \"contentFilter\": { \"textUnits\": 0 }, \"promptAttack\": { \"textUnits\": 0 }, \"sensitiveInformation\": { \"textUnits\": 0 } } }</code> </pre> </main>"
     },
     {
       "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
@@ -63,6 +63,18 @@
     {
       "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
       "body": "{\"offerCode\":\"AmazonBedrock\",\"products\":{\"HAIKUINPUT\":{\"sku\":\"HAIKUINPUT\",\"attributes\":{\"model\":\"Claude Haiku 4.5\",\"provider\":\"Anthropic\",\"regionCode\":\"us-east-1\",\"usagetype\":\"USE1-ClaudeHaiku45-input-tokens\",\"inferenceType\":\"Input tokens\",\"feature\":\"On-demand Inference\"}}},\"terms\":{\"OnDemand\":{\"HAIKUINPUT\":{\"HAIKUINPUT.JRTCKXETXF\":{\"effectiveDate\":\"2026-07-01T00:00:00Z\",\"priceDimensions\":{\"HAIKUINPUT.JRTCKXETXF.6YS6EN2CT7\":{\"description\":\"$0.0008 per 1K input tokens\",\"unit\":\"1K tokens\",\"pricePerUnit\":{\"USD\":\"0.0008000000\"}}}}}}}}"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ServiceTier.html",
+      "body": "<main> <h1 id=\"API_runtime_ServiceTier\">ServiceTier</h1> <h2 id=\"API_runtime_ServiceTier_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_ServiceTier-type\"> <span class=\"term\"> <b>type</b> </span> </dt> <dd> <p>Type: String</p> <p>Valid Values: priority | default | flex | reserved</p> </dd> </dl> </div> </main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_PerformanceConfiguration.html",
+      "body": "<main> <h1 id=\"API_runtime_PerformanceConfiguration\">PerformanceConfiguration</h1> <h2 id=\"API_runtime_PerformanceConfiguration_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_PerformanceConfiguration-latency\"> <span class=\"term\"> <b>latency</b> </span> </dt> <dd> <p>Type: String</p> <p>Valid Values: standard | optimized</p> </dd> </dl> </div> </main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_GuardrailUsage.html",
+      "body": "<main> <h1 id=\"API_runtime_GuardrailUsage\">GuardrailUsage</h1> <h2 id=\"API_runtime_GuardrailUsage_Contents\">Contents</h2> <div class=\"variablelist\"> <dl> <dt id=\"bedrock-Type-runtime_GuardrailUsage-automatedReasoningPolicyUnits\"> <span class=\"term\"> <b>automatedReasoningPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-contentPolicyImageUnits\"> <span class=\"term\"> <b>contentPolicyImageUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-contentPolicyUnits\"> <span class=\"term\"> <b>contentPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-contextualGroundingPolicyUnits\"> <span class=\"term\"> <b>contextualGroundingPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-sensitiveInformationPolicyFreeUnits\"> <span class=\"term\"> <b>sensitiveInformationPolicyFreeUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-sensitiveInformationPolicyUnits\"> <span class=\"term\"> <b>sensitiveInformationPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-topicPolicyUnits\"> <span class=\"term\"> <b>topicPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> <dt id=\"bedrock-Type-runtime_GuardrailUsage-wordPolicyUnits\"> <span class=\"term\"> <b>wordPolicyUnits</b> </span> </dt> <dd> <p>Type: Integer</p> </dd> </dl> </div> </main>"
     }
   ]
 }

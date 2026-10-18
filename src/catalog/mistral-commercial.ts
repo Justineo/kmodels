@@ -9,7 +9,13 @@ import type {
 } from "./pricing-assembly.ts";
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
-import { addAtom, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
+import {
+  addAtom,
+  bindRateTerm,
+  isStandardUnit,
+  rawEvidence,
+  standardSignal,
+} from "./pricing-commercial-assembly.ts";
 import {
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
@@ -17,6 +23,7 @@ import {
   indexPricingInputs,
   mergeQuantityMethods as mergeMethods,
   pricingInputObservation,
+  pricingInputFacts,
   subtractQuantityMethods as subtractionMethod,
   sumQuantityMethods as sumMethod,
   type BoundQuantityMethods as MethodsAndFacts,
@@ -28,6 +35,7 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
+  PriceSelectorSource,
   UnitExpression,
   UsageSignal,
 } from "./pricing-schema.ts";
@@ -53,6 +61,22 @@ export function applyMistralCommercialTopology(
 ): AtomicProviderPricing {
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
   const inputIndex = indexPricingInputs(pricingInputs);
+  input.vocabulary.atoms = input.vocabulary.atoms.flatMap((atom) => {
+    if (
+      atom.kind !== "categorical_value" ||
+      atom.dimension.namespace !== "kmodels" ||
+      atom.dimension.value !== "service_tier"
+    )
+      return [atom];
+    return atom.key === "batch"
+      ? []
+      : [
+          {
+            ...atom,
+            dimension: { namespace: "kmodels" as const, value: "served_service_tier" as const },
+          },
+        ];
+  });
   return {
     ...input,
     books: input.books.flatMap((book) => {
@@ -104,14 +128,29 @@ function partitionOffer(
       term.meter.namespace === "kmodels" &&
       term.meter.value === "cache_read_text",
   );
+  const scopedTiers = offer.terms.some(
+    (term) =>
+      term.kind === "rate" &&
+      term.variants.some(({ applicability }) =>
+        applicability.any_of.some(({ all_of }) =>
+          all_of.some(
+            (condition) =>
+              condition.kind === "categorical" &&
+              condition.dimension.namespace === "kmodels" &&
+              condition.dimension.value === "service_tier" &&
+              condition.values.some(({ value }) => value === "standard" || value === "priority"),
+          ),
+        ),
+      ),
+  );
   const states = offer.states.flatMap((state) => {
-    const applicability = mechanismApplicability(state.applicability, mechanism);
+    const applicability = mechanismApplicability(state.applicability, mechanism, scopedTiers);
     return applicability === undefined
       ? []
       : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
   });
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, model, input, inputIndex, hasCache),
+    partitionTerm(term, mechanism, model, input, inputIndex, hasCache, scopedTiers),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -133,14 +172,17 @@ function partitionTerm(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
   hasCache: boolean,
+  scopedTiers: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
-    const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
+    const variants = term.variants.flatMap((variant) =>
+      partitionRaw(variant, mechanism, scopedTiers),
+    );
     return variants.length === 0 ? [] : [{ ...term, variants }];
   }
   if (term.kind !== "rate") return mechanism === "sync" ? [term] : [];
   const variants = term.variants.flatMap((variant) => {
-    const applicability = mechanismApplicability(variant.applicability, mechanism);
+    const applicability = mechanismApplicability(variant.applicability, mechanism, scopedTiers);
     if (applicability === undefined) return [];
     const next = {
       ...variant,
@@ -156,28 +198,101 @@ function partitionTerm(
       inputIndex,
       hasCache,
     );
-    return [{ ...next, ...(charge_binding === undefined ? {} : { charge_binding }) }];
+    const selector_sources =
+      mechanism === "sync" &&
+      model?.api_endpoints?.some(({ path }) => path === "/v1/chat/completions")
+        ? tierSelectorSources(applicability, inputIndex)
+        : [];
+    return [
+      {
+        ...next,
+        ...(charge_binding === undefined ? {} : { charge_binding }),
+        ...(selector_sources.length === 0 ? {} : { selector_sources }),
+      },
+    ];
   });
-  const raw_variants = term.raw_variants.flatMap((variant) => partitionRaw(variant, mechanism));
+  const raw_variants = term.raw_variants.flatMap((variant) =>
+    partitionRaw(variant, mechanism, scopedTiers),
+  );
   return variants.length + raw_variants.length === 0 ? [] : [{ ...term, variants, raw_variants }];
 }
 
-function partitionRaw(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {
+function partitionRaw(
+  variant: AtomicRawVariant,
+  mechanism: Mechanism,
+  scopedTiers: boolean,
+): AtomicRawVariant[] {
   if (variant.possible_scope === undefined) return mechanism === "sync" ? [variant] : [];
-  const possible_scope = mechanismApplicability(variant.possible_scope, mechanism);
+  const possible_scope = mechanismApplicability(variant.possible_scope, mechanism, scopedTiers);
   return possible_scope === undefined ? [] : [{ ...variant, possible_scope }];
 }
 
 function mechanismApplicability(
   applicability: PriceApplicability,
   mechanism: Mechanism,
+  scopedTiers: boolean,
 ): PriceApplicability | undefined {
   const any_of = applicability.any_of.flatMap(({ all_of }) => {
     const tier = all_of.find(isBatchTier);
     if ((mechanism === "batch") !== (tier !== undefined)) return [];
-    return [{ all_of: tier === undefined ? all_of : all_of.filter((item) => item !== tier) }];
+    const conditions = (tier === undefined ? all_of : all_of.filter((item) => item !== tier)).map(
+      (condition): PriceCondition =>
+        condition.dimension.namespace === "kmodels" && condition.dimension.value === "service_tier"
+          ? { ...condition, dimension: { namespace: "kmodels", value: "served_service_tier" } }
+          : condition,
+    );
+    if (
+      mechanism === "sync" &&
+      scopedTiers &&
+      !conditions.some(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "served_service_tier",
+      )
+    )
+      conditions.push({
+        kind: "categorical",
+        dimension: { namespace: "kmodels", value: "served_service_tier" },
+        values: [{ namespace: "provider", provider_id: "mistral", value: "standard" }],
+      });
+    return [{ all_of: conditions }];
   });
   return any_of.length === 0 ? undefined : canonicalizeApplicability({ any_of });
+}
+
+function tierSelectorSources(
+  applicability: PriceApplicability,
+  index: PricingInputIndex,
+): PriceSelectorSource[] {
+  if (
+    !chatScope(applicability) ||
+    !applicability.any_of.some(({ all_of }) =>
+      all_of.some(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "served_service_tier",
+      ),
+    )
+  )
+    return [];
+  return pricingInputFacts(index, ["completion.response.served_service_tier"]).map((fact) => ({
+    dimension: { namespace: "kmodels", value: "served_service_tier" },
+    channel: fact.channel,
+    locator: fact.locator,
+    availability: fact.availability,
+    observations: [pricingInputObservation(fact)],
+  }));
+}
+
+function chatScope(applicability: PriceApplicability): boolean {
+  return applicability.any_of.every(({ all_of }) =>
+    all_of.some(
+      (condition) =>
+        condition.kind === "categorical" &&
+        condition.dimension.namespace === "kmodels" &&
+        condition.dimension.value === "endpoint" &&
+        condition.values.length === 1 &&
+        condition.values[0]?.value === "/v1/chat/completions",
+    ),
+  );
 }
 
 function isBatchTier(condition: PriceCondition): boolean {
@@ -206,10 +321,13 @@ function modelBinding(
   ) {
     const signal = tokenSignal(meter.value, mechanism, hasCache);
     if (signal === undefined) return;
+    const paths = chatScope(variant.applicability)
+      ? new Set(["/v1/chat/completions"])
+      : endpointPaths(model);
     const mapped =
       mechanism === "batch"
         ? emptyMethods()
-        : tokenMethods(meter.value, signal, model, input, inputIndex, hasCache);
+        : tokenMethods(meter.value, signal, paths, input, inputIndex, hasCache);
     return quantityBinding(signal, aggregation, mapped, variant);
   }
   const media = mediaSignal(meter, variant, mechanism, model, inputIndex);
@@ -235,12 +353,11 @@ function tokenSignal(
 function tokenMethods(
   meter: string,
   signal: UsageSignal,
-  model: PublishedPricingModel | undefined,
+  paths: ReadonlySet<string>,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
   hasCache: boolean,
 ): MethodsAndFacts {
-  const paths = endpointPaths(model);
   if (meter === "cache_read_text")
     return paths.has("/v1/chat/completions") || paths.has("/v1/fim/completions")
       ? directMethods(
@@ -358,26 +475,14 @@ function requestServiceBook(
     offers: book.offers.map((offer) => ({
       ...offer,
       enrollment: [],
-      terms: offer.terms.map((term) => bindResourceTerm(resourceKey, term, input, inputIndex)),
+      terms: offer.terms.map((term) =>
+        bindRateTerm(term, (meter, variant) =>
+          resourceBinding(resourceKey, meter, variant, input, inputIndex),
+        ),
+      ),
       relations: [],
       settlement: [],
     })),
-  };
-}
-
-function bindResourceTerm(
-  resourceKey: string,
-  term: AtomicPricingTerm,
-  input: AtomicProviderPricing,
-  inputIndex: PricingInputIndex,
-): AtomicPricingTerm {
-  if (term.kind !== "rate") return term;
-  return {
-    ...term,
-    variants: term.variants.map((variant) => {
-      const binding = resourceBinding(resourceKey, term.meter, variant, input, inputIndex);
-      return binding === undefined ? variant : { ...variant, charge_binding: binding };
-    }),
   };
 }
 
@@ -455,20 +560,6 @@ function providerSignal(
 ): Extract<UsageSignal, { namespace: "provider" }> {
   addAtom(input, { kind: "usage_signal", key, definition, unit, resolution_phase: "outcome" });
   return { namespace: "provider", provider_id: input.provider_id, value: key };
-}
-
-function standardSignal(
-  value:
-    | "cached_input_tokens"
-    | "generated_items"
-    | "input_characters"
-    | "input_tokens"
-    | "output_tokens"
-    | "processed_audio_seconds"
-    | "processed_pages"
-    | "uncached_input_tokens",
-): Extract<UsageSignal, { namespace: "kmodels" }> {
-  return { namespace: "kmodels", value };
 }
 
 function quantityBinding(

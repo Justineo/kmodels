@@ -1,24 +1,9 @@
 import { load } from "cheerio";
 import { linkedBundleSchema } from "./bundle.ts";
-import { baseModel } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-source.ts";
-import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
-import type { Provider } from "./schema.ts";
-
-type CatalogCarrier = Pick<ParsedProviderModel, "model_id" | "name" | "tasks" | "uid" | "version">;
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly CatalogCarrier[];
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import type { SourcePricingInputFact } from "./pricing-source.ts";
+import { contractExtensionEvidence } from "./source-contract.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
 interface SchemaContract {
   document: string;
@@ -30,6 +15,8 @@ interface SchemaContract {
   availability: SourcePricingInputFact["availability"];
   reduction?: SourcePricingInputFact["reduction"];
   absentValue?: "zero";
+  type: "integer" | "number" | "array" | "enum";
+  nested: boolean;
 }
 
 const chatDocument = "/azureopenai/chat";
@@ -152,12 +139,15 @@ const responseContracts: readonly SchemaContract[] = [
   schemaContract(mediaDocument, "azureimagesresponse", "data", "images.generated_images", "/data", {
     availability: "success_only",
     reduction: { kind: "array_length" },
+    type: "array",
   }),
   schemaContract(mediaDocument, "azureimagesresponse", "quality", "images.quality", "/quality", {
     availability: "conditional",
+    type: "enum",
   }),
   schemaContract(mediaDocument, "azureimagesresponse", "size", "images.resolution", "/size", {
     availability: "conditional",
+    type: "enum",
   }),
   schemaContract(
     mediaDocument,
@@ -165,7 +155,7 @@ const responseContracts: readonly SchemaContract[] = [
     "input_tokens",
     "images.input_tokens",
     "/usage/input_tokens",
-    { availability: "conditional" },
+    { availability: "conditional", nested: true },
   ),
   schemaContract(
     mediaDocument,
@@ -173,7 +163,7 @@ const responseContracts: readonly SchemaContract[] = [
     "text_tokens",
     "images.input_text_tokens",
     "/usage/input_tokens_details/text_tokens",
-    { availability: "conditional" },
+    { availability: "conditional", nested: true },
   ),
   schemaContract(
     mediaDocument,
@@ -181,7 +171,7 @@ const responseContracts: readonly SchemaContract[] = [
     "image_tokens",
     "images.input_image_tokens",
     "/usage/input_tokens_details/image_tokens",
-    { availability: "conditional" },
+    { availability: "conditional", nested: true },
   ),
   schemaContract(
     mediaDocument,
@@ -189,7 +179,7 @@ const responseContracts: readonly SchemaContract[] = [
     "output_tokens",
     "images.output_image_tokens",
     "/usage/output_tokens",
-    { availability: "conditional" },
+    { availability: "conditional", nested: true },
   ),
   schemaContract(
     mediaDocument,
@@ -197,7 +187,7 @@ const responseContracts: readonly SchemaContract[] = [
     "duration",
     "audio.transcription_seconds",
     "/duration",
-    { availability: "conditional" },
+    { availability: "conditional", type: "number" },
   ),
   schemaContract(
     mediaDocument,
@@ -205,7 +195,7 @@ const responseContracts: readonly SchemaContract[] = [
     "duration",
     "audio.translation_seconds",
     "/duration",
-    { availability: "conditional" },
+    { availability: "conditional", type: "number" },
   ),
   schemaContract(
     mediaDocument,
@@ -227,7 +217,10 @@ function schemaContract(
   key: string,
   pointer: string,
   options: Partial<
-    Pick<SchemaContract, "absentValue" | "availability" | "channel" | "reduction">
+    Pick<
+      SchemaContract,
+      "absentValue" | "availability" | "channel" | "reduction" | "type" | "nested"
+    >
   > = {},
 ): SchemaContract {
   return {
@@ -238,20 +231,16 @@ function schemaContract(
     channel: options.channel ?? "response",
     pointer,
     availability: options.availability ?? "terminal_only",
+    type: options.type ?? "integer",
+    nested: options.nested ?? false,
     ...(options.reduction === undefined ? {} : { reduction: options.reduction }),
     ...(options.absentValue === undefined ? {} : { absentValue: options.absentValue }),
   };
 }
 
-export function parseAzureAccounting(input: Input): ParsedProviderModel[] {
+export function parseAzureAccounting(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "azure-accounting")
     throw new Error("Wrong Azure accounting extractor");
-  if (input.catalogModels === undefined)
-    throw new Error("Azure accounting contract requires the collected catalog");
-  const target = [...input.catalogModels].sort((left, right) =>
-    left.uid.localeCompare(right.uid),
-  )[0];
-  if (target === undefined) throw new Error("Azure accounting contract has no catalog carrier");
 
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const bodies = new Map(
@@ -262,7 +251,7 @@ export function parseAzureAccounting(input: Input): ParsedProviderModel[] {
   );
   const facts = responseContracts.flatMap((contract) => {
     const body = bodies.get(contract.document);
-    if (body === undefined || !schemaHasProperty(body, contract.schema, contract.property)) {
+    if (body === undefined || !schemaHasProperty(body, contract)) {
       input.onContractFinding?.(
         contractExtensionEvidence([
           `/documents${contract.document}/${contract.schema}/properties/${contract.property}`,
@@ -318,23 +307,7 @@ export function parseAzureAccounting(input: Input): ParsedProviderModel[] {
     input.onPricingReconciliation,
   );
 
-  return [
-    {
-      ...baseModel({
-        providerId: input.provider.id,
-        id: target.model_id,
-        ...(target.version === undefined ? {} : { version: target.version }),
-        name: target.name,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      tasks: target.tasks,
-      pricing_state: "unknown",
-      price_facts: [],
-      raw_price_facts: [],
-      pricing_inputs: pricingInputs,
-    },
-  ];
+  return { models: [], pricing_inputs: pricingInputs };
 }
 
 function accountingDocument(pathname: string): string {
@@ -350,15 +323,29 @@ function accountingDocument(pathname: string): string {
   );
 }
 
-function schemaHasProperty(body: string, schema: string, property: string): boolean {
+function schemaHasProperty(body: string, contract: SchemaContract): boolean {
   const $ = load(body);
-  const heading = $(`#${schema}`).first();
+  const heading = $(`[id="${contract.schema}"]`);
   if (heading.length !== 1) return false;
   const table = heading.nextUntil("h2, h3").filter("table").first();
-  return table
+  const rows = table
     .find("tbody tr")
     .toArray()
-    .some((row) => normalize($(row).find("td").first().text()).replace(/^└─\s*/u, "") === property);
+    .filter((row) => {
+      const name = normalize($(row).find("td").first().text());
+      return (contract.nested ? name.replace(/^└─\s*/u, "") : name) === contract.property;
+    });
+  return (
+    rows.length > 0 &&
+    rows.every((row) => {
+      const type = normalize($(row).find("td").eq(1).text());
+      if (contract.type === "array") return /^array(?: of |$)/.test(type);
+      if (contract.type === "enum") return /^enum(?: |$)/.test(type);
+      return contract.type === "integer"
+        ? /^integer(?: \((?:int32|int64)\))?(?: or null)?$/.test(type)
+        : /^number(?: \((?:float|double)\))?(?: or null)?$/.test(type);
+    })
+  );
 }
 
 function chatStreamContract(body: string | undefined): boolean {

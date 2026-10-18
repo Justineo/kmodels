@@ -14,6 +14,11 @@ not apply early. Other names in integrations, wildcard routing, old pages, or re
 not create current rows. The current table is also authoritative over
 orphaned `pricing-details-*` pages that still describe retired models.
 
+Redirect validation compares the served version with the current row's exact version text and the
+billing label with its callable ID. A date suffix in a served version, such as
+`DeepSeek-V4.1-Flash-1017`, is not part of the billing label. It cannot discard an explicitly
+accepted legacy ID; a different served version or billing target still cannot establish a redirect.
+
 The fetch bundle contains only companions that contribute a current catalog or rate-book field:
 
 - the official [Chinese price table](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) for
@@ -57,7 +62,14 @@ Beijing-time windows. Both categories preserve the exact source definition and i
 evidence; callers supply the applicable category. Kmodels neither maintains annual holiday dates
 nor evaluates make-up workdays or the current clock. A plain weekly schedule would misrepresent
 the holiday exception, so the current categories deliberately omit executable schedule metadata.
-Historical fixtures retain their independently reviewed daily or weekly rules.
+Historical fixtures retain their independently reviewed daily or weekly rules. Those schedules
+come from parsed source evidence, never from the later compilation date. A source with a future
+daily-to-weekly transition preserves both rules and the exact Beijing-time change as a caller-selected
+category without a single timeless executable schedule. Both currency documents must establish the
+same policy and, for a separate price transition, the same effective instant.
+The parser emits these definitions directly as typed source vocabulary. Commercial assembly does
+not decode policy names from raw term keys or reparse the preserved prose. Source-level usage
+contracts also survive independently of model records.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
@@ -71,11 +83,16 @@ tokens, so the price book does not duplicate that aggregate input usage as a sec
 Vision guide establishes image input in the model catalog, while verified Chat Completions and
 Responses usage counters remain the charge bindings for the combined billable input-token totals.
 
-DeepSeek publishes no separate generic function-call or web-search-call rate. A tool loop or built-in
-search may cause additional inference requests, but an AI Gateway observes and prices those requests
-individually. This does not establish an unknown search fee, a provider-service price book, or a
-commercial relation. Anthropic wildcard rewriting is request routing, not pricing or catalog
-identity.
+The implemented books currently cover generation token rates. A tool loop can cause additional
+generation requests, which an AI Gateway observes and prices individually. Generic function calling
+does not itself establish an extra service charge. Anthropic wildcard rewriting is request routing,
+not pricing or catalog identity.
+
+[Search & Fetch](https://api-docs.deepseek.com/guides/search/) service charges and their dated
+billing conditions are not represented by this collector. The current books therefore do not
+establish complete service-charge coverage. Ordinary generation token counts cannot supply
+successful tool-request quantities, model compatibility, or attribution of a tool charge to a
+generation request.
 
 The collector intentionally discards account balance, granted credit, recharge/refund terms,
 concurrency, capacity expansion, settlement order, and future price notices without an effective
@@ -105,11 +122,29 @@ same usage object immediately before `data: [DONE]`. Responses non-streaming pat
 the full response under `/response`, so their streaming paths are rooted at `/response/usage`.
 Every stream input is marked `terminal_only`.
 
-Accounting prose is matched as rendered HTML text, so inline `<code>` around `data: [DONE]`
-does not break the terminal-chunk contract. Responses may publish cache usage as a nested
-OpenAPI schema instead of a dotted field name. Require the integer `cached_tokens` field under
-`usage → input_tokens_details`; an output-token or unrelated usage subtree cannot establish
-the cache-input locator. The terminal-event markers remain mandatory for stream mappings.
+Each locator requires the exact API operation and an owned response schema. Object parents and
+integer leaves must be directly and uniquely declared at every step, including
+`usage → input_tokens_details → cached_tokens`. Request properties, unrelated nested objects,
+prose markers and quoted schemas cannot establish those paths. A duplicate or retyped field
+withholds only its affected mappings; an unrelated nested lookalike cannot erase a valid direct
+field. A duplicate companion path withholds that document's mappings in either order.
+
+Chat/FIM terminal acquisition additionally requires the owned boolean `stream` and
+`stream_options.include_usage` contracts. Accounting prose is read as rendered HTML text within
+that field, so inline `<code>` around `data: [DONE]` remains supported. Responses streaming requires
+its owned boolean stream contract, terminal event markers, and an owned response example whose
+event/type agree and whose JSON has `/response/usage` on the response object. Reviewed partial
+examples may omit object members with an unquoted `...`; the existing JSON tokenizer preserves
+quoted names and values, and duplicate or malformed ownership cannot establish the envelope.
+Envelope drift removes stream acquisition independently of the REST response mappings.
+
+The same operation/owner/type reader supplies request model enumerations and the public model-list
+response witness. A response model field cannot establish request compatibility, and an unrelated
+nested enumeration cannot invalidate the actual request model field. Public inventory needs its
+typed returned fields and current response example, without imposing field order. Unconsumed
+additive example metadata cannot invalidate the ID witness or overwrite catalog fields.
+The compatible Anthropic guide's stream support comes from its uniquely owned `Simple Fields`
+table, independently of whitespace between rendered cells.
 
 Chat and FIM cache-miss quantities are direct observations. Responses cache-miss input uses a
 closed, unit-preserving calculation graph: total input tokens minus cached input tokens, floored at
@@ -125,20 +160,50 @@ automatic extraction through that protocol.
 
 Reasoning-token fields are subsets used for explanation, not additional charged quantities. Image
 tokens are already included in input totals, so they do not need a second charge signal. Cache
-creation is automatic and has no published cache-write price. The current pricing table also has no
-separate built-in web-search fee; search can increase ordinary model tokens, which the same inputs
-already capture.
+creation is automatic and has no published cache-write price. Search/Fetch request charges require
+their own billing contract and quantity; ordinary token counters cannot measure those requests.
+The current books omit those charges and their free-to-paid transition.
 
-The current price table marks both models as FIM-capable while the operation-specific API reference
-enumerates only `deepseek-v4-pro`. The specific operation controls the binding; the disagreement is
-reported without removing either model or its ordinary rates.
+Operation-specific model enumerations control protocol bindings. A general table feature cannot
+expand those enumerations. A disagreement is reported without removing either model or its
+independent numeric rates.
 
 ## Resilience and conflicts
 
+Every native tariff cell is handled independently across static, inline-period and separate-period
+tables. An unreadable amount remains bounded raw base-price evidence with the original quote,
+meter, published currency context, known period and exact validity. An unreadable period retains
+its literal label and a broader possible scope; it cannot acquire a guessed period. Valid siblings
+remain numeric. Equal-scope duplicate cells withhold every candidate and preserve their quotes;
+document order cannot select a winner. An adapter reports this unsupported source structure rather
+than emitting an assembly-reserved conflict reason.
+
+Rules, missing whole periods/tables and unbound priced columns are different: their commercial
+scope cannot safely be represented by a local raw quote. The parser reports a typed commercial
+dependency failure while returning independently valid catalog facts. Collection rejects the new
+provider pricing and its replay capture, retains the complete accepted price partition and previous
+replay input, and can advance compatible catalog metadata. If the new catalog removes an ID needed
+by retained pricing, pair composition retains the previous provider core too. Missing or duplicate
+CNY companions use this same commercial boundary; English and Chinese policies cannot silently
+share one global billing-period definition when they disagree.
+
+Context/output limits currently come from the price table's display labels, normalized with decimal
+scales. The public [Models response](https://api-docs.deepseek.com/api/list-models) is used only as
+an exact-ID inventory witness; its example metadata does not override those table limits. This
+leaves a precision limitation where display labels round the API's integer limits. Identity
+agreement alone does not establish the units, version or authority of an example's other fields.
+
+Pricing reconciliation counts native tariff cells and verified billing rules once each, including
+one item for an explicit redirect rule rather than its derived model/rate copies. Catalog, interface, inventory and
+usage-acquisition findings use the source-contract channel, so unrelated metadata drift cannot
+inflate the price-item denominator. Successful input mappings remain pricing-input facts rather
+than normalized price items.
+
 - A missing or ambiguous main model table is systemic and retains the previously accepted DeepSeek
   partition.
-- A malformed model header, field, support value, billing-period label, price cell, companion
-  operation, or usage group suppresses only that exact claim. Valid siblings remain.
+- A malformed catalog field, support value, companion operation, or usage group suppresses only
+  that claim. A damaged price or period retains bounded raw evidence alongside numeric siblings;
+  unbound priced headers and unrepresentable commercial contracts trigger pricing retention.
 - An optional companion failure cannot erase current IDs or numeric price-table rows. If usage
   evidence fails, only the affected pricing-input locator is omitted. Known arithmetic, surviving
   mappings, the semantic charge binding, and the numeric rate remain.

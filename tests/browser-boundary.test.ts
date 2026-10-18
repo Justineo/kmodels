@@ -15,6 +15,38 @@ function rejectNodeImports(): Plugin {
 }
 
 describe("browser module boundary", () => {
+  it("keeps the calculator independent of presentation and website modules", async () => {
+    await expect(
+      build({
+        configFile: false,
+        logLevel: "silent",
+        plugins: [
+          rejectNodeImports(),
+          {
+            name: "reject-calculator-presentation-imports",
+            enforce: "pre",
+            resolveId(source, importer) {
+              if (
+                /(?:^|\/)(?:pricing-presentation|presentation|website-[^/]+)\.ts$/.test(source) ||
+                source.includes("/components/")
+              )
+                this.error(
+                  `${source} reached the calculator graph from ${importer ?? "the entry point"}`,
+                );
+              return undefined;
+            },
+          },
+        ],
+        build: {
+          write: false,
+          rollupOptions: {
+            input: fileURLToPath(new URL("../src/pricing/index.ts", import.meta.url)),
+          },
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("keeps pricing presentation free of Node-only dependencies", async () => {
     await expect(
       build({

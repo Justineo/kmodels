@@ -8,7 +8,9 @@ import {
   isRequiredPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
+import { anthropicCodeExecution } from "../src/catalog/anthropic-code-execution.ts";
 import { evaluateChargeQuantity } from "../src/catalog/pricing-calculation.ts";
+import { unionApplicabilities } from "../src/catalog/pricing-canonical.ts";
 import {
   pricingBookId,
   pricingOfferId,
@@ -781,6 +783,45 @@ describe("parsed-source canonical pricing adapter", () => {
             : undefined,
       ).toBe(scenario.expected);
     }
+  });
+
+  it("keeps reviewed applicability independent of alternative price amounts", () => {
+    const { source: pricingSource } = pricingManifest();
+    const scopes = [];
+    for (const amount of ["1", "2"]) {
+      const parsedModel = model();
+      parsedModel.price_facts = [
+        tokenRate("1", {}),
+        tokenRate(amount, { service_tier: "priority" }),
+      ];
+      const partition = assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      );
+      const sync = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+      const term = sync?.terms.find(
+        (term) => term.kind === "rate" && term.meter.value === "input_text",
+      );
+      if (term?.kind !== "rate") throw new Error("Missing input term");
+      scopes.push(unionApplicabilities(term.variants.map(({ applicability }) => applicability)));
+      expect(term.raw_variants).toEqual([]);
+      expect(scopes.at(-1)).toEqual({
+        any_of: expect.arrayContaining([
+          {
+            all_of: [
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "served_service_tier" },
+                values: [{ namespace: "provider", provider_id: providerId, value: "standard" }],
+              },
+            ],
+          },
+        ]),
+      });
+    }
+    expect(scopes[0]).toEqual(scopes[1]);
   });
 
   it("separates Foundry synchronous, Batch, and router request rates", () => {
@@ -3590,6 +3631,11 @@ describe("parsed-source canonical pricing adapter", () => {
       source_ref: sourceId,
       raw: { fragment },
     });
+    const executionSource = anthropicCodeExecution(
+      rate("container_runtime", "0.05", "hour"),
+      "5",
+      "1,550",
+    );
     const parsedModel: ParsedProviderModel = {
       ...model(),
       provider_id: "anthropic",
@@ -3624,32 +3670,10 @@ describe("parsed-source canonical pricing adapter", () => {
           [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
         ),
         commercial("web-fetch", "sync", "included"),
-        commercial(
-          "code-execution",
-          "standalone",
-          "numeric",
-          [rate("container_runtime", "0.05", "hour")],
-          [
-            raw(
-              "minimum-runtime",
-              "informational",
-              "unsupported_structure",
-              "5-minute minimum execution time",
-            ),
-            raw(
-              "monthly-container-allowance",
-              "allowance",
-              "unsupported_structure",
-              "1,550 free container-hours per organization per month",
-            ),
-            raw(
-              "runtime-observation",
-              "informational",
-              "requires_usage_aggregation",
-              "response omits billable duration",
-            ),
-          ],
-        ),
+        {
+          ...commercial("code-execution", "standalone", "numeric", [executionSource.rate]),
+          allowance_terms: executionSource.allowance_terms,
+        },
         commercial("code-execution", "web-assisted", "included"),
         commercial("managed-agents-runtime", "managed-agents", "included"),
         commercial(
@@ -3754,7 +3778,7 @@ describe("parsed-source canonical pricing adapter", () => {
     const partition = assembleParsedProviderPricing(
       "anthropic",
       observedAt,
-      [{ source: pricingSource, models: [parsedModel] }],
+      [{ source: pricingSource, models: [parsedModel], vocabulary: executionSource.vocabulary }],
       [parsedModel],
       anthropic?.pricingCategoricalLabels,
     );

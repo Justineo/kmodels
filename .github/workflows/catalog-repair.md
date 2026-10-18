@@ -1,6 +1,6 @@
 ---
 name: Catalog repair
-description: Repair reproducible catalog source drift and publish validated code automatically to main.
+description: Investigate catalog drift, rotate comprehensive reviews, and publish validated repairs to main.
 timeout-minutes: 45
 
 on:
@@ -266,6 +266,7 @@ steps:
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
       KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json
+      KMODELS_PERIODIC_REVIEW: "true"
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
 
@@ -327,10 +328,11 @@ post-steps:
 Resolve reproducible problems with validated code changes automatically committed to main. Never create
 an issue as a repair result or fallback. Keep blocked or incomplete investigations in the workflow
 summary and artifacts via `report_incomplete`; reporting a problem is not a completed repair.
-When preparation has admitted repair work, a successful outcome requires a nonempty validated code
-repair, publication, and deployment dispatch. Do not end after triage or a passing fallback test.
-`noop` is reserved for preparation finding no repair work; the deterministic outcome gate rejects
-an agent no-op on an admitted repair run. Never manufacture a change merely to satisfy this gate.
+Preparation admits investigations, not proven defects. A reproduced defect requires a nonempty
+validated repair, publication and deployment dispatch. Do not end after triage or a passing fallback
+test. A `noop` requires every admitted candidate to have independently checked `not_a_defect`
+evidence and an empty patch. Blocked, pending or repaired candidates cannot become a no-op.
+Never manufacture a code change to close an investigation that found no defect.
 
 Read `design.md`, `AGENTS.md`, `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 refresh report identified in that context, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.
@@ -396,8 +398,9 @@ Use exactly one status per candidate:
   source evidence. State any residual omission explicitly in `reason`; partial independently valid
   improvements are useful and must not be discarded because another field remains undocumented.
 - `not_a_defect`: successful parser replay and a concrete alternative diagnostic pass. For
-  `source_location_change`/`source_pricing_structure`, also require successful navigation inspection.
-  This does not authorize a healthy `noop` on an admitted run.
+  `source_location_change`/`source_pricing_structure`/`scheduled_provider_review`, also require
+  successful navigation inspection. A no-op is allowed only when every admitted candidate meets
+  this status; the trusted terminal and outcome checks verify its receipts independently.
 - `blocked`: parser replay and alternative pass, plus
   `"blocker":{"kind":"contract","next_action":"Exact evidence or operator change needed"}`.
   Kinds are `source`, `contract`, `tooling`, `scope`. The same navigation requirement applies;
@@ -417,6 +420,31 @@ reviewed and at least one evidenced repair. Independently blocked candidates may
 listed; pending candidates may not. No number of passing fallback tests replaces these checks.
 These checks verify coverage and saved receipts, not the truth of a semantic conclusion. You must
 still inspect what commands returned and make source-grounded judgments.
+
+## Scheduled comprehensive review
+
+Each daily run also admits one review independently of refresh errors. A deterministic UTC-day
+rotation covers every manifest provider once, then global architecture once (currently a 21-day
+cycle). A successful refresh, unchanged body hash or zero error count does not close this review.
+Use the same evidence records, toolchain, publication bounds and failure reporting as error repair.
+
+For `scheduled_provider_review`, read the complete provider parser, commercial/accounting logic,
+source manifest, relevant delivery code and provider guide. Inspect current first-party navigation
+and replay actual extraction, assembly and calculation on saved evidence. Trace discovery and
+identity/lifecycle, all price and service inventory, unit/currency/applicability/validity, quantity
+and selector acquisition, retention/replay, calculator/display parity, and code simplicity. Seek
+missing products or changed semantics even when current fixtures pass. Record concrete positive
+findings and limitations in the candidate's evidence; source absence is not evidence of completeness.
+Apply simplify-code principles after each justified repair while preserving behavior and evidence.
+
+For `scheduled_architecture_review`, read the domain guides and shared collection, price-model,
+calculation, presentation and repair boundaries together. Review current provider books and reports
+for ad hoc semantics, cross-provider inconsistency, raw-text control protocols, misleading coverage,
+lost diagnostics and false repair triggers. Run relevant deterministic parser/assembly/calculator
+checks and a concrete alternative diagnostic. Save a source-grounded review artifact. Make a
+minimal reproducible fix within the existing publication allowlist; work outside that allowlist
+remains explicitly blocked. Healthy review needs no invented patch. A failed or incomplete review
+remains visible in Actions and artifacts and is never recorded as a completed cycle.
 
 ## Investigation and repair
 
@@ -595,8 +623,9 @@ alternative hypotheses tested, and concrete external blockers. "Localized drift"
 or passing existing fallback tests alone do not justify stopping. Incomplete remains a failed,
 undelivered repair, never a successful completion.
 A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
-`noop`. On an admitted run, continue until an independent repair is validated or the concrete
-external blockers above are established; do not downgrade candidates to a successful no-op.
+`noop`. Continue until defects are repaired, every candidate has verified `not_a_defect` evidence,
+or concrete blockers are established. If all candidates are proven not defective, run
+`check-no-defect` and request `noop` with an empty patch. This does not waive any evidence requirement.
 Otherwise request one small `commit_repair` describing the source change, repair, focused
 regression results, and the successful full `stage` validation.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use

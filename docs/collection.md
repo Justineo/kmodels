@@ -103,7 +103,9 @@ Status: implemented
   source omits it, retain the previous date and its release-date source reference; a newly observed
   exact date still replaces it and therefore supports an explicit upstream correction.
 - Publish the latest successful record for each referenced source. If an optional source is skipped, retain its last validated record.
-- Omit sources that match no published model.
+- Retain sources used by published models, canonical pricing or captured compilation inputs.
+  Independent service or accounting facts retain their source record without inventing a model
+  observation. Omit sources used by none of those outputs.
 - After a replacement source succeeds, remove rows and references backed only by source IDs no longer present in the manifest.
 
 ## Fetching and raw data
@@ -122,6 +124,12 @@ Status: implemented
   TLS-handshake timeouts, for both ordinary and cloud requests. Never publish the raw command,
   stderr, headers, URLs or credential-bearing error message. Local proxy routing is an operator
   setting, not a provider parser rule; diagnose it separately from an upstream HTTP failure.
+- A transport that interprets a catalog response owns that response's JSON, envelope and pagination
+  contracts. Invalid successful-response JSON, schema violations and contradictory pagination are
+  `parse_failed` findings even when discovered before provider parsing. Authentication-service
+  JSON, credential/configuration errors, reviewed URL controls, byte limits and acquisition budgets
+  remain acquisition failures. An unsuccessful HTTP response does not establish a source-schema
+  change. Native HTTP status survives bounded error causes; error prose is not a new control protocol.
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Bounded multi-document fetches assign the next item to the first free slot while preserving
   deterministic result order.
@@ -129,6 +137,16 @@ Status: implemented
   root index request and keep their configured concurrency bound. Discovered documents still wait
   for the validated index and nested indexes. Output and dependency order remain canonical rather
   than completion-ordered.
+- Optional failures retain a typed dependency ID, outcome, native HTTP status when known, bounded
+  message and contract evidence. `bundle` identifies an incomplete required bundle scope; when
+  that root supplies rates or explicitly required pricing inputs, it retains the complete
+  commercial partition. Optional accounting-only roots preserve known numeric prices even when
+  one of their bundle companions fails; whole-root and nested omissions use the same policy.
+  `claim` identifies
+  a reviewed local omission, including discovered model documents, so independently observed facts
+  can advance. Transport does not decide whether a bundle is a price book. Report and public
+  evidence output use `dependency_failures`, capped at 16 in deterministic order with an explicit
+  omitted count; the internal fetch result has one failure list rather than parallel omission lists.
 - A provider starts source transports together only when their reviewed allowed-host sets are
   disjoint. Sources that could touch any shared host remain serialized, and each source keeps its
   existing internal request-concurrency bound. Parsing, overlay application, reconciliation, and
@@ -231,11 +249,16 @@ Status: implemented
   most three validated public model IDs. Reports retain at most eight distinct diagnostics per
   finding and no response bodies, stack traces, private IDs, or unbounded source strings. Numeric
   array positions are normalized so the same fault has one low-cardinality identity across runs.
-  `reject` findings stop that provider atomically; `accept_with_signal` findings preserve fresh data
-  while making an unowned extension reviewable.
+  A `reject` finding rejects its owned observation. A required catalog source failure retains the
+  provider; a reviewed local dependency may be omitted while independent facts advance. Accepted
+  local contract gaps remain distinct from unrelated additive extensions.
 - Persist check time and consecutive failures even before a source first succeeds, and retain the
   last success when one exists. The first structured mismatch is immediately visible; repetition
   adds persistence and staleness signals. A successful parse resets the count.
+- Dependencies keep their own failure streak and last success even when the root bundle refreshes
+  successfully. Current failed keys survive fetch-state cleanup; successful reacquisition resets
+  that key, and dependencies no longer present in discovery/configuration are removed. Root and
+  dependency observation counts are never added to tariff reconciliation.
 - `data/refresh-summary.json` is the deterministic report for the accepted run. It includes exact
   added and removed model refs, changed refs and fields, leaf-level previous/current values for
   every changed model field, status and task transitions, exact changed sources, pricing outcomes,
@@ -256,14 +279,24 @@ Status: implemented
   publication completeness (`complete` or `partial`). Catalog and pricing retention are reported
   separately, either one makes the run partial, and neither can hide behind an “unchanged” label.
   Provenance-only churn is not presented as a commercial change.
-- `breaking_contract_mismatch` means a field or value owned by the projection became
-  uninterpretable; `unreviewed_extension` means fresh data was accepted after an unrelated
+- `breaking_contract_mismatch` means a rejected field or value owned by the projection became
+  uninterpretable; `partial_contract_mismatch` identifies a local contract gap while independently
+  valid data was accepted. `unreviewed_extension` means fresh data was accepted after an unrelated
   extension was stripped; `coverage_regression` covers explicit item or field-coverage failures;
   `possible_structural_change` is reserved for unclassified parse failures. None proves that the
   provider intentionally redesigned an API. Deterministic evidence supports, but does not replace,
   human judgment: semantic meaning, newly useful fields, and whether omission means false or
   unknown still require review. Encode repeated reviewed judgments in provider guides, parsers,
   fixtures, and explicit thresholds so later runs decide them mechanically without an LLM.
+- A source attempt preserves contract callbacks as `contract_findings`, each with its own
+  observed population and bounded diagnostics. Those populations may overlap or measure different
+  entities; never add their denominators or mix them into tariff reconciliation. Collection keeps
+  at most 16 findings in deterministic order, prioritizes rejection evidence, and reports additional
+  callbacks through `contract_findings_omitted`. Findings emitted before a later parser exception
+  also survive. Report and repair readers accept the previous singular `contract_finding` format;
+  new collection writes only the array. Consumed-contract drift remains investigable on unchanged
+  bytes, while a purely additive field is revisited when source content changes. Truncated evidence
+  cannot establish that all unseen findings are harmless.
 - `KMODELS_REFRESH_REPORT_PATH` may name an ephemeral copy written before pair publication. CI uses
   it for the job summary and retained artifact. This copy also carries provider wall-clock
   durations for performance diagnosis. The committed summary is written only after the
@@ -325,6 +358,14 @@ Status: implemented
   dependency for omission, required-source completeness, and replay. Only the rate role carries pricing-evidence
   authority, so an accounting-only API or schema document cannot accidentally
   claim that it published a price.
+- The parser boundary returns model observations together with source-level commercial facts,
+  acquisition inputs and reviewed vocabulary. Existing provider extractors that still attach
+  independent facts to model records are normalized at this boundary. New compilation writes
+  independent facts once at source level; old inputs remain readable and provenance-checked.
+  Accounting-only OpenAI and Azure sources return no synthetic catalog rows. TypeSafe and
+  DeepSeek return their usage contracts independently of model inventory. Anthropic also returns
+  services, acquisition inputs and reviewed vocabulary at source level, including typed Code
+  Execution minimums and monthly allowances.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

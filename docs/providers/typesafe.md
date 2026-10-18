@@ -19,6 +19,8 @@ require review before publication. SDK usage guides and application cookbooks ar
 the commercial index partition. The optional, claim-local
 [API reference](https://docs.typesafe.ai/api.md) supplies typed-question and response-usage
 contracts. It cannot erase independently observed identities or rates when unavailable.
+Usage contracts are source-level facts, shared by the observed System One models; they are not
+copied into each model observation or repeated in compilation input.
 All requests stay on the reviewed documentation host; linked content is not automatically crawled.
 
 Authenticated `GET /v1/models` is account inventory and currently lists aliases, not an
@@ -50,6 +52,10 @@ The System One offer binds input and output token signals to one request. The AP
 locators independently. These optional fields are conditional acquisition methods; absent
 usage never means zero. Field drift removes only the affected locator. Prices and billable
 signals survive an unavailable API companion.
+The `usage` object must be a top-level response property, and each counter must belong directly
+to that object across documentation-only wrappers. A same-named counter inside another response
+property cannot establish `/usage/input_tokens` or `/usage/output_tokens`; nested lookalikes also
+cannot invalidate an independently declared direct counter.
 
 Rate limits describe throughput, not billable quantities. Private custom/enterprise plans,
 account credits, taxes, invoices and negotiated adjustments are outside the public invocation

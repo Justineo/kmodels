@@ -15,6 +15,7 @@ import {
   addAtom,
   isStandardUnit,
   rawEvidence,
+  standardSignal,
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import {
@@ -668,7 +669,7 @@ function tokenBindingSpec(
       keys: batch ? [] : ["runtime.converse.cache_write_tokens"],
       includeInvocationLog: false,
     };
-  const suffix = ttl === 300 ? "5m" : "1h";
+  const suffix = ttl === 300 ? "5m" : ttl === 3600 ? "1h" : `${ttl}s`;
   const key = `cache_write_${suffix}_input_tokens`;
   addUsageSignal(
     input,
@@ -863,7 +864,7 @@ function permitsRuntimeUsage(applicability: PriceApplicability): boolean {
   });
 }
 
-function exactCacheTtl(applicability: PriceApplicability): 300 | 3600 | undefined {
+function exactCacheTtl(applicability: PriceApplicability): number | undefined {
   const values = new Set<number>();
   for (const { all_of } of applicability.any_of)
     for (const condition of all_of)
@@ -878,7 +879,7 @@ function exactCacheTtl(applicability: PriceApplicability): 300 | 3600 | undefine
         values.add(Number(condition.lower.value));
   if (values.size !== 1) return;
   const value = [...values][0];
-  return value === 300 || value === 3600 ? value : undefined;
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 function rawCondition(raw: RawPriceObservation["raw"], name: string): string | undefined {
@@ -906,23 +907,6 @@ function addUsageSignal(
 
 function providerSignal(input: AtomicProviderPricing, value: string) {
   return { namespace: "provider" as const, provider_id: input.provider_id, value };
-}
-
-function standardSignal(
-  value:
-    | "accepted_requests"
-    | "cached_input_tokens"
-    | "cache_write_tokens"
-    | "generated_images"
-    | "generated_seconds"
-    | "input_tokens"
-    | "output_tokens"
-    | "processed_audio_seconds"
-    | "processed_images"
-    | "processed_pages"
-    | "uncached_input_tokens",
-): UsageSignal {
-  return { namespace: "kmodels", value };
 }
 
 function standardAtom(

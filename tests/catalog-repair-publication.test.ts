@@ -37,6 +37,7 @@ beforeEach(() => {
     env: {
       REPAIR_BASE_SHA: "1".repeat(40),
       REPAIR_REQUIRED: "true",
+      RUNNER_TEMP: "/tmp/repair-runner",
       REPAIR_ARTIFACT_DIR: "/tmp/repair-test",
       REPAIR_TREE_SHA: "2".repeat(40),
       GH_AW_SAFE_OUTPUTS: "/tmp/repair-output.jsonl",
@@ -54,19 +55,45 @@ const repair = {
   body: "Reviewed source and regression evidence",
 };
 
-it("rejects a no-op when preparation admitted repair work, before staging any files", async () => {
+it("rejects an admitted no-op without trusted no-defect evidence, before staging any files", async () => {
   files.set(
     "/tmp/repair-output.jsonl",
     JSON.stringify({ type: "noop", message: "Existing fallback tests pass" }),
   );
-  await expect(runRepairPublication("capture")).rejects.toThrow("a no-op cannot complete");
-  expect(git).not.toHaveBeenCalled();
+  git.mockReturnValue({ ...success(""), status: 1 });
+  await expect(runRepairPublication("capture")).rejects.toThrow("no-op cannot complete");
+  expect(git).toHaveBeenCalledExactlyOnceWith(
+    "vp",
+    ["node", "/tmp/repair-runner/catalog-repair-review.ts", "check-no-defect"],
+    { stdio: "inherit" },
+  );
+  git.mockReset();
   delete process.env.REPAIR_REQUIRED;
   await expect(runRepairPublication("capture")).rejects.toThrow("Missing REPAIR_REQUIRED");
   process.env.REPAIR_REQUIRED = "false";
   git.mockReturnValue(success(""));
   await runRepairPublication("capture");
   expect(files.get("/tmp/repair-test-output")).toBe("outcome=noop\n");
+});
+
+it("accepts an empty no-op only after the runner-owned script verifies all no-defect conclusions", async () => {
+  files.set("/tmp/gh-aw/aw-catalog-repair.patch", "Abandoned investigation patch");
+  files.set(
+    "/tmp/repair-output.jsonl",
+    JSON.stringify({
+      type: "noop",
+      message: "All candidates verified against current source and parser",
+    }),
+  );
+  git.mockReturnValue(success(""));
+  await runRepairPublication("capture");
+  expect(git.mock.calls[0]).toEqual([
+    "vp",
+    ["node", "/tmp/repair-runner/catalog-repair-review.ts", "check-no-defect"],
+    { stdio: "inherit" },
+  ]);
+  expect(files.get("/tmp/repair-test-output")).toBe("outcome=noop\n");
+  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
 });
 const diff = (path: string, oldMode = "100644", newMode = "100644", status = "M") =>
   `:${oldMode} ${newMode} ${"1".repeat(40)} ${"2".repeat(40)} ${status}\0${path}\0`;

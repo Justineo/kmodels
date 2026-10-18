@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
+import { sourceFailure } from "../src/catalog/source-failure.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -76,6 +77,85 @@ function retailSource(): SourceManifest {
   if (source === undefined) throw new Error("Missing Azure retail source");
   return source;
 }
+
+it.each(["not JSON", '{"Items":"wrong shape"}'])(
+  "classifies a successful catalog response contract separately from network failure: %s",
+  async (body) => {
+    transport.responses.set("prices.azure.com", [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+    try {
+      await fetchSource(retailSource());
+      expect.unreachable("Expected the catalog response to be rejected");
+    } catch (error) {
+      expect(sourceFailure(error)).toMatchObject({
+        outcome: "parse_failed",
+        contract_findings: [{ disposition: "reject" }],
+      });
+    }
+  },
+);
+
+it("keeps endpoint response-contract failures visible beside a usable Vercel model index", async () => {
+  const source: SourceManifest | undefined = manifests
+    .find(({ provider }) => provider.id === "vercel")
+    ?.sources.find((source: SourceManifest) => source.transport?.kind === "vercel-models");
+  if (source === undefined || source.extractor.kind !== "vercel-catalog")
+    throw new Error("Missing Vercel transport");
+  const count = source.extractor.minModels;
+  const data = Array.from({ length: count }, (_, index) => ({
+    id: `test/model-${index}`,
+    pricing: { input: "0.1" },
+  }));
+  transport.responses.set("ai-gateway.vercel.sh", [
+    `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ object: "list", data })}`,
+    ...Array.from({ length: count }, () => 'HTTP/1.1 200 OK\r\n\r\n{"wrong":"endpoint envelope"}'),
+  ]);
+  const result = await fetchSource(source);
+  expect(JSON.parse(result.body).index.body).toBe(JSON.stringify({ object: "list", data }));
+  const failures = result.dependencyFailures?.filter(({ dependency_id }) =>
+    dependency_id.startsWith(`${source.id}/endpoints/`),
+  );
+  expect(failures).toHaveLength(count);
+  expect(
+    failures?.every(({ outcome, impact }) => outcome === "parse_failed" && impact === "claim"),
+  ).toBe(true);
+});
+
+it("keeps a malformed Ollama list visible when the independent HTML inventory succeeds", async () => {
+  const source: SourceManifest | undefined = manifests
+    .find(({ provider }) => provider.id === "ollama")
+    ?.sources.find((source: SourceManifest) => source.transport?.kind === "ollama-cloud");
+  if (source === undefined || source.transport?.kind !== "ollama-cloud")
+    throw new Error("Missing Ollama transport");
+  const cards = Array.from(
+    { length: source.transport.minModels },
+    (_, index) =>
+      `<a href="/library/model-${index}"><span class="bg-cyan-100">cloud</span>Model ${index}</a>`,
+  ).join("");
+  transport.responses.set("ollama.com", [
+    'HTTP/1.1 200 OK\r\n\r\n{"unexpected":"model list"}',
+    `HTTP/1.1 200 OK\r\n\r\n${cards}`,
+  ]);
+  const result = await fetchSource(source);
+  expect(JSON.parse(result.body).catalog.body).toBe(cards);
+  expect(result.dependencyFailures).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        dependency_id: `${source.id}/index`,
+        impact: "claim",
+        outcome: "parse_failed",
+      }),
+    ]),
+  );
+  const failedQueries = result.dependencyFailures?.filter(({ dependency_id }) =>
+    dependency_id.startsWith(`${source.id}/show/`),
+  );
+  expect(failedQueries).toHaveLength(source.transport.minModels);
+  expect(
+    failedQueries?.every(
+      ({ outcome, http_status }) => outcome === "fetch_failed" && http_status === 404,
+    ),
+  ).toBe(true);
+});
 
 it("retrieves a rejected discovery index for repair while collection still rejects it", async () => {
   const body = "# Models\n[Model](https://docs.cohere.com/v2/docs/model.md)";
@@ -371,8 +451,29 @@ describe("linked source fetch", () => {
 
     const result = await fetchSource(source);
 
-    expect(result.omittedOptionalDocuments).toEqual(["test/missing", "test/claim-local-missing"]);
-    expect(result.omittedOptionalDependencies).toEqual(["test/fixed-missing"]);
+    expect(result).toHaveProperty("dependencyFailures", [
+      {
+        dependency_id: "test/missing",
+        impact: "claim",
+        outcome: "fetch_failed",
+        http_status: 404,
+        message: "HTTP 404",
+      },
+      {
+        dependency_id: "test/fixed-missing",
+        impact: "bundle",
+        outcome: "fetch_failed",
+        http_status: 404,
+        message: "HTTP 404",
+      },
+      {
+        dependency_id: "test/claim-local-missing",
+        impact: "claim",
+        outcome: "fetch_failed",
+        http_status: 404,
+        message: "HTTP 404",
+      },
+    ]);
     expect(result.dependencies.map(({ key }) => key)).toEqual(["test/index", "test/available"]);
   });
 });

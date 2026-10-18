@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { htmlText } from "./html.ts";
+import { azurePriceAmountSchema } from "./azure-commercial.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   SourceCommercialPricingFact,
@@ -37,10 +38,7 @@ type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
 
 const amountSchema = z.object({
-  regional: z.record(
-    z.string().min(1),
-    z.union([z.string(), z.number().finite().nonnegative()]).transform(String),
-  ),
+  regional: z.record(z.string().min(1), azurePriceAmountSchema),
 });
 
 export function azureCommercialFacts(input: Input): SourceCommercialPricingFact[] {
@@ -237,13 +235,13 @@ function addRawFact(facts: Map<string, MutableFact>, row: PriceRow, input: Input
   const created: MutableFact = {
     book_key: `service:${key}`,
     book_name: `Unclassified built-in tool: ${row.row}`,
-    resource_kind: "service" as const,
+    resource_kind: "service",
     resource_key: key,
     model_refs: [],
     offer_key: "usage",
     offer_name: row.row,
-    billing_mode: "usage" as const,
-    pricing_state: "not_published" as const,
+    billing_mode: "usage",
+    pricing_state: "not_published",
     price_facts: [],
     raw_price_facts: [],
   };
