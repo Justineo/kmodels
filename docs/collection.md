@@ -376,6 +376,9 @@ Status: implemented
   model-state facts rather than raw control markers. Unrecognized legacy raw evidence stays raw.
   Mistral pricing returns independent request-service facts and accounting inputs; source-only
   services can survive compilation without a model observation.
+  Kimi OpenAPI and pricing likewise return independent acquisition contracts and services.
+  Batch bindings retain the native regional guide's positive model scope and source provenance;
+  a missing regional input cannot borrow another source's acquisition evidence.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

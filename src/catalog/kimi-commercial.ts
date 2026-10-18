@@ -21,6 +21,7 @@ import {
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
+import { kimiTokenSignal } from "./kimi-commercial-source.ts";
 import {
   subtractQuantityMethods,
   directQuantityMethods as directMethods,
@@ -226,25 +227,13 @@ function modelBinding(
   if (meter.namespace !== "kmodels" || !isStandardUnit(variant.price.per, "token")) return;
   const modelRef = book.scope.kind === "models" ? book.scope.model_refs[0] : undefined;
   if (modelRef === undefined) return;
-  const signal = modelSignal(modelRef, meter);
+  const signal = kimiTokenSignal(modelRef, meter.value);
   if (signal === undefined) return;
   if (mechanism === "batch") {
-    const scopeConflict = book.offers.some(({ terms }) =>
-      terms.some(
-        (term) =>
-          term.kind === "raw" &&
-          term.term_key === "batch_applicability_conflict" &&
-          term.variants.some(
-            ({ observation }) => observation.source_ref === variant.observation.source_ref,
-          ),
-      ),
+    return (
+      variant.charge_binding ??
+      standardBinding(signal, "result_item", variant.observation, emptyMethods())
     );
-    if (scopeConflict) return;
-    const mapped =
-      signal.value === "output_tokens"
-        ? directMethods(signal, ["batch.result.output_tokens"], inputIndex)
-        : emptyMethods();
-    return standardBinding(signal, "result_item", variant.observation, mapped);
   }
   return standardBinding(
     signal,
@@ -252,25 +241,6 @@ function modelBinding(
     variant.observation,
     synchronousMethods(model, signal, inputIndex),
   );
-}
-
-function modelSignal(
-  modelRef: string,
-  meter: PriceMeter,
-): Extract<UsageSignal, { namespace: "kmodels" }> | undefined {
-  const value =
-    meter.value === "cache_write_text"
-      ? "cache_write_tokens"
-      : meter.value === "cache_read_text"
-        ? "cached_input_tokens"
-        : meter.value === "output_text"
-          ? "output_tokens"
-          : meter.value === "input_text"
-            ? modelRef.includes("/moonshot-v1-")
-              ? "input_tokens"
-              : "uncached_input_tokens"
-            : undefined;
-  return value === undefined ? undefined : { namespace: "kmodels", value };
 }
 
 function standardBinding(

@@ -3,9 +3,13 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
   SourceRawPricingFact,
+  SourcePricingInputFact,
 } from "./pricing-source.ts";
+import { pricingInputObservation, usageInputSources } from "./pricing-input.ts";
+import type { UsageSignal } from "./pricing-schema.ts";
 
 export interface KimiCommercialEvidence {
+  batchModels: string[];
   batchScopeConflicts: string[];
   fileService: boolean;
   formulaModels: string[];
@@ -20,7 +24,7 @@ export function extractKimiCommercialFacts(
   models: Map<string, ParsedProviderModel>,
   sourceId: string,
   evidence: KimiCommercialEvidence,
-): void {
+): SourceCommercialPricingFact[] {
   for (const modelId of evidence.batchScopeConflicts) {
     const model = models.get(modelId);
     if (model !== undefined)
@@ -126,9 +130,70 @@ export function extractKimiCommercialFacts(
     });
   }
 
-  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && facts.length > 0)
-    carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
+  return facts;
+}
+
+export function kimiTokenSignal(
+  modelId: string,
+  meter: string,
+): Extract<UsageSignal, { namespace: "kmodels" }> | undefined {
+  const value =
+    meter === "cache_write_text"
+      ? "cache_write_tokens"
+      : meter === "cache_read_text"
+        ? "cached_input_tokens"
+        : meter === "output_text"
+          ? "output_tokens"
+          : meter === "input_text"
+            ? /(?:^|\/)moonshot-v1-/.test(modelId)
+              ? "input_tokens"
+              : "uncached_input_tokens"
+            : undefined;
+  return value === undefined ? undefined : { namespace: "kmodels", value };
+}
+
+export function bindKimiBatchPrices(
+  models: Map<string, ParsedProviderModel>,
+  admittedModels: readonly string[],
+  inputs: readonly SourcePricingInputFact[],
+): void {
+  for (const model of models.values()) {
+    model.price_facts = model.price_facts.map((rate) => {
+      if (rate.conditions.service_tier !== "batch" || rate.unit !== "million_tokens") return rate;
+      const signal = kimiTokenSignal(model.model_id, rate.meter);
+      if (signal === undefined) return rate;
+      const facts =
+        admittedModels.includes(model.model_id) && signal.value === "output_tokens"
+          ? inputs.filter(
+              ({ key, source_ref }) =>
+                key === "batch.result.output_tokens" && source_ref === rate.source_ref,
+            )
+          : [];
+      return {
+        ...rate,
+        charge_binding: {
+          signal,
+          aggregation: "result_item",
+          ...(facts.length === 0
+            ? {}
+            : { quantity_methods: [{ input_sources: usageInputSources(signal, facts) }] }),
+          observations: [
+            {
+              source_ref: rate.source_ref,
+              locator: { kind: "provider_key", value: `batch:${model.model_id}:${rate.meter}` },
+              raw: {
+                fragment:
+                  facts.length === 0
+                    ? "Batch token rate; no verified model-scoped result acquisition path"
+                    : `The regional Batch guide supports ${model.model_id} and reports completion_tokens per result`,
+              },
+            },
+            ...facts.map(pricingInputObservation),
+          ],
+        },
+      };
+    });
+  }
 }
 
 function service(

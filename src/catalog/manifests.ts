@@ -495,7 +495,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v11",
+  extractorVersion: "kimi-pricing-v12",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -4347,7 +4347,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v6",
+        extractorVersion: "kimi-openapi-v7",
         fields: [
           "model_id",
           "tasks",
@@ -4376,7 +4376,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v6",
+        extractorVersion: "kimi-openapi-v7",
         fields: [
           "model_id",
           "tasks",

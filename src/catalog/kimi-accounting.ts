@@ -19,6 +19,12 @@ interface DocumentInput {
   onReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
+interface DocumentRequirement {
+  path: string;
+  markers: readonly RegExp[];
+  verify?: (body: string) => boolean;
+}
+
 export interface KimiEndpointClaim {
   name: string;
   path: string;
@@ -111,12 +117,16 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
 }
 
 export function extractKimiCommercialPricingInputs(input: DocumentInput): SourcePricingInputFact[] {
-  const documents = new Map(
-    input.documents.map(({ url, body }) => [normalizePath(new URL(url).pathname), body]),
-  );
+  const documents = new Map<string, string[]>();
+  for (const { url, body } of input.documents) {
+    const path = normalizePath(new URL(url).pathname);
+    const bodies = documents.get(path) ?? [];
+    bodies.push(body);
+    documents.set(path, bodies);
+  }
   const contracts: ReadonlyArray<{
     fact: Omit<SourcePricingInputFact, "source_ref">;
-    requirements: readonly { path: string; markers: readonly RegExp[] }[];
+    requirements: readonly DocumentRequirement[];
   }> = [
     batchContract("input_tokens", "prompt_tokens"),
     batchContract("output_tokens", "completion_tokens"),
@@ -164,9 +174,15 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
     },
   ];
   const facts = contracts.flatMap(({ fact, requirements }): SourcePricingInputFact[] => {
-    const present = requirements.every(({ path, markers }) => {
-      const body = documents.get(path);
-      return body !== undefined && markers.every((marker) => marker.test(body));
+    const present = requirements.every(({ path, markers, verify }) => {
+      const bodies = documents.get(path);
+      const body = bodies?.[0];
+      return (
+        bodies?.length === 1 &&
+        body !== undefined &&
+        markers.every((marker) => marker.test(body)) &&
+        (verify === undefined || verify(body))
+      );
     });
     if (!present) {
       input.onFinding?.(contractExtensionEvidence([`/pricing-inputs/${fact.key}`]));
@@ -277,7 +293,7 @@ function batchContract(
   field: string,
 ): {
   fact: Omit<SourcePricingInputFact, "source_ref">;
-  requirements: readonly { path: string; markers: readonly RegExp[] }[];
+  requirements: readonly DocumentRequirement[];
 } {
   return {
     fact: {
@@ -289,7 +305,8 @@ function batchContract(
     requirements: [
       {
         path: "/docs/guide/use-batch-api",
-        markers: [new RegExp(`response[\\s\\S]*body[\\s\\S]*usage[\\s\\S]*${field}`)],
+        markers: [],
+        verify: (body) => batchUsageExample(body, field),
       },
       {
         path: "/docs/api/batch-create",
@@ -297,6 +314,21 @@ function batchContract(
       },
     ],
   };
+}
+
+function batchUsageExample(body: string, field: string): boolean {
+  const usage = z.object({
+    response: z.object({ body: z.object({ usage: z.record(z.string(), z.unknown()) }) }),
+  });
+  const values = [...body.matchAll(/```json\b[^\r\n]*\r?\n([\s\S]*?)```/g)].flatMap((match) => {
+    try {
+      const parsed = usage.safeParse(JSON.parse(match[1] ?? ""));
+      return parsed.success ? [parsed.data.response.body.usage[field]] : [];
+    } catch {
+      return [];
+    }
+  });
+  return values.length === 1 && z.number().int().nonnegative().safeParse(values[0]).success;
 }
 
 function responsesEndpoint(spec: JsonSpec): KimiEndpointClaim {
