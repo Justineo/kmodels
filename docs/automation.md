@@ -164,6 +164,37 @@ Status: implemented
   explanations. Hash identity proves persistence, and passing fallback tests prove fallback only.
   Neither can establish that a repair is impossible. Incomplete reports record the corrected
   commands, actual parser results, examined source sections and concrete remaining blockers.
+  Preparation also writes a runner-owned admission containing every candidate ID (including failed
+  refresh execution), the base commit, and a 20-minute investigation deadline. The agent updates
+  `/tmp/gh-aw/agent/catalog-repair-review.json`, bound to that exact admission's SHA-256. Missing,
+  duplicate, stale, or extra candidates fail the investigation check. Each reviewed candidate has
+  source artifact hashes, explained diagnostic checks, and a `repaired`, `not_a_defect`, or
+  `blocked` decision. Repairs require before/after actual parser replay and a passing regression;
+  no-defect and blocked decisions require a concrete second diagnostic pass. Relocated sources or
+  missing pricing/contracts also require successful first-party navigation inspection. Only an
+  acquisition blocker with a failed fetch and no possible parser replay may omit navigation.
+  A blocked refresh execution may instead use an `execution` diagnostic against its sanitized
+  failed steps/log, without live collection or credentials; provider candidates cannot use this exception.
+  A blocker names its source/contract/tooling/scope category and exact next action. Independent
+  repaired candidates can publish alongside evidenced blockers; residual omissions remain explicit.
+  Unfinished work stays `pending` and prevents publication. An incomplete outcome may retain pending
+  candidates only after the prepared investigation deadline, or with a failed command receipt for
+  an environment interruption. The agent must not spend unused time waiting for this deadline;
+  it continues independent investigation or establishes actual blockers.
+  `vp node scripts/catalog-repair-review.ts probe KIND PHASE -- VP_ARGUMENTS` runs a diagnostic,
+  saves its stdout, stderr and exit status, and returns a check reference; add the observed `result`
+  explanation to the review. `hash PATH` hashes a complete saved artifact, distinct from the source
+  body hash inside public evidence files. `check` returns missing work to the agent while it can
+  still investigate; `check-incomplete` permits only justified interrupted pending work. `stage`
+  calls `check-repair` before full validation. A separate post-execution gate restores the review
+  checker from the original workflow commit and cross-checks the final record before outcome
+  admission. Evidence stays inside the agent evidence directory, with symlink escapes rejected;
+  the admission and public/sanitized investigation directory are retained for 30 days even on failure.
+  These checks establish coverage and consistency of saved evidence, not semantic correctness or
+  independent attestation of agent-owned command receipts. They cannot guarantee that an agent
+  chose the right command or correctly interpreted a source. Deterministic regression scenarios
+  cover observed early-stop patterns; evaluating actual model investigation quality still requires
+  inspecting real execution traces. An incomplete run stays failed rather than becoming green.
   Agent execution has an explicit 45-minute limit inside a 60-minute agent job. The
   [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
   bounds inference and its tool calls; the job limit separately leaves time for setup,

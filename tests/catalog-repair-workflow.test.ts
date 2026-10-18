@@ -51,6 +51,28 @@ it("reserves execution time for validation retries and skips outcome capture aft
   expect(capture).toContain("if: success()");
 });
 
+it("checks candidate coverage using trusted code before admitting an outcome and retains failed investigations", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  expect(agent).toContain(
+    "KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json",
+  );
+  expect(agent).toContain('git show "$REPAIR_BASE_SHA:scripts/catalog-repair-review.ts"');
+  const steps = agent.split(/\n      - /);
+  const review = steps.find((step) =>
+    step.includes("name: Check investigation completion evidence\n"),
+  );
+  expect(review).toContain("if: success() && steps.repair_context.outputs.repairable == 'true'");
+  expect(review).toContain('catalog-repair-review.ts" terminal');
+  expect(agent.indexOf("Check investigation completion evidence")).toBeLessThan(
+    agent.indexOf("Capture and admit the repair outcome"),
+  );
+  const artifact = steps.find((step) => step.includes("name: Preserve investigation evidence\n"));
+  expect(artifact).toContain("if: always() && steps.repair_context.outputs.repairable == 'true'");
+  expect(artifact).toContain("/tmp/gh-aw/agent/");
+  expect(artifact).toContain("${{ runner.temp }}/gh-aw/repair-admission.json");
+});
+
 it("keeps issue creation unavailable in both the source policy and generated workflow", async () => {
   const markdown = await readFile(source, "utf8");
   const workflow = await readFile(compiled, "utf8");

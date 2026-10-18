@@ -213,6 +213,12 @@ export async function runRepairPublication(operation: string | undefined): Promi
     case "stage": {
       // A failed retry must not leave a previously approved detection patch behind.
       await rm(patchPath, { force: true });
+      const review = spawnSync("vp", ["node", "scripts/catalog-repair-review.ts", "check-repair"], {
+        stdio: "inherit",
+      });
+      if (review.error !== undefined) throw review.error;
+      if (review.status !== 0)
+        throw new Error("Investigation review failed; complete the evidence record before staging");
       git(["add", "--all"]);
       const patch = stagedPatch(baseSha());
       admitStagedPatch(baseSha(), patch);

@@ -354,6 +354,16 @@ it("returns failed validation to the agent and stages only a successful unchange
   expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
 });
 
+it("rejects incomplete investigation before staging or spending time on the full validation suite", async () => {
+  files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");
+  git.mockReturnValueOnce({ status: 1 });
+  await expect(runRepairPublication("stage")).rejects.toThrow("Investigation review failed");
+  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
+  expect(git.mock.calls.map(([command, args]) => [command, args])).toEqual([
+    ["vp", ["node", "scripts/catalog-repair-review.ts", "check-repair"]],
+  ]);
+});
+
 it("does not accept a killed or unavailable validation process", () => {
   git.mockReturnValueOnce({ status: null, signal: "SIGTERM" });
   expect(validateRepair).toThrow("vp check failed (SIGTERM)");

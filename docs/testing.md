@@ -111,6 +111,13 @@ candidate for publication, then repeats them against latest `main` after applyin
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
 validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
 a successful test process alone does not authorize publishing a different patch.
+Investigation-review tests separately exercise candidate coverage and saved evidence consistency:
+missing/stale candidates, the Veo rejected-URL early stop, fallback-only conclusions, missing second
+passes, unsupported source-blocker labels, failed acquisition, before/after parser checks, evidence
+mutation, command-status disagreement, and interrupted pending work. Stage tests require investigation
+review before full validation, and workflow tests verify trusted post-execution checking and artifact
+retention. These are deterministic harness regressions; they do not measure whether the model chose
+or interpreted the right evidence. Review real agent traces to assess investigation quality.
 
 For calculator or package changes, also run `vp run package:build` and `vp run package:check`.
 Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
