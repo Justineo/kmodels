@@ -3,7 +3,6 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { extractMistralPricingInputs } from "./mistral-accounting.ts";
 import {
   applyMistralPricingPolicy,
@@ -26,36 +25,9 @@ import {
   type SourceRawPricingFact,
   sourcePriceFactKey,
 } from "./pricing-source.ts";
-import {
-  assertItemCount,
-  contractExtensionEvidence,
-  recognizeItems,
-  type SourceContractEvidence,
-} from "./source-contract.ts";
-import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly Pick<
-    ProviderModel,
-    | "aliases"
-    | "api_endpoints"
-    | "capabilities"
-    | "model_id"
-    | "name"
-    | "price_facts"
-    | "pricing_state"
-    | "status"
-    | "tasks"
-    | "uid"
-    | "version"
-  >[];
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
+import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
 type Direction = "input" | "output";
 type SourcePriceKind = Direction | "cached_input";
@@ -1332,7 +1304,7 @@ function catalogDiscountPolicy(models: readonly ProviderModel[]): DiscountPolicy
   };
 }
 
-export function parseMistralPricing(input: Input): ProviderModel[] {
+export function parseMistralPricing(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "mistral-pricing")
     throw new Error("Wrong Mistral pricing extractor");
   if (input.catalogModels === undefined) throw new Error("Mistral pricing requires the catalog");
@@ -1424,7 +1396,7 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     if (policy !== undefined)
       applyMistralPricingPolicy(model, policy, input.onPricingReconciliation);
   }
-  extractMistralCommercialFacts(
+  const commercialFacts = extractMistralCommercialFacts(
     {
       models,
       sourceId: input.source.id,
@@ -1443,18 +1415,16 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     ),
     ...(policy?.inputs ?? []),
   ];
-  const carrier = [...models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return models
-    .filter(
-      ({ pricing_state, price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
-        pricing_state !== "unknown" ||
-        price_facts.length > 0 ||
-        raw_price_facts.length > 0 ||
-        (commercial_facts?.length ?? 0) > 0 ||
-        (pricing_inputs?.length ?? 0) > 0,
-    )
-    .sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: models
+      .filter(
+        ({ pricing_state, price_facts, raw_price_facts }) =>
+          pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
+      )
+      .sort((left, right) => left.uid.localeCompare(right.uid)),
+    commercial_facts: commercialFacts,
+    pricing_inputs: pricingInputs,
+  };
 }
 
 function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelTask[] {

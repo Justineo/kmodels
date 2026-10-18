@@ -92,9 +92,15 @@ components:
         connector_tokens:
           type: integer
         connectors:
-          type: object
+          anyOf:
+            - type: object
+              additionalProperties:
+                type: integer
+            - type: "null"
     ConversationResponse:
       properties:
+        outputs:
+          type: array
         usage:
           $ref: "#/components/schemas/ConversationUsageInfo"
     OCRResponse:
@@ -149,6 +155,15 @@ components:
       properties:
         usage:
           $ref: "#/components/schemas/UsageInfo"
+    ChatCompletionResponseBase:
+      allOf:
+        - $ref: "#/components/schemas/ResponseBase"
+    ChatCompletionResponse:
+      allOf:
+        - $ref: "#/components/schemas/ChatCompletionResponseBase"
+    FIMCompletionResponse:
+      allOf:
+        - $ref: "#/components/schemas/ChatCompletionResponse"
     EmbeddingResponse:
       allOf:
         - $ref: "#/components/schemas/ResponseBase"

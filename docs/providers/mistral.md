@@ -181,9 +181,22 @@ locators remain; the caller must supply any unmapped required signal. The semant
 `accounting_binding_unavailable:*` or `charge_binding_unavailable` compatibility terms. Unknown
 model fields, unrelated OpenAPI operations, plan pages, weight metadata, and account billing changes
 are outside the collector's reviewed input and cannot reject the provider.
-Pricing-input carriers survive the final pricing-overlay filter even when their own model has no
-central-page price. Accounting belongs to the complete provider input bundle; the lexical carrier's
-price coverage must not determine whether another model retains its usage mappings.
+
+Accounting follows the actual owning request or response through direct properties, local schema
+references and compositions. The common synchronous completion contract requires both Chat and FIM
+response owners; streaming uses the completion chunk. An unrelated reference to the same usage type
+cannot establish a field. Tokens, pages and connector calls require integer counters; elapsed seconds
+accept numeric counters. Speech input requires a string. Connector maps require an explicit integer
+value schema, rather than merely an object or unrestricted dictionary. Image counting requires the
+returned output array and its documented completed-image contract; it does not depend on unrelated
+usage counters. Native indented and indentless YAML lists are supported. Nullable types and additive
+siblings retain established fields; duplicates, wrong types, unknown union alternatives and cycles
+withhold dependent locators. Duplicate companion documents are likewise isolated to their dependents.
+
+The pricing overlay returns service facts and accounting inputs independently of model observations.
+Its model results contain actual model pricing facts; an unpriced lexical model is not an input or
+service carrier. A service-only source can be captured and replayed with no model rows. Accounting
+and source-owned service prices survive independently of central-page model coverage.
 
 Two published rates intentionally remain semantic-only. Batch output is a downloaded JSONL file,
 but the public Batch guide and OpenAPI do not define a stable per-result usage envelope, so Batch

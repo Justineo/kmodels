@@ -95,8 +95,10 @@ Recognized charge bindings and supplemental allowance/contribution terms reuse t
 quantity, term and evidence contracts in compilation input. Scoped source states use the same
 conditions and provenance as source rates. Compilation capture and replay check all native source
 references, including charge-binding observations; assembly checks supplemental term identity and
-source ownership. Assembly does not recover executable numbers or states from raw prose or marker
-keys. This adds no second public pricing resource.
+source ownership. Migrated source rules reach assembly as typed contracts; their raw prose and marker
+keys do not select executable numbers or states. Kimi Batch applicability and Bedrock service
+normalization still use provider-specific legacy evidence adapters internally. These internal
+representations add no second public pricing resource.
 If retaining prices also requires rolling back the provider's catalog core, collection keeps the
 previous compilation input with that core, or omits the replay entry when no prior input exists.
 Rejected fresh input must not be rebound to the rolled-back source records.
