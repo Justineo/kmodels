@@ -26,6 +26,15 @@ The checked-in export pack must include these endpoints. After a projection chan
 
 The calculation envelope has its own `schemaVersion` and the canonical pair identity. It preserves vocabulary, models and explicit dispositions, source hashes, provider freshness, books/offers/terms/variants, bindings, applicability, validity, relations, enrollment/settlement context, raw reasons, and evidence locators. It omits bulky observation fragments. The canonical `/pricing/index.json` remains the audit resource and cannot initialize the npm package directly.
 
+Provider `sources` reports the source revisions captured with the price snapshot, including when
+that snapshot is retained while the catalog advances. For a legacy snapshot without captured
+revisions, only catalog records with the same observation time can establish that metadata.
+Every evidence source must resolve; unavailable historical metadata rejects the export with its
+source ID. Recover verified records from the corresponding accepted catalog transaction before
+publication, rather than substituting a newer source hash or weakening reference closure.
+The portable snapshot keeps its existing freshness shape; the canonical snapshot's captured
+records are projected into `sources`, without changing calculation schema `1.0`.
+
 Consumers may combine whole providers only from the same source pair. They must preserve all potentially applicable terms; rate/offer filtering can turn a partial cost into a falsely complete one. No export is bundled into npm. Price refreshes within schema `1.0` are independent of npm releases. Unknown versions fail explicitly.
 
 Coverage distinguishes normalized price availability, semantic charge bindings, complete acquisition alternatives, selectors without acquisition, unsupported raw reasons, and nonnumeric states. An operation array with no values means the term does not publish an operation predicate; it does not mean every operation is supported. Counts are diagnostic facts, not a claim that all request components can be calculated. The [18-provider audit](pricing-audit.md) records the reviewed mechanisms and outstanding evidence limits.

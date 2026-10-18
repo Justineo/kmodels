@@ -27,6 +27,7 @@ import {
   type AcceptedPairSafetyFinding,
 } from "./pricing-pair-transition.ts";
 import type { ProviderPricingPartition } from "./pricing-assembly.ts";
+import { capturePricingSourceRecords } from "./pricing-source-records.ts";
 import {
   commitCatalogPair,
   prepareCatalogPairInParallel,
@@ -1164,6 +1165,7 @@ export async function collectProvider(
         manifest.pricingCategoricalLabels,
       );
       if (pricing !== undefined) {
+        pricing = capturePricingSourceRecords(pricing, [...sourceById.values()]);
         validateProviderPricing(pricing, provider, models, [...sourceById.values()]);
       }
     } catch (error) {
@@ -1240,6 +1242,7 @@ export async function collectProvider(
           manifest.pricingCategoricalLabels,
         );
         if (pricing !== undefined) {
+          pricing = capturePricingSourceRecords(pricing, [...sourceById.values()]);
           validateProviderPricing(
             pricing,
             providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),

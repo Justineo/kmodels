@@ -4,6 +4,9 @@ import {
   calculationExportAssets,
 } from "../src/catalog/pricing-calculator-export.ts";
 import { calculationCoverage } from "../src/catalog/pricing-calculation-coverage.ts";
+import { providerPricingFreshnessSchema } from "../src/catalog/pricing-schema.ts";
+import { capturePricingSourceRecords } from "../src/catalog/pricing-source-records.ts";
+import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import {
   validatePriceData,
   type CalculationEnvelope,
@@ -33,7 +36,11 @@ describe("calculation exports", () => {
       );
       const provider = envelope.providers[0];
       if (provider === undefined) throw new Error("Missing exported provider");
-      expect(provider.snapshot).toEqual(snapshot);
+      const { source_records: _sourceRecords, ...freshness } = snapshot;
+      expect(provider.snapshot).toEqual(providerPricingFreshnessSchema.parse(freshness));
+      if (snapshot.source_records !== undefined)
+        expect(provider.sources).toEqual(snapshot.source_records);
+      for (const source of provider.sources) expect(source.observed_at).toBe(snapshot.observed_at);
       const canonicalBooks = pricing.data.books.filter(
         (book) => book.provider_id === snapshot.provider_id,
       );
@@ -45,6 +52,65 @@ describe("calculation exports", () => {
       expectCoverageMatchesTerms(envelope, canonicalBooks);
       expectObservationFragmentsOmitted(envelope);
     }
+  }, 90_000);
+  it("exports captured historical revisions without changing prices or the portable snapshot shape", async () => {
+    const { catalog, pricing } = await generatedData();
+    const snapshot = pricing.data.provider_snapshots[0];
+    if (snapshot === undefined) throw new Error("Missing price snapshot");
+    const owners = new Map(catalog.models.map(({ uid, provider_id }) => [uid, provider_id]));
+    const partition = providerPartition(pricing.data, snapshot.provider_id, (ref) => {
+      const owner = owners.get(ref);
+      if (owner === undefined) throw new Error(`Missing model ${ref}`);
+      return owner;
+    });
+    if (partition === undefined) throw new Error("Missing price partition");
+    const historical = "2026-07-28T00:00:00.000Z";
+    const captured = capturePricingSourceRecords(
+      {
+        ...partition,
+        snapshot: {
+          provider_id: snapshot.provider_id,
+          observed_at: historical,
+          publication: "fresh",
+        },
+      },
+      catalog.sources.map((source) => ({
+        ...source,
+        observed_at: historical,
+        content_hash: "a".repeat(64),
+        extractor_version: "historical-v1",
+      })),
+    );
+    const exported = validatePriceData(
+      calculationExport(
+        catalog,
+        {
+          ...pricing,
+          data: {
+            ...pricing.data,
+            provider_snapshots: pricing.data.provider_snapshots.map((value) =>
+              value.provider_id === snapshot.provider_id
+                ? {
+                    ...captured.snapshot,
+                    publication: "retained",
+                    refresh_failure: {
+                      attempted_at: catalog.generated_at,
+                      code: "source_unavailable",
+                    },
+                  }
+                : value,
+            ),
+          },
+        },
+        [snapshot.provider_id],
+      ),
+    ).providers[0];
+    const baseline = calculationExport(catalog, pricing, [snapshot.provider_id]).providers[0];
+    expect(exported?.sources).toEqual(captured.snapshot.source_records);
+    expect(exported?.snapshot).not.toHaveProperty("source_records");
+    expect(exported?.snapshot).toMatchObject({ publication: "retained", observed_at: historical });
+    expect(exported?.books).toEqual(baseline?.books);
+    expect(exported?.models).toEqual(baseline?.models);
   }, 90_000);
   it("rejects empty, duplicated and unknown provider selections", async () => {
     const { catalog, pricing } = await generatedData();

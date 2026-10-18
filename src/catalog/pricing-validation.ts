@@ -49,6 +49,7 @@ import {
   type UsageSignal,
 } from "./pricing-schema.ts";
 import { publishedValiditiesOverlap, publishedValidityIsCoherent } from "./pricing-time.ts";
+import { validatePricingSourceRecords } from "./pricing-source-records.ts";
 import type { Catalog } from "./schema.ts";
 
 export type PricingValidationCore = Pick<Catalog, "models" | "providers" | "sources">;
@@ -113,12 +114,16 @@ function validatePricingCatalogProviders(
     const dispositions = data.model_dispositions.filter(
       ({ model_ref }) => ownedModel(coreIndex, model_ref).provider_id === providerId,
     );
+    validatePricingSourceRecords(
+      { vocabulary, snapshot, books, model_dispositions: dispositions },
+      coreIndex.sources,
+    );
     if (books.length > pricingLimits.booksPerProvider)
       fail(providerId, "book count exceeds provider limit");
     books.forEach((book) => validateBook(book, context, ids));
     validateProviderLinks(context);
     dispositions.forEach((disposition) => validateDisposition(disposition, context));
-    validateProviderTotals(books, dispositions, snapshot.observed_at, context);
+    validateProviderTotals(books, dispositions, snapshot, context);
   }
 }
 
@@ -187,8 +192,7 @@ function validatePricingCatalogSize(data: PricingCatalog): void {
 
 function conservativeSnapshot(snapshot: PricingCatalog["provider_snapshots"][number]) {
   return {
-    provider_id: snapshot.provider_id,
-    observed_at: snapshot.observed_at,
+    ...snapshot,
     publication: "retained" as const,
     refresh_failure: {
       attempted_at:
@@ -1386,7 +1390,7 @@ function validateTermRelationPairs<T extends { applicability: PriceApplicability
 function validateProviderTotals(
   books: PricingBook[],
   dispositions: ModelPricingDisposition[],
-  observedAt: string,
+  snapshot: PricingCatalog["provider_snapshots"][number],
   context: ProviderValidation,
 ): void {
   if (context.counts.offers > pricingLimits.offersPerProvider)
@@ -1407,15 +1411,7 @@ function validateProviderTotals(
   }
   const partition = {
     provider_vocabulary: context.vocabulary,
-    provider_snapshot: {
-      provider_id: context.providerId,
-      observed_at: observedAt,
-      publication: "retained",
-      refresh_failure: {
-        attempted_at: observedAt,
-        code: "pricing_validation_failed",
-      },
-    },
+    provider_snapshot: conservativeSnapshot(snapshot),
     model_dispositions: dispositions,
     books,
   };

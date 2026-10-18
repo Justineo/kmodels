@@ -15,7 +15,7 @@ import {
   priceStateVariantSchema,
   pricingBookSchema,
   pricingOfferSchema,
-  providerPricingSnapshotSchema,
+  providerPricingFreshnessSchema,
   providerPricingVocabularySchema,
   rationalSchema,
   settlementVariantSchema,
@@ -107,7 +107,7 @@ export const calculationBookSchema = pricingBookSchema
     ),
   });
 export const calculationProviderSchema = z.strictObject({
-  snapshot: providerPricingSnapshotSchema,
+  snapshot: providerPricingFreshnessSchema,
   vocabulary: providerPricingVocabularySchema,
   models: z.array(
     z.strictObject({

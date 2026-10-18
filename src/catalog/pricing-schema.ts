@@ -714,7 +714,7 @@ const pricingRefreshFailureSchema = z.strictObject({
   code: z.enum(pricingRefreshFailureCodes),
 });
 
-export const providerPricingSnapshotSchema = z.discriminatedUnion("publication", [
+export const providerPricingFreshnessSchema = z.discriminatedUnion("publication", [
   z.strictObject({
     ...providerPricingSnapshotBase,
     publication: z.literal("fresh"),
@@ -724,6 +724,20 @@ export const providerPricingSnapshotSchema = z.discriminatedUnion("publication",
     publication: z.literal("retained"),
     refresh_failure: pricingRefreshFailureSchema,
   }),
+]);
+
+export const pricingSourceRecordSchema = z.strictObject({
+  id: nonEmptyString,
+  url: z.url(),
+  observed_at: providerPricingSnapshotBase.observed_at,
+  content_hash: hash,
+  extractor_version: nonEmptyString,
+});
+
+const pricingSnapshotSources = { source_records: z.array(pricingSourceRecordSchema).optional() };
+export const providerPricingSnapshotSchema = z.discriminatedUnion("publication", [
+  providerPricingFreshnessSchema.options[0].extend(pricingSnapshotSources),
+  providerPricingFreshnessSchema.options[1].extend(pricingSnapshotSources),
 ]);
 
 export const modelPricingDispositionSchema = z.strictObject({
@@ -785,6 +799,7 @@ export type PricingScope = z.infer<typeof pricingScopeSchema>;
 export type PricingTerm = z.infer<typeof pricingTermSchema>;
 export type ProviderAtomRegistryEntry = z.infer<typeof providerAtomRegistryEntrySchema>;
 export type ProviderPricingSnapshot = z.infer<typeof providerPricingSnapshotSchema>;
+export type PricingSourceRecord = z.infer<typeof pricingSourceRecordSchema>;
 export type PricingRefreshFailure = z.infer<typeof pricingRefreshFailureSchema>;
 export type PricingRefreshFailureCode = PricingRefreshFailure["code"];
 export type ProviderPricingVocabulary = z.infer<typeof providerPricingVocabularySchema>;

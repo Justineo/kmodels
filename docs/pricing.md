@@ -343,6 +343,17 @@ provider-partition-wide and non-commercial: it does not claim that a particular
 model failed validation. A successful refresh clears the failure, and Git
 history—not the public schema—retains older attempts.
 
+A newly collected price snapshot also captures `source_records`: the sorted, complete set of
+source IDs cited by its evidence, with their URL, observation time, content hash and extractor
+version. Every record comes from that price collection transaction. Retention and offline replay
+preserve these revisions even when the bound catalog advances independently. Catalog source IDs
+still establish provider ownership; the latest catalog source metadata does not establish the
+revision used by an older price observation. Historical snapshots may lack captured records. Only
+a catalog record from the same observation can supply missing revision metadata; a later record
+cannot. Canonical evidence references remain available when historical version metadata is
+unavailable, but calculation export requires complete source records. Verified historical records
+may be recovered from the corresponding accepted catalog transaction without restamping prices.
+
 All model and source references are opaque identities from the bound catalog.
 Books, observations, and dispositions may reference only records owned by the
 same provider. Cross-provider price books are not supported.

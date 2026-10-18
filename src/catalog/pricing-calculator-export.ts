@@ -12,6 +12,7 @@ import type {
 } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { calculationCoverage } from "./pricing-calculation-coverage.ts";
+import { snapshotSourceRecords } from "./pricing-source-records.ts";
 import { validatePriceData } from "../pricing/validation.ts";
 
 export function calculationExport(
@@ -67,9 +68,9 @@ function exportProvider(
     (vocabulary) => vocabulary.provider_id === providerId,
   );
   if (vocabulary === undefined) throw new Error("Provider vocabulary is missing");
-  const books = pricing.data.books
-    .filter((book) => book.provider_id === providerId)
-    .map(exportBook);
+  const books = pricing.data.books.filter((book) => book.provider_id === providerId);
+  const models = catalog.models.filter((model) => model.provider_id === providerId);
+  const modelRefs = new Set(models.map(({ uid }) => uid));
   const modelsWithOffers = new Set<string>();
   for (const book of books) {
     for (const offer of book.offers) {
@@ -78,24 +79,36 @@ function exportProvider(
     }
   }
   return {
-    snapshot,
+    snapshot:
+      snapshot.publication === "fresh"
+        ? {
+            provider_id: snapshot.provider_id,
+            observed_at: snapshot.observed_at,
+            publication: snapshot.publication,
+          }
+        : {
+            provider_id: snapshot.provider_id,
+            observed_at: snapshot.observed_at,
+            publication: snapshot.publication,
+            refresh_failure: snapshot.refresh_failure,
+          },
     vocabulary,
-    books,
-    models: catalog.models
-      .filter((model) => model.provider_id === providerId)
-      .map((model) => ({
-        model_ref: model.uid,
-        disposition: modelDisposition(model.uid, modelsWithOffers, notApplicableModels),
-      })),
-    sources: catalog.sources
-      .filter((source) => source.provider_id === providerId)
-      .map(({ id, url, observed_at, content_hash, extractor_version }) => ({
-        id,
-        url,
-        observed_at,
-        content_hash,
-        extractor_version,
-      })),
+    books: books.map(exportBook),
+    models: models.map((model) => ({
+      model_ref: model.uid,
+      disposition: modelDisposition(model.uid, modelsWithOffers, notApplicableModels),
+    })),
+    sources: snapshotSourceRecords(
+      {
+        snapshot,
+        vocabulary,
+        books,
+        model_dispositions: pricing.data.model_dispositions.filter(({ model_ref }) =>
+          modelRefs.has(model_ref),
+        ),
+      },
+      catalog.sources,
+    ),
   };
 }
 

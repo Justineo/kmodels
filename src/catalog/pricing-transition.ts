@@ -117,6 +117,10 @@ export function providerPartitionSourceRefs(partition: ProviderPricingPartition)
           variant.observations.forEach(addObservation);
           if ("charge_binding" in variant)
             variant.charge_binding?.observations.forEach(addObservation);
+          if ("selector_sources" in variant)
+            variant.selector_sources?.forEach(({ observations }) =>
+              observations.forEach(addObservation),
+            );
           if ("charge_bindings" in variant)
             variant.charge_bindings.forEach(({ observations }) =>
               observations.forEach(addObservation),

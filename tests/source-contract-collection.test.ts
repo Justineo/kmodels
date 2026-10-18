@@ -166,6 +166,15 @@ describe("source contract collection", () => {
         if (impact === "claim") {
           expect(result.pricingFailure).toBeUndefined();
           expect(result.pricing).toBeDefined();
+          expect(result.pricing?.snapshot.source_records).toEqual([
+            {
+              id: source.id,
+              url: source.url,
+              observed_at: observedAt,
+              content_hash: "1".repeat(64),
+              extractor_version: source.extractorVersion,
+            },
+          ]);
         } else {
           expect(result.pricingFailure).toBe("source_unavailable");
           expect(result.pricing).toBeUndefined();

@@ -483,6 +483,15 @@ function replaySources(
     if (configured.extractorVersion !== source.extractor_version)
       throw new Error(`Pricing replay source ${source.source_id} uses a stale extractor`);
     const catalogSource = catalogSources.get(source.source_id);
+    const capturedSource = snapshot.source_records?.find(({ id }) => id === source.source_id);
+    if (
+      capturedSource !== undefined &&
+      (capturedSource.content_hash !== source.content_hash ||
+        capturedSource.extractor_version !== source.extractor_version)
+    )
+      throw new Error(
+        `Pricing replay source ${source.source_id} does not match the price snapshot`,
+      );
     const facts = sourcePricingFacts(source.models, source);
     const hasClaims =
       (facts.commercial_facts?.length ?? 0) > 0 ||

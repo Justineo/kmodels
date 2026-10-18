@@ -18,6 +18,7 @@ import {
   type PricingReplaySource,
 } from "../src/catalog/pricing-compilation.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { capturePricingSourceRecords } from "../src/catalog/pricing-source-records.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
 import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
 import type { PricingCatalog, ProviderAtomRegistryEntry } from "../src/catalog/pricing-schema.ts";
@@ -156,7 +157,7 @@ function candidate(price: string) {
   if (partition === undefined) throw new Error("Test pricing partition was not assembled");
   const pricing: PricingCatalog = {
     provider_vocabularies: [partition.vocabulary],
-    provider_snapshots: [partition.snapshot],
+    provider_snapshots: [capturePricingSourceRecords(partition, [sourceRecord()]).snapshot],
     model_dispositions: partition.model_dispositions,
     books: partition.books,
   };
@@ -576,6 +577,9 @@ describe("local canonical pricing compilation", () => {
 
     expect(compiled.replayedProviders).toEqual([providerId]);
     expect(compiled.preservedProviders).toEqual([]);
+    expect(compiled.candidate.pricing.data.provider_snapshots).toEqual(
+      current.pricing.data.provider_snapshots,
+    );
     expect(compiled.candidate.pricing.pricing_data_version).not.toBe(
       current.pricing.pricing_data_version,
     );
@@ -584,6 +588,44 @@ describe("local canonical pricing compilation", () => {
       numerator: "1",
       denominator: "500000",
     });
+  });
+
+  it("replays retained source revisions against a newer catalog without rebinding their hashes", async () => {
+    const original = candidate("1");
+    const attemptedAt = "2026-07-31T00:00:00.000Z";
+    const current = prepareCatalogPair(
+      {
+        ...original.catalog,
+        generated_at: attemptedAt,
+        sources: original.catalog.sources.map((source) => ({
+          ...source,
+          observed_at: attemptedAt,
+          content_hash: "4".repeat(64),
+        })),
+      },
+      {
+        ...original.pricing.data,
+        provider_snapshots: original.pricing.data.provider_snapshots.map((snapshot) => ({
+          ...snapshot,
+          publication: "retained",
+          refresh_failure: { attempted_at: attemptedAt, code: "source_unavailable" },
+        })),
+      },
+    );
+    const replay = replaySource("1");
+    const input = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replay] },
+    ]);
+    const compiled = await compilePricingSnapshot(current, input, [providerManifest]);
+    expect(compiled.replayedProviders).toEqual([providerId]);
+    expect(compiled.candidate.pricing.data.provider_snapshots).toEqual(
+      current.pricing.data.provider_snapshots,
+    );
+    for (const provider of input.providers)
+      for (const source of provider.sources) source.content_hash = "4".repeat(64);
+    await expect(compilePricingSnapshot(current, input, [providerManifest])).rejects.toThrow(
+      "does not match the price snapshot",
+    );
   });
 
   it("preserves a provider partition without replay input", async () => {
