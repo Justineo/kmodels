@@ -379,6 +379,10 @@ Status: implemented
   Kimi OpenAPI and pricing likewise return independent acquisition contracts and services.
   Batch bindings retain the native regional guide's positive model scope and source provenance;
   a missing regional input cannot borrow another source's acquisition evidence.
+  Bedrock returns independent services, inputs and vocabulary. Native Price List service rates use
+  canonical rate terms; Nova Grounding already has exact source-owned model relationships. Typed
+  rate terms share canonical conflict handling and source/identity checks. Old extractor versions
+  preserve their accepted partitions rather than reinterpreting legacy raw service payloads.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

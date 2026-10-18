@@ -5,6 +5,7 @@ import {
   chargeBindingSchema,
   priceAllowanceTermSchema,
   priceContributionTermSchema,
+  priceRateTermSchema,
   priceStateVariantSchema,
   providerAtomRegistryEntrySchema,
   rawPriceFactSchema,
@@ -231,7 +232,9 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
   price_facts: z.array(sourcePriceFactSchema),
   raw_price_facts: z.array(sourceRawPricingFactSchema),
   state_facts: z.array(sourcePriceStateFactSchema).optional(),
-  terms: z.array(z.union([priceAllowanceTermSchema, priceContributionTermSchema])).optional(),
+  terms: z
+    .array(z.union([priceRateTermSchema, priceAllowanceTermSchema, priceContributionTermSchema]))
+    .optional(),
 });
 
 export const sourcePricingInputFactSchema = z.strictObject({
@@ -337,6 +340,14 @@ export function commercialFactSourceRefs(fact: SourceCommercialPricingFact): str
               observations.map(({ source_ref }) => source_ref),
             ),
           )
+        : []),
+      ...(term.kind === "rate"
+        ? term.variants.flatMap(({ charge_binding, selector_sources }) => [
+            ...(charge_binding?.observations ?? []).map(({ source_ref }) => source_ref),
+            ...(selector_sources ?? []).flatMap(({ observations }) =>
+              observations.map(({ source_ref }) => source_ref),
+            ),
+          ])
         : []),
     ]),
   ];

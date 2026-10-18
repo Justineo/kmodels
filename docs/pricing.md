@@ -91,15 +91,17 @@ model-carried facts in existing inputs. Services and accounting contracts can su
 model carrier. Source records used by the compilation input retain their exact hash and extractor
 binding even when no current rate consumes one of their observations. Recognized vocabulary is
 typed data; raw fragments provide evidence and never select an executable policy.
-Recognized charge bindings and supplemental allowance/contribution terms reuse the existing canonical
+Recognized charge bindings and source rate/allowance/contribution terms reuse the existing canonical
 quantity, term and evidence contracts in compilation input. Scoped source states use the same
 conditions and provenance as source rates. Compilation capture and replay check all native source
-references, including charge-binding observations; assembly checks supplemental term identity and
+references, including binding and selector observations; assembly checks source term identity and
 source ownership. Migrated source rules reach assembly as typed contracts; their raw prose and marker
 keys do not select executable numbers or states. Kimi Batch acquisition bindings are admitted by
-the owning regional source; raw applicability annotations cannot change them. Bedrock service
-normalization still uses a provider-specific legacy evidence adapter internally. These internal
-representations add no second public pricing resource.
+the owning regional source; raw applicability annotations cannot change them. Bedrock service rates,
+units, quantities and Nova Grounding ownership likewise come from native source facts. Canonical
+source rate terms retain their exact provider units/meters, scoped numeric states and binding
+provenance. Unknown raw service evidence is never converted back into executable prices. These
+internal representations add no second public pricing resource.
 If retaining prices also requires rolling back the provider's catalog core, collection keeps the
 previous compilation input with that core, or omits the replay entry when no prior input exists.
 Rejected fresh input must not be rebound to the rolled-back source records.

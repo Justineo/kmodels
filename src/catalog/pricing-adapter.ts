@@ -567,8 +567,39 @@ function addSourceTerm(
   const existing = offer.terms.get(term.term_key);
   if (existing !== undefined && existing.kind !== term.kind)
     throw new Error(`Pricing term ${term.term_key} changed kind`);
-  let target: AtomicAllowanceTerm | AtomicContributionTerm;
-  if (term.kind === "allowance") {
+  let target: AtomicRateTerm | AtomicAllowanceTerm | AtomicContributionTerm;
+  if (term.kind === "rate") {
+    if (existing?.kind === "rate" && canonicalJson(existing.meter) !== canonicalJson(term.meter))
+      throw new Error(`Pricing term ${term.term_key} changed meter`);
+    const rate: AtomicRateTerm =
+      existing?.kind === "rate"
+        ? existing
+        : {
+            term_key: term.term_key,
+            kind: "rate",
+            meter: term.meter,
+            variants: [],
+            raw_variants: [],
+            source_refs: [],
+          };
+    const variants = atomicNormalizedVariants(term.variants).map(
+      ({ charge_binding, selector_sources, ...variant }) => ({
+        ...variant,
+        ...(charge_binding === undefined ? {} : { charge_binding }),
+        ...(selector_sources === undefined ? {} : { selector_sources }),
+      }),
+    );
+    rate.variants.push(...variants);
+    offer.states.push(
+      ...variants.map(({ applicability, validity, observation }) => ({
+        state: "numeric" as const,
+        applicability,
+        ...(validity === undefined ? {} : { validity }),
+        observation,
+      })),
+    );
+    target = rate;
+  } else if (term.kind === "allowance") {
     const allowance: AtomicAllowanceTerm =
       existing?.kind === "allowance"
         ? existing
