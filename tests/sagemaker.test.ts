@@ -94,7 +94,7 @@ function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) 
     body,
     observedAt,
     onPricingReconciliation: (item) => items.push(item),
-  });
+  }).models;
   const open = models.find(
     ({ model_id }) => model_id === "meta-textgeneration-llama-3-1-8b-instruct",
   );
@@ -132,7 +132,7 @@ describe("SageMaker foundation catalog", () => {
       source: source("sagemaker-models"),
       body: catalog,
       observedAt,
-    });
+    }).models;
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "meta-textgeneration-llama-3-1-8b-instruct",
       "fixture-forecast",
@@ -704,7 +704,7 @@ describe("SageMaker public-hub projection", () => {
       source: source("sagemaker-api-us-west-2"),
       body,
       observedAt,
-    });
+    }).models;
     expect(models).toHaveLength(1);
     expect(models[0]).toMatchObject({
       model_id: "fixture-speech",
@@ -715,13 +715,14 @@ describe("SageMaker public-hub projection", () => {
       description: "Published speech model",
       model_card: { publisher: "Publisher", license: "MIT", context_window: "<4K" },
     });
-    expect(() =>
-      parseSource({
-        provider,
-        source: source("sagemaker-api-us-west-2"),
-        body: body.replace("us-west-2", "us-east-1"),
-        observedAt,
-      }),
+    expect(
+      () =>
+        parseSource({
+          provider,
+          source: source("sagemaker-api-us-west-2"),
+          body: body.replace("us-west-2", "us-east-1"),
+          observedAt,
+        }).models,
     ).toThrow("changed region");
   });
 

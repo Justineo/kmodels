@@ -86,8 +86,18 @@ it("loads completed refresh evidence before selecting repair work", async () => 
     agent.indexOf("Check whether repair work is needed"),
   );
   expect(agent).toContain("id: repair_context");
+  expect(agent).toContain('KMODELS_PERIODIC_REVIEW: "true"');
   expect(agent).toContain('scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"');
   expect(agent).toContain("REPAIR_REQUIRED: ${{ steps.repair_context.outputs.repairable }}");
+});
+
+it("requires evidence for healthy scheduled reviews and does not force a fabricated patch", async () => {
+  const markdown = await readFile(source, "utf8");
+  expect(markdown).toContain("## Scheduled comprehensive review");
+  expect(markdown).toContain("scheduled_provider_review");
+  expect(markdown).toContain("scheduled_architecture_review");
+  expect(markdown).toContain("check-no-defect");
+  expect(markdown).not.toContain("a successful outcome requires a nonempty validated code");
 });
 
 it("reserves execution time for validation retries and skips outcome capture after engine failure", async () => {

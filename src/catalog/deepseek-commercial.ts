@@ -22,13 +22,10 @@ import {
 import type {
   ChargeBinding,
   PriceMeter,
-  ProviderAtomRegistryEntry,
-  ProviderPricingVocabulary,
   PublishedValidity,
   UsageSignal,
 } from "./pricing-schema.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
-import { deepseekHolidayBillingRule, deepseekWeekendOffPeakEffectiveAt } from "./deepseek.ts";
 
 export function applyDeepseekCommercialTopology(
   input: AtomicProviderPricing,
@@ -37,21 +34,8 @@ export function applyDeepseekCommercialTopology(
 ): AtomicProviderPricing {
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
   const inputIndex = indexPricingInputs(pricingInputs);
-  const holidayRule = input.books.some(({ offers }) =>
-    offers.some(({ terms }) =>
-      terms.some(
-        (term) =>
-          term.kind === "raw" &&
-          term.term_key === "billing_period_rule" &&
-          term.variants.some(
-            ({ observation }) => observation.raw.fragment === deepseekHolidayBillingRule,
-          ),
-      ),
-    ),
-  );
   return {
     ...input,
-    vocabulary: deepseekVocabulary(input.vocabulary, input.observed_at, holidayRule),
     books: input.books.flatMap((book) =>
       book.scope.kind === "models"
         ? [
@@ -62,72 +46,6 @@ export function applyDeepseekCommercialTopology(
         : [],
     ),
   };
-}
-
-function deepseekVocabulary(
-  vocabulary: ProviderPricingVocabulary,
-  observedAt: string,
-  holidayRule: boolean,
-): ProviderPricingVocabulary {
-  return {
-    ...vocabulary,
-    atoms: vocabulary.atoms.map((atom) => deepseekAtom(atom, observedAt, holidayRule)),
-  };
-}
-
-function deepseekAtom(
-  atom: ProviderAtomRegistryEntry,
-  observedAt: string,
-  holidayRule: boolean,
-): ProviderAtomRegistryEntry {
-  if (
-    atom.kind !== "categorical_value" ||
-    atom.dimension.namespace !== "kmodels" ||
-    atom.dimension.value !== "billing_period"
-  )
-    return atom;
-  if (holidayRule && (atom.key === "peak" || atom.key === "off_peak")) {
-    const { schedule: _schedule, ...categorical } = atom;
-    return {
-      ...categorical,
-      label: atom.key === "peak" ? "Peak" : "Off-peak",
-      definition: `${atom.key === "peak" ? "Peak" : "Off-peak"} billing period. ${deepseekHolidayBillingRule} The caller supplies the applicable billing period.`,
-    };
-  }
-  const weekendsAreOffPeak = observedAt >= deepseekWeekendOffPeakEffectiveAt;
-  if (atom.key === "peak")
-    return {
-      ...atom,
-      label: "Peak",
-      schedule: weekendsAreOffPeak
-        ? {
-            kind: "weekly_time_windows",
-            time_zone: "UTC",
-            days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-            windows: [
-              { from: "01:00", until: "04:00" },
-              { from: "06:00", until: "10:00" },
-            ],
-          }
-        : {
-            kind: "daily_time_windows",
-            time_zone: "UTC",
-            windows: [
-              { from: "01:00", until: "04:00" },
-              { from: "06:00", until: "10:00" },
-            ],
-          },
-    };
-  if (atom.key === "off_peak")
-    return {
-      ...atom,
-      label: "Off-peak",
-      schedule: {
-        kind: weekendsAreOffPeak ? "weekly_time_remainder" : "daily_time_remainder",
-        time_zone: "UTC",
-      },
-    };
-  return atom;
 }
 
 function modelBook(

@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { canonicalJson } from "./canonical-value.ts";
+import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
   priceSourceLocatorSchema,
+  chargeBindingSchema,
+  priceAllowanceTermSchema,
+  providerAtomRegistryEntrySchema,
   rawPriceFactSchema,
   rawPricingReasonSchema,
   usageInputLocatorSchema,
@@ -162,6 +165,7 @@ export const sourcePriceFactSchema = z
     conditions: sourcePriceConditionsSchema,
     source_ref: z.string().min(1),
     source_locator: priceSourceLocatorSchema.optional(),
+    charge_binding: chargeBindingSchema.optional(),
     derived: z.boolean(),
     derivation: z.string().optional(),
     raw_price: z.string().optional(),
@@ -216,6 +220,7 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
   ]),
   price_facts: z.array(sourcePriceFactSchema),
   raw_price_facts: z.array(sourceRawPricingFactSchema),
+  allowance_terms: z.array(priceAllowanceTermSchema).optional(),
 });
 
 export const sourcePricingInputFactSchema = z.strictObject({
@@ -228,6 +233,35 @@ export const sourcePricingInputFactSchema = z.strictObject({
   availability: usageInputSourceSchema.shape.availability,
   source_ref: z.string().min(1),
 });
+
+export const sourcePricingFactsSchema = z.strictObject({
+  commercial_facts: z.array(sourceCommercialPricingFactSchema).optional(),
+  pricing_inputs: z.array(sourcePricingInputFactSchema).optional(),
+  vocabulary: z.array(providerAtomRegistryEntrySchema).optional(),
+});
+export type SourcePricingFacts = z.infer<typeof sourcePricingFactsSchema>;
+
+// Also reads model-carried facts from existing compilation inputs while providers migrate.
+export function sourcePricingFacts(
+  models: readonly ParsedPricingModel[],
+  facts: SourcePricingFacts = {},
+): SourcePricingFacts {
+  const commercial = uniqueCanonicalValues([
+    ...(facts.commercial_facts ?? []),
+    ...models.flatMap((model) => model.commercial_facts ?? []),
+  ]);
+  const inputs = uniqueCanonicalValues([
+    ...(facts.pricing_inputs ?? []),
+    ...models.flatMap((model) => model.pricing_inputs ?? []),
+  ]);
+  return {
+    ...(commercial.length === 0 ? {} : { commercial_facts: commercial }),
+    ...(inputs.length === 0 ? {} : { pricing_inputs: inputs }),
+    ...(facts.vocabulary === undefined || facts.vocabulary.length === 0
+      ? {}
+      : { vocabulary: uniqueCanonicalValues(facts.vocabulary) }),
+  };
+}
 
 export const parsedPricingStateSchema = z.enum([
   "numeric",
@@ -271,6 +305,23 @@ export type ParsedProviderModel = ProviderModel & {
   commercial_facts?: SourceCommercialPricingFact[];
   pricing_inputs?: SourcePricingInputFact[];
 };
+
+export function commercialFactSourceRefs(fact: SourceCommercialPricingFact): string[] {
+  return [
+    fact.source_ref,
+    ...fact.price_facts.flatMap((rate) => [
+      rate.source_ref,
+      ...(rate.charge_binding?.observations ?? []).map(({ source_ref }) => source_ref),
+    ]),
+    ...fact.raw_price_facts.map(({ source_ref }) => source_ref),
+    ...(fact.allowance_terms ?? []).flatMap((term) => [
+      ...term.source_refs,
+      ...[...term.variants, ...term.raw_variants].flatMap(({ observations }) =>
+        observations.map(({ source_ref }) => source_ref),
+      ),
+    ]),
+  ];
+}
 
 export function sourcePriceFactKey(fact: SourcePriceFact): string {
   return canonicalJson([fact.meter, fact.currency, fact.unit, definedProperties(fact.conditions)]);
@@ -326,20 +377,6 @@ export function parsedPricingModel(model: ParsedPricingModel): ParsedPricingMode
     pricing_state: model.pricing_state,
     price_facts: model.price_facts.map(parsedPriceFact),
     raw_price_facts: model.raw_price_facts.map((fact) => sourceRawPricingFactSchema.parse(fact)),
-    ...(model.commercial_facts === undefined
-      ? {}
-      : {
-          commercial_facts: model.commercial_facts.map((fact) =>
-            sourceCommercialPricingFactSchema.parse(fact),
-          ),
-        }),
-    ...(model.pricing_inputs === undefined
-      ? {}
-      : {
-          pricing_inputs: model.pricing_inputs.map((fact) =>
-            sourcePricingInputFactSchema.parse(fact),
-          ),
-        }),
   });
 }
 

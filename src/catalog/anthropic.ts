@@ -2,31 +2,31 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { yamlBlock } from "./yaml.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import {
+  anthropicMessageInputs,
+  anthropicSearchInput,
+  anthropicIterationInputs,
+} from "./anthropic-accounting.ts";
+import { anthropicPriceKind, anthropicPriceRow } from "./anthropic-price-row.ts";
+import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
+import type { ProviderAtomRegistryEntry } from "./pricing-schema.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
   SourcePricingInputFact,
+  SourcePricingFacts,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
-import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
+import { type Modality, unknownCapabilities } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
 interface MarkdownTable {
   headers: string[];
   rows: string[][];
+  irregular: string[][];
   line: number;
 }
 
@@ -56,7 +56,6 @@ const listSchema = z.object({
   last_id: z.string().nullable(),
   has_more: z.boolean(),
 });
-const fivePricesSchema = z.tuple([z.string(), z.string(), z.string(), z.string(), z.string()]);
 const messagesEndpoint = { name: "Create a Message", path: "v1/messages" };
 const batchEndpoint = { name: "Create a Message Batch", path: "v1/messages/batches" };
 
@@ -65,10 +64,24 @@ function json(body: string): unknown {
 }
 
 function text(value: string): string {
+  const prose = (part: string) =>
+    part
+      .replace(/<[^>]+>/g, "")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/(?<!\w)__([^_]+)__(?!\w)/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "$1")
+      .replace(/\\([\\`*_$.])/g, "$1");
   return value
-    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-    .replace(/<[^>]+>/g, "")
-    .replace(/[*_`\\]/g, "")
+    .split(/(`[^`]*`|\[[^\]]+]\([^)]*\))/g)
+    .map((part, index) =>
+      index % 2 === 0
+        ? prose(part)
+        : part.startsWith("`")
+          ? part.slice(1, -1)
+          : text(part.slice(1, part.indexOf("]("))),
+    )
+    .join("")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -98,13 +111,15 @@ function tables(body: string): MarkdownTable[] {
     )
       continue;
     const rows: string[][] = [];
+    const irregular: string[][] = [];
     let cursor = line + 2;
     while (lines[cursor]?.trim().startsWith("|")) {
       const values = cells(lines[cursor] ?? "");
       if (values.length === headers.length) rows.push(values);
+      else irregular.push(values);
       cursor += 1;
     }
-    result.push({ headers, rows, line });
+    result.push({ headers, rows, irregular, line });
     line = cursor - 1;
   }
   return result;
@@ -147,15 +162,37 @@ function date(value: string): string | undefined {
   return z.iso.date().safeParse(result).success ? result : undefined;
 }
 
+function contractFinding(input: Input, code: string, claim: string): void {
+  input.onContractFinding?.(contractExtensionEvidence([`/anthropic/${code}/${claim}`]));
+}
+
+type ObserveLimit = (
+  item: ProviderModel,
+  field: "context_tokens" | "max_output_tokens",
+  value: number | undefined,
+) => void;
+
+function limitObserver(input: Input): ObserveLimit {
+  const claims = new Map<string, Set<number>>();
+  return (item, field, value) => {
+    if (value === undefined) return;
+    const key = `${item.model_id}/${field}`;
+    const values = claims.get(key) ?? new Set<number>();
+    values.add(value);
+    claims.set(key, values);
+    if (values.size === 1) item.limits[field] = value;
+    else {
+      delete item.limits[field];
+      contractFinding(input, "model_limit_conflict", key);
+    }
+  };
+}
+
 function tableDate(value: string, field: string, input: Input): string | undefined {
   if (value === "N/A" || value.startsWith("Not sooner than ")) return undefined;
   const parsed = date(value);
   if (parsed === undefined) {
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "lifecycle_date_invalid",
-      sample: `${field}: ${value}`,
-    });
+    contractFinding(input, "lifecycle_date_invalid", `${field}: ${value}`);
     return;
   }
   return parsed;
@@ -178,14 +215,41 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
   return created;
 }
 
-function overview(body: string, input: Input, models: Map<string, ProviderModel>): void {
+function overview(
+  body: string,
+  input: Input,
+  models: Map<string, ProviderModel>,
+  observeLimit: ObserveLimit,
+): void {
+  interface OverviewRecord {
+    item: ProviderModel;
+    names: Set<string>;
+    descriptions: Set<string>;
+    reasoning: Set<boolean>;
+    states: Set<ProviderModel["status"]>;
+  }
+  const records = new Map<string, OverviewRecord>();
+  const record = (item: ProviderModel): OverviewRecord => {
+    const existing = records.get(item.model_id);
+    if (existing !== undefined) return existing;
+    const created: OverviewRecord = {
+      item,
+      names: new Set(),
+      descriptions: new Set(),
+      reasoning: new Set(),
+      states: new Set(),
+    };
+    records.set(item.model_id, created);
+    return created;
+  };
+  const agreed = <T>(target: OverviewRecord, values: Set<T>, field: string): T | undefined => {
+    if (values.size > 1)
+      contractFinding(input, "model_overview_conflict", `${target.item.model_id}/${field}`);
+    return values.size === 1 ? [...values][0] : undefined;
+  };
   const featureTables = tables(body).filter((table) => table.headers[0] === "Feature");
   if (featureTables.length === 0)
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "model_overview_drift",
-      sample: "model feature tables",
-    });
+    contractFinding(input, "model_overview_drift", "model feature tables");
   for (const table of featureTables) {
     const ids = row(table, "Claude API ID");
     if (ids === undefined) continue;
@@ -200,9 +264,11 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
       const id = ids[column];
       if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
       const item = model(models, input, id);
+      const target = record(item);
       const name = table.headers[column]?.replace(/\s*\(deprecated\)$/i, "");
-      if (name) item.name = name;
-      item.description = descriptions?.[column] || item.description;
+      if (name) target.names.add(name);
+      const description = descriptions?.[column];
+      if (description) target.descriptions.add(description);
       const alias = aliases?.[column];
       if (alias !== undefined && alias !== id && modelIdSchema.safeParse(alias).success)
         item.aliases = [...new Set([...item.aliases, alias])];
@@ -211,18 +277,17 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
         (value): value is string => value !== undefined,
       );
       if (thinking.some((value) => /^(?:Yes|Adaptive|Extended)\b/.test(value)))
-        item.capabilities.reasoning = true;
+        target.reasoning.add(true);
       else if (
         thinking.length > 0 &&
         thinking.every((value) => /^(?:No|Not supported)$/.test(value))
       )
-        item.capabilities.reasoning = false;
-      item.limits = {
-        ...item.limits,
-        context_tokens: tokenCount(contexts?.[column]),
-        max_output_tokens: tokenCount(outputs?.[column]),
-      };
-      item.status = /\(deprecated\)$/i.test(table.headers[column] ?? "") ? "deprecated" : "active";
+        target.reasoning.add(false);
+      observeLimit(item, "context_tokens", tokenCount(contexts?.[column]));
+      observeLimit(item, "max_output_tokens", tokenCount(outputs?.[column]));
+      target.states.add(
+        /\(deprecated\)$/i.test(table.headers[column] ?? "") ? "deprecated" : "active",
+      );
     }
   }
   for (const match of body.matchAll(
@@ -230,25 +295,31 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
     const item = model(models, input, match[2]);
-    item.name = `Claude ${match[1]}`;
+    record(item).names.add(`Claude ${match[1]}`);
     item.modalities = { input: ["text", "image"], output: ["text"] };
     if (/(?:^|-)preview(?:-|$)/.test(item.model_id)) item.release_stage = "preview";
   }
 
-  for (const item of models.values()) {
+  for (const target of records.values()) {
+    const { item } = target;
+    item.name = agreed(target, target.names, "name") ?? item.model_id;
+    const description = agreed(target, target.descriptions, "description");
+    if (description !== undefined) item.description = description;
+    item.capabilities.reasoning = agreed(target, target.reasoning, "reasoning") ?? "unknown";
     if (
       body.includes(`${item.name} is generally available`) ||
       body.includes(`${item.name} (\`${item.model_id}\`) is generally available`)
     ) {
-      item.status = "active";
+      target.states.add("active");
       item.release_stage = "stable";
     } else if (
       body.includes(
         `${item.name} is not generally available: it is offered in limited availability`,
       )
     ) {
-      item.status = "active";
+      target.states.add("active");
     }
+    item.status = agreed(target, target.states, "status") ?? "unknown";
   }
 
   for (const match of body.matchAll(
@@ -260,11 +331,7 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
     const target = models.get(targetId);
     const sources = [...models.values()].filter(({ name }) => name === sourceName);
     if (target === undefined || sources.length !== 1 || sources[0] === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "shared_model_fact_unbound",
-        sample: targetId,
-      });
+      contractFinding(input, "shared_model_fact_unbound", targetId);
       continue;
     }
     const source = sources[0];
@@ -272,8 +339,13 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
       input: [...source.modalities.input],
       output: [...source.modalities.output],
     };
-    target.limits = { ...source.limits };
-    target.capabilities.reasoning = source.capabilities.reasoning;
+    observeLimit(target, "context_tokens", source.limits.context_tokens);
+    observeLimit(target, "max_output_tokens", source.limits.max_output_tokens);
+    const targetRecord = record(target);
+    if (source.capabilities.reasoning !== "unknown")
+      targetRecord.reasoning.add(source.capabilities.reasoning);
+    target.capabilities.reasoning =
+      agreed(targetRecord, targetRecord.reasoning, "reasoning") ?? "unknown";
   }
 }
 
@@ -283,17 +355,13 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
   const conflicts = new Set<string>();
   for (const line of body.split(/\r?\n/)) {
     const heading = line.match(/^### (.+)$/)?.[1];
-    if (heading !== undefined) currentDate = date(heading);
+    if (/^#{1,3} /.test(line)) currentDate = heading === undefined ? undefined : date(heading);
     const subject = line.match(/^[*-] We've launched (.+)$/)?.[1];
     if (subject === undefined) continue;
     const opening = text(subject.split(",", 1)[0] ?? "");
-    if (!/^Claude (?:Fable|Mythos|Opus|Sonnet|Haiku|\d)\b/.test(opening)) continue;
+    if (!/^Claude\b/.test(opening)) continue;
     if (currentDate === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "release_notes_drift",
-        sample: opening,
-      });
+      contractFinding(input, "release_notes_drift", opening);
       continue;
     }
     const targets = new Map<string, ProviderModel>();
@@ -312,21 +380,12 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
       if (item.release_date !== undefined && item.release_date !== currentDate) {
         delete item.release_date;
         conflicts.add(item.model_id);
-        input.onPricingReconciliation?.({
-          disposition: "unresolved",
-          reason_code: "release_date_conflict",
-          sample: item.model_id,
-        });
+        contractFinding(input, "release_date_conflict", item.model_id);
       } else item.release_date = currentDate;
       launches += 1;
     }
   }
-  if (launches === 0)
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "release_notes_drift",
-      sample: "model launches",
-    });
+  if (launches === 0) contractFinding(input, "release_notes_drift", "model launches");
 }
 
 function status(value: string): ProviderModel["status"] | undefined {
@@ -339,91 +398,130 @@ function status(value: string): ProviderModel["status"] | undefined {
 }
 
 function lifecycle(body: string, input: Input, models: Map<string, ProviderModel>): void {
+  interface LifecycleRecord {
+    item: ProviderModel;
+    states: Set<ProviderModel["status"]>;
+    historicalStates: Set<ProviderModel["status"]>;
+    deprecated: Set<string>;
+    retired: Set<string>;
+    replacements: Set<string>;
+  }
+  const records = new Map<string, LifecycleRecord>();
+  const record = (id: string | undefined): LifecycleRecord | undefined => {
+    if (id === undefined || !modelIdSchema.safeParse(id).success) return;
+    const existing = records.get(id);
+    if (existing !== undefined) return existing;
+    const created: LifecycleRecord = {
+      item: model(models, input, id),
+      states: new Set(),
+      historicalStates: new Set(),
+      deprecated: new Set(),
+      retired: new Set(),
+      replacements: new Set(),
+    };
+    records.set(id, created);
+    return created;
+  };
+  const add = (values: Set<string>, value: string | undefined) => {
+    if (value !== undefined) values.add(value);
+  };
   const parsedTables = tables(body);
-  const statusTable = parsedTables.find((table) => table.headers[0] === "API model name");
-  if (statusTable === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "lifecycle_table_drift",
-      sample: "model status",
-    });
-  for (const values of statusTable?.rows ?? []) {
-    const id = values[0];
-    const state = status(values[1] ?? "");
-    if (id === undefined || state === undefined || !modelIdSchema.safeParse(id).success) continue;
-    const item = model(models, input, id);
-    item.status = state;
-    const deprecatedAt = tableDate(values[2] ?? "", "deprecation date", input);
-    if (deprecatedAt !== undefined) item.deprecated_at = deprecatedAt;
-    const retiredAt = tableDate(values[3] ?? "", "retirement date", input);
-    if (retiredAt !== undefined && state !== "active") item.retired_at = retiredAt;
+  const statusTables = parsedTables.filter((table) => table.headers.includes("API model name"));
+  if (statusTables.length === 0) contractFinding(input, "lifecycle_table_drift", "model status");
+  for (const table of statusTables) {
+    const cell = (values: string[], name: string) => values[table.headers.indexOf(name)] ?? "";
+    for (const values of table.rows) {
+      const target = record(cell(values, "API model name"));
+      if (target === undefined) continue;
+      const state = status(cell(values, "Current state"));
+      if (state !== undefined) target.states.add(state);
+      else contractFinding(input, "lifecycle_state_invalid", target.item.model_id);
+      add(target.deprecated, tableDate(cell(values, "Deprecated"), "deprecation date", input));
+      add(
+        target.retired,
+        tableDate(cell(values, "Tentative retirement date"), "retirement date", input),
+      );
+    }
+    if (table.irregular.length > 0) contractFinding(input, "lifecycle_row_invalid", "model status");
   }
 
   const lines = body.split(/\r?\n/);
   for (const table of parsedTables.filter(
     (candidate) => candidate.headers[0] === "Retirement date",
   )) {
-    const deprecatedAt = lines
-      .slice(0, table.line)
-      .reverse()
-      .map((line) => line.match(/^### (\d{4}-\d{2}-\d{2}):/)?.[1])
-      .find((value) => value !== undefined);
-    if (deprecatedAt === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "lifecycle_table_drift",
-        sample: "historical announcement date",
-      });
-      continue;
-    }
+    const heading = lines.slice(0, table.line).findLast((line) => /^#{1,3} /.test(line));
+    const nativeDate = heading?.match(/^### (\d{4}-\d{2}-\d{2}):/)?.[1];
+    const deprecatedAt =
+      nativeDate !== undefined && z.iso.date().safeParse(nativeDate).success
+        ? nativeDate
+        : undefined;
+    if (deprecatedAt === undefined)
+      contractFinding(input, "lifecycle_table_drift", "historical announcement date");
     for (const values of table.rows) {
-      const id = values[1];
-      const replacement = values[2];
-      if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
+      const target = record(values[1]);
+      if (target === undefined) continue;
       const retiredAt = tableDate(values[0] ?? "", "historical retirement date", input);
-      if (retiredAt === undefined) continue;
-      const item = model(models, input, id);
-      item.deprecated_at = deprecatedAt;
-      item.retired_at = retiredAt;
-      item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
+      add(target.deprecated, deprecatedAt);
+      add(target.retired, retiredAt);
+      if (retiredAt !== undefined)
+        target.historicalStates.add(
+          retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated",
+        );
+      const replacement = values[2];
       if (replacement !== undefined && modelIdSchema.safeParse(replacement).success)
-        item.replacement_model_ids = [...new Set([...item.replacement_model_ids, replacement])];
+        target.replacements.add(replacement);
     }
+    if (table.irregular.length > 0)
+      contractFinding(input, "lifecycle_row_invalid", "historical retirement");
   }
 
   for (const match of body.matchAll(
     /`(claude-[a-z0-9._:/-]+)`\) is (active|legacy|deprecated|retired)\b/gi,
   )) {
+    const target = record(match[1]);
     const state = status(match[2] ?? "");
-    if (match[1] !== undefined && state !== undefined)
-      model(models, input, match[1]).status = state;
+    if (target !== undefined && state !== undefined) target.states.add(state);
   }
-
   for (const match of body.matchAll(
     /`(claude-[a-z0-9._:/-]+)`\) is deprecated\.[^\n]*?`(claude-[a-z0-9._:/-]+)`/gi,
   )) {
-    if (match[1] === undefined || match[2] === undefined) continue;
-    const item = model(models, input, match[1]);
-    item.replacement_model_ids = [...new Set([...item.replacement_model_ids, match[2]])];
+    const target = record(match[1]);
+    if (target !== undefined && match[2] !== undefined) target.replacements.add(match[2]);
   }
-
   for (const match of body.matchAll(
     /`(claude-[a-z0-9._:/-]+)`\) will be retired on ([A-Z][a-z]+ \d{1,2}, \d{4})\.[^\n]*?`(claude-[a-z0-9._:/-]+)`/g,
   )) {
-    if (match[1] === undefined || match[2] === undefined || match[3] === undefined) continue;
-    const retiredAt = date(match[2]);
-    if (retiredAt === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "lifecycle_date_invalid",
-        sample: `inline retirement date: ${match[2]}`,
-      });
-      continue;
-    }
-    const item = model(models, input, match[1]);
-    item.retired_at = retiredAt;
-    item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
-    item.replacement_model_ids = [...new Set([...item.replacement_model_ids, match[3]])];
+    const target = record(match[1]);
+    if (target === undefined) continue;
+    const retiredAt = tableDate(match[2] ?? "", "inline retirement date", input);
+    add(target.retired, retiredAt);
+    if (retiredAt !== undefined)
+      target.historicalStates.add(
+        retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated",
+      );
+    if (match[3] !== undefined) target.replacements.add(match[3]);
+  }
+
+  for (const target of records.values()) {
+    const { item } = target;
+    const agreed = <T>(values: Set<T>, field: string): T | undefined => {
+      if (values.size > 1)
+        contractFinding(input, "lifecycle_fact_conflict", `${item.model_id}/${field}`);
+      return values.size === 1 ? [...values][0] : undefined;
+    };
+    const deprecatedAt = agreed(target.deprecated, "deprecated_at");
+    const retiredAt = agreed(target.retired, "retired_at");
+    if (deprecatedAt !== undefined) item.deprecated_at = deprecatedAt;
+    if (retiredAt !== undefined) item.retired_at = retiredAt;
+    const states = target.states.size > 0 ? target.states : target.historicalStates;
+    if (states.size > 0) item.status = agreed(states, "status") ?? "unknown";
+    if (
+      item.status === "deprecated" &&
+      retiredAt !== undefined &&
+      retiredAt <= input.observedAt.slice(0, 10)
+    )
+      item.status = "retired";
+    item.replacement_model_ids = [...target.replacements].sort();
   }
 }
 
@@ -453,11 +551,7 @@ function applyEndpoints(
       validateEndpoint(body, expected);
       return true;
     } catch {
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "operation_contract_drift",
-        sample: expected.path,
-      });
+      contractFinding(input, "operation_contract_drift", expected.path);
       return false;
     }
   };
@@ -481,12 +575,7 @@ function applyEndpoints(
     ["Messages tool use", toolUse],
     ["Message Batches coverage", batchCoverage],
   ] as const)
-    if (!valid)
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "operation_claim_drift",
-        sample: claim,
-      });
+    if (!valid) contractFinding(input, "operation_claim_drift", claim);
   for (const item of models.values()) {
     if (item.status === "active") {
       item.api_endpoints = [
@@ -517,9 +606,9 @@ function key(value: string): string {
   return (
     label(value)
       .toLowerCase()
+      .replace(/-\d{8}$/, "")
       .match(/[a-z]+|\d+/g)
-      ?.filter((token) => token !== "claude" && !/^\d{8}$/.test(token))
-      .sort()
+      ?.filter((token) => token !== "claude")
       .join("-") ?? ""
   );
 }
@@ -533,22 +622,34 @@ function resolver(models: Map<string, ProviderModel>): (value: string) => Provid
     }
   }
   return (value: string): ProviderModel => {
-    const ids = [...new Set(identities.get(key(value)) ?? [])];
-    if (ids.length !== 1 || ids[0] === undefined)
+    const explicitIds = ids(value);
+    let item: ProviderModel | undefined;
+    if (explicitIds.length === 1) item = commercialModel(models, explicitIds[0] ?? "");
+    else if (explicitIds.length === 0) {
+      const candidates = [...new Set(identities.get(key(value)) ?? [])];
+      if (candidates.length === 1) item = models.get(candidates[0] ?? "");
+    }
+    if (item === undefined)
       throw new Error(`Anthropic model label did not match one official ID: ${label(value)}`);
-    const item = models.get(ids[0]);
-    if (item === undefined) throw new Error("Anthropic identity index drifted");
-    if (item.name === item.model_id) item.name = label(value);
     return item;
   };
 }
 
 function mentioned(value: string, models: Map<string, ProviderModel>): ProviderModel[] {
   const result: ProviderModel[] = [];
+  const resolve = resolver(models);
   for (const item of models.values()) {
-    if (item.name === item.model_id) continue;
-    const escaped = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`(?:^|[^\\w.])${escaped}(?![\\w.])`).test(value)) result.push(item);
+    const pattern =
+      item.name === item.model_id
+        ? key(item.model_id).split("-").join("[ .-]+")
+        : item.name.replace(/^Claude /, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = value.match(new RegExp(`(?:^|[^\\w.-])(?:Claude )?${pattern}(?![\\w.-])`, "i"));
+    if (match === null) continue;
+    try {
+      if (resolve(match[0]).model_id === item.model_id) result.push(item);
+    } catch {
+      // An ambiguous display name cannot establish a model-specific claim.
+    }
   }
   return result;
 }
@@ -594,21 +695,13 @@ function listedModels(
 ): ProviderModel[] | undefined {
   const ids = listedModelIds(body);
   if (ids === undefined) {
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "capability_contract_drift",
-      sample: capability,
-    });
+    contractFinding(input, "capability_contract_drift", capability);
     return;
   }
   return ids.flatMap((id) => {
     const item = commercialModel(models, id);
     if (item !== undefined) return [item];
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "capability_model_unbound",
-      sample: `${capability}: ${id}`,
-    });
+    contractFinding(input, "capability_model_unbound", `${capability}: ${id}`);
     return [];
   });
 }
@@ -634,12 +727,7 @@ function capabilities(
 ): void {
   const current = [...models.values()].filter(({ status }) => status === "active");
   const supported = [...models.values()].filter(callable);
-  const drift = (claim: string): void =>
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "capability_contract_drift",
-      sample: claim,
-    });
+  const drift = (claim: string): void => contractFinding(input, "capability_contract_drift", claim);
   if (
     bodies.overview.includes(
       "All current models support text and image input, text output, multilingual capabilities, vision, and tool use.",
@@ -677,12 +765,7 @@ function capabilities(
     for (const id of codeIds) {
       const item = commercialModel(models, id);
       if (item !== undefined && callable(item)) item.capabilities.code_execution = true;
-      else
-        input.onPricingReconciliation?.({
-          disposition: "unbound",
-          reason_code: "capability_model_unbound",
-          sample: `code execution: ${id}`,
-        });
+      else contractFinding(input, "capability_model_unbound", `code execution: ${id}`);
     }
   } else if (codeTable !== undefined && codeTable.rows.length > 0) {
     for (const item of supported) item.capabilities.code_execution = false;
@@ -692,11 +775,11 @@ function capabilities(
         const item = resolve(values[0] ?? "");
         if (callable(item)) item.capabilities.code_execution = true;
       } catch {
-        input.onPricingReconciliation?.({
-          disposition: "unbound",
-          reason_code: "capability_model_unbound",
-          sample: `code execution: ${values[0] ?? "unknown"}`,
-        });
+        contractFinding(
+          input,
+          "capability_model_unbound",
+          `code execution: ${values[0] ?? "unknown"}`,
+        );
       }
     }
   } else drift("code execution");
@@ -774,12 +857,7 @@ function capabilities(
 
 function validateModelIdentityContract(body: string, modelsListBody: string, input: Input): void {
   const report = (valid: boolean, sample: string): void => {
-    if (!valid)
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "model_identity_contract_drift",
-        sample,
-      });
+    if (!valid) contractFinding(input, "model_identity_contract_drift", sample);
   };
   report(
     body.includes("Each Claude model ID identifies a pinned version of the model") &&
@@ -844,7 +922,7 @@ function reviewedGeographyGeneration(
 }
 
 function modelGeneration(id: string): ModelGeneration | undefined {
-  const match = id.match(/^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
+  const match = id.match(/^claude-[a-z]+(?:-[a-z]+)*-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
   if (match?.[1] === undefined) return undefined;
   return { major: Number(match[1]), minor: Number(match[2] ?? 0) };
 }
@@ -858,93 +936,6 @@ function atLeastGeneration(id: string, threshold: ModelGeneration): boolean {
   );
 }
 
-const promptCacheUsageSchema = z.object({
-  usage: z
-    .object({
-      cache_creation: z.record(z.string(), z.unknown()).optional(),
-      iterations: z
-        .array(
-          z
-            .object({
-              cache_creation: z.record(z.string(), z.unknown()).optional(),
-            })
-            .passthrough(),
-        )
-        .optional(),
-    })
-    .passthrough(),
-});
-type PromptCacheUsage = z.infer<typeof promptCacheUsageSchema>["usage"];
-
-function cacheWriteAccountingInputs(promptCaching: string, input: Input): SourcePricingInputFact[] {
-  const pricingInputs: SourcePricingInputFact[] = [];
-  const usageExamples = promptCacheUsageExamples(promptCaching);
-  const hasCachePartitionContract =
-    /cache_creation_input_tokens[\s\S]{0,100}equals the sum of the values in the[\s\S]{0,30}cache_creation/.test(
-      promptCaching,
-    );
-  for (const ttl of ["5m", "1h"] as const) {
-    const field = `ephemeral_${ttl}_input_tokens`;
-    const available =
-      hasCachePartitionContract &&
-      usageExamples.some((usage) => isCacheTokenCount(usage.cache_creation?.[field]));
-    if (!available) {
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "accounting_contract_drift",
-        sample: `Messages usage.cache_creation.${field}`,
-      });
-      continue;
-    }
-    pricingInputs.push({
-      key: `messages.usage.cache_write_${ttl}_input_tokens`,
-      channel: "response",
-      locator: { kind: "json_pointer", value: `/usage/cache_creation/${field}` },
-      availability: "conditional",
-      source_ref: input.source.id,
-    });
-    if (
-      usageExamples.some((usage) =>
-        usage.iterations?.some((iteration) => isCacheTokenCount(iteration.cache_creation?.[field])),
-      )
-    )
-      pricingInputs.push({
-        key: `messages.usage.cache_write_${ttl}_input_tokens`,
-        channel: "response",
-        locator: {
-          kind: "provider_field",
-          value: `usage.iterations[*].cache_creation.${field} attributed to advisor_message.model or response.model for message/compaction`,
-        },
-        availability: "conditional",
-        source_ref: input.source.id,
-      });
-  }
-
-  return pricingInputs;
-}
-
-function promptCacheUsageExamples(markdown: string): PromptCacheUsage[] {
-  const usageExamples: PromptCacheUsage[] = [];
-  for (const match of markdown.matchAll(/^```json(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)^```[ \t]*$/gm)) {
-    const usage = parsePromptCacheUsage(match[1] ?? "");
-    if (usage !== undefined) usageExamples.push(usage);
-  }
-  return usageExamples;
-}
-
-function parsePromptCacheUsage(example: string): PromptCacheUsage | undefined {
-  try {
-    const parsed = promptCacheUsageSchema.safeParse(JSON.parse(example));
-    return parsed.success ? parsed.data.usage : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function isCacheTokenCount(value: unknown): boolean {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
 function validateRequestAccounting(
   messages: string,
   dataResidency: string,
@@ -952,37 +943,10 @@ function validateRequestAccounting(
   input: Input,
 ): RequestAccounting {
   const contract = (valid: boolean, sample: string): boolean => {
-    if (!valid)
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "accounting_contract_drift",
-        sample,
-      });
+    if (!valid) contractFinding(input, "accounting_contract_drift", sample);
     return valid;
   };
-  const pricingInputs: SourcePricingInputFact[] = [];
-  const fields: ReadonlyArray<readonly [string, string | undefined]> = [
-    ["cache_creation_input_tokens", undefined],
-    ["cache_read_input_tokens", "cached_input_tokens"],
-    ["inference_geo", "selector.inference_geo"],
-    ["input_tokens", "uncached_input_tokens"],
-    ["output_tokens", "output_tokens"],
-    ["server_tool_use", undefined],
-    ["service_tier", "selector.served_service_tier"],
-  ];
-  for (const [field, signal] of fields) {
-    const available = contract(messages.includes(`- \`${field}:`), `Messages usage.${field}`);
-    if (available && signal !== undefined)
-      pricingInputs.push({
-        key: `messages.usage.${signal}`,
-        channel: "response",
-        locator: { kind: "json_pointer", value: `/usage/${field}` },
-        availability: "conditional",
-        source_ref: input.source.id,
-      });
-  }
-
-  pricingInputs.push(...cacheWriteAccountingInputs(promptCaching, input));
+  const pricingInputs = anthropicMessageInputs(messages, promptCaching, input);
 
   const dataResidencyGeneration = reviewedGeographyGeneration(
     dataResidency,
@@ -999,94 +963,149 @@ function validateRequestAccounting(
   return { dataResidencyGeneration, pricingInputs };
 }
 
-function amount(value: string | undefined): string | undefined {
-  return value?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ MTok(?:\d+)?$/)?.[1];
-}
-
-function effective(value: string): SourcePriceFact["conditions"] {
-  if (value.includes("through August 31, 2026"))
-    return { effective_until: "2026-08-31", promotion: true };
-  if (value.includes("starting September 1, 2026")) return { effective_from: "2026-09-01" };
-  return {};
+function effective(value: string): SourcePriceFact["conditions"] | undefined {
+  if (/[()]/.test(value.replace(/ \((?:limited availability|legacy)\)/g, ""))) return;
+  const clauses = [
+    ...value.matchAll(/\b(through|starting)\b\s+(.+?)(?=\s+(?:through|starting)\b|$)/g),
+  ];
+  if (clauses.length === 0) return {};
+  if (clauses.length !== 1) return;
+  const clause = clauses[0];
+  const parsed = date(clause?.[2] ?? "");
+  if (parsed === undefined) return;
+  return clause?.[1] === "through"
+    ? { effective_until: parsed, promotion: true }
+    : { effective_from: parsed };
 }
 
 interface CacheMultipliers {
-  fiveMinuteWrite: string;
-  oneHourWrite: string;
-  read: string;
+  fiveMinuteWrite: string | undefined;
+  oneHourWrite: string | undefined;
+  read: string | undefined;
   readOverrides: ReadonlyMap<string, string>;
+  unknownOperations: boolean;
 }
 
 function cached(
   rate: SourcePriceFact,
   multipliers: CacheMultipliers,
-  modelName: string,
+  modelId: string,
 ): SourcePriceFact[] {
   const derive = (
     meter: "cache_write_text" | "cache_read_text",
-    multiplier: string,
+    multiplier: string | undefined,
     cacheTtlSeconds?: number,
-  ): SourcePriceFact => ({
-    ...rate,
-    meter,
-    price: multiplyDecimal(rate.price, multiplier),
-    conditions: {
-      ...rate.conditions,
-      ...(cacheTtlSeconds === undefined ? {} : { cache_ttl_seconds: cacheTtlSeconds }),
-    },
-    derived: true,
-    derivation: `${multiplier} × published ${rate.conditions.speed ?? rate.conditions.service_tier ?? "standard"} input rate`,
-    raw_price: undefined,
-    raw_unit: "published prompt-cache multiplier",
-  });
+  ): SourcePriceFact[] =>
+    multiplier === undefined
+      ? []
+      : [
+          {
+            ...rate,
+            meter,
+            price: multiplyDecimal(rate.price, multiplier),
+            conditions: {
+              ...rate.conditions,
+              ...(cacheTtlSeconds === undefined ? {} : { cache_ttl_seconds: cacheTtlSeconds }),
+            },
+            derived: true,
+            derivation: `${multiplier} × published ${rate.conditions.speed ?? rate.conditions.service_tier ?? "standard"} input rate`,
+            raw_price: undefined,
+            raw_unit: "published prompt-cache multiplier",
+          },
+        ];
   return [
-    derive("cache_write_text", multipliers.fiveMinuteWrite, 300),
-    derive("cache_write_text", multipliers.oneHourWrite, 3600),
-    derive("cache_read_text", multipliers.readOverrides.get(modelName) ?? multipliers.read),
+    ...derive("cache_write_text", multipliers.fiveMinuteWrite, 300),
+    ...derive("cache_write_text", multipliers.oneHourWrite, 3600),
+    ...derive("cache_read_text", multipliers.readOverrides.get(modelId) ?? multipliers.read),
   ];
 }
 
-function cacheMultipliers(parsedTables: MarkdownTable[], input: Input): CacheMultipliers {
-  const table = parsedTables.find(
+function cacheMultipliers(
+  parsedTables: MarkdownTable[],
+  input: Input,
+  resolve: (value: string) => ProviderModel,
+): CacheMultipliers {
+  const policies = parsedTables.filter(
     (candidate) => candidate.headers.join("|") === "Cache operation|Multiplier|Duration",
   );
-  if (table === undefined) throw new Error("Anthropic pricing page omitted cache multipliers");
-  const match = (label: string, pattern: RegExp): RegExpMatchArray => {
-    const value = row(table, label)?.[1]?.match(pattern);
-    if (value === undefined || value === null)
-      throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
+  if (policies.length === 0) throw new Error("Anthropic pricing page omitted cache multipliers");
+  const rows = policies.flatMap((table) => [...table.rows, ...table.irregular]);
+  const known = new Set([
+    "5-minute cache write",
+    "1-hour cache write",
+    "Cache read",
+    "Cache read (hit)",
+  ]);
+  const unknownOperations = rows.some((values) => !known.has(values[0] ?? ""));
+  for (const values of rows.filter((values) => !known.has(values[0] ?? "")))
     input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "cache_multiplier_applied",
+      disposition: "unsupported",
+      reason_code: "cache_multiplier_drift",
+      sample: values.join(" | ").slice(0, 256),
     });
-    return value;
-  };
-  const multiplier = (label: string): string => {
-    const value = match(label, /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price$/)[1];
-    if (value === undefined)
-      throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
-    return value;
-  };
-  const read = match("Cache read", /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \((.+)\))?$/);
-  const readValue = read[1];
-  if (readValue === undefined)
-    throw new Error("Anthropic cache multiplier was not machine-readable for Cache read");
-  const readOverrides = new Map<string, string>();
-  for (const clause of read[2]?.split(/;\s*/) ?? []) {
-    const override = clause.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)$/);
-    if (override?.[1] === undefined || override[2] === undefined)
-      throw new Error("Anthropic cache-read exception changed");
-    for (const name of override[2].split(" and ")) {
-      if (!/^Claude [\w. -]+$/.test(name) || readOverrides.has(name))
-        throw new Error("Anthropic cache-read exception model changed");
-      readOverrides.set(name, override[1]);
+  const parse = (values: string[], operation: string) => {
+    const amount = values[1]?.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \((.+)\))?$/);
+    if (amount?.[1] === undefined || values.length !== 3) return;
+    const duration =
+      operation === "5-minute cache write"
+        ? "Cache valid for 5 minutes"
+        : operation === "1-hour cache write"
+          ? "Cache valid for 1 hour"
+          : "Same duration as the preceding write";
+    if (values[2] !== duration || (operation !== "Cache read" && amount[2] !== undefined)) return;
+    const overrides = new Map<string, string>();
+    for (const clause of amount[2]?.split(/;\s*/) ?? []) {
+      const override = clause.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)$/);
+      if (override?.[1] === undefined || override[2] === undefined) return;
+      for (const name of override[2].split(" and ")) {
+        if (!/^Claude [\w. -]+$/.test(name)) return;
+        let id: string;
+        try {
+          id = resolve(name).model_id;
+        } catch {
+          return;
+        }
+        if (overrides.has(id)) return;
+        overrides.set(id, override[1]);
+      }
     }
-  }
+    return { value: amount[1], overrides };
+  };
+  const operation = (name: string) => {
+    const claims = rows.filter(
+      (values) => values[0] === name || (name === "Cache read" && values[0] === "Cache read (hit)"),
+    );
+    const values = claims.map((claim) => parse(claim, name));
+    const first = values[0];
+    const agreed =
+      first !== undefined &&
+      values.every(
+        (current) =>
+          current !== undefined &&
+          decimalsEqual(current.value, first.value) &&
+          current.overrides.size === first.overrides.size &&
+          [...first.overrides].every(([name, value]) => {
+            const candidate = current.overrides.get(name);
+            return candidate !== undefined && decimalsEqual(value, candidate);
+          }),
+      );
+    for (const value of values)
+      input.onPricingReconciliation?.({
+        disposition: agreed ? "normalized" : value === undefined ? "unresolved" : "ambiguous",
+        reason_code: agreed ? "cache_multiplier_applied" : "cache_multiplier_drift",
+        ...(agreed ? {} : { sample: "Prompt caching multipliers" }),
+      });
+    return agreed ? first : undefined;
+  };
+  const fiveMinuteWrite = operation("5-minute cache write");
+  const oneHourWrite = operation("1-hour cache write");
+  const read = operation("Cache read");
   return {
-    fiveMinuteWrite: multiplier("5-minute cache write"),
-    oneHourWrite: multiplier("1-hour cache write"),
-    read: readValue,
-    readOverrides,
+    fiveMinuteWrite: fiveMinuteWrite?.value,
+    oneHourWrite: oneHourWrite?.value,
+    read: read?.value,
+    readOverrides: read?.overrides ?? new Map(),
+    unknownOperations,
   };
 }
 
@@ -1114,6 +1133,7 @@ function pricing(
   dataResidencyGeneration: ModelGeneration | undefined,
   input: Input,
   models: Map<string, ProviderModel>,
+  observeLimit: ObserveLimit,
 ): void {
   const resolve = resolver(models);
   const resolveRow = (value: string, claim: string): ProviderModel | undefined => {
@@ -1130,12 +1150,12 @@ function pricing(
   };
   const add = (item: ProviderModel, rates: SourcePriceFact[]): void => {
     item.price_facts.push(...rates);
-    item.pricing_state = "numeric";
+    if (rates.length > 0) item.pricing_state = "numeric";
   };
   const parsedTables = tables(body);
   let multipliers: CacheMultipliers | undefined;
   try {
-    multipliers = cacheMultipliers(parsedTables, input);
+    multipliers = cacheMultipliers(parsedTables, input, resolve);
   } catch {
     input.onPricingReconciliation?.({
       disposition: "unresolved",
@@ -1143,173 +1163,130 @@ function pricing(
       sample: "Prompt caching multipliers",
     });
   }
-  const base = parsedTables.find(
-    (table) => table.headers[1]?.toLowerCase() === "base input tokens",
+  const priceTables = parsedTables.filter(
+    (table) => anthropicPriceKind(table.headers) !== undefined,
   );
-  const batch = parsedTables.find((table) => table.headers[1] === "Batch input");
-  const fastTables = parsedTables.filter(
-    (table) => table.headers.join("|") === "Model|Input|Output",
-  );
-  const fast = fastTables[0];
-  for (const [claim, valid] of [
-    ["base model prices", base !== undefined],
-    ["Batch prices", batch !== undefined],
-    ["Fast prices", fastTables.length === 1 && fast !== undefined && fast.rows.length > 0],
-  ] as const)
-    if (!valid)
+  for (const kind of ["base", "batch", "fast"] as const)
+    if (
+      !priceTables.some(
+        (table) =>
+          anthropicPriceKind(table.headers) === kind &&
+          table.rows.length + table.irregular.length > 0,
+      )
+    ) {
       input.onPricingReconciliation?.({
         disposition: "unresolved",
         reason_code: "pricing_table_drift",
-        sample: claim,
+        sample: `${kind} model prices`,
       });
-
-  for (const values of base?.rows ?? []) {
-    const item = resolveRow(values[0] ?? "", "base pricing");
-    if (item === undefined) continue;
-    const parsed = fivePricesSchema.safeParse(values.slice(1).map(amount));
-    if (!parsed.success) {
-      input.onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "pricing_row_unreadable",
-        sample: item.model_id,
-      });
-      continue;
-    }
-    const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] = parsed.data;
-    const conditions = effective(values[0] ?? "");
-    const rate = (
-      meter: SourcePriceFact["meter"],
-      value: string,
-      cacheTtlSeconds?: number,
-    ): SourcePriceFact =>
-      publishedRate(meter, value, "million_tokens", input.source.id, "MTok", {
-        ...conditions,
-        ...(cacheTtlSeconds === undefined ? {} : { cache_ttl_seconds: cacheTtlSeconds }),
-      });
-    add(item, [
-      rate("input_text", inputPrice),
-      rate("cache_write_text", fiveMinuteWrite, 300),
-      rate("cache_write_text", oneHourWrite, 3600),
-      rate("cache_read_text", cacheRead),
-      rate("output_text", outputPrice),
-    ]);
-    if (multipliers !== undefined) {
-      const expectedFiveMinuteWrite = multiplyDecimal(inputPrice, multipliers.fiveMinuteWrite);
-      const expectedOneHourWrite = multiplyDecimal(inputPrice, multipliers.oneHourWrite);
-      const expectedCacheRead = multiplyDecimal(
-        inputPrice,
-        multipliers.readOverrides.get(item.name) ?? multipliers.read,
+      input.onPricingDependencyFailure?.(
+        "https://platform.claude.com/docs/en/about-claude/pricing.md",
       );
-      if (
-        !decimalsEqual(fiveMinuteWrite, expectedFiveMinuteWrite) ||
-        !decimalsEqual(oneHourWrite, expectedOneHourWrite) ||
-        !decimalsEqual(cacheRead, expectedCacheRead)
+    }
+  const cachePolicy =
+    parsedTables
+      .filter(({ headers }) => headers.join("|") === "Cache operation|Multiplier|Duration")
+      .map(({ headers, rows, irregular }) =>
+        [headers, ...rows, ...irregular].map((values) => values.join(" | ")).join("\n"),
       )
-        input.onPricingReconciliation?.({
-          disposition: "unresolved",
-          reason_code: "cache_price_conflict",
-          sample: item.model_id,
-        });
-    }
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "base_model_price_row",
-    });
-    item.capabilities.prompt_cache = true;
-  }
-
-  for (const values of batch?.rows ?? []) {
-    const item = resolveRow(values[0] ?? "", "Batch pricing");
-    if (item === undefined) continue;
-    const inputPrice = amount(values[1]);
-    const outputPrice = amount(values[2]);
-    if (inputPrice === undefined || outputPrice === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "pricing_row_unreadable",
-        sample: `Batch: ${item.model_id}`,
-      });
-      continue;
-    }
-    const conditions = { ...effective(values[0] ?? ""), service_tier: "batch" };
-    const inputRate = publishedRate(
-      "input_text",
-      inputPrice,
-      "million_tokens",
-      input.source.id,
-      "MTok",
-      conditions,
-    );
-    add(item, [
-      inputRate,
-      ...(multipliers === undefined ? [] : cached(inputRate, multipliers, item.name)),
-      publishedRate(
-        "output_text",
-        outputPrice,
-        "million_tokens",
-        input.source.id,
-        "MTok",
-        conditions,
-      ),
-    ]);
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "batch_model_price_row",
-    });
-    item.capabilities.batch = true;
-  }
-
+      .join("\n") || body.slice(0, 4096);
   const fastIds = new Set<string>();
-  for (const values of fast?.rows ?? []) {
-    const inputPrice = amount(values[1]);
-    const outputPrice = amount(values[2]);
-    if (inputPrice === undefined || outputPrice === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "pricing_row_unreadable",
-        sample: `Fast: ${values[0] ?? "unknown"}`,
-      });
-      continue;
-    }
-    const names = (values[0] ?? "").split(/\s+\/\s+/).filter(Boolean);
-    if (names.length === 0) {
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "pricing_model_unbound",
-        sample: "Fast pricing",
-      });
-      continue;
-    }
-    for (const name of names) {
-      const item = resolveRow(name, "Fast pricing");
-      if (item === undefined) continue;
-      fastIds.add(item.model_id);
-      const conditions = { speed: "fast" };
-      const inputRate = publishedRate(
-        "input_text",
-        inputPrice,
-        "million_tokens",
-        input.source.id,
-        "MTok",
+  for (const table of priceTables) {
+    const kind = anthropicPriceKind(table.headers);
+    if (kind === undefined) continue;
+    for (const values of [...table.rows, ...table.irregular]) {
+      const nativeLabel = values[0] ?? "";
+      const names = kind === "fast" ? nativeLabel.split(" / ").filter(Boolean) : [nativeLabel];
+      const scope = effective(nativeLabel);
+      const conditions = {
+        ...scope,
+        ...(kind === "batch" ? { service_tier: "batch" } : {}),
+        ...(kind === "fast" ? { speed: "fast" } : {}),
+      };
+      const claims = anthropicPriceRow(
+        kind,
+        table.headers,
+        values,
         conditions,
+        scope !== undefined,
+        input.source.id,
       );
-      add(item, [
-        inputRate,
-        ...(multipliers === undefined ? [] : cached(inputRate, multipliers, item.name)),
-        publishedRate(
-          "output_text",
-          outputPrice,
-          "million_tokens",
-          input.source.id,
-          "MTok",
-          conditions,
-        ),
-      ]);
+      let bound = 0;
+      let conflict = false;
+      for (const name of names) {
+        let item: ProviderModel;
+        try {
+          item = resolve(name);
+        } catch {
+          continue;
+        }
+        bound += 1;
+        item.raw_price_facts.push(...claims.raw);
+        add(item, claims.rates);
+        if (kind === "fast") fastIds.add(item.model_id);
+        const inputRate = claims.rates.find(({ meter }) => meter === "input_text");
+        if (kind === "base") {
+          if (
+            claims.rates.some(
+              ({ meter }) => meter === "cache_write_text" || meter === "cache_read_text",
+            )
+          )
+            item.capabilities.prompt_cache = true;
+          if (multipliers !== undefined && inputRate !== undefined)
+            conflict =
+              conflict ||
+              cached(inputRate, multipliers, item.model_id).some((expected) => {
+                const direct = claims.rates.find(
+                  (rate) =>
+                    rate.meter === expected.meter &&
+                    rate.conditions.cache_ttl_seconds === expected.conditions.cache_ttl_seconds,
+                );
+                return direct !== undefined && !decimalsEqual(direct.price, expected.price);
+              });
+        } else {
+          if (kind === "batch" && claims.rates.length > 0) item.capabilities.batch = true;
+          if (inputRate !== undefined && multipliers !== undefined)
+            add(item, cached(inputRate, multipliers, item.model_id));
+        }
+        const incompleteCache =
+          multipliers === undefined ||
+          multipliers.fiveMinuteWrite === undefined ||
+          multipliers.oneHourWrite === undefined ||
+          multipliers.read === undefined;
+        if ((kind !== "base" && incompleteCache) || multipliers?.unknownOperations === true)
+          item.raw_price_facts.push({
+            term_key: "unparsed:cache-policy",
+            impact: "base_price",
+            reason: "unsupported_structure",
+            conditions,
+            source_ref: input.source.id,
+            raw: { fragment: cachePolicy.slice(0, 4096) },
+          });
+      }
+      input.onPricingReconciliation?.({
+        disposition:
+          bound !== names.length || bound === 0
+            ? "unbound"
+            : conflict
+              ? "ambiguous"
+              : claims.raw.length > 0
+                ? "raw"
+                : "normalized",
+        reason_code:
+          bound !== names.length || bound === 0
+            ? "pricing_model_unbound"
+            : conflict
+              ? "cache_price_conflict"
+              : claims.raw.length > 0
+                ? "pricing_row_preserved_raw"
+                : `${kind}_model_price_row`,
+        sample: nativeLabel.slice(0, 256) || "Model price row",
+      });
+      if (bound !== names.length || bound === 0)
+        input.onPricingDependencyFailure?.(
+          "https://platform.claude.com/docs/en/about-claude/pricing.md",
+        );
     }
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "fast_model_price_row",
-    });
   }
   if (fastIds.size > 0) {
     try {
@@ -1343,46 +1320,49 @@ function pricing(
 
   const longContext = body.match(/^(.+?) include the full \[1M token context window]/m)?.[1];
   if (longContext === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "long_context_contract_drift",
-      sample: "1M context pricing",
-    });
+    contractFinding(input, "long_context_contract_drift", "1M context pricing");
   else {
     const longContextModels = text(longContext);
-    for (const item of models.values())
-      if (
-        longContextModels.includes(item.name) ||
-        longContextModels.includes(item.name.replace(/^Claude /, ""))
-      )
-        item.limits.context_tokens = 1_000_000;
+    for (const item of mentioned(longContextModels, models))
+      observeLimit(item, "context_tokens", 1_000_000);
   }
 
-  const inferenceGeoMultiplier = body.match(
-    /incurs a ((?:0|[1-9]\d*)(?:\.\d+)?)x multiplier on all token pricing categories/,
-  )?.[1];
-  if (inferenceGeoMultiplier === undefined) {
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "inference_geo_multiplier_drift",
-      sample: "US inference multiplier",
-    });
-    return;
-  }
+  const inferenceGeoMultiplier = agreedAmount(
+    body,
+    /incurs a ((?:0|[1-9]\d*)(?:\.\d+)?)x multiplier on all token pricing categories/g,
+  );
   const pricingGeneration = reviewedGeographyGeneration(body, "pricing", input);
   const matchingGeneration =
     pricingGeneration !== undefined &&
     dataResidencyGeneration !== undefined &&
     pricingGeneration.major === dataResidencyGeneration.major &&
     pricingGeneration.minor === dataResidencyGeneration.minor;
+  if (inferenceGeoMultiplier === undefined)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "inference_geo_multiplier_drift",
+      sample: "US inference multiplier",
+    });
   if (!matchingGeneration)
     input.onPricingReconciliation?.({
       disposition: "unresolved",
       reason_code: "inference_geo_eligibility_conflict",
       sample: "pricing and data-residency generation thresholds",
     });
-  else {
-    for (const item of models.values()) {
+  const thresholds = [pricingGeneration, dataResidencyGeneration].filter(
+    (value) => value !== undefined,
+  );
+  const fragment = body
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        line.includes("inference_geo") ||
+        line.includes("multiplier on all token pricing categories"),
+    )
+    .join("\n");
+  for (const item of models.values()) {
+    const knownGeneration = modelGeneration(item.model_id) !== undefined;
+    if (matchingGeneration && inferenceGeoMultiplier !== undefined && knownGeneration) {
       if (!atLeastGeneration(item.model_id, pricingGeneration)) continue;
       item.price_facts.push(
         ...item.price_facts.map((rate): SourcePriceFact => ({
@@ -1390,17 +1370,40 @@ function pricing(
           price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
           conditions: { ...rate.conditions, inference_geo: "us" },
           derived: true,
-          derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
+          derivation:
+            inferenceGeoMultiplier +
+            " × " +
+            (rate.derivation ?? "published rate") +
+            " for US-only inference",
           raw_price: undefined,
           raw_unit: "published inference geography multiplier",
         })),
       );
+    } else if (
+      item.price_facts.length > 0 &&
+      (!knownGeneration ||
+        thresholds.length === 0 ||
+        thresholds.some((value) => atLeastGeneration(item.model_id, value)))
+    ) {
+      item.price_facts = item.price_facts.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, inference_geo: "global" },
+      }));
+      item.raw_price_facts.push({
+        term_key: "unparsed:inference-geography",
+        impact: "base_price",
+        reason: inferenceGeoMultiplier === undefined ? "unknown_amount" : "unknown_applicability",
+        conditions: { inference_geo: "us" },
+        source_ref: input.source.id,
+        raw: { fragment: fragment.slice(0, 4096) || body.slice(0, 4096) },
+      });
     }
+  }
+  if (matchingGeneration && inferenceGeoMultiplier !== undefined)
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "inference_geo_multiplier_applied",
     });
-  }
 }
 
 function commercialRaw(
@@ -1461,6 +1464,25 @@ function commercialModel(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+function usagePricingSection(body: string): string {
+  const sections = body.split(/^## Usage and pricing[ \t]*\r?$/im);
+  if (sections.length !== 2) return "";
+  return (sections[1] ?? "").split(/^#{1,2} /m)[0] ?? "";
+}
+
+function agreedAmount(body: string, pattern: RegExp): string | undefined {
+  const amounts = [...body.matchAll(pattern)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+  const first = amounts[0];
+  return first !== undefined &&
+    amounts.every(
+      (amount) => /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount) && decimalsEqual(amount, first),
+    )
+    ? first
+    : undefined;
+}
+
 function ids(value: string): string[] {
   return [...value.matchAll(/claude-[a-z0-9._:/-]+/g)].flatMap((match) =>
     match[0] === undefined ? [] : [match[0]],
@@ -1479,15 +1501,19 @@ function commercialPricing(
   input: Input,
   models: Map<string, ProviderModel>,
   pricingInputs: SourcePricingInputFact[],
-): void {
+): SourcePricingFacts {
   const facts: SourceCommercialPricingFact[] = [];
+  const vocabulary: ProviderAtomRegistryEntry[] = [];
   const callableRefs = [...models.values()].filter(callable).map(({ uid }) => uid);
-  const report = (normalized: boolean, reasonCode: string, sample: string): void =>
+  const report = (normalized: boolean | "raw", reasonCode: string, sample: string): void =>
     input.onPricingReconciliation?.({
-      disposition: normalized ? "normalized" : "unresolved",
+      disposition: normalized === "raw" ? "raw" : normalized ? "normalized" : "unresolved",
       reason_code: reasonCode,
       sample,
     });
+  const reportUsage = (valid: boolean, claim: string): void => {
+    if (!valid) contractFinding(input, "accounting_contract_drift", claim);
+  };
 
   const compaction = [bodies.compaction, bodies.compactionThreshold].join(" ").replace(/\s+/g, " ");
   const compactionBilling =
@@ -1499,51 +1525,40 @@ function commercialPricing(
     compaction.includes(
       "Re-applying a previous `compaction` block incurs no additional compaction cost",
     );
-  report(compactionBilling, "compaction_usage_bound", "Compaction iterations");
-  if (compactionBilling)
-    for (const [field, signal] of [
-      ["input_tokens", "uncached_input_tokens"],
-      ["cache_read_input_tokens", "cached_input_tokens"],
-      ["output_tokens", "output_tokens"],
-    ] as const)
-      pricingInputs.push({
-        key: `messages.usage.${signal}`,
-        channel: "response",
-        locator: {
-          kind: "provider_field",
-          value: `usage.iterations[*].${field} attributed to advisor_message.model or response.model for message/compaction`,
-        },
-        availability: "conditional",
-        source_ref: input.source.id,
-      });
+  const compactionInputs = compactionBilling
+    ? anthropicIterationInputs([bodies.compaction, bodies.compactionThreshold].join("\n"), input)
+    : [];
+  reportUsage(
+    ["uncached_input_tokens", "output_tokens"].every((signal) =>
+      compactionInputs.some(({ key }) => key === `messages.usage.${signal}`),
+    ),
+    "Compaction iterations",
+  );
+  pricingInputs.push(...compactionInputs);
 
-  const searchAmount = bodies.webSearch.match(
-    /\$((?:0|[1-9]\d*)(?:\.\d+)?) per 1,000 searches/,
-  )?.[1];
-  const searchSignal = bodies.webSearch.includes('"web_search_requests"');
-  if (searchSignal)
-    pricingInputs.push({
-      key: "messages.usage.successful_web_searches",
-      channel: "response",
-      locator: {
-        kind: "json_pointer",
-        value: "/usage/server_tool_use/web_search_requests",
-      },
-      availability: "terminal_only",
-      source_ref: input.source.id,
-    });
-  if (searchAmount !== undefined) {
-    const rate = publishedRate(
-      "web_search",
-      searchAmount,
-      "thousand_events",
-      input.source.id,
-      "per 1,000 successful searches",
-    );
-    rate.source_locator = {
-      kind: "fragment",
-      value: "/docs/en/agents-and-tools/tool-use/web-search-tool.md#usage-and-pricing",
-    };
+  const searchAmount = agreedAmount(
+    usagePricingSection(bodies.webSearch),
+    /\$((?:0|[1-9]\d*)(?:\.\d+)?)(?: USD)? per 1,000 searches/g,
+  );
+  const searchInput = anthropicSearchInput(bodies.webSearch, input);
+  const searchSignal = searchInput !== undefined;
+  if (searchInput !== undefined) pricingInputs.push(searchInput);
+  if (bodies.webSearch.trim() !== "") {
+    const rate =
+      searchAmount === undefined
+        ? undefined
+        : publishedRate(
+            "web_search",
+            searchAmount,
+            "thousand_events",
+            input.source.id,
+            "per 1,000 successful searches",
+          );
+    if (rate !== undefined)
+      rate.source_locator = {
+        kind: "fragment",
+        value: "/docs/en/agents-and-tools/tool-use/web-search-tool.md#usage-and-pricing",
+      };
     facts.push(
       commercialFact(input.source.id, {
         bookKey: "service:web-search",
@@ -1553,18 +1568,34 @@ function commercialPricing(
         offerKey: "usage",
         offerName: "Successful search",
         state: "numeric",
-        rates: [rate],
-        raw: [],
+        rates: rate === undefined ? [] : [rate],
+        raw:
+          rate === undefined
+            ? [
+                commercialRaw(
+                  "unparsed:web-search-price",
+                  "base_price",
+                  "unsupported_structure",
+                  bodies.webSearch.slice(0, 4096),
+                  input.source.id,
+                ),
+              ]
+            : [],
       }),
     );
   }
-  report(searchAmount !== undefined, "web_search_service_bound", "Web Search rate");
-  report(searchSignal, "web_search_usage_bound", "Web Search usage signal");
+  report(
+    searchAmount !== undefined ? true : bodies.webSearch.trim() === "" ? false : "raw",
+    "web_search_service_bound",
+    "Web Search rate",
+  );
+  reportUsage(searchSignal, "Web Search usage signal");
 
   const codeTable = tables(bodies.codeExecution).find(
     (table) => table.headers.join("|") === "Model|Tool versions",
   );
-  const codeText = text(bodies.codeExecution);
+  const codeText = text(usagePricingSection(bodies.codeExecution));
+  const codeEvidence = codeText || text(bodies.codeExecution);
   const codeIds = new Set(listedModelIds(bodies.codeExecution) ?? []);
   const codeRefs = new Set<string>();
   for (const values of codeTable?.rows ?? []) {
@@ -1575,72 +1606,132 @@ function commercialPricing(
     const item = commercialModel(models, id);
     if (item !== undefined && callable(item)) codeRefs.add(item.uid);
   }
-  const codeAmount = codeText.match(
-    /\$((?:0|[1-9]\d*)(?:\.\d+)?) USD per hour, per container/,
-  )?.[1];
-  const minimum = codeText.match(/minimum of (\d+) minutes/)?.[1];
-  const monthlyAllowance = codeText.match(/([\d,]+) free hours of usage per month/)?.[1];
+  const codeAmount = agreedAmount(
+    codeText,
+    /\$((?:0|[1-9]\d*)(?:\.\d+)?) USD per hour, per container/g,
+  );
+  const minimumQuote = agreedAmount(codeText, /minimum of ([^ ]+) minutes/g);
+  const minimum = /^\d+$/.test(minimumQuote ?? "") ? minimumQuote : undefined;
+  const allowanceQuotes = [...codeText.matchAll(/([^ ]+) free hours of usage per month/g)].flatMap(
+    (match) => (match[1] === undefined ? [] : [match[1]]),
+  );
+  const allowanceQuote = allowanceQuotes[0];
+  const monthlyAllowance =
+    allowanceQuote !== undefined &&
+    allowanceQuotes.every(
+      (quote) =>
+        /^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(quote) &&
+        quote.replaceAll(",", "") === allowanceQuote.replaceAll(",", ""),
+    )
+      ? allowanceQuote
+      : undefined;
   const webAssisted =
     codeText.includes("Code execution is free when used with web search or web fetch") &&
     bodies.codeExecution.includes("web_search_20260209") &&
     bodies.codeExecution.includes("web_fetch_20260209");
   const scope = [...codeRefs];
-  if (codeAmount !== undefined && scope.length > 0) {
-    const rate = publishedRate(
-      "container_runtime",
-      codeAmount,
-      "hour",
-      input.source.id,
-      "per container-hour",
-    );
-    rate.source_locator = {
-      kind: "fragment",
-      value: "/docs/en/agents-and-tools/tool-use/code-execution-tool.md#usage-and-pricing",
-    };
+  if (scope.length > 0) {
+    let rate =
+      codeAmount === undefined
+        ? undefined
+        : publishedRate(
+            "container_runtime",
+            codeAmount,
+            "hour",
+            input.source.id,
+            "per container-hour",
+          );
+    if (rate !== undefined)
+      rate.source_locator = {
+        kind: "fragment",
+        value: "/docs/en/agents-and-tools/tool-use/code-execution-tool.md#usage-and-pricing",
+      };
+    const code =
+      rate === undefined ? undefined : anthropicCodeExecution(rate, minimum, monthlyAllowance);
+    if (code !== undefined) {
+      rate = code.rate;
+      vocabulary.push(...code.vocabulary);
+    }
     const raw = [
-      ...(minimum === undefined
-        ? []
-        : [
+      ...(rate === undefined
+        ? [
             commercialRaw(
-              "minimum-runtime",
-              "informational",
+              "unparsed:code-execution-price",
+              "base_price",
               "unsupported_structure",
-              `${minimum}-minute minimum execution time`,
+              codeEvidence.slice(0, 4096),
               input.source.id,
             ),
-          ]),
-      ...(monthlyAllowance === undefined
-        ? []
-        : [
+          ]
+        : []),
+      ...(minimum === undefined
+        ? [
             commercialRaw(
-              "monthly-container-allowance",
+              "unparsed:minimum-runtime",
+              "base_price",
+              "unsupported_structure",
+              codeEvidence.slice(0, 4096),
+              input.source.id,
+            ),
+          ]
+        : rate === undefined
+          ? [
+              commercialRaw(
+                "minimum-runtime",
+                "informational",
+                "unsupported_structure",
+                `${minimum}-minute minimum execution time`,
+                input.source.id,
+              ),
+            ]
+          : []),
+      ...(monthlyAllowance === undefined
+        ? [
+            commercialRaw(
+              "unparsed:monthly-container-allowance",
               "allowance",
               "unsupported_structure",
-              `${monthlyAllowance} free container-hours per organization per month`,
+              codeEvidence.slice(0, 4096),
               input.source.id,
             ),
-          ]),
-      commercialRaw(
-        "runtime-observation",
-        "informational",
-        "requires_usage_aggregation",
-        "Messages usage reports code-execution request count, not billable container duration",
-        input.source.id,
-      ),
+          ]
+        : rate === undefined
+          ? [
+              commercialRaw(
+                "monthly-container-allowance",
+                "allowance",
+                "unsupported_structure",
+                `${monthlyAllowance} free container-hours per organization per month`,
+                input.source.id,
+              ),
+            ]
+          : []),
+      ...(rate?.charge_binding === undefined
+        ? [
+            commercialRaw(
+              "runtime-observation",
+              "informational",
+              "requires_usage_aggregation",
+              "Messages usage reports code-execution request count, not billable container duration",
+              input.source.id,
+            ),
+          ]
+        : []),
     ];
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "service:code-execution",
-        bookName: "Code Execution",
-        resourceKey: "code-execution",
-        modelRefs: scope,
-        offerKey: "standalone",
-        offerName: "Standalone Code Execution",
-        state: "numeric",
-        rates: [rate],
-        raw,
-      }),
-    );
+    const codeFact = commercialFact(input.source.id, {
+      bookKey: "service:code-execution",
+      bookName: "Code Execution",
+      resourceKey: "code-execution",
+      modelRefs: scope,
+      offerKey: "standalone",
+      offerName: "Standalone Code Execution",
+      state: "numeric",
+      rates: rate === undefined ? [] : [rate],
+      raw,
+    });
+    if (code !== undefined && code.allowance_terms.length > 0)
+      codeFact.allowance_terms = code.allowance_terms;
+    facts.push(codeFact);
   }
   if (webAssisted && scope.length > 0)
     facts.push(
@@ -1659,6 +1750,10 @@ function commercialPricing(
     "code_execution_scope_bound",
     "Code Execution model scope",
   );
+  if (bodies.codeExecution.trim() !== "" && (codeIds.size === 0 || codeRefs.size !== codeIds.size))
+    input.onPricingDependencyFailure?.(
+      "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
+    );
   report(codeAmount !== undefined, "code_execution_rate_bound", "Code Execution rate");
   report(minimum !== undefined, "code_execution_minimum_bound", "Code Execution minimum");
   report(
@@ -1671,23 +1766,19 @@ function commercialPricing(
   const advisorBilling =
     bodies.advisor.includes("separate sub-inference billed at the advisor model's rates") &&
     bodies.advisor.includes("usage.iterations");
-  report(advisorBilling, "advisor_usage_ledger_bound", "Advisor sub-inference model usage");
+  reportUsage(advisorBilling, "Advisor sub-inference model usage");
 
   const fallbackContract =
     bodies.fallbackCredit.includes("fallback_credit_token") &&
     bodies.fallbackCredit.includes("five-minute window") &&
     bodies.fallbackCredit.includes("cache_creation_input_tokens") &&
     bodies.fallbackCredit.includes("cache_read_input_tokens");
-  report(fallbackContract, "fallback_usage_outcome_bound", "Fallback retry usage outcome");
+  reportUsage(fallbackContract, "Fallback retry usage outcome");
 
-  const carrier = [...models.values()].find(({ price_facts }) => price_facts.length > 0);
-  if (carrier !== undefined) {
-    if (facts.length > 0) carrier.commercial_facts = facts;
-    if (pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  }
+  return { commercial_facts: facts, pricing_inputs: pricingInputs, vocabulary };
 }
 
-export function parseAnthropicCatalog(input: Input): ProviderModel[] {
+export function parseAnthropicCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(json(input.body));
   const documents = new Map<string, string>();
   for (const item of bundle.documents) {
@@ -1708,7 +1799,8 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     input,
   );
   const models = new Map<string, ProviderModel>();
-  overview(bundle.index.body, input, models);
+  const observeLimit = limitObserver(input);
+  overview(bundle.index.body, input, models, observeLimit);
   const lifecycleBody = document("/docs/en/about-claude/model-deprecations.md");
   if (lifecycleBody) lifecycle(lifecycleBody, input, models);
   const releases = document("/docs/en/release-notes/overview.md");
@@ -1721,6 +1813,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
       requestAccounting.dataResidencyGeneration,
       input,
       models,
+      observeLimit,
     );
   applyEndpoints(
     messagesBody,
@@ -1748,7 +1841,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     models,
     input,
   );
-  commercialPricing(
+  const commercial = commercialPricing(
     {
       webSearch: document("/docs/en/agents-and-tools/tool-use/web-search-tool.md"),
       codeExecution: document("/docs/en/agents-and-tools/tool-use/code-execution-tool.md"),
@@ -1761,7 +1854,10 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     models,
     requestAccounting.pricingInputs,
   );
-  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid)),
+    ...commercial,
+  };
 }
 
 export function parseAnthropicApi(input: Input): ProviderModel[] {

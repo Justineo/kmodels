@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { pricingCompilationEntries } from "../src/catalog/collector.ts";
 import type { ProviderManifest, SourceManifest } from "../src/catalog/manifests.ts";
-import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import {
+  assembleParsedProviderPricing,
+  type ParsedPricingSource,
+} from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import {
   capturePricingReplaySources,
@@ -17,8 +20,12 @@ import {
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
 import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
-import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
-import type { ParsedPricingModel, ParsedProviderModel } from "../src/catalog/pricing-source.ts";
+import type { PricingCatalog, ProviderAtomRegistryEntry } from "../src/catalog/pricing-schema.ts";
+import type {
+  ParsedPricingModel,
+  ParsedProviderModel,
+  SourceCommercialPricingFact,
+} from "../src/catalog/pricing-source.ts";
 import {
   catalogSchema,
   unknownCapabilities,
@@ -296,6 +303,77 @@ function xaiReplayCase(publication: "fresh" | "retained", includeAcceptedResourc
 }
 
 describe("local canonical pricing compilation", () => {
+  it("assembles and captures source-level services without a model carrier", () => {
+    const commercial: SourceCommercialPricingFact = {
+      source_ref: sourceId,
+      book_key: "service:search",
+      book_name: "Search",
+      resource_kind: "service",
+      resource_key: "search",
+      model_refs: [],
+      offer_key: "usage",
+      offer_name: "Successful search",
+      billing_mode: "usage",
+      pricing_state: "numeric",
+      price_facts: [
+        {
+          meter: "web_search",
+          price: "1",
+          currency: "USD",
+          unit: "thousand_events",
+          conditions: {},
+          source_ref: sourceId,
+          derived: false,
+        },
+      ],
+      raw_price_facts: [],
+    };
+    const atom: ProviderAtomRegistryEntry = {
+      kind: "categorical_value" as const,
+      key: "peak",
+      dimension: { namespace: "kmodels" as const, value: "billing_period" as const },
+      label: "Peak",
+      definition: "Reviewed daily peak period",
+      schedule: {
+        kind: "daily_time_windows" as const,
+        time_zone: "UTC",
+        windows: [{ from: "01:00", until: "04:00" }],
+      },
+    };
+    const source: ParsedPricingSource = {
+      source: sourceManifest,
+      models: [],
+      commercial_facts: [commercial],
+      vocabulary: [atom],
+    };
+    const partition = assembleParsedProviderPricing(providerId, observedAt, [source], []);
+    expect(partition?.books).toEqual([
+      expect.objectContaining({
+        book_key: "service:search",
+        scope: expect.objectContaining({ kind: "provider_resource", model_refs: [] }),
+      }),
+    ]);
+    expect(partition?.vocabulary.atoms).toContainEqual(atom);
+    expect(capturePricingReplaySources([source], [sourceRecord()])).toEqual([
+      expect.objectContaining({ models: [], commercial_facts: [commercial], vocabulary: [atom] }),
+    ]);
+    expect(() =>
+      assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [
+          source,
+          {
+            source: { ...sourceManifest, id: "second-source" },
+            models: [],
+            vocabulary: [{ ...atom, definition: "Conflicting definition" }],
+          },
+        ],
+        [],
+      ),
+    ).toThrow("Source atom peak has conflicting definitions");
+  });
+
   it("keeps rejected assembly inputs when the accepted core still supports replay", async () => {
     const accepted = candidate("1");
     const transition = failedPricingTransition(providerId, observedAt, "pricing_validation_failed");
@@ -755,12 +833,9 @@ describe("local canonical pricing compilation", () => {
 
     expect(captured?.[0]).toMatchObject({
       source_id: accounting.id,
-      models: [
-        {
-          pricing_inputs: [expect.objectContaining({ source_ref: accounting.id })],
-        },
-      ],
+      pricing_inputs: [expect.objectContaining({ source_ref: accounting.id })],
     });
+    expect(captured?.[0]?.models[0]).not.toHaveProperty("pricing_inputs");
   });
 
   it("rejects mismatched accounting provenance during capture", () => {

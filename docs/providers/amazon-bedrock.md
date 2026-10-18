@@ -57,6 +57,9 @@ for reviewed OpenAI and Stability tables that can lead the bulk feeds. The exact
 [Cohere Embed 4 Marketplace page](https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs) is an
 optional product-specific overlay. AWS states that service pricing pages control when an
 informational Price List differs, so an exact page row may replace only the same narrower scope.
+The losing Price List amount remains informational evidence. Unequal observations within the same
+reviewed page retain equal authority and become a bounded canonical conflict; their order cannot
+select a winner.
 If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
 reported for the panel while a recognized sibling panel can still contribute exact rates.
 When none of the Price List offers binds a model, an exact model-card Pricing table can supply
@@ -102,13 +105,26 @@ credentials skip only this regional inventory overlay.
 Claim-local accounting companions establish only calculator inputs, independently from the rate
 sources:
 
-- Converse, ConverseStream metadata, TokenUsage, CacheDetail, and prompt-caching references establish
+- Converse, ConverseStream metadata, TokenUsage, CacheDetail, ServiceTier, PerformanceConfiguration,
+  and prompt-caching references establish
   terminal input, output, cache-read, cache-write, TTL-specific cache-write, served-tier, and speed
   fields;
 - the Batch results guide establishes terminal job-manifest input/output totals;
 - the model-invocation-log schema establishes runtime-only input/output counters and Region for
   reconciliation use;
-- ApplyGuardrail and InvokeGuardrailChecks references establish their exact returned usage fields.
+- ApplyGuardrail's response reference, GuardrailUsage, and InvokeGuardrailChecks references establish
+  their exact returned usage fields.
+
+API fields must be owned by the corresponding Contents or Response Elements definition list, with
+the exact declared object/scalar type. Request fields, nested definitions, prose mentions, duplicate
+fields and duplicate type declarations cannot establish a returned counter. Served-tier and speed
+selectors independently require the shared component's String field and reviewed enum values.
+Batch counters come from the `manifest.json.out` example; log counters come from the version-1.0
+`ModelInvocationLog` example in Log entry format; checks come from Response format. Static syntax
+inspection accepts numeric examples and AWS's `number` placeholder only at the documented path,
+without executing snippets. Duplicate properties or uncertain object spreads withhold the mapping.
+These shapes were checked against the current first-party API pages and guide examples; fixtures
+preserve their relevant ownership and type structure rather than standalone identifier lists.
 
 A missing or drifted accounting companion removes only its own input or selector mapping. It does
 not change a numeric rate, create a raw price, or invalidate a sibling accounting path.
@@ -116,6 +132,19 @@ not change a numeric rate, create a raw price, or invalidate a sibling accountin
 Every fixed companion is optional at acquisition time. A temporary page or Price List failure must
 not erase the independently valid model catalog; provider-level pricing coverage and stale-snapshot
 rules decide whether a new price partition can advance.
+For the three configured Price Lists, malformed JSON, rejected product/term/dimension structure,
+offer/URL or SKU disagreement, and duplicate documents report a typed pricing-dependency failure.
+Catalog discovery remains usable, while collection rejects the whole new commercial partition as
+`source_schema_changed` and captures no partial replay input. The accepted prices and their previous
+replay input remain together. An unrelated offer such as AgentCore is excluded from this boundary.
+Accounting companions also require a unique document for each owned contract. A duplicate withholds
+only that document's mappings; it cannot reject model discovery or remove unrelated rates.
+
+Marketplace completeness comes from its declared `rateCardCount` and `totalRateCards`, both of which
+must equal the acquired inventory. The number of Regions is not frozen. In-Region and Global tariffs
+are independently qualified, so one need not have an identical Region population to the other.
+Repeated query payloads must describe the same inventory independent of row order, and duplicate
+Region/scope claims remain rejected.
 
 ## Identity and model mapping
 
@@ -182,6 +211,9 @@ Batch, Region, context, or service-tier evidence remains qualified.
 
 Numeric formatting differences compare as equal after exact unit conversion. Unequal same-scope
 claims remain conflicts unless the narrower official-page authority rule resolves them.
+An unsupported invocation dimension with a known model keeps its source amount, unit and bounded
+scope as raw evidence, alongside readable sibling rates. Explicit Price List cache-write durations,
+including `30m`, retain their own TTL rather than falling back to five minutes.
 
 ## Request-cost bindings
 
@@ -206,6 +238,10 @@ The model invocation log contract is intentionally marked `reconciliation_only` 
 `bedrock-runtime`. It gives a downstream service exact locators for token quantities and Region;
 the log itself also supplies `schemaVersion`, `requestId`, `operation`, and `modelId` for the
 downstream join. Mantle traffic is not falsely covered by that path.
+TTL-filtered input mappings require the corresponding Converse response or stream contract as well
+as TokenUsage and CacheDetail. A priced TTL other than the independently verified `5m` and `1h`
+contracts retains a distinct semantic signal with no fabricated locator; an aggregate cache-write
+counter cannot stand in for that TTL's quantity.
 
 CUR is not a request-level input. AWS states that CUR aggregates by usage type over an hour or day
 and carries no request identifier. A billing service may join invocation logs to CUR at

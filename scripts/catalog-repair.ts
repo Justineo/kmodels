@@ -4,6 +4,7 @@ import {
   catalogRepairCandidates,
   catalogRepairEvidenceIncomplete,
   catalogRepairEvidenceCommands,
+  scheduledCatalogReview,
 } from "../src/catalog/catalog-repair.ts";
 import { dirname, join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
@@ -18,6 +19,8 @@ const configuredPath = process.env.KMODELS_REFRESH_REPORT_PATH;
 const reportPath = configuredPath ?? new URL("../data/refresh-summary.json", import.meta.url);
 const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
 const candidates = catalogRepairCandidates(report);
+if (process.env.KMODELS_PERIODIC_REVIEW === "true")
+  candidates.push(scheduledCatalogReview(new Date()));
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(report);
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
@@ -71,6 +74,13 @@ if (admissionPath !== undefined) {
     trigger: candidate.trigger,
     description: candidate.message,
   }));
+  if (sourceEvidenceIncomplete)
+    required.push({
+      id: "workflow/source-evidence",
+      trigger: "provider_validation",
+      description:
+        "Source acquisition or required commercial evidence is incomplete. Investigate the exact failed sources in the refresh report; unrelated successful candidates cannot establish a healthy no-op.",
+    });
   if (executionNeedsReview || executionIncomplete)
     required.push({
       id: "workflow/refresh-execution",

@@ -6,6 +6,12 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { extractMistralPricingInputs } from "./mistral-accounting.ts";
 import {
+  applyMistralPricingPolicy,
+  parseMistralPricingPolicy,
+  mistralCurrencyUrl,
+  mistralPriorityUrl,
+} from "./mistral-pricing-policy.ts";
+import {
   extractMistralCommercialFacts,
   type MistralPricingCard,
   parseMistralPricingCards,
@@ -63,6 +69,7 @@ interface SourcePrice {
 interface SourcePricing {
   free: boolean;
   prices: SourcePrice[];
+  unsupported: number;
   valid: boolean;
 }
 
@@ -304,10 +311,11 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
     const pricing = objectValue(property(object, "pricing"), "pricing");
     const type = requiredString(pricing, "type");
     const free = booleanValue(property(pricing, "free"), "pricing.free");
-    const result = (prices: SourcePrice[]): SourcePricing => ({
+    const result = (prices: SourcePrice[], unsupported = 0): SourcePricing => ({
       free,
       prices,
-      valid: !free || prices.every(({ price }) => price === "0"),
+      unsupported,
+      valid: !free || (unsupported === 0 && prices.every(({ price }) => price === "0")),
     });
     if (type === "flat")
       return result([
@@ -325,7 +333,8 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
           denominator: requiredString(pricing, "denominator"),
         })),
       );
-    if (type !== "custom") return { free: false, prices: [], valid: false };
+    if (type !== "custom") return { free: false, prices: [], unsupported: 0, valid: false };
+    let unsupported = 0;
     return result(
       (["input", "output"] as const).flatMap((direction) => {
         const expression = property(pricing, direction);
@@ -336,7 +345,8 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
           try {
             const rate = objectValue(item, `pricing.${direction} rate`);
             const rateType = requiredString(rate, "type");
-            if (rateType !== "flat" && rateType !== "range") return [];
+            if (rateType !== "flat" && rateType !== "range")
+              throw new Error("Unsupported Mistral price shape");
             const label = stringValue(property(rate, "label"));
             const kind = sourcePriceKind(direction, label);
             return [
@@ -347,13 +357,15 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
               },
             ];
           } catch {
+            unsupported += 1;
             return [];
           }
         });
       }),
+      unsupported,
     );
   } catch {
-    return { free: false, prices: [], valid: false };
+    return { free: false, prices: [], unsupported: 0, valid: false };
   }
 }
 
@@ -730,6 +742,7 @@ function pricing(
   sourceId: string,
   discounts: DiscountPolicy,
   signal: (path: string) => void,
+  reconcile: Reconcile,
 ): SourcePriceFact[] {
   if (draft.status === "retired") return [];
   if (!draft.pricing.valid) {
@@ -738,9 +751,16 @@ function pricing(
   }
   const direct = draft.pricing.prices.flatMap((price) => {
     try {
-      return [directRate(price, modelTasks, sourceId)];
+      const rate = directRate(price, modelTasks, sourceId);
+      reconcile?.({ disposition: "normalized", reason_code: "normalized_repository_price" });
+      return [rate];
     } catch {
       signal(`/models/${draft.sourceSlug}/pricing/${price.denominator}`);
+      reconcile?.({
+        disposition: "unsupported",
+        reason_code: "repository_price_unit_unsupported",
+        sample: `${draft.sourceSlug}: ${price.denominator}`,
+      });
       return [];
     }
   });
@@ -768,7 +788,14 @@ function sourceModel(
   const observedModalities = modalities(draft, signal);
   const modelTasks = tasks(draft, observedModalities, signal);
   const apiEndpoints = modelEndpoints(draft, endpointsByFeature, signal);
-  const rates = pricing(draft, modelTasks, input.source.id, discounts, signal);
+  const rates = pricing(
+    draft,
+    modelTasks,
+    input.source.id,
+    discounts,
+    signal,
+    input.onPricingReconciliation,
+  );
   const active = draft.status === "active" || draft.status === "preview";
   const feature = (name: string): boolean | "unknown" =>
     draft.features.includes(name) ? true : active ? false : "unknown";
@@ -811,9 +838,13 @@ function sourceModel(
         ? "not_applicable"
         : rates.length > 0
           ? "numeric"
-          : draft.pricing.valid && draft.pricing.free
-            ? "free"
-            : "not_published",
+          : draft.pricing.valid &&
+              draft.pricing.unsupported === 0 &&
+              draft.pricing.prices.length === 0
+            ? draft.pricing.free
+              ? "free"
+              : "not_published"
+            : "unknown",
     price_facts: rates,
   } satisfies ProviderModel;
   return model;
@@ -907,7 +938,7 @@ function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
       continue;
     }
     if (draft.status === "retired") {
-      reconcileMany(reconcile, draft.pricing.prices.length, {
+      reconcileMany(reconcile, draft.pricing.prices.length + draft.pricing.unsupported, {
         disposition: "excluded",
         reason_code: "historical_retired_price",
       });
@@ -925,13 +956,14 @@ function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
       });
       continue;
     }
-    reconcileMany(reconcile, draft.pricing.prices.length, {
-      disposition: "normalized",
-      reason_code: "normalized_repository_price",
+    reconcileMany(reconcile, draft.pricing.unsupported, {
+      disposition: "unsupported",
+      reason_code: "repository_price_shape_unsupported",
+      sample: draft.sourceSlug,
     });
     if (draft.pricing.free)
       reconcile?.({ disposition: "explicit_non_numeric", reason_code: "free" });
-    else if (draft.pricing.prices.length === 0)
+    else if (draft.pricing.prices.length === 0 && draft.pricing.unsupported === 0)
       reconcile?.({
         disposition: "explicit_non_numeric",
         reason_code: "price_not_published",
@@ -1092,16 +1124,24 @@ function selectPublicRate(
     (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(rate),
   );
   const sameAmount = current !== undefined && decimalsEqual(current.price, rate.price);
-  const superseded = current === undefined || sameAmount ? [] : [current];
+  const samePage = current?.source_ref === sourceId && !current.derived;
+  if (samePage && sameAmount) return model;
+  const superseded = current === undefined || sameAmount || samePage ? [] : [current];
   const remaining = model.price_facts.filter(
-    (candidate) => !relatedRate(candidate, rate) || candidate.currency !== rate.currency,
+    (candidate) =>
+      samePage || !relatedRate(candidate, rate) || candidate.currency !== rate.currency,
   );
   const selected: SourcePriceFact = {
     ...rate,
-    ...(superseded.length === 0
-      ? {}
-      : { resolution_policy: "mistral_public_price_page_over_repository" }),
+    resolution_policy: "mistral_public_price_page_over_repository",
   };
+  const hasExplicitCache = model.price_facts.some(
+    (candidate) =>
+      candidate.meter === "cache_read_text" &&
+      !candidate.derived &&
+      candidate.currency === selected.currency &&
+      candidate.conditions.operation === selected.conditions.operation,
+  );
   const additions = [
     selected,
     ...(selected.meter === "cache_read_text"
@@ -1109,7 +1149,7 @@ function selectPublicRate(
       : derivedPricing(
           [selected],
           discounts.batch && model.capabilities.batch === true,
-          discounts.cache && model.capabilities.prompt_cache === true,
+          discounts.cache && model.capabilities.prompt_cache === true && !hasExplicitCache,
         )),
   ];
   if (superseded.length > 0)
@@ -1153,7 +1193,9 @@ function supersededPrice(
 function relatedRate(candidate: SourcePriceFact, selected: SourcePriceFact): boolean {
   if (candidate.conditions.operation !== selected.conditions.operation) return false;
   if (candidate.meter === selected.meter && candidate.unit === selected.unit) return true;
-  return selected.meter === "input_text" && candidate.meter === "cache_read_text";
+  return (
+    selected.meter === "input_text" && candidate.meter === "cache_read_text" && candidate.derived
+  );
 }
 
 export function parseMistralCatalog(input: Input): ProviderModel[] {
@@ -1357,6 +1399,20 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
   });
   const observedModels = new Set<string>();
   publicPricing(input, models, cards, catalogDiscountPolicy(models), observedModels);
+  const page = load(bundle.index.body);
+  const tabular = page("mistral-block-card-model").length === 0;
+  const hasPolicyDocuments = bundle.documents.some(
+    ({ url }) => url === mistralCurrencyUrl || url === mistralPriorityUrl,
+  );
+  const policy =
+    tabular || hasPolicyDocuments
+      ? parseMistralPricingPolicy(bundle, input.source.id, input.onPricingReconciliation)
+      : undefined;
+  if (tabular && /Regional inference/i.test(page.text()))
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "regional_pricing_requires_model_availability",
+    });
   for (const model of models) {
     model.price_facts = model.price_facts.filter(
       ({ source_ref }) => source_ref === input.source.id,
@@ -1365,6 +1421,8 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
       ({ source_ref }) => source_ref === input.source.id,
     );
     if (!observedModels.has(model.uid)) model.pricing_state = "unknown";
+    if (policy !== undefined)
+      applyMistralPricingPolicy(model, policy, input.onPricingReconciliation);
   }
   extractMistralCommercialFacts(
     {
@@ -1376,21 +1434,25 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     },
     cards,
   );
-  const pricingInputs = extractMistralPricingInputs(
-    bundle.documents,
-    input.source.id,
-    input.onContractFinding,
-    input.onPricingReconciliation,
-  );
+  const pricingInputs = [
+    ...extractMistralPricingInputs(
+      bundle.documents,
+      input.source.id,
+      input.onContractFinding,
+      input.onPricingReconciliation,
+    ),
+    ...(policy?.inputs ?? []),
+  ];
   const carrier = [...models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return models
     .filter(
-      ({ pricing_state, price_facts, raw_price_facts, commercial_facts }) =>
+      ({ pricing_state, price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
         pricing_state !== "unknown" ||
         price_facts.length > 0 ||
         raw_price_facts.length > 0 ||
-        (commercial_facts?.length ?? 0) > 0,
+        (commercial_facts?.length ?? 0) > 0 ||
+        (pricing_inputs?.length ?? 0) > 0,
     )
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }

@@ -1,43 +1,35 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { extractDeepseekPricingInputs } from "./deepseek-accounting.ts";
+import { deepseekApiDocument } from "./deepseek-api-document.ts";
+import {
+  deepseekBillingRule,
+  deepseekBillingVocabulary,
+  type DeepseekBillingRule,
+  type DeepseekCurrency,
+} from "./deepseek-pricing-policy.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { baseModel, modelUid } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { canonicalizeInstant } from "./pricing-time.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertItemCount, type SourceContractEvidence } from "./source-contract.ts";
-import { type Provider, unknownCapabilities } from "./schema.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
+import { assertItemCount, contractExtensionEvidence } from "./source-contract.ts";
+import { unknownCapabilities } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
+import { linkedBundleSchema, type LinkedBundle as Bundle } from "./bundle.ts";
 
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
-
-const bundleSchema = z.object({
-  index: z.object({ url: z.url(), body: z.string().min(1) }),
-  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })),
+const listItemSchema = z.object({
+  id: modelIdSchema,
+  object: z.literal("model"),
+  owned_by: z.string().min(1),
 });
-
-type Bundle = z.infer<typeof bundleSchema>;
-
-const listItemSchema = z
-  .object({
-    id: modelIdSchema,
-    object: z.literal("model"),
-    owned_by: z.string().min(1),
-  })
-  .strict();
-const listSchema = z
-  .object({ object: z.literal("list"), data: z.array(listItemSchema).min(1) })
-  .strict();
+const listSchema = z.object({ object: z.literal("list"), data: z.array(listItemSchema).min(1) });
 const apiListSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
 const apiListItemSchema = z.object({
   id: modelIdSchema,
@@ -66,14 +58,12 @@ const cnyPriceRows = [
   ["output_text", "百万tokens输出"],
 ] as const;
 
-type DeepseekCurrency = "CNY" | "USD";
 type BillingPeriod = "off_peak" | "peak";
 
-export const deepseekWeekendOffPeakEffectiveAt = "2026-08-22T16:00:00.000Z";
-
-type ScheduledPricing =
+type ScheduledPricing = { rule: DeepseekBillingRule } & (
   | { layout: "inline"; table: HtmlTable }
-  | { layout: "separate"; effectiveFrom: string; table: HtmlTable };
+  | { layout: "separate"; effectiveFrom: string; table: HtmlTable }
+);
 
 function exactId(value: string): string | undefined {
   const parsed = modelIdSchema.safeParse(value.trim());
@@ -157,8 +147,9 @@ function supportedModelIds(
 ): Set<string> {
   return new Set(
     columns.flatMap(({ column, id }) =>
-      claim(input, reasonCode, `${id}:${label}`, () => supportValue(cell(table, label, column))) ===
-      true
+      catalogClaim(input, reasonCode, `${id}:${label}`, () =>
+        supportValue(cell(table, label, column)),
+      ) === true
         ? [id]
         : [],
     ),
@@ -168,68 +159,13 @@ function supportedModelIds(
 function endpointEvidence(
   body: string,
   endpoint: NonNullable<ProviderModel["api_endpoints"]>[number],
-): {
-  modelIds: Set<string>;
-  propertyValues: (name: string) => string[] | undefined;
-  propertyText: (name: string) => string[];
-} {
-  const $ = load(body);
-  const article = $("article");
-  const operations = article.find("pre.openapi__method-endpoint");
-  const operation = operations.first();
-  if (
-    operations.length !== 1 ||
-    htmlText(operation.find(".badge").first().text()) !== "POST" ||
-    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !== endpoint.path
-  )
-    throw new Error(`DeepSeek ${endpoint.name} reference changed operation`);
-  const schemaItems = article.find(".openapi-schema__list-item").toArray();
-  const propertyValues = (name: string): string[] | undefined => {
-    const values = schemaItems
-      .filter(
-        (element) =>
-          htmlText($(element).find("strong.openapi-schema__property").first().text()) === name,
-      )
-      .flatMap((element) =>
-        $(element)
-          .find("p")
-          .toArray()
-          .filter((paragraph) => /^Possible values:/i.test(htmlText($(paragraph).text())))
-          .map((paragraph) =>
-            $(paragraph)
-              .find("code")
-              .map((_index, code) => htmlText($(code).text()))
-              .get(),
-          ),
-      )
-      .filter((items) => items.length > 0);
-    return values.length === 1 ? values[0] : undefined;
-  };
-  const propertyText = (name: string): string[] =>
-    schemaItems
-      .filter(
-        (element) =>
-          htmlText($(element).find("strong.openapi-schema__property").first().text()) === name,
-      )
-      .map((element) => htmlText($(element).text()));
-  const modelValues = propertyValues("model");
-  if (modelValues === undefined)
-    throw new Error(`DeepSeek ${endpoint.name} reference changed model schema`);
+) {
+  const api = deepseekApiDocument(body, endpoint.path);
+  const modelValues = api.values("request", [["model", "string"]]);
   const ids = z.array(modelIdSchema).min(1).safeParse(modelValues);
   if (!ids.success || new Set(ids.data).size !== ids.data.length)
-    throw new Error(`DeepSeek ${endpoint.name} reference returned invalid model IDs`);
-  return { modelIds: new Set(ids.data), propertyValues, propertyText };
-}
-
-function propertyClaims(
-  evidence: ReturnType<typeof endpointEvidence>,
-  property: string,
-  claims: readonly string[],
-  message: string,
-): void {
-  const value = evidence.propertyText(property).join(" ").toLowerCase();
-  if (value === "" || claims.some((claim) => !value.includes(claim.toLowerCase())))
-    throw new Error(message);
+    throw new Error("DeepSeek " + endpoint.name + " reference returned invalid model IDs");
+  return { modelIds: new Set(ids.data), api };
 }
 
 interface ChatClaims {
@@ -240,15 +176,18 @@ interface ChatClaims {
 
 function chatClaims(input: Input, body: string | undefined): ChatClaims {
   if (body === undefined) return { effortControl: false, modelIds: new Set(), streaming: false };
-  const evidence = claim(input, "chat_operation_contract_drift", "Chat Completions", () =>
+  const evidence = catalogClaim(input, "chat_operation_contract_drift", "Chat Completions", () =>
     endpointEvidence(body, chatEndpoint),
   );
   if (evidence === undefined)
     return { effortControl: false, modelIds: new Set(), streaming: false };
   const effortControl =
-    claim(input, "chat_reasoning_controls_drift", "reasoning controls", () => {
-      const thinking = evidence.propertyValues("thinking");
-      const effort = evidence.propertyValues("reasoning_effort");
+    catalogClaim(input, "chat_reasoning_controls_drift", "reasoning controls", () => {
+      const thinking = evidence.api.values("request", [
+        ["thinking", "object"],
+        ["type", "string"],
+      ]);
+      const effort = evidence.api.values("request", [["reasoning_effort", "string"]]);
       if (
         thinking === undefined ||
         !["enabled", "disabled"].every((value) => thinking.includes(value)) ||
@@ -258,33 +197,43 @@ function chatClaims(input: Input, body: string | undefined): ChatClaims {
         throw new Error("expected thinking and reasoning_effort values");
       return true;
     }) === true;
-  claim(input, "chat_structured_output_drift", "response_format", () => {
-    const values = evidence.propertyValues("response_format");
+  catalogClaim(input, "chat_structured_output_drift", "response_format", () => {
+    const values = evidence.api.values("request", [
+      ["response_format", "object"],
+      ["type", "string"],
+    ]);
     if (values === undefined || !["text", "json_object"].every((value) => values.includes(value)))
       throw new Error("expected text and json_object");
   });
-  claim(input, "chat_tool_schema_drift", "tools", () => {
-    if (evidence.propertyValues("tools")?.includes("function") !== true)
+  catalogClaim(input, "chat_tool_schema_drift", "tools", () => {
+    if (
+      evidence.api
+        .values("request", [
+          ["tools", "object[]"],
+          ["type", "string"],
+        ])
+        ?.includes("function") !== true
+    )
       throw new Error("expected function tool");
   });
   const streaming =
-    claim(input, "chat_streaming_contract_drift", "stream", () => {
-      if (
-        evidence
-          .propertyText("stream")
-          .filter((value) => /partial message deltas will be sent/.test(value)).length !== 1
-      )
+    catalogClaim(input, "chat_streaming_contract_drift", "stream", () => {
+      const stream = evidence.api.text("request", [["stream", "boolean"]]);
+      if (stream === undefined || !stream.includes("partial message deltas will be sent"))
         throw new Error("expected one streaming claim");
-      propertyClaims(
-        evidence,
-        "include_usage",
-        [
+      const usage = evidence.api.text("request", [
+        ["stream_options", "object"],
+        ["include_usage", "boolean"],
+      ]);
+      if (
+        usage === undefined ||
+        ![
           "entire request",
           "choices array always contains exactly one element",
           "carries no new content",
-        ],
-        "streaming usage contract drifted",
-      );
+        ].every((claim) => usage.includes(claim))
+      )
+        throw new Error("streaming usage contract drifted");
       return true;
     }) === true;
   return { effortControl, modelIds: evidence.modelIds, streaming };
@@ -296,7 +245,7 @@ interface ResponseClaims {
 
 function responseClaims(input: Input, body: string | undefined): ResponseClaims {
   if (body === undefined) return { modelIds: new Set() };
-  const evidence = claim(input, "responses_operation_contract_drift", "Responses", () =>
+  const evidence = catalogClaim(input, "responses_operation_contract_drift", "Responses", () =>
     endpointEvidence(body, responsesEndpoint),
   );
   return { modelIds: evidence?.modelIds ?? new Set() };
@@ -312,7 +261,7 @@ interface VisionClaims {
 
 function visionClaims(input: Input, body: string | undefined): VisionClaims {
   if (body === undefined) return { modelIds: new Set() };
-  const ids = claim(input, "vision_contract_drift", "Vision", () => {
+  const ids = catalogClaim(input, "vision_contract_drift", "Vision", () => {
     const $ = load(body);
     const introductions = $("article p")
       .toArray()
@@ -344,7 +293,7 @@ function visionClaims(input: Input, body: string | undefined): VisionClaims {
 
 function fimClaims(input: Input, body: string | undefined): FimClaims {
   if (body === undefined) return { modelIds: new Set() };
-  const evidence = claim(input, "fim_operation_contract_drift", "FIM Completion", () =>
+  const evidence = catalogClaim(input, "fim_operation_contract_drift", "FIM Completion", () =>
     endpointEvidence(body, fimReferenceEndpoint),
   );
   return { modelIds: evidence?.modelIds ?? new Set() };
@@ -357,9 +306,10 @@ interface AnthropicClaims {
 
 function anthropicClaims(input: Input, body: string | undefined): AnthropicClaims {
   if (body === undefined) return { available: false, streaming: false };
-  const prose = htmlText(load(body)("article").text());
+  const $ = load(body);
+  const prose = htmlText($("article").text());
   const available =
-    claim(input, "anthropic_operation_contract_drift", "Anthropic Messages", () => {
+    catalogClaim(input, "anthropic_operation_contract_drift", "Anthropic Messages", () => {
       if (
         !/Using the Anthropic API/i.test(prose) ||
         !/https:\/\/api\.deepseek\.com\/anthropic/.test(prose) ||
@@ -369,83 +319,65 @@ function anthropicClaims(input: Input, body: string | undefined): AnthropicClaim
       return true;
     }) === true;
   const streaming =
-    claim(input, "anthropic_streaming_contract_drift", "Anthropic stream", () => {
-      if (!/stream\s+Fully Supported/i.test(prose))
+    catalogClaim(input, "anthropic_streaming_contract_drift", "Anthropic stream", () => {
+      const sections = $("article h3").filter(
+        (_, heading) => htmlText($(heading).text()) === "Simple Fields",
+      );
+      if (sections.length !== 1) throw new Error("expected one Simple Fields section");
+      const content = sections
+        .nextUntil("h1,h2,h3")
+        .filter((_, node) => !$(node).is("pre,blockquote"))
+        .clone();
+      content.find("pre,blockquote").remove();
+      const statuses = htmlTables(content.toString())
+        .filter(({ headers }) => headers.join("|") === "Field|Support Status")
+        .flatMap(({ rows }) =>
+          rows
+            .filter((row) => row[0]?.text === "stream")
+            .map((row) => (row.length === 2 ? row[1]?.text : undefined)),
+        );
+      if (statuses.length !== 1 || statuses[0] !== "Fully Supported")
         throw new Error("expected fully supported stream field");
       return true;
     }) === true;
   return { available, streaming };
 }
 
-function schemaProperty(element: ReturnType<ReturnType<typeof load>>): string {
-  return htmlText(element.find("strong.openapi-schema__property").first().text());
-}
-
 function inventoryReferenceModelIds(body: string): Set<string> {
-  const $ = load(body);
-  const article = $("article");
-  const operations = article.find("pre.openapi__method-endpoint");
-  const operation = operations.first();
-  if (
-    operations.length !== 1 ||
-    htmlText(operation.find(".badge").first().text()) !== "GET" ||
-    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !== "/models"
-  )
-    throw new Error("DeepSeek model-inventory reference changed operation");
-
-  const schemaItems = article.find(".openapi-schema__list-item").toArray();
-  const rootItems = schemaItems.filter(
-    (element) => $(element).parents(".openapi-schema__list-item").length === 0,
-  );
-  const rootNames = rootItems.map((element) => schemaProperty($(element)));
-  if (rootNames.join("\0") !== "object\0data")
-    throw new Error("DeepSeek model-inventory reference changed response schema");
-  const rootObject = rootItems[0];
-  const data = rootItems[1];
+  const api = deepseekApiDocument(body, "/models", "GET");
+  const rootObject = api.text("response", [["object", "string"]]);
+  const itemObject = api.text("response", [
+    ["data", "object[]"],
+    ["object", "string"],
+  ]);
   if (
     rootObject === undefined ||
-    data === undefined ||
-    !/Possible values:\s*\[list\]/i.test(htmlText($(rootObject).text()))
-  )
-    throw new Error("DeepSeek model-inventory reference changed response schema");
-  const itemNames = $(data)
-    .find(".openapi-schema__list-item")
-    .toArray()
-    .filter((element) => $(element).parents(".openapi-schema__list-item").first().get(0) === data)
-    .map((element) => schemaProperty($(element)));
-  if (itemNames.join("\0") !== "id\0object\0owned_by")
-    throw new Error("DeepSeek model-inventory reference changed response schema");
-  const itemObject = $(data)
-    .find(".openapi-schema__list-item")
-    .toArray()
-    .find((element) => schemaProperty($(element)) === "object");
-  if (
+    !/Possible values:\s*\[list\]/i.test(rootObject) ||
     itemObject === undefined ||
-    !/Possible values:\s*\[model\]/i.test(htmlText($(itemObject).text()))
+    !/Possible values:\s*\[model\]/i.test(itemObject) ||
+    !api.has("response", [
+      ["data", "object[]"],
+      ["id", "string"],
+    ]) ||
+    !api.has("response", [
+      ["data", "object[]"],
+      ["owned_by", "string"],
+    ])
   )
     throw new Error("DeepSeek model-inventory reference changed response schema");
-
-  const examples = article
-    .find(".openapi-code__response-samples-container pre code")
-    .toArray()
-    .flatMap((element) => {
-      const parsedJson = z
-        .string()
-        .transform((value, context): unknown => {
-          try {
-            return JSON.parse(value);
-          } catch {
-            context.addIssue({ code: "custom", message: "Invalid JSON" });
-            return z.NEVER;
-          }
-        })
-        .safeParse($(element).text());
-      if (!parsedJson.success) return [];
-      const parsed = listSchema.safeParse(parsedJson.data);
+  const examples = api.responseSamples
+    .flatMap((value) => {
+      let input: unknown;
+      try {
+        input = JSON.parse(value);
+      } catch {
+        return [];
+      }
+      const parsed = listSchema.safeParse(input);
       return parsed.success ? [parsed.data] : [];
     })
-    .filter(({ data: models }) =>
-      models.every(({ id, owned_by }) => id !== "string" && owned_by !== "string"),
+    .filter(({ data }) =>
+      data.every(({ id, owned_by }) => id !== "string" && owned_by !== "string"),
     );
   const [example] = examples;
   if (examples.length !== 1 || example === undefined)
@@ -456,7 +388,26 @@ function inventoryReferenceModelIds(body: string): Set<string> {
   return new Set(ids);
 }
 
-function diagnostic(
+function catalogFinding(input: Input, code: string, sample?: string): void {
+  input.onContractFinding?.(
+    contractExtensionEvidence(["/deepseek/" + code + (sample === undefined ? "" : "/" + sample)]),
+  );
+}
+function catalogClaim<T>(
+  input: Input,
+  code: string,
+  sample: string,
+  parse: () => T,
+): T | undefined {
+  try {
+    return parse();
+  } catch {
+    catalogFinding(input, code, sample);
+    return;
+  }
+}
+
+function pricingDiagnostic(
   input: Input,
   disposition: PricingReconciliationItem["disposition"],
   reason_code: string,
@@ -469,11 +420,16 @@ function diagnostic(
   });
 }
 
-function claim<T>(input: Input, reasonCode: string, sample: string, parse: () => T): T | undefined {
+function pricingClaim<T>(
+  input: Input,
+  reasonCode: string,
+  sample: string,
+  parse: () => T,
+): T | undefined {
   try {
     return parse();
   } catch (error) {
-    diagnostic(
+    pricingDiagnostic(
       input,
       "unsupported",
       reasonCode,
@@ -488,9 +444,8 @@ function companion(input: Input, bundle: Bundle, pathname: string): string | und
     ({ url }) => normalized(new URL(url).pathname) === normalized(pathname),
   );
   if (matches.length === 1) return matches[0]?.body;
-  diagnostic(
+  catalogFinding(
     input,
-    matches.length === 0 ? "unbound" : "unsupported",
     matches.length === 0 ? "commercial_companion_missing" : "commercial_companion_duplicate",
     pathname,
   );
@@ -515,14 +470,13 @@ const catalogRows = new Set([
 
 function validateCatalogTable(input: Input, table: HtmlTable, columns: number[]): void {
   const unhandled = table.rows.map(rowLabel).filter((label) => !catalogRows.has(label));
-  if (unhandled.length > 0)
-    diagnostic(input, "unsupported", "catalog_row_unhandled", unhandled.join(" | "));
+  if (unhandled.length > 0) catalogFinding(input, "catalog_row_unhandled", unhandled.join(" | "));
   for (const [label, expected] of baseUrls)
-    claim(input, "catalog_base_url_drift", label, () => {
+    catalogClaim(input, "catalog_base_url_drift", label, () => {
       if (cells(table, label, columns).some((value) => value !== expected))
         throw new Error(`expected ${expected}`);
     });
-  claim(input, "catalog_support_claim_drift", "Chat Prefix Completion（Beta）", () =>
+  catalogClaim(input, "catalog_support_claim_drift", "Chat Prefix Completion（Beta）", () =>
     cells(table, "Chat Prefix Completion（Beta）", columns).map(supportValue),
   );
 }
@@ -543,7 +497,7 @@ function addRate(input: Input, target: ProviderModel, rate: SourcePriceFact, sam
   target.price_facts.push(rate);
   target.pricing_state = "numeric";
   if (rate.meter === "cache_read_text") target.capabilities.prompt_cache = true;
-  diagnostic(input, "normalized", "price_fact_normalized", sample);
+  pricingDiagnostic(input, "normalized", "price_fact_normalized", sample);
 }
 
 function model(
@@ -557,10 +511,9 @@ function model(
   vision: VisionClaims,
   hasAnthropicEndpoint: boolean,
   anthropicStreaming: boolean,
-  scheduled: ScheduledPricing | undefined,
 ): ProviderModel {
   const value = <T>(reasonCode: string, label: string, parse: (cell: string) => T): T | undefined =>
-    claim(input, reasonCode, `${id}:${label}`, () => parse(cell(table, label, column)));
+    catalogClaim(input, reasonCode, `${id}:${label}`, () => parse(cell(table, label, column)));
   const name = value("model_name_claim_drift", "MODEL VERSION", (item) => item) ?? id;
   const context = value("context_limit_claim_drift", "CONTEXT LENGTH", tokenCount);
   const output = value("output_limit_claim_drift", "MAX OUTPUT", tokenCount);
@@ -579,7 +532,7 @@ function model(
     ...(hasFimEndpoint ? [fimEndpoint] : []),
     ...(hasAnthropicEndpoint ? [anthropicEndpoint] : []),
   ];
-  const current: ProviderModel = {
+  return {
     ...baseModel({
       providerId: input.provider.id,
       id,
@@ -608,22 +561,6 @@ function model(
     pricing_state: "unknown",
     price_facts: [],
   };
-  if (scheduled?.layout === "inline") return current;
-  const effectiveUntil = scheduled?.effectiveFrom;
-  for (const [meter, label] of priceRows) {
-    const amount = value("usd_price_claim_drift", label, (item) => price(item, "USD"));
-    if (amount === undefined) continue;
-    addRate(
-      input,
-      current,
-      priceFact(input, meter, amount, label, "USD", {
-        billing_currency: "USD",
-        ...(effectiveUntil === undefined ? {} : { effective_until: effectiveUntil }),
-      }),
-      `${id}:${meter}`,
-    );
-  }
-  return current;
 }
 
 function scheduledPricing(
@@ -647,6 +584,7 @@ function scheduledPricing(
     return {
       layout: "separate",
       table,
+      rule: deepseekBillingRule(body, currency, input.observedAt),
       effectiveFrom:
         currency === "USD" ? englishScheduledEffectiveFrom(body) : cnyScheduledEffectiveFrom(body),
     };
@@ -659,51 +597,14 @@ function scheduledPricing(
   const hasInlineRows = expectedHeaders.some(
     (label) => inlineTable.rows.filter((item) => rowLabel(item) === label).length > 1,
   );
-  if (hasSchedule && hasInlineRows) {
-    validateScheduledRule(input, body, currency);
-    return { layout: "inline", table: inlineTable };
-  }
+  if (hasInlineRows)
+    return {
+      layout: "inline",
+      table: inlineTable,
+      rule: deepseekBillingRule(body, currency, input.observedAt),
+    };
   if (hasSchedule) throw new Error(`DeepSeek ${currency} scheduled price table not found`);
   return;
-}
-
-export const deepseekHolidayBillingRule =
-  "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays. All other hours are off-peak, including weekends and Chinese public holidays in full.";
-
-function holidayBillingRule(body: string, currency: DeepseekCurrency): boolean {
-  const prose = htmlText(load(body)("article").text());
-  return currency === "USD"
-    ? prose.includes(deepseekHolidayBillingRule)
-    : /北京时间周一至周五（不含中国法定节假日）9:00\s*[-–]\s*12:00、14:00\s*[-–]\s*18:00 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段。/.test(
-        prose,
-      );
-}
-
-function validateScheduledRule(input: Input, body: string, currency: DeepseekCurrency): void {
-  if (holidayBillingRule(body, currency)) return;
-  const prose = htmlText(load(body)("article").text());
-  const recurringRule =
-    currency === "USD"
-      ? /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC, Monday through Friday \(all other hours are off-peak\)/i
-      : /高峰时段为北京时间\s*周一至周五\s*0?9:00\s*[-–]\s*12:00[、，,和]\s*14:00\s*[-–]\s*18:00（其余为(?:空闲|低谷)时段）/;
-  const recurring = recurringRule.test(prose);
-  const dailyRule =
-    currency === "USD"
-      ? /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC \(all other hours are off-peak\)/i
-      : /高峰时段为北京时间\s*0?9:00\s*[-–]\s*12:00[、，,和]\s*14:00\s*[-–]\s*18:00（其余为(?:空闲|低谷)时段）/;
-  if (!recurring && !dailyRule.test(prose))
-    throw new Error(`DeepSeek ${currency} peak-hour rule changed`);
-  if (input.observedAt < deepseekWeekendOffPeakEffectiveAt || recurring) return;
-  const weekendRule =
-    currency === "USD"
-      ? /off-peak rates applying throughout the day on weekends \(Saturdays and Sundays, Beijing Time\)/i
-      : /周末（周六、周日）全天不再区分峰谷时段，统一按照低谷时段价格收取调用费用/;
-  const effectiveRule =
-    currency === "USD"
-      ? /Effective 00:00 \(Beijing Time\) on Sunday, August 23, 2026/i
-      : /北京时间\s*2026\s*年\s*8\s*月\s*23\s*日（周日）\s*00:00\s*起/;
-  if (!weekendRule.test(prose) || !effectiveRule.test(prose))
-    throw new Error(`DeepSeek ${currency} weekend rule changed`);
 }
 
 function englishScheduledEffectiveFrom(body: string): string {
@@ -762,130 +663,275 @@ function billingPeriod(value: string): BillingPeriod {
   throw new Error(`Unknown DeepSeek billing period: ${value}`);
 }
 
-function attachScheduledRates(
+interface TariffCell {
+  header: string;
+  meter: SourcePriceFact["meter"];
+  label: string;
+  amount: string;
+  fragment: string;
+  conditions: SourcePriceFact["conditions"];
+  periodText?: string;
+  invalidPeriod: boolean;
+}
+
+function tariffCell(
+  header: string,
+  meter: SourcePriceFact["meter"],
+  label: string,
+  amount: string | undefined,
+  row: HtmlTable["rows"][number],
+  conditions: SourcePriceFact["conditions"],
+  periodText?: string,
+): TariffCell {
+  let period: BillingPeriod | undefined;
+  if (periodText !== undefined) {
+    try {
+      period = billingPeriod(periodText);
+    } catch {
+      // Keep the quote with its original label when applicability cannot be established.
+    }
+  }
+  return {
+    header,
+    meter,
+    label,
+    amount: amount ?? "",
+    fragment: row
+      .map(({ text }) => text)
+      .join(" | ")
+      .slice(0, 4096),
+    conditions: { ...conditions, ...(period === undefined ? {} : { billing_period: period }) },
+    ...(periodText === undefined ? {} : { periodText }),
+    invalidPeriod: periodText !== undefined && period === undefined,
+  };
+}
+
+function tariffCells(
+  table: HtmlTable,
+  scheduled: ScheduledPricing | undefined,
+  currency: DeepseekCurrency,
+): TariffCell[] {
+  const labels = currency === "USD" ? priceRows : cnyPriceRows;
+  const claims: TariffCell[] = [];
+  const columnStart = modelColumnStart(table, currency === "USD" ? "MODEL" : "模型");
+  for (const [index, header] of table.headers.slice(columnStart).entries())
+    for (const [meter, label] of labels) {
+      const matching = table.rows.filter((row) => rowLabel(row) === label);
+      for (const row of matching.length === 0 ? [[]] : matching)
+        claims.push(
+          tariffCell(
+            header,
+            meter,
+            label,
+            row[index + columnStart]?.text,
+            row,
+            {
+              billing_currency: currency,
+              ...(scheduled?.layout !== "separate"
+                ? {}
+                : { effective_until: scheduled.effectiveFrom }),
+            },
+            scheduled?.layout === "inline" ? (row[columnStart - 1]?.text ?? "missing") : undefined,
+          ),
+        );
+    }
+  if (scheduled?.layout === "separate")
+    for (const row of scheduled.table.rows)
+      for (const [index, [meter, label]] of labels.entries())
+        claims.push(
+          tariffCell(
+            row[0]?.text ?? "",
+            meter,
+            label,
+            row[index + 2]?.text,
+            row,
+            { billing_currency: currency, effective_from: scheduled.effectiveFrom },
+            row[1]?.text ?? "missing",
+          ),
+        );
+  return claims;
+}
+
+function preserveTariff(
+  input: Input,
+  target: ProviderModel,
+  claim: TariffCell,
+  currency: DeepseekCurrency,
+  reason: SourceRawPricingFact["reason"],
+): void {
+  target.raw_price_facts.push({
+    term_key: `unparsed:${claim.meter}`,
+    impact: "base_price",
+    reason,
+    conditions: claim.conditions,
+    source_ref: input.source.id,
+    raw: {
+      label: claim.label,
+      ...(claim.amount === "" ? {} : { amount: claim.amount.slice(0, 4096) }),
+      meter: claim.meter,
+      unit: "million tokens",
+      conditions: [
+        { dimension: "published_currency", value: currency },
+        ...(claim.periodText === undefined
+          ? []
+          : [{ dimension: "published_billing_period", value: claim.periodText }]),
+      ],
+      fragment: claim.fragment || `Missing ${claim.label} quote for ${claim.header}`,
+    },
+  });
+  pricingDiagnostic(
+    input,
+    "raw",
+    reason === "unknown_applicability"
+      ? "scheduled_billing_period_claim_drift"
+      : reason === "unsupported_structure"
+        ? "price_cell_conflict"
+        : "price_cell_preserved",
+    `${claim.header}:${currency}:${claim.meter}:${claim.amount}`,
+  );
+}
+
+function attachTariffs(
   input: Input,
   models: ProviderModel[],
-  scheduled: ScheduledPricing,
+  claims: TariffCell[],
   currency: DeepseekCurrency,
+  url: string,
 ): void {
-  if (scheduled.layout === "inline") {
-    attachInlineScheduledRates(input, models, scheduled.table, currency);
-    return;
-  }
-  const labels = currency === "USD" ? priceRows : cnyPriceRows;
-  const byId = new Map(models.map((item) => [item.model_id, item]));
-  const seen = new Set<string>();
-  for (const tableRow of scheduled.table.rows) {
-    const id = catalogId(tableRow[0]?.text ?? "");
-    const periodText = tableRow[1]?.text;
-    if (id === undefined || periodText === undefined) {
-      diagnostic(input, "unsupported", "scheduled_price_row_invalid", currency);
-      continue;
-    }
-    const period = claim(
-      input,
-      "scheduled_billing_period_claim_drift",
-      `${id}:${currency}:${periodText}`,
-      () => billingPeriod(periodText),
-    );
-    if (period === undefined) continue;
-    const identity = `${id}\0${period}`;
-    if (seen.has(identity)) {
-      diagnostic(input, "unsupported", "scheduled_price_row_duplicate", `${id}:${currency}`);
-      continue;
-    }
-    seen.add(identity);
-    const target = byId.get(id);
+  const byId = new Map(models.map((model) => [model.model_id, model]));
+  const identity = (claim: TariffCell): string =>
+    JSON.stringify([catalogId(claim.header), claim.meter, claim.conditions]);
+  const counts = new Map<string, number>();
+  for (const claim of claims)
+    if (!claim.invalidPeriod) counts.set(identity(claim), (counts.get(identity(claim)) ?? 0) + 1);
+  for (const claim of claims) {
+    const id = catalogId(claim.header);
+    const target = id === undefined ? undefined : byId.get(id);
     if (target === undefined) {
-      diagnostic(input, "unbound", "scheduled_price_model_not_in_catalog", `${id}:${currency}`);
+      pricingDiagnostic(
+        input,
+        "unbound",
+        "price_cell_model_unbound",
+        `${claim.header}:${currency}:${claim.meter}:${claim.amount}`,
+      );
+      input.onPricingDependencyFailure?.(url);
       continue;
     }
-    for (const [index, [meter, label]] of labels.entries()) {
-      const rawAmount = tableRow[index + 2]?.text;
-      const amount = claim(
-        input,
-        "scheduled_price_claim_drift",
-        `${id}:${meter}:${currency}:${period}`,
-        () => {
-          if (rawAmount === undefined) throw new Error("price is missing");
-          return price(rawAmount, currency);
-        },
-      );
-      if (amount === undefined) continue;
-      addRate(
-        input,
-        target,
-        priceFact(input, meter, amount, `${label} (${periodText})`, currency, {
-          billing_currency: currency,
-          billing_period: period,
-          effective_from: scheduled.effectiveFrom,
-        }),
-        `${id}:${meter}:${currency}:${period}`,
-      );
+    const reason = claim.invalidPeriod
+      ? "unknown_applicability"
+      : (counts.get(identity(claim)) ?? 0) > 1
+        ? "unsupported_structure"
+        : undefined;
+    if (reason !== undefined) {
+      preserveTariff(input, target, claim, currency, reason);
+      continue;
     }
+    let amount: string;
+    try {
+      amount = price(claim.amount, currency);
+    } catch {
+      preserveTariff(input, target, claim, currency, "unknown_amount");
+      continue;
+    }
+    addRate(
+      input,
+      target,
+      priceFact(
+        input,
+        claim.meter,
+        amount,
+        claim.label + (claim.periodText === undefined ? "" : ` (${claim.periodText})`),
+        currency,
+        claim.conditions,
+      ),
+      `${claim.header}:${currency}:${claim.meter}`,
+    );
   }
 }
 
-function attachInlineScheduledRates(
+function attachPricing(
   input: Input,
+  bundle: Bundle,
   models: ProviderModel[],
-  table: HtmlTable,
-  currency: DeepseekCurrency,
-): void {
-  const labels = currency === "USD" ? priceRows : cnyPriceRows;
-  const byId = new Map(models.map((item) => [item.model_id, item]));
-  const seen = new Set<string>();
-  const columnStart = modelColumnStart(table, currency === "USD" ? "MODEL" : "模型");
-  for (const [headerIndex, header] of table.headers.slice(columnStart).entries()) {
-    const id = catalogId(header);
-    const target = id === undefined ? undefined : byId.get(id);
-    if (id === undefined || target === undefined) {
-      diagnostic(input, "unbound", "scheduled_price_model_not_in_catalog", header);
-      continue;
-    }
-    const priceColumn = headerIndex + columnStart;
-    for (const [meter, label] of labels) {
-      for (const tableRow of table.rows.filter((item) => rowLabel(item) === label)) {
-        const periodText = tableRow[2]?.text;
-        const period = claim(
-          input,
-          "scheduled_billing_period_claim_drift",
-          `${id}:${currency}:${periodText ?? "missing"}`,
-          () => {
-            if (periodText === undefined) throw new Error("billing period is missing");
-            return billingPeriod(periodText);
-          },
-        );
-        if (period === undefined) continue;
-        const identity = `${id}\0${meter}\0${period}`;
-        if (seen.has(identity)) {
-          diagnostic(input, "unsupported", "scheduled_price_row_duplicate", `${id}:${currency}`);
-          continue;
-        }
-        seen.add(identity);
-        const rawAmount = tableRow[priceColumn]?.text;
-        const amount = claim(
-          input,
-          "scheduled_price_claim_drift",
-          `${id}:${meter}:${currency}:${period}`,
-          () => {
-            if (rawAmount === undefined) throw new Error("price is missing");
-            return price(rawAmount, currency);
-          },
-        );
-        if (amount === undefined) continue;
-        addRate(
-          input,
-          target,
-          priceFact(input, meter, amount, `${label} (${periodText})`, currency, {
-            billing_currency: currency,
-            billing_period: period,
-          }),
-          `${id}:${meter}:${currency}:${period}`,
-        );
+  usdTable: HtmlTable,
+): DeepseekBillingRule | undefined {
+  const parseCurrency = (
+    body: string,
+    table: HtmlTable,
+    currency: DeepseekCurrency,
+    url: string,
+    usd?: ScheduledPricing,
+  ): ScheduledPricing | undefined => {
+    try {
+      const scheduled = scheduledPricing(input, body, currency, table);
+      if (
+        currency === "CNY" &&
+        (scheduled?.rule.policy !== usd?.rule.policy ||
+          (scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined) !==
+            (usd?.layout === "separate" ? usd.effectiveFrom : undefined))
+      )
+        throw new Error("DeepSeek USD and CNY billing rules or effective times disagree");
+      const claims = tariffCells(table, scheduled, currency);
+      if (scheduled !== undefined)
+        for (const model of models)
+          for (const [meter] of priceRows) {
+            const scoped = claims.filter(
+              (claim) =>
+                catalogId(claim.header) === model.model_id &&
+                claim.meter === meter &&
+                claim.periodText !== undefined,
+            );
+            if (
+              !scoped.some(({ invalidPeriod }) => invalidPeriod) &&
+              (!scoped.some(({ conditions }) => conditions.billing_period === "peak") ||
+                !scoped.some(({ conditions }) => conditions.billing_period === "off_peak"))
+            )
+              throw new Error(
+                `DeepSeek ${currency} omitted a scheduled period for ${model.model_id}:${meter}`,
+              );
+          }
+      attachTariffs(input, models, claims, currency, url);
+      if (scheduled !== undefined) {
+        for (const model of models)
+          model.raw_price_facts.push({
+            term_key: "billing-period-applicability",
+            impact: "informational",
+            reason: "unsupported_structure",
+            conditions: { billing_currency: currency },
+            source_ref: input.source.id,
+            raw: { label: "Peak / Off-peak applicability", fragment: scheduled.rule.fragment },
+          });
+        pricingDiagnostic(input, "normalized", "billing_period_rule_verified", currency);
       }
+      return scheduled;
+    } catch (error) {
+      pricingDiagnostic(
+        input,
+        "unresolved",
+        "commercial_source_contract_drift",
+        `${currency}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      input.onPricingDependencyFailure?.(url);
     }
+  };
+  const usd = parseCurrency(bundle.index.body, usdTable, "USD", bundle.index.url);
+  const url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/";
+  const body = companion(input, bundle, "/zh-cn/quick_start/pricing");
+  if (body === undefined) {
+    input.onPricingDependencyFailure?.(url);
+    return usd?.rule;
   }
+  const tables = htmlTables(body).filter(({ rows }) =>
+    cnyPriceRows.every(([, label]) => rows.some((row) => rowLabel(row) === label)),
+  );
+  const [table] = tables;
+  if (tables.length !== 1 || table === undefined) {
+    pricingDiagnostic(input, "unresolved", "cny_price_table_drift", "model table");
+    input.onPricingDependencyFailure?.(url);
+    return usd?.rule;
+  }
+  parseCurrency(body, table, "CNY", url, usd);
+  return usd?.rule;
 }
 
 function supportValue(value: string): boolean {
@@ -898,64 +944,6 @@ function thinkingValue(value: string): boolean {
   if (/^Supports both non-thinking and thinking\b/i.test(value)) return true;
   if (/^Non-thinking mode only$/i.test(value)) return false;
   throw new Error(`Unknown DeepSeek thinking mode: ${value}`);
-}
-
-function attachCnyRates(
-  input: Input,
-  bundle: Bundle,
-  models: ProviderModel[],
-  usdEffectiveFrom: string | undefined,
-): void {
-  const body = companion(input, bundle, "/zh-cn/quick_start/pricing");
-  if (body === undefined) return;
-  const tables = htmlTables(body).filter(({ rows }) =>
-    cnyPriceRows.every(([, label]) => rows.some((item) => rowLabel(item) === label)),
-  );
-  const [table] = tables;
-  if (tables.length !== 1 || table === undefined) {
-    diagnostic(input, "unsupported", "cny_price_table_drift", "model table");
-    return;
-  }
-  const scheduled = scheduledPricing(input, body, "CNY", table);
-  const effectiveFrom = scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined;
-  if (effectiveFrom !== usdEffectiveFrom)
-    throw new Error("DeepSeek USD and CNY scheduled pricing effective times disagree");
-  if (scheduled?.layout === "inline") {
-    attachScheduledRates(input, models, scheduled, "CNY");
-    return;
-  }
-  const byId = new Map(models.map((item) => [item.model_id, item]));
-  const seen = new Set<string>();
-  const columnStart = modelColumnStart(table, "模型");
-  for (const [index, header] of table.headers.slice(columnStart).entries()) {
-    const id = catalogId(header);
-    if (id === undefined || seen.has(id)) {
-      diagnostic(input, "unsupported", "cny_model_header_unbound", header);
-      continue;
-    }
-    seen.add(id);
-    const target = byId.get(id);
-    if (target === undefined) {
-      diagnostic(input, "unbound", "cny_model_not_in_usd_catalog", id);
-      continue;
-    }
-    for (const [meter, label] of cnyPriceRows) {
-      const amount = claim(input, "cny_price_claim_drift", `${id}:${label}`, () =>
-        price(cell(table, label, index + columnStart), "CNY"),
-      );
-      if (amount === undefined) continue;
-      addRate(
-        input,
-        target,
-        priceFact(input, meter, amount, label, "CNY", {
-          billing_currency: "CNY",
-          ...(effectiveFrom === undefined ? {} : { effective_until: effectiveFrom }),
-        }),
-        `${id}:${meter}:CNY`,
-      );
-    }
-  }
-  if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "CNY");
 }
 
 function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
@@ -972,36 +960,41 @@ function attachLegacyRedirects(input: Input, body: string, models: ProviderModel
   for (const paragraph of $("article p").toArray()) {
     const text = htmlText($(paragraph).text());
     if (!/\blegacy names\b/i.test(text)) continue;
-    const redirect = claim(input, "legacy_redirect_contract_drift", "legacy model names", () => {
-      const match =
-        /^\(\d+\) Use (\S+) as the model name\. The legacy names (.+?) are still accepted, but the corresponding models have been retired, their requests are served by the (.+?) model and billed at the (.+?) price\.$/.exec(
-          text,
-        );
-      const target = match?.[1] === undefined ? undefined : byId.get(match[1]);
-      const label = match?.[4];
-      if (
-        target === undefined ||
-        target.name !== match?.[3] ||
-        label === undefined ||
-        !target.name.endsWith(`-${label}`)
-      )
-        throw new Error("expected an exact current model and explicit same-price redirect");
-      const ids = $(paragraph)
-        .find("code")
-        .toArray()
-        .map((code) => exactId(htmlText($(code).text())));
-      const legacyIds = ids.slice(1).filter((id): id is string => id !== undefined);
-      if (
-        ids[0] !== target.model_id ||
-        legacyIds.length === 0 ||
-        legacyIds.length !== ids.length - 1 ||
-        new Set(ids).size !== ids.length ||
-        legacyIds.some((id) => byId.has(id)) ||
-        match?.[2] !== legacyIds.join(" and ")
-      )
-        throw new Error("expected distinct legacy IDs bound only by the redirect notice");
-      return { target, legacyIds };
-    });
+    const redirect = pricingClaim(
+      input,
+      "legacy_redirect_contract_drift",
+      "legacy model names",
+      () => {
+        const match =
+          /^\(\d+\) Use (\S+) as the model name\. The legacy names (.+?) are still accepted, but the corresponding models have been retired, their requests are served by the (.+?) model and billed at the (.+?) price\.$/.exec(
+            text,
+          );
+        const target = match?.[1] === undefined ? undefined : byId.get(match[1]);
+        const label = match?.[4];
+        if (
+          target === undefined ||
+          target.name !== match?.[3] ||
+          label === undefined ||
+          !target.model_id.endsWith(`-${label.toLowerCase()}`)
+        )
+          throw new Error("expected an exact current model and explicit same-price redirect");
+        const ids = $(paragraph)
+          .find("code")
+          .toArray()
+          .map((code) => exactId(htmlText($(code).text())));
+        const legacyIds = ids.slice(1).filter((id): id is string => id !== undefined);
+        if (
+          ids[0] !== target.model_id ||
+          legacyIds.length === 0 ||
+          legacyIds.length !== ids.length - 1 ||
+          new Set(ids).size !== ids.length ||
+          legacyIds.some((id) => byId.has(id)) ||
+          match?.[2] !== legacyIds.join(" and ")
+        )
+          throw new Error("expected distinct legacy IDs bound only by the redirect notice");
+        return { target, legacyIds };
+      },
+    );
     if (redirect === undefined) continue;
     for (const id of redirect.legacyIds) {
       const legacy = structuredClone(redirect.target);
@@ -1017,18 +1010,18 @@ function attachLegacyRedirects(input: Input, body: string, models: ProviderModel
       }));
       models.push(legacy);
       byId.set(id, legacy);
-      diagnostic(
-        input,
-        "normalized",
-        "legacy_redirect_bound",
-        `${id} → ${redirect.target.model_id}`,
-      );
     }
+    pricingDiagnostic(
+      input,
+      "normalized",
+      "legacy_redirect_bound",
+      `${redirect.legacyIds.join(", ")} → ${redirect.target.model_id}`,
+    );
   }
 }
 
-export function parseDeepseekCatalog(input: Input): ProviderModel[] {
-  const bundle = bundleSchema.parse(JSON.parse(input.body));
+export function parseDeepseekCatalog(input: Input): SourceParseResult {
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const chat = chatClaims(input, companion(input, bundle, "/api/create-chat-completion"));
   const responses = responseClaims(input, companion(input, bundle, "/api/create-response"));
   const fim = fimClaims(input, companion(input, bundle, "/api/create-completion"));
@@ -1047,9 +1040,8 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   for (const [index, header] of table.headers.slice(columnStart).entries()) {
     const id = catalogId(header);
     if (id === undefined || seen.has(id)) {
-      diagnostic(
+      catalogFinding(
         input,
-        "unsupported",
         id === undefined ? "catalog_model_header_invalid" : "catalog_model_header_duplicate",
         header,
       );
@@ -1090,13 +1082,12 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     (responses.modelIds.size !== tableResponseIds.size ||
       [...responses.modelIds].some((id) => !tableResponseIds.has(id)))
   )
-    diagnostic(input, "unbound", "responses_inventory_disagreement");
+    catalogFinding(input, "responses_inventory_disagreement");
   if (
     fim.modelIds.size > 0 &&
     (fim.modelIds.size !== tableFimIds.size || [...fim.modelIds].some((id) => !tableFimIds.has(id)))
   )
-    diagnostic(input, "unbound", "fim_inventory_disagreement");
-  const scheduled = scheduledPricing(input, bundle.index.body, "USD", table);
+    catalogFinding(input, "fim_inventory_disagreement");
   const models = columns.map(({ column, id }) =>
     model(
       input,
@@ -1109,20 +1100,18 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
       vision,
       anthropic.available && tableAnthropicIds.has(id),
       anthropic.streaming,
-      scheduled,
     ),
   );
-  if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "USD");
   const knownIds = new Set(models.map(({ model_id }) => model_id));
   for (const id of chat.modelIds)
-    if (!knownIds.has(id)) diagnostic(input, "unbound", "chat_model_not_in_catalog", id);
+    if (!knownIds.has(id)) catalogFinding(input, "chat_model_not_in_catalog", id);
   for (const id of vision.modelIds)
-    if (!knownIds.has(id)) diagnostic(input, "unbound", "vision_model_not_in_catalog", id);
+    if (!knownIds.has(id)) catalogFinding(input, "vision_model_not_in_catalog", id);
   const inventoryBody = companion(input, bundle, "/api/list-models");
   const inventoryIds =
     inventoryBody === undefined
       ? undefined
-      : claim(input, "model_inventory_contract_drift", "GET /models", () =>
+      : catalogClaim(input, "model_inventory_contract_drift", "GET /models", () =>
           inventoryReferenceModelIds(inventoryBody),
         );
   if (
@@ -1130,34 +1119,20 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     (inventoryIds.size !== models.length ||
       models.some(({ model_id }) => !inventoryIds.has(model_id)))
   )
-    diagnostic(input, "unbound", "model_inventory_disagreement");
+    catalogFinding(input, "model_inventory_disagreement");
 
-  attachCnyRates(
-    input,
-    bundle,
-    models,
-    scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined,
-  );
+  const billingRule = attachPricing(input, bundle, models, table);
   attachLegacyRedirects(input, bundle.index.body, models);
-  if (scheduled !== undefined && holidayBillingRule(bundle.index.body, "USD"))
-    for (const model of models)
-      model.raw_price_facts.push({
-        term_key: "billing_period_rule",
-        impact: "informational",
-        reason: "unsupported_structure",
-        conditions: {},
-        source_ref: input.source.id,
-        raw: { label: "Peak / Off-peak applicability", fragment: deepseekHolidayBillingRule },
-      });
   const pricingInputs = extractDeepseekPricingInputs(
     bundle.documents,
     input.source.id,
     input.onContractFinding,
-    input.onPricingReconciliation,
   );
-  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return bounded(input, models);
+  return {
+    models: bounded(input, models),
+    pricing_inputs: pricingInputs,
+    vocabulary: billingRule === undefined ? [] : deepseekBillingVocabulary(billingRule),
+  };
 }
 
 interface Dates {
@@ -1184,7 +1159,7 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
     if (!label.startsWith("Date:")) return;
     const parsedDate = z.iso.date().safeParse(label.slice(5).trim());
     if (!parsedDate.success) {
-      diagnostic(input, "unsupported", "update_date_invalid", label);
+      catalogFinding(input, "update_date_invalid", label);
       return;
     }
     const date = parsedDate.data;
@@ -1254,11 +1229,11 @@ export function parseDeepseekApi(input: Input): ProviderModel[] {
   for (const [index, value] of list.data.entries()) {
     const item = apiListItemSchema.safeParse(value);
     if (!item.success) {
-      diagnostic(input, "unsupported", "api_model_record_invalid", String(index));
+      catalogFinding(input, "api_model_record_invalid", String(index));
       continue;
     }
     if (seen.has(item.data.id)) {
-      diagnostic(input, "unsupported", "api_model_record_duplicate", item.data.id);
+      catalogFinding(input, "api_model_record_duplicate", item.data.id);
       continue;
     }
     seen.add(item.data.id);

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { fetchSource, fetchStateSchema } from "../src/catalog/fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
+import { summarizeDependencyFailures } from "../src/catalog/source-failure.ts";
 import {
   linkedPublicSource,
   publicEvidenceBaseline,
@@ -82,8 +83,7 @@ await writeFile(
     source_hash: hash,
     ...(linkedFrom === undefined ? {} : { linked_from: linkedFrom }),
     refresh,
-    omitted_dependencies: fetched.omittedOptionalDependencies ?? [],
-    omitted_documents: fetched.omittedOptionalDocuments ?? [],
+    ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
     body: fetched.body,
   }),
 );
@@ -100,7 +100,6 @@ console.log(
           linked_from: { source_url: linkedFrom.source_url, source_hash: linkedFrom.source_hash },
         }),
     refresh,
-    omitted_dependencies: fetched.omittedOptionalDependencies ?? [],
-    omitted_documents: fetched.omittedOptionalDocuments ?? [],
+    ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
   }),
 );

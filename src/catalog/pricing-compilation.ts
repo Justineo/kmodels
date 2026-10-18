@@ -23,13 +23,20 @@ import {
   type ProviderPricingSnapshot,
 } from "./pricing-schema.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
-import { parsedPricingModel, parsedPricingModelSchema } from "./pricing-source.ts";
+import {
+  parsedPricingModel,
+  parsedPricingModelSchema,
+  sourcePricingFacts,
+  sourcePricingFactsSchema,
+  commercialFactSourceRefs,
+  type SourcePricingFacts,
+} from "./pricing-source.ts";
 import { providerPartition } from "./pricing-transition.ts";
 import type { SourceRecord } from "./schema.ts";
 import { runWorkerPool } from "./worker-pool.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
-const pricingReplaySourceSchema = z.strictObject({
+const pricingReplaySourceSchema = sourcePricingFactsSchema.extend({
   source_id: z.string().min(1),
   extractor_version: z.string().min(1),
   content_hash: hashSchema,
@@ -39,6 +46,13 @@ const pricingReplayProviderSchema = z.strictObject({
   provider_id: z.string().min(1),
   sources: z.array(pricingReplaySourceSchema).min(1),
 });
+
+function hasSourceProvenance(facts: SourcePricingFacts, sourceId: string): boolean {
+  return [
+    ...(facts.pricing_inputs ?? []).map(({ source_ref }) => source_ref),
+    ...(facts.commercial_facts ?? []).flatMap(commercialFactSourceRefs),
+  ].every((sourceRef) => sourceRef === sourceId);
+}
 export const pricingCompilationSnapshotSchema = z
   .strictObject({
     schema_version: z.literal(1),
@@ -62,6 +76,13 @@ export const pricingCompilationSnapshotSchema = z
         ["providers", providerIndex, "sources"],
       );
       for (const [sourceIndex, source] of provider.sources.entries()) {
+        const facts = sourcePricingFacts(source.models, source);
+        if (!hasSourceProvenance(facts, source.source_id))
+          context.addIssue({
+            code: "custom",
+            path: ["providers", providerIndex, "sources", sourceIndex],
+            message: "Pricing compilation source fact provenance mismatch",
+          });
         assertSortedUnique(
           source.models,
           ({ uid }) => uid,
@@ -118,63 +139,6 @@ export const pricingCompilationSnapshotSchema = z
                 ],
                 message: "Pricing compilation raw fact provenance mismatch",
               });
-          for (const [commercialIndex, commercial] of (model.commercial_facts ?? []).entries())
-            if (commercial.source_ref !== source.source_id)
-              context.addIssue({
-                code: "custom",
-                path: [
-                  "providers",
-                  providerIndex,
-                  "sources",
-                  sourceIndex,
-                  "models",
-                  modelIndex,
-                  "commercial_facts",
-                  commercialIndex,
-                  "source_ref",
-                ],
-                message: "Pricing compilation commercial fact provenance mismatch",
-              });
-            else
-              for (const [factIndex, fact] of [
-                ...commercial.price_facts,
-                ...commercial.raw_price_facts,
-              ].entries())
-                if (fact.source_ref !== source.source_id)
-                  context.addIssue({
-                    code: "custom",
-                    path: [
-                      "providers",
-                      providerIndex,
-                      "sources",
-                      sourceIndex,
-                      "models",
-                      modelIndex,
-                      "commercial_facts",
-                      commercialIndex,
-                      "facts",
-                      factIndex,
-                      "source_ref",
-                    ],
-                    message: "Pricing compilation commercial fact provenance mismatch",
-                  });
-          for (const [inputIndex, pricingInput] of (model.pricing_inputs ?? []).entries())
-            if (pricingInput.source_ref !== source.source_id)
-              context.addIssue({
-                code: "custom",
-                path: [
-                  "providers",
-                  providerIndex,
-                  "sources",
-                  sourceIndex,
-                  "models",
-                  modelIndex,
-                  "pricing_inputs",
-                  inputIndex,
-                  "source_ref",
-                ],
-                message: "Pricing compilation input provenance mismatch",
-              });
         }
       }
     }
@@ -227,18 +191,6 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
         fact,
       ]),
     );
-    const commercialFacts = new Map(
-      [...(current.commercial_facts ?? []), ...(model.commercial_facts ?? [])].map((fact) => [
-        JSON.stringify(fact),
-        fact,
-      ]),
-    );
-    const pricingInputs = new Map(
-      [...(current.pricing_inputs ?? []), ...(model.pricing_inputs ?? [])].map((fact) => [
-        JSON.stringify(fact),
-        fact,
-      ]),
-    );
     byUid.set(model.uid, {
       ...current,
       pricing_state: pricingState,
@@ -248,20 +200,6 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
       raw_price_facts: [...rawFacts]
         .sort(([left], [right]) => compareUtf8(left, right))
         .map(([, fact]) => fact),
-      ...(commercialFacts.size === 0
-        ? {}
-        : {
-            commercial_facts: [...commercialFacts]
-              .sort(([left], [right]) => compareUtf8(left, right))
-              .map(([, fact]) => fact),
-          }),
-      ...(pricingInputs.size === 0
-        ? {}
-        : {
-            pricing_inputs: [...pricingInputs]
-              .sort(([left], [right]) => compareUtf8(left, right))
-              .map(([, fact]) => fact),
-          }),
     });
   }
   return [...byUid.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
@@ -280,23 +218,19 @@ export function capturePricingReplaySources(
 
   const records = new Map(sourceRecords.map((source) => [source.id, source]));
   return dependencies
-    .map(({ source, models }) => {
+    .map(({ source, models, ...sourceFacts }) => {
       const record = records.get(source.id);
       if (record === undefined)
         throw new Error(`Pricing compilation source record ${source.id} is missing`);
       if (models.some(({ provider_id }) => provider_id !== record.provider_id))
         throw new Error(`Pricing compilation source ${source.id} has mixed provider ownership`);
+      const facts = sourcePricingFacts(models, sourceFacts);
       if (
+        !hasSourceProvenance(facts, source.id) ||
         models.some(
-          ({ price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
+          ({ price_facts, raw_price_facts }) =>
             price_facts.some(({ source_ref }) => source_ref !== source.id) ||
-            raw_price_facts.some(({ source_ref }) => source_ref !== source.id) ||
-            (commercial_facts ?? []).some(
-              ({ source_ref, price_facts: rates, raw_price_facts: raw }) =>
-                source_ref !== source.id ||
-                [...rates, ...raw].some(({ source_ref }) => source_ref !== source.id),
-            ) ||
-            (pricing_inputs ?? []).some(({ source_ref }) => source_ref !== source.id),
+            raw_price_facts.some(({ source_ref }) => source_ref !== source.id),
         )
       )
         throw new Error(`Pricing compilation source ${source.id} has mismatched provenance`);
@@ -305,6 +239,7 @@ export function capturePricingReplaySources(
         extractor_version: source.extractorVersion,
         content_hash: record.content_hash,
         models: replayModels(models),
+        ...facts,
       });
     })
     .sort((left, right) => compareUtf8(left.source_id, right.source_id));
@@ -475,21 +410,19 @@ export async function compilePricingSnapshot(
 
 function compilationWeight(task: CompilationTask): number {
   return task.sources.reduce(
-    (weight, { models }) =>
+    (weight, { models, commercial_facts = [], pricing_inputs = [], vocabulary = [] }) =>
       weight +
       models.reduce(
         (modelWeight, model) =>
-          modelWeight +
-          1 +
-          model.price_facts.length +
-          model.raw_price_facts.length +
-          (model.commercial_facts?.reduce(
-            (commercialWeight, fact) =>
-              commercialWeight + 1 + fact.price_facts.length + fact.raw_price_facts.length,
-            0,
-          ) ?? 0),
+          modelWeight + 1 + model.price_facts.length + model.raw_price_facts.length,
         0,
-      ),
+      ) +
+      commercial_facts.reduce(
+        (count, fact) => count + 1 + fact.price_facts.length + fact.raw_price_facts.length,
+        0,
+      ) +
+      pricing_inputs.length +
+      vocabulary.length,
     task.models.length,
   );
 }
@@ -563,14 +496,15 @@ function replaySources(
     if (configured.extractorVersion !== source.extractor_version)
       throw new Error(`Pricing replay source ${source.source_id} uses a stale extractor`);
     const catalogSource = catalogSources.get(source.source_id);
-    const hasClaims = source.models.some(
-      ({ pricing_state, price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
-        pricing_state !== "unknown" ||
-        price_facts.length > 0 ||
-        raw_price_facts.length > 0 ||
-        (commercial_facts?.length ?? 0) > 0 ||
-        (pricing_inputs?.length ?? 0) > 0,
-    );
+    const facts = sourcePricingFacts(source.models, source);
+    const hasClaims =
+      (facts.commercial_facts?.length ?? 0) > 0 ||
+      (facts.pricing_inputs?.length ?? 0) > 0 ||
+      (facts.vocabulary?.length ?? 0) > 0 ||
+      source.models.some(
+        ({ pricing_state, price_facts, raw_price_facts }) =>
+          pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
+      );
     if (catalogSource === undefined) {
       if (hasClaims)
         throw new Error(`Pricing replay source ${source.source_id} is absent from the catalog`);
@@ -581,7 +515,7 @@ function replaySources(
     ) {
       throw new Error(`Pricing replay source ${source.source_id} does not match the catalog`);
     }
-    return { source: configured, models: source.models };
+    return { source: configured, models: source.models, ...facts };
   });
 }
 

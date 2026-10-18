@@ -1,6 +1,6 @@
 import { uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import { requiredUsageSignalAlternatives } from "../catalog/pricing-calculation.ts";
-import { evaluateApplicability } from "../catalog/pricing-presentation.ts";
+import { evaluateApplicability } from "../catalog/pricing-applicability.ts";
 import {
   selectionRequestSchema,
   type CalculationTerm,

@@ -70,15 +70,6 @@ export function withApplicability(
   return { ...observation, establishes_applicability: applicability };
 }
 
-export function accountingGaps(terms: readonly AtomicPricingTerm[]): Set<string> {
-  const prefix = "accounting_binding_unavailable:";
-  return new Set(
-    terms.flatMap(({ term_key }) =>
-      term_key.startsWith(prefix) ? [term_key.slice(prefix.length)] : [],
-    ),
-  );
-}
-
 export function bindRateTerm(
   term: AtomicPricingTerm,
   binding: (meter: PriceMeter, variant: AtomicRateVariant) => AtomicRateVariant["charge_binding"],
@@ -93,19 +84,17 @@ export function bindRateTerm(
   };
 }
 
-export function stripAccountingGaps(terms: readonly AtomicPricingTerm[]): AtomicPricingTerm[] {
-  return terms.filter(({ term_key }) => !term_key.startsWith("accounting_binding_unavailable:"));
-}
-
 export function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const identity = atomIdentity(atom);
-  const current = input.vocabulary.atoms.find((candidate) => atomIdentity(candidate) === identity);
+  const identity = pricingAtomIdentity(atom);
+  const current = input.vocabulary.atoms.find(
+    (candidate) => pricingAtomIdentity(candidate) === identity,
+  );
   if (current === undefined) input.vocabulary.atoms.push(atom);
   else if (canonicalJson(current) !== canonicalJson(atom))
     throw new Error(`${input.provider_id} pricing atom ${atom.key} changed definition`);
 }
 
-function atomIdentity(atom: ProviderAtomRegistryEntry): string {
+export function pricingAtomIdentity(atom: ProviderAtomRegistryEntry): string {
   return canonicalJson([
     atom.kind,
     atom.key,

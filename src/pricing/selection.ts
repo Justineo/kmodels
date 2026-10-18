@@ -5,7 +5,7 @@ import {
   unconditionalApplicability,
 } from "../catalog/pricing-canonical.ts";
 import { pricingLimits } from "../catalog/pricing-constants.ts";
-import { evaluateApplicability } from "../catalog/pricing-presentation.ts";
+import { evaluateApplicability } from "../catalog/pricing-applicability.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import {
   addRationals,

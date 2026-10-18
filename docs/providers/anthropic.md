@@ -65,7 +65,15 @@ catalog. When any companion is omitted, the collector retains the last verified 
 source and marks the pricing refresh incomplete rather than publishing unknown regressions or a
 partially rebuilt price book. Duplicate documents remain invalid because their provenance is
 ambiguous. Malformed rows and individual claims are skipped or reported without rejecting
-independent rows.
+independent catalog rows. A price whose model/offer scope can be bound keeps its readable cells and
+raw evidence for unreadable cells. A missing commercial matrix or an unbound model/service scope
+signals a pricing dependency failure: catalog facts survive, while collection retains the accepted
+complete pricing partition and replay input instead of publishing a partial replacement.
+
+Provider services and pricing-input facts use a deterministic catalog carrier independently of
+model rates. An unreadable model-price matrix cannot discard otherwise established service prices
+or accounting contracts. The carrier establishes neither compatibility nor a model price; explicit
+resource model references retain that responsibility.
 
 The optional authenticated `GET /v1/models?limit=1000` inventory can fill otherwise unknown public
 fields on matching rows. Enable it with `ANTHROPIC_API_KEY`; it never creates public catalog rows or
@@ -75,9 +83,25 @@ one malformed inventory item is skipped without rejecting recognized sibling row
 ## Identity and catalog mapping
 
 - IDs and aliases come from labeled official cells or exact API values. A display-name join is used
-  only when it resolves to one known ID.
+  only when it resolves to one known ID. Exact canonical IDs take precedence over aliases and
+  display labels. An explicit unknown ID cannot fall back to a different revision. Reviewed label
+  normalization preserves word and version order; a unique observed dated-ID stem can match a
+  display label, but rearranged tokens cannot establish identity. Joins do not rename catalog rows.
 - Current and historical official IDs remain in the catalog. Lifecycle state and release maturity
   are independent.
+- Repeated overview observations distinguish missing fields from conflicting known values. Missing
+  limits or metadata cannot erase known siblings; a third matching observation cannot clear a
+  conflict. Conflicting names use the API ID as the display fallback; conflicting descriptions,
+  reasoning and overview states remain unknown with a source-contract finding. Exact lifecycle and
+  capability documents can independently establish their owned fields. Limit observations include
+  the explicit shared-specification statement and exact model mentions in pricing's context claim;
+  model-name prefixes do not establish that claim.
+- Current lifecycle tables bind fields by their headers and contribute all recognized rows. Dates
+  require real calendar values and agreement across peers. Current explicit states take precedence
+  over inferred historical states; conflicting explicit states remain unknown. A known deprecated
+  model advances to retired when its agreed retirement date has passed. Replacement IDs and valid
+  retirement dates survive an unreadable historical announcement date. Historical dates belong to
+  the nearest enclosing reviewed announcement heading and cannot cross a later section boundary.
 - Messages applies to active and not-yet-retired callable IDs. Batches applies to active IDs when
   the Batch contract says all active models are supported.
 - Capability claims are taken from their specific first-party compatibility lists or universal
@@ -90,7 +114,8 @@ one malformed inventory item is skipped without rejecting recognized sibling row
   `featureMetadata.supportedModels` list. Read that field structurally, retaining the reviewed
   legacy inline list. Neither surrounding frontmatter nor a display name establishes compatibility.
 - A newly published model is admitted mechanically from official IDs. Family names are not an
-  allowlist.
+  allowlist, including in release notes. Release-date headings reset at other sections; a launch
+  below an unrelated heading cannot inherit the previous date.
 
 ## Model rates and dimensions
 
@@ -102,22 +127,61 @@ Each exact model has two offers when supported:
 Fast speed, inference geography, and dated validity are shared rate dimensions. Exact five-minute
 and one-hour cache-write rates become separate logical terms with TTL-specific quantity signals,
 because one request may contain both TTLs. A global TTL selector must not select only one charge.
-Unrecognized or incomplete TTL prices keep their original qualified/raw scope. Batch is an offer because it is a distinct asynchronous
-execution mechanism; separate offers already express the caller's choice, so no redundant
+Unrecognized TTL prices keep their original qualified/raw scope. Batch is an offer because it is a
+distinct asynchronous execution mechanism; separate offers already express the caller's choice, so no redundant
 exclusivity relation is emitted. The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
 
+The same bucket distinction applies to a raw price in an explicitly reviewed five-minute or
+one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
+dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.
+
+All recognized standard, Batch and Fast matrices contribute rows. Monetary columns bind by their
+reviewed headers rather than column position. A well-shaped row parses each cell independently:
+unsupported amounts, denominations, units and columns retain raw evidence without discarding known
+sibling prices. An irregular row retains its whole native fragment while independent rows survive.
+Literal code and price expressions survive Markdown formatting;
+formatting cannot turn an expression into a scalar. Reviewed `$… / MTok` and `$… USD / MTok`
+spellings are accepted. One source row has one reconciliation disposition even when a Fast row
+names multiple models. Conflicting published prices remain distinct through canonical assembly.
+
+Published `through` and `starting` dates use real calendar validation, including leap years. An
+unreadable date or unreviewed parenthetical condition keeps the quote raw; it cannot become an
+unqualified promotional or ordinary rate.
+
 Published cache columns are checked against the published multipliers, including a source-published
 per-model cache-read override. Multiple semicolon-separated override groups remain independent;
-each group binds only its explicitly named models. Fast-mode compatibility is checked against the
-union of all published Fast rows, not against each row in isolation.
+each group binds only its explicitly named models through the exact identity resolver. Overrides
+use model IDs internally, independently of display-name availability. An unbound override withholds
+the read policy instead of silently deriving the default read price; independent write factors
+survive. Fast-mode compatibility is checked against the union of all published Fast rows, not
+against each row in isolation.
 Conflicting facts are reported and the directly published row remains
-authoritative. Pricing-table headings are matched case-insensitively while the exact reviewed
-columns remain required; a trailing numeric note marker on an otherwise exact `MTok` cell is parsed
-only as source annotation. A model without an exact published row stays price-unknown; rates are
+authoritative. Cache policy rows are validated independently across all reviewed policy tables;
+conflicting or unreadable operations withhold only their derived rates. Known sibling multipliers
+remain usable, and missing, malformed or unreviewed policy content remains raw at the affected
+tariff scope. Geography multipliers likewise require agreement. When a multiplier or generation
+threshold is unresolved, affected known rates remain explicitly global and the possible US charge
+remains raw, preventing global rates from silently pricing US inference.
+Generation parsing accepts multiword family names without a family allowlist. An ID without a
+reviewed numeric generation leaves US eligibility raw and known default rates explicitly global.
+Pricing headers are matched case-insensitively; a trailing numeric note marker on an otherwise exact
+`MTok` cell is parsed only as source annotation. A model without an exact published row stays price-unknown; rates are
 never inherited from a family or replacement model.
 
+Fast prices use the served speed when available, through the typed `/usage/speed` response mapping.
+The [Fast-mode contract](https://platform.claude.com/docs/en/build-with-claude/fast-mode) documents
+`fast` and `standard` outcomes, including an Opus 4.6 request that asks for Fast but runs at standard
+speed. Request intent alone cannot establish the charged speed. Mapping drift withholds only that
+acquisition path, independently of published Fast rates.
+
 ## Request services
+
+Service amounts and Code Execution rules belong to a unique `Usage and pricing` section. Examples
+elsewhere cannot set a rate. Repeated reviewed amounts and minimums must agree, and monthly
+allowances require valid integer grouping and agreement. Unsupported or conflicting service
+amounts, minimums and allowances retain the native section as raw evidence while known independent
+service facts survive. A service rate does not depend on acquiring its usage counter.
 
 ### Web Search
 
@@ -142,8 +206,11 @@ The runtime rate therefore binds to an account-phase `code_execution_active_seco
 not to that request count. A closed quantity calculation applies the five-minute minimum per
 provider-owned Code Execution container and produces `code_execution_billable_seconds`. That
 quantity method deliberately has no `input_sources`: exact request cost still requires Anthropic
-accounting or another authoritative duration signal. The former minimum and missing-duration raw
-terms are consumed into this contract; the monthly allowance remains a normalized allowance.
+accounting or another authoritative duration signal. The source parser constructs this typed
+quantity calculation and the monthly allowance directly from recognized commercial numbers.
+Services, usage inputs and vocabulary are independent source facts, without a model carrier.
+Commercial assembly does not decode raw term keys or fragments to recover these rules. Conflicting
+or unreadable minima and allowances remain passive raw evidence with local incomplete-cost behavior.
 
 ## Iteration accounting
 
@@ -166,6 +233,21 @@ the independently evidenced top-level usage field and `usage.iterations[*]` grou
 advisor model or the response model for ordinary/compaction iterations. Ordinary and compaction
 entries do not report their own `model` in the reviewed example. If one field drifts, only that
 mapping disappears; the price and any sibling mapping remain.
+Messages mappings require the reviewed operation and a unique returned `usage: Usage` object.
+Only its direct, uniquely declared fields with the reviewed types establish `/usage/*` locators.
+Request fields, quoted code, unrelated objects, nested lookalikes and contradictory duplicates cannot establish
+those paths. An unrelated nested lookalike cannot invalidate a valid direct field.
+Reviewed nullable and optional wrappers retain conditional acquisition; a null counter is not
+invented zero usage. The [official SDK Usage contract](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts)
+also confirms the nullable cache, geography, server-tool and served-tier fields.
+
+Iteration counters require numeric, nonnegative safe-integer values at the actual usage path in
+reviewed JSON examples, with `message`, `compaction`, or an `advisor_message` carrying a valid model
+ID. The general compaction billing rule establishes aggregation, not arbitrary child fields. The
+[threshold guide](https://platform.claude.com/docs/en/build-with-claude/compaction-threshold) example
+establishes iteration input/output counts, but does not by itself establish iteration cache reads.
+Top-level and iteration mappings are acquired independently. The Web Search guide likewise must
+establish numeric `usage.server_tool_use.web_search_requests`, rather than merely mentioning it.
 Cache-write rates bind distinct five-minute and one-hour signals to
 `usage.cache_creation.ephemeral_5m_input_tokens` and
 `usage.cache_creation.ephemeral_1h_input_tokens`, plus the corresponding typed
@@ -175,11 +257,18 @@ that the aggregate cache-creation count is the sum of those buckets. JSON fences
 and that partition statement establish each mapping independently; a renamed/missing bucket withholds
 only its mapping. Missing buckets remain missing, never zero, and the aggregate is never substituted
 for either TTL. The extractor version is advanced with this contract change.
+An unreadable top-level TTL counter does not erase an independently evidenced typed iteration
+counter; an unreviewed iteration type cannot acquire model attribution from another example.
 OTel aggregate token attributes are not attached to these Anthropic-owned signals because they
 cannot preserve both iteration ownership and cache-write TTL; a downstream integration may use
 OTel only after proving those distinctions remain available.
 
 ## Refresh and comparison policy
+
+Pricing reconciliation counts native tariff rows and billing rules, including excluded token
+overhead. Catalog, endpoint and usage-acquisition diagnostics use the source-contract channel;
+changing a usage field or lifecycle date cannot inflate the price-item denominator. Successful
+usage mappings are carried as pricing-input facts rather than counted as normalized prices.
 
 The stable Markdown pricing page is authoritative for the collected matrix. Dynamic marketing or
 application pages are not refresh dependencies. Markdown frontmatter and other content before a

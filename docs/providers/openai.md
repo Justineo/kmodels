@@ -2,6 +2,11 @@
 
 Status: current
 
+OpenAI extraction lives in `src/catalog/openai.ts`, with the accounting recognizer in
+`src/catalog/openai-accounting.ts`. `adapters.ts` owns dispatch and shared error translation;
+`source-parse.ts` owns the structural parser input contract. Moving provider code does not change
+transport, source order, publication or replay boundaries.
+
 ## Boundary
 
 The OpenAI partition follows the shared invocation-cost boundary. It publishes public rates that
@@ -56,16 +61,24 @@ pricing-page partition.
   capabilities, and tool support are parsed independently where possible.
 - Changelog `Feature` entries provide the earliest exact release date for catalog identities; later
   updates do not move that date and unknown changelog identities cannot create catalog rows.
+  Month/day headings must establish a real calendar date. An unreadable heading clears the
+  previous date so later entries cannot inherit it. An irregular deprecation row is signaled and
+  skipped locally. Repeated shutdown notices retain the latest date and all observed aliases,
+  independently of row order.
 - A missing, duplicated, or malformed card does not remove its indexed identity. The collector
   publishes the minimal indexed row, reports a contract signal, and continues with valid siblings.
 - Discovered card fetches are optional within the bundle for the same reason. A failed card becomes
   a local omission rather than a provider transport failure.
 - Endpoint rows use reviewed exact route/name pairs. A new route, support label, modality, region,
   or table column is withheld locally and reported; known sibling facts remain usable.
+  Repeated endpoint rows must agree. A conflicting or unreadable peer withholds that route's
+  support; a third matching row cannot erase the conflict. Equal peers retain the known support.
   The reviewed `Live` / `v1/live/sessions` pair supplies speech-to-speech session support;
   it does not replace separately declared backend Responses endpoints.
 - The HTML price overlay binds only to an exact catalog ID. Missing, duplicate, unbound, or malformed
-  HTML cards are skipped independently. Omitted overlay facts retain their previous observation;
+  HTML documents are skipped independently. Unrecognized price cells, units and tier-switch
+  states preserve bounded raw quotes while readable sibling cells survive.
+  Omitted overlay facts retain their previous observation;
   the dedicated pricing page remains the primary amount source.
   Explicit `Cache writes` cells take precedence over deriving the same card rate from its
   multiplier note. The reviewed long-context wording `input and cache rates` applies to both
@@ -86,6 +99,10 @@ The dedicated pricing page is non-exhaustive for model identity but authoritativ
 rate it publishes. An exact valid model-ID row may create a minimal public row when the model index
 does not list it. Non-ID labels bind only through a unique exact display name or documented alias;
 there is no family inheritance or fuzzy matching.
+A new price-only identity requires a reviewed price-bearing table with a normalized or bounded raw
+quote, or an explicit free schedule.
+An unreviewed table or a row containing only missing amounts cannot create an identity or make an
+otherwise empty pricing response pass admission. Valid sibling rows remain independent.
 
 Alias prices are derived only while the pricing page declares exact, unique target IDs. The current
 [Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak) says `latest` resolution
@@ -101,10 +118,37 @@ Model-card prices are fallbacks. For the same meter, denomination, unit, and app
 - unequal duplicates within the pricing page have no deterministic winner, so only that exact rate
   becomes bounded raw `conflicting_values`; sibling rates and models continue.
 
+The provider-owned authority resolver compares denomination, canonical billing unit and published
+validity before applying a pricing-page override. It subtracts only overlapping applicability;
+disjoint resolution, region, quality and currency schedules survive. Equal prices retain both source
+observations. Context-token boundaries use exact whole-token complements, and boolean or explicitly
+bounded categorical remainders remain numeric. If a remainder would require an undeclared negative
+categorical selector or exceed the reviewed selector contract, the card amount remains bounded raw
+`unknown_applicability` evidence rather than disappearing or acquiring an invented selector.
+Differently declared validity intervals are preserved for ordinary conflict validation; no temporal
+boundary is inferred from the authority rule.
+
+The source parser retains all distinct observations of the same page rate. Shared canonical assembly
+turns unequal values into `conflicting_values` raw pricing, including third and later observations,
+without restoring a fallback card tariff or using an assembly-reserved reason in adapter input.
+
 Unknown sections, tiers, table shapes, rows, cells, tools, and modalities are reconciled locally.
 They never reject already parsed tables. A refresh still fails atomically when the required pricing
 source yields no admitted model or service fact at all; that protects the previous verified
 partition from an unrecognizable whole-page rewrite.
+Source accounting counts reviewed model-table price positions individually, including explicit
+missing positions and excluded training cells. Tool schedules count each native quote (each
+container capacity separately), while excluded storage rows and rejected structures have one
+disposition each. HTML cards count price cells and explicit multiplier rules. Alias, container
+minimum and fixed-search declarations each count once. Derived variants do not inflate the count;
+conflict or scope failures recategorize the originating positions instead of adding another item.
+
+Unsupported amounts retain the native value, known meter, unit and conditions as independent raw
+terms, so a malformed long-context quote can coexist with a readable short-context rate. Unknown
+currency text never acquires an invented USD denomination. An unreadable native transcription
+token price cannot fall back to the page's estimated duration price. `Free` in an individual cell
+is a scoped zero rate and participates in ordinary numeric conflicts; only the reviewed free
+moderation schedule establishes a whole-model free state.
 
 The normalized selectors are source-backed dimensions shared with other providers:
 
@@ -122,6 +166,7 @@ request selector alone is not treated as final billed usage.
 
 The optional accounting contract maps Responses usage, image-generation usage, embedding usage,
 video result duration/resolution, and Organization Usage result fields into charge quantity methods.
+These are source-level facts and do not create a model row.
 The known uncached-input equation remains available with surviving locators when an accounting
 field drifts; unmapped required signals remain caller inputs. Text uncached input has two exact
 alternatives where available: the Organization Usage
@@ -131,6 +176,17 @@ partitions, image-generation output tokens, speech characters, transcription sec
 generated-image counts, and Web/File Search request counts use provider fields whose schemas
 establish those exact units. Reasoning usage remains a reported subset of output tokens and is not
 charged twice.
+
+Accounting paths require owned properties and declared types, including the returned object's
+actual attachment to its usage schema. The recognizer follows reviewed local references and schema
+compositions, rejects duplicate schemas/properties/types, nested lookalikes, reference cycles and
+conflicting union types, and withholds only the affected mappings. Counters require integer/number
+types; selectors and video duration retain their source-declared String representations; generated
+image counts require an Array. Missing or partial mappings are reported as partial contracts.
+The current official OpenAPI establishes all 37 reviewed fields; the
+[prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) independently
+establishes the total-minus-cache-read-minus-cache-write quantity equation. Cache writes form their
+own input partition rather than an additional charge on ordinary input.
 
 When a model publishes distinct text, audio, or image token rates, Kmodels does not reuse aggregate
 response totals for the text term. It binds the text, audio, image, and cached partitions only to

@@ -1,6 +1,6 @@
 import { canonicalJson } from "./canonical-value.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
-import { evaluateModelApplicability, type PricingSelection } from "./pricing-presentation.ts";
+import { evaluateModelApplicability, type PricingSelection } from "./pricing-applicability.ts";
 import { publishedValidityStatus } from "./pricing-time.ts";
 import type {
   WebsitePriceApplicability,

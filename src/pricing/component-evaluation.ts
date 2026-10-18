@@ -4,7 +4,7 @@ import {
   UsageQuantityConflictError,
   type ChargeQuantityEvaluation,
 } from "../catalog/pricing-calculation.ts";
-import { evaluateApplicability } from "../catalog/pricing-presentation.ts";
+import { evaluateApplicability } from "../catalog/pricing-applicability.ts";
 import { multiplyRationals } from "../catalog/pricing-rational.ts";
 import type { PriceApplicability } from "../catalog/pricing-schema.ts";
 import type {

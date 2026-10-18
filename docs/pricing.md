@@ -85,9 +85,22 @@ facts; conflicting non-unknown pricing states abort capture.
 Replay takes published model metadata from the bound catalog. Minimal pricing or accounting carriers
 cannot overwrite the catalog's endpoints, capabilities, or lifecycle. Complete public inputs are
 captured before assembly so a failed normalization can still be repaired offline.
+Source results carry independent service facts, acquisition contracts and reviewed vocabulary
+beside model observations. Compilation writes those facts once at source level; it can also read
+model-carried facts in existing inputs. Services and accounting contracts can survive without a
+model carrier. Source records used by the compilation input retain their exact hash and extractor
+binding even when no current rate consumes one of their observations. Recognized vocabulary is
+typed data; raw fragments provide evidence and never select an executable policy.
+Recognized charge bindings and supplemental allowance terms reuse the existing canonical quantity,
+term and evidence contracts in compilation input. Assembly checks their identity and provenance;
+it does not recover executable numbers from raw prose. This adds no second public pricing resource.
 If retaining prices also requires rolling back the provider's catalog core, collection keeps the
 previous compilation input with that core, or omits the replay entry when no prior input exists.
 Rejected fresh input must not be rebound to the rolled-back source records.
+Mixed catalog/price parsers can report a typed pricing-dependency failure while returning valid
+catalog facts. Collection rejects that provider's new prices as `source_schema_changed` before
+assembly or replay capture. Readable commercial siblings do not constitute a complete bundle;
+retained pricing keeps its previous replay input, including when the catalog can safely advance.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted
@@ -106,6 +119,10 @@ evidence; `pricing_inputs` means that it publishes first-party acquisition or
 selector contracts. A public source may own either or both. Both are pricing
 dependencies for refresh, omission, replay, and atomic publication, but an
 accounting-only source does not masquerade as a price book.
+An unavailable optional accounting-only root source removes its mappings without blocking fresh
+numeric pricing. An explicit `pricingRequired` contract still makes it a required dependency.
+Optional sources that publish rates retain the complete commercial partition on omission; being
+optional for catalog acquisition does not make partial pricing safe to publish.
 
 The generated-data gate replays every captured provider with the current extractor version and
 verifies that accepted providers still expose their adopted in-boundary resources, relationships,
@@ -154,6 +171,11 @@ The following are deliberately outside this contract:
 - a lossless model for every possible commercial contract.
 - training, retained storage, prepaid capacity commitments, subscriptions, plans, and
   account settlement; running inference capacity with a public unit-time rate is admitted separately.
+
+An exact currency tariff explicitly defined by a first-party source may be normalized during
+ingestion with its derivation and scope, as with Mistral's published EUR formula. This does not
+add denomination conversion to the calculator or authorize market exchange rates or private
+account adjustments.
 
 An unsupported public fact remains visible as bounded raw pricing. A fact
 outside the public boundary is discarded or quarantined, never serialized as
@@ -764,11 +786,24 @@ adding that term once. The rate-only website may compact equivalent display rows
 
 Adapters may fill a missing applicability dimension only through a reviewed
 provider rule that identifies the source's unqualified base row against an
-explicit unequal alternative, such as standard versus long-context or
+explicit alternative, such as standard versus long-context or
 promotion false versus true. This is a source-schema normalization rule, not a
-provider recommendation or a choice of cheapest offer. Without that exact
+provider recommendation or a choice of cheapest offer. The rule depends on the
+source's structure and evidence, never on whether the amounts currently differ.
+Equal prices may compact equivalent rate variants; they cannot widen or erase
+the independently established applicability. Without that exact
 evidence, the dimension remains missing and overlapping unequal values fall
 back to raw.
+
+The pure applicability interpreter lives in `pricing-applicability.ts`. Website
+projection and the portable calculator use that same implementation, including
+partial OR clauses, interval selectors and exact decimal bounds. The calculator
+does not depend on presentation, formatting, website or component modules.
+
+Presentation renders the labels supplied by the canonical vocabulary and its
+reviewed projection. A particular selector key or value cannot create a default,
+recommendation or a more restrictive meaning in a component. Specialized source
+labels remain possible through the shared vocabulary contract.
 
 Offer partitioning follows the same best-effort rule. Moving one selector value
 into a dedicated offer may remove that value from applicability, but sibling

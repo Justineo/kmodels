@@ -26,7 +26,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Kong AI Gateway](docs/kong-ai-gateway.md): consumer boundary and compatibility evidence.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
-- [Refresh and repair evidence audit](docs/refresh-repair-audit.md): observed coverage gaps, raw-evidence follow-up, and criteria for intelligent nodes.
+- [Refresh and repair evidence](docs/refresh-repair-audit.md): diagnostic layers, investigation admission, periodic review, evidence limits and verified conclusions.
 - [Source semantic audit](docs/semantic-audit.md): manual Jev experiment, evidence replay, and evaluation limits; not scheduled.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,

@@ -32,10 +32,12 @@
 
 ### Returns
 
-- `cache_creation_input_tokens: number`
-- `cache_read_input_tokens: number`
-- `inference_geo: string`
-- `input_tokens: number`
-- `output_tokens: number`
-- `server_tool_use: ServerToolUsage`
-- `service_tier: "standard" or "priority" or "batch"`
+- `usage: Usage`
+  - `cache_creation_input_tokens: number or null`
+  - `cache_read_input_tokens: number or null`
+  - `inference_geo: string or null`
+  - `input_tokens: number`
+  - `output_tokens: number`
+  - `server_tool_use: ServerToolUsage or null`
+  - `service_tier: "standard" or "priority" or "batch" or null`
+  - `speed: "standard" or "fast" or null`

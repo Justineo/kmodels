@@ -7,9 +7,16 @@ import type {
   AtomicProviderPricing,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
-import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import {
+  applicabilitiesOverlap,
+  applicabilityContainedIn,
+  canonicalizeApplicability,
+  unionApplicabilities,
+} from "./pricing-canonical.ts";
+import { publishedValiditiesOverlap } from "./pricing-time.ts";
 import {
   addAtom,
+  bindRateTerm,
   isStandardUnit,
   rawEvidence,
   standardSignal,
@@ -56,6 +63,13 @@ const requestServices = new Set([
   "responses-file-search",
   "responses-web-search",
 ]);
+const quantityDependencies: Readonly<Record<string, readonly string[]>> = {
+  input_text: ["cache_read_text", "cache_write_text", "input_audio", "input_image"],
+  cache_read_text: ["cache_read_audio", "cache_read_image", "cache_read_video"],
+  cache_write_text: ["cache_write_audio", "cache_write_image", "cache_write_video"],
+  input_audio: ["cache_read_audio"],
+  output_text: ["output_audio", "output_image", "output_video"],
+};
 
 export function applyAzureCommercialTopology(
   input: AtomicProviderPricing,
@@ -96,33 +110,18 @@ function bindResourceBook(
       enrollment: [],
       settlement: [],
       relations: [],
-      terms: offer.terms.map((term) => bindResourceTerm(resourceKey, term, input, inputIndex)),
+      terms: offer.terms.map((term) =>
+        bindRateTerm(term, (meter, variant) => {
+          const spec = resourceSignal(resourceKey, meter, variant.price.per, input);
+          return directBinding(
+            spec.signal,
+            resourceAggregation(resourceKey, meter),
+            pricingInputFacts(inputIndex, spec.directKeys),
+            variant,
+          );
+        }),
+      ),
     })),
-  };
-}
-
-function bindResourceTerm(
-  resourceKey: string,
-  term: AtomicPricingTerm,
-  input: AtomicProviderPricing,
-  inputIndex: PricingInputIndex,
-): AtomicPricingTerm {
-  if (term.kind !== "rate") return term;
-  return {
-    ...term,
-    variants: term.variants.map((variant) => {
-      const spec = resourceSignal(resourceKey, term.meter, variant.price.per, input);
-      const facts = pricingInputFacts(inputIndex, spec.directKeys);
-      return {
-        ...variant,
-        charge_binding: directBinding(
-          spec.signal,
-          resourceAggregation(resourceKey, term.meter),
-          facts,
-          variant,
-        ),
-      };
-    }),
   };
 }
 
@@ -198,14 +197,8 @@ function partitionOffer(
           },
         ];
   });
-  const rateMeters = source.terms.flatMap((term) =>
-    term.kind === "rate" &&
-    term.variants.some(({ applicability }) => permitsMechanism(applicability, mechanism))
-      ? [term.meter]
-      : [],
-  );
   const terms = source.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, input, router, model, inputIndex, rateMeters),
+    partitionTerm(term, mechanism, input, router, model, inputIndex, source.terms),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -231,7 +224,7 @@ function partitionTerm(
   router: boolean,
   model: PublishedModel | undefined,
   inputIndex: PricingInputIndex,
-  rateMeters: readonly PriceMeter[],
+  sourceTerms: readonly AtomicPricingTerm[],
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => {
@@ -259,7 +252,7 @@ function partitionTerm(
       model,
       input,
       inputIndex,
-      rateMeters,
+      scopedMeters(sourceTerms, term.meter, variant, mechanism),
     );
     const selector_sources = selectorSources(applicability, mechanism, model, inputIndex);
     return [
@@ -328,6 +321,49 @@ function permitsMechanism(applicability: PriceApplicability, mechanism: Mechanis
   });
 }
 
+function scopedMeters(
+  terms: readonly AtomicPricingTerm[],
+  meter: PriceMeter,
+  variant: AtomicRateVariant,
+  mechanism: Mechanism,
+): PriceMeter[] | undefined {
+  const meters: PriceMeter[] = [];
+  const dependencies =
+    meter.namespace === "kmodels" ? (quantityDependencies[meter.value] ?? []) : [];
+  for (const term of terms) {
+    if (
+      term.kind !== "rate" ||
+      term.meter.namespace !== "kmodels" ||
+      !dependencies.includes(term.meter.value)
+    )
+      continue;
+    const overlapping = term.variants.filter(
+      (candidate) =>
+        permitsMechanism(candidate.applicability, mechanism) &&
+        canonicalJson(candidate.price.denomination) === canonicalJson(variant.price.denomination) &&
+        applicabilitiesOverlap(candidate.applicability, variant.applicability) &&
+        publishedValiditiesOverlap(candidate.validity, variant.validity),
+    );
+    if (overlapping.length === 0) continue;
+    if (
+      !applicabilityContainedIn(
+        variant.applicability,
+        unionApplicabilities(overlapping.map(({ applicability }) => applicability)),
+      ) ||
+      overlapping.some(
+        (candidate) =>
+          candidate.validity !== undefined &&
+          canonicalJson(candidate.validity) !== canonicalJson(variant.validity ?? null),
+      ) ||
+      (isStandardUnit(variant.price.per, "token") &&
+        overlapping.some((candidate) => !isStandardUnit(candidate.price.per, "token")))
+    )
+      return;
+    meters.push(term.meter);
+  }
+  return meters;
+}
+
 function modelChargeBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
@@ -335,10 +371,13 @@ function modelChargeBinding(
   model: PublishedModel | undefined,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  rateMeters: readonly PriceMeter[],
+  rateMeters: readonly PriceMeter[] | undefined,
 ): ChargeBinding {
   const spec = modelSignal(meter, variant.price.per, mechanism, model, input);
-  const quantity = quantityMethods(spec, meter, mechanism, model, rateMeters, inputIndex);
+  const quantity =
+    rateMeters === undefined
+      ? { methods: [], facts: [] }
+      : quantityMethods(spec, meter, mechanism, model, rateMeters, inputIndex);
   return {
     signal: spec.signal,
     aggregation:
@@ -614,8 +653,10 @@ function subtractionMethod(
     signal,
     facts: pricingInputFacts(inputIndex, [key]),
   }));
+  const first = mapped[0];
+  if (first === undefined) return { methods: [], facts: [] };
   const nodes: NonNullable<UsageQuantityMethod["calculation"]>["nodes"] = [
-    { op: "signal", signal: mapped[0]!.signal },
+    { op: "signal", signal: first.signal },
   ];
   let result = 0;
   for (const { signal } of mapped.slice(1)) {

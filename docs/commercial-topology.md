@@ -254,11 +254,12 @@ units and bound signals are dimensionally compatible, exact relations are valid,
 retain first-party observations, and private/account data cannot enter the public resource.
 
 Adopted-topology checks distinguish required commercial mechanisms from source-dependent inventory.
-DashScope's explicit model dispositions are optional because the current price book can omit all
-discontinued rows. Fixture tests still require an explicit discontinued row to survive as a
-`not_applicable` disposition and reject missing provider resources or charge bindings. Other
-providers retain their reviewed topology requirements; this exception does not bypass canonical
-validation or authorize inventing a non-numeric price state.
+Model dispositions describe explicitly observed inventory; their current presence is not a
+structural feature for any provider. A source may omit every discontinued/non-hosted row without
+changing its commercial model. Explicit rows must still survive as validated `not_applicable`
+dispositions. Required resources, charge bindings and other adopted mechanisms remain guarded;
+an absent service-price dependency cannot pass by removing dispositions. Canonical provenance and
+source completeness checks still apply, and no price state is invented to satisfy a topology gate.
 
 The wire and UI projection remain shared. Each configured provider adapter removes commercial facts
 outside this boundary, preserves useful invocation facts, hardens source parsing, and adds

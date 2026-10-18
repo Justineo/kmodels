@@ -2,18 +2,17 @@ import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedr
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
 import { modelIdSchema } from "./identity.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
-import { uniquePricingInputFacts } from "./pricing-input.ts";
+import { decimalsEqual, multiplyDecimal, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
-  SourcePricingInputFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 import {
@@ -37,6 +36,7 @@ interface ParseInput {
   observedAt: string;
   onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
+  onPricingDependencyFailure?: (url: string) => void;
 }
 
 interface CardId {
@@ -178,26 +178,32 @@ const marketplaceRateCardSchema = z.object({
     "Price per 1 million input tokens",
     "Price per 1 million input tokens Global",
   ]),
-  dimensionLabels: z
-    .array(
-      z.object({
-        type: z.literal("REGION"),
-        value: z.string().regex(/^[a-z]{2}(?:-[a-z]+)+-\d$/),
-        displayName: z.string().min(1),
-      }),
-    )
-    .length(1),
+  dimensionLabels: z.tuple([
+    z.object({
+      type: z.literal("REGION"),
+      value: z.string().regex(/^[a-z]{2}(?:-[a-z]+)+-\d$/),
+      displayName: z.string().min(1),
+    }),
+  ]),
   unit: z.literal("Units"),
   price: decimalSchema,
 });
 
-const marketplacePricingTermSchema = z.object({
-  termType: z.literal("UsageBasedPricingTerm"),
-  currencyCode: z.literal("USD"),
-  rateCards: z.array(marketplaceRateCardSchema).length(46),
-  rateCardCount: z.literal(46),
-  totalRateCards: z.literal(46),
-});
+const marketplacePricingTermSchema = z
+  .object({
+    termType: z.literal("UsageBasedPricingTerm"),
+    currencyCode: z.literal("USD"),
+    rateCards: z.array(marketplaceRateCardSchema).min(1),
+    rateCardCount: z.number().int().nonnegative(),
+    totalRateCards: z.number().int().nonnegative(),
+  })
+  .superRefine(({ rateCards, rateCardCount, totalRateCards }, context) => {
+    if (rateCards.length !== rateCardCount || rateCardCount !== totalRateCards)
+      context.addIssue({
+        code: "custom",
+        message: "Marketplace rate-card inventory is incomplete",
+      });
+  });
 
 const marketplaceQuerySchema = z.object({
   state: z.object({
@@ -1458,7 +1464,16 @@ function conditions(
     rateMeter === "embedding"
       ? ["audio", "image", "video", "text"].find((value) => priceText.includes(value))
       : undefined;
-  const ttl = /cache.?write/.test(lower) ? (/1h|1 hour/.test(lower) ? 3_600 : 300) : undefined;
+  const duration = lower.match(
+    /cache.?write(?:[ _-]*(?:input|tokens?|token.?count))*[ _-]*(\d+)(m|h)\b/,
+  );
+  const ttl = /cache.?write/.test(lower)
+    ? duration?.[1] !== undefined
+      ? Number(duration[1]) * (duration[2] === "h" ? 3600 : 60)
+      : /1h|1 hour/.test(lower)
+        ? 3_600
+        : 300
+    : undefined;
   const inference = attributes.inferenceType ?? "";
   const sourceModality = attributes.modality
     ?.trim()
@@ -1619,11 +1634,45 @@ function rateKey(rate: SourcePriceFact): string {
   return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
 }
 
-function setReviewedPageRate(rates: Map<string, SourcePriceFact>, next: SourcePriceFact): boolean {
-  const key = rateKey(next);
-  const overlaps = [...rates].filter(([, current]) => rateKey(current) === key);
-  for (const [currentKey] of overlaps) rates.delete(currentKey);
-  rates.set(key, next);
+function setReviewedPageRate(
+  rates: Map<string, SourcePriceFact>,
+  next: SourcePriceFact,
+  raw: SourceRawPricingFact[],
+): boolean {
+  const selected: SourcePriceFact = {
+    ...next,
+    resolution_policy: next.resolution_policy ?? "bedrock_public_pricing_page_over_price_list",
+  };
+  const key = rateKey(selected);
+  const overlaps = [...rates].filter(
+    ([, current]) =>
+      rateKey(current) === key && current.resolution_policy !== selected.resolution_policy,
+  );
+  for (const [currentKey, current] of overlaps) {
+    rates.delete(currentKey);
+    if (!decimalsEqual(current.price, selected.price))
+      raw.push(
+        rawPricingFact(
+          current.source_ref,
+          `superseded_price_list:${current.meter}:${current.unit}`,
+          "informational",
+          "superseded_value",
+          {
+            amount: current.raw_price ?? current.price,
+            denomination: current.currency,
+            meter: current.meter,
+            unit: current.raw_unit ?? current.unit,
+            ...(current.source_locator === undefined
+              ? {}
+              : { fragment: current.source_locator.value }),
+            ...(current.raw_validity === undefined ? {} : { validity: current.raw_validity }),
+          },
+          current.conditions,
+          selected.resolution_policy,
+        ),
+      );
+  }
+  addRate(rates, selected);
   return overlaps.some(([, current]) => !decimalsEqual(current.price, next.price));
 }
 
@@ -1902,13 +1951,18 @@ function cohereEmbedMarketplaceRates(body: string, sourceId: string): SourcePric
   if (pricingTerms.length === 0)
     throw new Error("Bedrock Cohere Embed 4 Marketplace pricing term was missing");
   const cardSets = new Map(
-    pricingTerms.map((term) => [stableJson(term.rateCards), term.rateCards] as const),
+    pricingTerms.map((term) => {
+      const cards = [...term.rateCards].sort((left, right) =>
+        left.dimensionKey.localeCompare(right.dimensionKey),
+      );
+      return [stableJson(cards), cards] as const;
+    }),
   );
   if (cardSets.size !== 1)
     throw new Error("Bedrock Cohere Embed 4 Marketplace pricing terms disagreed");
-  const cards = [...cardSets.values()][0]!;
-  const regional = new Set<string>();
-  const global = new Set<string>();
+  const cards = [...cardSets.values()][0];
+  if (cards === undefined)
+    throw new Error("Bedrock Cohere Embed 4 Marketplace pricing term was missing");
   const keys = new Set<string>();
   const rates = cards.map((card): SourcePriceFact => {
     const isGlobal = card.dimensionKey.endsWith("_Global");
@@ -1916,11 +1970,10 @@ function cohereEmbedMarketplaceRates(body: string, sourceId: string): SourcePric
       throw new Error("Bedrock Cohere Embed 4 Marketplace scope changed");
     if (card.description !== card.displayName)
       throw new Error("Bedrock Cohere Embed 4 Marketplace description changed");
-    const region = card.dimensionLabels[0]!.value;
+    const region = card.dimensionLabels[0].value;
     const key = `${isGlobal ? "global" : "in-region"}:${region}`;
     if (keys.has(key)) throw new Error("Bedrock Cohere Embed 4 Marketplace duplicated a region");
     keys.add(key);
-    (isGlobal ? global : regional).add(region);
     return {
       meter: "input_text",
       price: card.price,
@@ -1941,12 +1994,6 @@ function cohereEmbedMarketplaceRates(body: string, sourceId: string): SourcePric
       resolution_policy: "bedrock_marketplace_product_page_over_price_list",
     };
   });
-  if (
-    regional.size !== 23 ||
-    global.size !== 23 ||
-    [...regional].some((region) => !global.has(region))
-  )
-    throw new Error("Bedrock Cohere Embed 4 Marketplace region coverage changed");
   return rates;
 }
 
@@ -1974,6 +2021,7 @@ interface CommercialBuilder {
 
 interface BedrockPrices {
   modelRates: Map<string, SourcePriceFact[]>;
+  modelRawFacts: Map<string, SourceRawPricingFact[]>;
   commercialFacts: SourceCommercialPricingFact[];
 }
 
@@ -2108,8 +2156,7 @@ function addCommercialRate(
   const key = `${spec.bookKey}\0${spec.offerKey}\0${spec.termKey}`;
   const current = builders.get(key);
   if (current !== undefined) {
-    const { rates: _rates, ...identity } = current;
-    if (stableJson(identity.spec) !== stableJson(spec))
+    if (stableJson(current.spec) !== stableJson(spec))
       throw new Error(`Bedrock commercial offer ${key} changed identity`);
     current.rates.push(raw);
     return;
@@ -2140,11 +2187,13 @@ function productDimensions(
   list: z.infer<typeof priceListSchema>,
   sku: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  onRejected?: () => void,
 ): BedrockPriceDimension[] {
   const result: BedrockPriceDimension[] = [];
   for (const [termCode, termInput] of Object.entries(list.terms.OnDemand[sku] ?? {})) {
     const term = priceTermSchema.safeParse(termInput);
     if (!term.success) {
+      onRejected?.();
       onPricingReconciliation?.({
         disposition: "unsupported",
         reason_code: "price_term_rejected",
@@ -2155,6 +2204,7 @@ function productDimensions(
     for (const [dimensionCode, dimensionInput] of Object.entries(term.data.priceDimensions)) {
       const dimension = priceDimensionSchema.safeParse(dimensionInput);
       if (!dimension.success) {
+        onRejected?.();
         onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "price_dimension_rejected",
@@ -2173,28 +2223,57 @@ function parsePrices(
   cards: Card[],
   sourceId: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  onPricingDependencyFailure?: (url: string) => void,
 ): BedrockPrices {
   const byId = new Map<string, Map<string, SourcePriceFact>>();
+  const modelRawFacts = new Map<string, SourceRawPricingFact[]>();
+  const rawFor = (id: string): SourceRawPricingFact[] => {
+    const facts = modelRawFacts.get(id) ?? [];
+    modelRawFacts.set(id, facts);
+    return facts;
+  };
   const commercial = new Map<string, CommercialBuilder>();
   let requiredDimensions = 0;
   let handledDimensions = 0;
   const unbound = new Set<string>();
   const unsupported = new Set<string>();
+  const seenLists = new Set<string>();
   for (const document of documents) {
-    if (new URL(document.url).hostname !== "pricing.us-east-1.amazonaws.com") continue;
-    const parsedList = priceListSchema.safeParse(JSON.parse(document.body));
-    if (!parsedList.success) {
+    const url = new URL(document.url);
+    if (url.hostname !== "pricing.us-east-1.amazonaws.com") continue;
+    const offer = url.pathname.match(
+      /^\/offers\/v1\.0\/aws\/(AmazonBedrock|AmazonBedrockFoundationModels|AmazonBedrockService)\/current\/index\.json$/,
+    )?.[1];
+    const reject = (): void => {
+      if (offer !== undefined) onPricingDependencyFailure?.(document.url);
       onPricingReconciliation?.({
         disposition: "unsupported",
         reason_code: "price_list_unsupported",
         sample: document.url,
       });
+    };
+    if (offer === undefined || seenLists.has(document.url)) {
+      reject();
+      continue;
+    }
+    seenLists.add(document.url);
+    let value: unknown;
+    try {
+      value = JSON.parse(document.body);
+    } catch {
+      reject();
+      continue;
+    }
+    const parsedList = priceListSchema.safeParse(value);
+    if (!parsedList.success || parsedList.data.offerCode !== offer) {
+      reject();
       continue;
     }
     const list = parsedList.data;
     for (const [sku, productInput] of Object.entries(list.products)) {
       const product = priceProductSchema.safeParse(productInput);
       if (!product.success) {
+        onPricingDependencyFailure?.(document.url);
         onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "price_product_rejected",
@@ -2202,10 +2281,13 @@ function parsePrices(
         });
         continue;
       }
-      const dimensions = productDimensions(list, sku, onPricingReconciliation);
+      const dimensions = productDimensions(list, sku, onPricingReconciliation, () =>
+        onPricingDependencyFailure?.(document.url),
+      );
       if (dimensions.length === 0) continue;
       const value = product.data;
       if (value.sku !== sku) {
+        onPricingDependencyFailure?.(document.url);
         for (const { dimension } of dimensions)
           onPricingReconciliation?.({
             disposition: "unsupported",
@@ -2313,6 +2395,27 @@ function parsePrices(
             reason_code: "price_dimension_unsupported",
             sample: `${label}: ${dimension.description}`,
           });
+          const raw = commercialRawFact(
+            list.offerCode,
+            sku,
+            attributes,
+            dimension,
+            term.effectiveDate,
+            `unclassified:${sku}:${dimension.rateCode ?? "rate"}`,
+            sourceId,
+          );
+          if (raw !== undefined)
+            for (const id of target.ids)
+              rawFor(id).push({
+                ...raw,
+                conditions: conditions(
+                  attributes,
+                  pricingText(attributes, dimension.description),
+                  `${attributes.inferenceType ?? ""} ${dimension.description}`.toLowerCase(),
+                  target.endpoint,
+                  "input_data",
+                ),
+              });
           continue;
         }
         if (parsed.meter === "provisioned_throughput") {
@@ -2366,7 +2469,7 @@ function parsePrices(
       handledDimensions += marketplaceRates.length;
       const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
       for (const marketplaceRate of marketplaceRates) {
-        const overrodePriceList = setReviewedPageRate(rates, marketplaceRate);
+        const overrodePriceList = setReviewedPageRate(rates, marketplaceRate, rawFor(id));
         onPricingReconciliation?.({
           disposition: "normalized",
           reason_code: overrodePriceList
@@ -2565,33 +2668,37 @@ function parsePrices(
               const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
               for (const region of regions)
                 overrodePriceList =
-                  setReviewedPageRate(rates, {
-                    meter: column.meter,
-                    price: amount,
-                    currency: "USD",
-                    unit: "million_tokens",
-                    conditions: {
-                      region,
-                      deployment_scope: "in_region",
-                      service_tier: "standard",
-                      ...(column.context?.contextMinTokens === undefined
-                        ? {}
-                        : { context_min_tokens: column.context.contextMinTokens }),
-                      ...(column.context?.contextMaxTokens === undefined
-                        ? {}
-                        : { context_max_tokens: column.context.contextMaxTokens }),
-                      ...(column.cacheTtl === undefined
-                        ? {}
-                        : { cache_ttl_seconds: column.cacheTtl }),
+                  setReviewedPageRate(
+                    rates,
+                    {
+                      meter: column.meter,
+                      price: amount,
+                      currency: "USD",
+                      unit: "million_tokens",
+                      conditions: {
+                        region,
+                        deployment_scope: "in_region",
+                        service_tier: "standard",
+                        ...(column.context?.contextMinTokens === undefined
+                          ? {}
+                          : { context_min_tokens: column.context.contextMinTokens }),
+                        ...(column.context?.contextMaxTokens === undefined
+                          ? {}
+                          : { context_max_tokens: column.context.contextMaxTokens }),
+                        ...(column.cacheTtl === undefined
+                          ? {}
+                          : { cache_ttl_seconds: column.cacheTtl }),
+                      },
+                      source_ref: sourceId,
+                      derived: false,
+                      raw_price: raw,
+                      raw_unit:
+                        column.context === undefined
+                          ? headers[column.index]
+                          : `${column.context.label}: ${headers[column.index] ?? column.meter}`,
                     },
-                    source_ref: sourceId,
-                    derived: false,
-                    raw_price: raw,
-                    raw_unit:
-                      column.context === undefined
-                        ? headers[column.index]
-                        : `${column.context.label}: ${headers[column.index] ?? column.meter}`,
-                  }) || overrodePriceList;
+                    rawFor(id),
+                  ) || overrodePriceList;
               byId.set(id, rates);
             }
             onPricingReconciliation?.({
@@ -2673,21 +2780,25 @@ function parsePrices(
             const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
             for (const region of regions)
               overrodePriceList =
-                setReviewedPageRate(rates, {
-                  meter: "image_generation",
-                  price: amount,
-                  currency: "USD",
-                  unit: "image",
-                  conditions: {
-                    region,
-                    deployment_scope: "geo_cross_region",
-                    service_tier: "standard",
+                setReviewedPageRate(
+                  rates,
+                  {
+                    meter: "image_generation",
+                    price: amount,
+                    currency: "USD",
+                    unit: "image",
+                    conditions: {
+                      region,
+                      deployment_scope: "geo_cross_region",
+                      service_tier: "standard",
+                    },
+                    source_ref: sourceId,
+                    derived: false,
+                    raw_price: raw,
+                    raw_unit: headers[1],
                   },
-                  source_ref: sourceId,
-                  derived: false,
-                  raw_price: raw,
-                  raw_unit: headers[1],
-                }) || overrodePriceList;
+                  rawFor(id),
+                ) || overrodePriceList;
             byId.set(id, rates);
           }
           onPricingReconciliation?.({
@@ -2722,6 +2833,7 @@ function parsePrices(
       ),
     });
   return {
+    modelRawFacts,
     modelRates: new Map(
       [...byId].map(([id, rates]) => [
         id,
@@ -2734,316 +2846,6 @@ function parsePrices(
     ),
     commercialFacts: commercialFacts(commercial, sourceId),
   };
-}
-
-const applyGuardrailUsageFields = [
-  "automatedReasoningPolicyUnits",
-  "contentPolicyImageUnits",
-  "contentPolicyUnits",
-  "contextualGroundingPolicyUnits",
-  "sensitiveInformationPolicyFreeUnits",
-  "sensitiveInformationPolicyUnits",
-  "topicPolicyUnits",
-  "wordPolicyUnits",
-] as const;
-
-function documentIdentifiers(body: string | undefined): ReadonlySet<string> {
-  if (body === undefined) return new Set();
-  const value = load(body).text();
-  return new Set(value.match(/[A-Za-z0-9][A-Za-z0-9]*/g) ?? []);
-}
-
-function hasDocumentContract(
-  body: string | undefined,
-  title: string,
-  fields: readonly string[],
-): boolean {
-  if (body === undefined) return false;
-  const value = load(body).text();
-  const identifiers = documentIdentifiers(body);
-  return value.includes(title) && fields.every((field) => identifiers.has(field));
-}
-
-function pricingInput(
-  sourceRef: string,
-  key: string,
-  channel: SourcePricingInputFact["channel"],
-  locator: SourcePricingInputFact["locator"],
-  availability: SourcePricingInputFact["availability"],
-  absentValue?: "zero",
-): SourcePricingInputFact {
-  return {
-    key,
-    channel,
-    locator,
-    ...(absentValue === undefined ? {} : { absent_value: absentValue }),
-    availability,
-    source_ref: sourceRef,
-  };
-}
-
-function bedrockPricingInputs(
-  documents: ReadonlyArray<BedrockDocuments[number]>,
-  sourceRef: string,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): SourcePricingInputFact[] {
-  const converse = exactDocument(
-    documents,
-    "/bedrock/latest/APIReference/API_runtime_Converse.html",
-  );
-  const stream = exactDocument(
-    documents,
-    "/bedrock/latest/APIReference/API_runtime_ConverseStreamMetadataEvent.html",
-  );
-  const tokenUsage = exactDocument(
-    documents,
-    "/bedrock/latest/APIReference/API_runtime_TokenUsage.html",
-  );
-  const cacheDetail = exactDocument(
-    documents,
-    "/bedrock/latest/APIReference/API_runtime_CacheDetail.html",
-  );
-  const promptCaching = exactDocument(documents, "/bedrock/latest/userguide/prompt-caching.html");
-  const batchResults = exactDocument(
-    documents,
-    "/bedrock/latest/userguide/batch-inference-results.html",
-  );
-  const invocationLogging = exactDocument(
-    documents,
-    "/bedrock/latest/userguide/model-invocation-logging.html",
-  );
-  const applyGuardrail = exactDocument(
-    documents,
-    "/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html",
-  );
-  const invokeGuardrailChecks = exactDocument(
-    documents,
-    "/bedrock/latest/userguide/guardrails-use-invoke-guardrail-checks-using.html",
-  );
-  const facts: SourcePricingInputFact[] = [];
-  const tokenFields = [
-    ["uncached_input_tokens", "inputTokens"],
-    ["output_tokens", "outputTokens"],
-    ["cached_input_tokens", "cacheReadInputTokens"],
-    ["cache_write_tokens", "cacheWriteInputTokens"],
-  ] as const;
-  const hasTokenUsage = hasDocumentContract(tokenUsage, "TokenUsage", []);
-  const tokenUsageIdentifiers = documentIdentifiers(tokenUsage);
-  const promptText = promptCaching === undefined ? "" : load(promptCaching).text();
-  const hasUncachedSemantics =
-    hasTokenUsage &&
-    tokenUsageIdentifiers.has("inputTokens") &&
-    promptText.includes("inputTokens field represents only the non-cached input tokens") &&
-    ["inputTokens", "cacheReadInputTokens", "cacheWriteInputTokens"].every((field) =>
-      documentIdentifiers(promptCaching).has(field),
-    );
-  const converseIdentifiers = documentIdentifiers(converse);
-  const streamIdentifiers = documentIdentifiers(stream);
-  const hasConverse = hasDocumentContract(converse, "Converse", ["usage", "TokenUsage"]);
-  const hasStream = hasDocumentContract(stream, "ConverseStreamMetadataEvent", [
-    "usage",
-    "TokenUsage",
-  ]);
-
-  if (hasConverse)
-    for (const [key, field] of tokenFields)
-      if (
-        tokenUsageIdentifiers.has(field) &&
-        (key !== "uncached_input_tokens" || hasUncachedSemantics)
-      )
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `runtime.converse.${key}`,
-            "response",
-            { kind: "json_pointer", value: `/usage/${field}` },
-            "terminal_only",
-          ),
-        );
-  if (hasStream)
-    for (const [key, field] of tokenFields)
-      if (
-        tokenUsageIdentifiers.has(field) &&
-        (key !== "uncached_input_tokens" || hasUncachedSemantics)
-      )
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `runtime.converse.${key}`,
-            "stream_event",
-            {
-              kind: "provider_field",
-              value: `ConverseStreamMetadataEvent.usage.${field}`,
-            },
-            "terminal_only",
-          ),
-        );
-  if (hasConverse)
-    for (const [key, field] of [
-      ["selector.service_tier", "serviceTier.type"],
-      ["selector.speed", "performanceConfig.latency"],
-    ] as const)
-      if (field.split(".").every((identifier) => converseIdentifiers.has(identifier)))
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `runtime.converse.${key}`,
-            "response",
-            { kind: "json_pointer", value: `/${field.replace(".", "/")}` },
-            "terminal_only",
-          ),
-        );
-  if (hasStream)
-    for (const [key, field] of [
-      ["selector.service_tier", "serviceTier.type"],
-      ["selector.speed", "performanceConfig.latency"],
-    ] as const)
-      if (field.split(".").every((identifier) => streamIdentifiers.has(identifier)))
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `runtime.converse.${key}`,
-            "stream_event",
-            { kind: "provider_field", value: `ConverseStreamMetadataEvent.${field}` },
-            "terminal_only",
-          ),
-        );
-
-  if (
-    hasTokenUsage &&
-    tokenUsageIdentifiers.has("cacheDetails") &&
-    hasDocumentContract(cacheDetail, "CacheDetail", ["inputTokens", "ttl", "5m", "1h"])
-  )
-    for (const ttl of ["5m", "1h"] as const)
-      facts.push(
-        pricingInput(
-          sourceRef,
-          `runtime.converse.cache_write_${ttl}_input_tokens`,
-          "response",
-          {
-            kind: "provider_field",
-            value: `TokenUsage.cacheDetails[ttl=${ttl}].inputTokens`,
-          },
-          "terminal_only",
-          "zero",
-        ),
-        pricingInput(
-          sourceRef,
-          `runtime.converse.cache_write_${ttl}_input_tokens`,
-          "stream_event",
-          {
-            kind: "provider_field",
-            value: `ConverseStreamMetadataEvent.usage.cacheDetails[ttl=${ttl}].inputTokens`,
-          },
-          "terminal_only",
-          "zero",
-        ),
-      );
-
-  if (hasDocumentContract(batchResults, "View the results of a batch inference job", ["manifest"]))
-    for (const [key, field] of [
-      ["input_tokens", "inputTokenCount"],
-      ["output_tokens", "outputTokenCount"],
-    ] as const)
-      if (documentIdentifiers(batchResults).has(field))
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `batch.manifest.${key}`,
-            "result",
-            { kind: "provider_field", value: `manifest.json.out.${field}` },
-            "terminal_only",
-          ),
-        );
-
-  const invocationText = invocationLogging === undefined ? "" : load(invocationLogging).text();
-  if (
-    hasDocumentContract(invocationLogging, "ModelInvocationLog", [
-      "schemaVersion",
-      "region",
-      "requestId",
-      "operation",
-      "modelId",
-      "inputTokenCount",
-      "outputTokenCount",
-    ]) &&
-    invocationText.includes("bedrock-runtime")
-  ) {
-    facts.push(
-      pricingInput(
-        sourceRef,
-        "runtime.invocation_log.input_tokens",
-        "invocation_log",
-        { kind: "json_pointer", value: "/input/inputTokenCount" },
-        "reconciliation_only",
-      ),
-      pricingInput(
-        sourceRef,
-        "runtime.invocation_log.output_tokens",
-        "invocation_log",
-        { kind: "json_pointer", value: "/output/outputTokenCount" },
-        "reconciliation_only",
-      ),
-      pricingInput(
-        sourceRef,
-        "runtime.invocation_log.selector.region",
-        "invocation_log",
-        { kind: "json_pointer", value: "/region" },
-        "reconciliation_only",
-      ),
-    );
-  }
-
-  if (hasDocumentContract(applyGuardrail, "ApplyGuardrail", ["usage"]))
-    for (const field of applyGuardrailUsageFields)
-      if (documentIdentifiers(applyGuardrail).has(field))
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `guardrails.apply.${field}`,
-            "response",
-            { kind: "json_pointer", value: `/usage/${field}` },
-            "terminal_only",
-          ),
-        );
-
-  if (hasDocumentContract(invokeGuardrailChecks, "InvokeGuardrailChecks", ["usage", "textUnits"]))
-    for (const check of ["contentFilter", "promptAttack", "sensitiveInformation"] as const)
-      if (documentIdentifiers(invokeGuardrailChecks).has(check))
-        facts.push(
-          pricingInput(
-            sourceRef,
-            `guardrails.checks.${check}.textUnits`,
-            "response",
-            { kind: "json_pointer", value: `/usage/${check}/textUnits` },
-            "terminal_only",
-          ),
-        );
-
-  const result = uniquePricingInputFacts(facts);
-  const expected = 32;
-  if (
-    [
-      converse,
-      stream,
-      tokenUsage,
-      cacheDetail,
-      promptCaching,
-      batchResults,
-      invocationLogging,
-      applyGuardrail,
-      invokeGuardrailChecks,
-    ].some((body) => body !== undefined)
-  )
-    onPricingReconciliation?.({
-      disposition: result.length === expected ? "normalized" : "unbound",
-      reason_code:
-        result.length === expected
-          ? "pricing_input_contract_bound"
-          : "pricing_input_contract_partial",
-      sample: `${result.length}/${expected} Bedrock pricing inputs`,
-    });
-  return result;
 }
 
 export function formatPricingInterpretationSample(
@@ -3112,6 +2914,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
     cards,
     input.source.id,
     input.onPricingReconciliation,
+    input.onPricingDependencyFailure,
   );
   const models = new Map<string, ProviderModel>();
   for (const card of cards) {
@@ -3197,6 +3000,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         release_stage: card.releaseStage,
         pricing_state: pricing.length > 0 ? "numeric" : "unknown",
         price_facts: pricing,
+        raw_price_facts: prices.modelRawFacts.get(id) ?? [],
         availability,
         scope: "regional_catalog",
       };
@@ -3207,7 +3011,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   const carrier = result.find(({ price_facts }) => price_facts.length > 0) ?? result[0];
   if (carrier !== undefined && prices.commercialFacts.length > 0)
     carrier.commercial_facts = prices.commercialFacts;
-  const pricingInputs = bedrockPricingInputs(
+  const pricingInputs = extractBedrockPricingInputs(
     bundle.documents,
     input.source.id,
     input.onPricingReconciliation,

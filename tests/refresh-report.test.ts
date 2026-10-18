@@ -1,7 +1,95 @@
 import { describe, expect, it } from "vite-plus/test";
 import { refreshReport } from "../src/catalog/refresh-report.ts";
+import { contractExtensionEvidence } from "../src/catalog/source-contract.ts";
 
 describe("refresh report", () => {
+  it("shows claim-local dependency failures while catalog and prices remain accepted", () => {
+    const output = refreshReport({
+      generated_at: "2026-10-19T00:00:00Z",
+      catalog_version: "abcdef0123456789",
+      outcome: "unchanged",
+      publication: "complete",
+      providers: [
+        {
+          provider_id: "test",
+          status: "fresh",
+          publication: "accepted",
+          pricing_publication: "accepted",
+          models: { current: 2, added: 0, removed: 0, changed: 0 },
+          sources: { changed: 0 },
+          pricing: { outcome: "unchanged" },
+          signals: ["persistent_source_failure"],
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "test-source",
+                outcome: "unchanged",
+                dependency_failures: [
+                  {
+                    dependency_id: "test-source/usage",
+                    impact: "claim",
+                    outcome: "fetch_failed",
+                    message: "HTTP 404",
+                    http_status: 404,
+                    consecutive_failures: 2,
+                    last_success_at: "2026-10-18T00:00:00Z",
+                  },
+                ],
+                dependency_failures_omitted: 2,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(output.markdown).toContain("| Dependency | `test-source/usage` | `claim`");
+    expect(output.markdown).toContain("2 consecutive · 24.0h stale");
+    expect(output.markdown).toContain("+2 dependency failures omitted");
+    expect(output.markdown).not.toContain("#### Unaccepted candidates");
+    expect(output.warnings).toContain(
+      "test/test-source/usage: claim dependency fetch_failed HTTP 404",
+    );
+  });
+  it("renders distinct overlapping contract cohorts and explicit truncation on unchanged sources", () => {
+    const first = contractExtensionEvidence(["/first"]);
+    const second = contractExtensionEvidence(["/second", "/third"]);
+    const output = refreshReport({
+      generated_at: "2026-10-19T00:00:00.000Z",
+      catalog_version: "abcdef0123456789",
+      outcome: "unchanged",
+      publication: "complete",
+      providers: [
+        {
+          provider_id: "test",
+          status: "fresh",
+          publication: "accepted",
+          pricing_publication: "accepted",
+          models: { current: 1, added: 0, removed: 0, changed: 0 },
+          sources: { changed: 0 },
+          pricing: { outcome: "unchanged" },
+          signals: ["partial_contract_mismatch"],
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "test-source",
+                outcome: "unchanged",
+                contract_findings: [first, second],
+                contract_findings_omitted: 3,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(output.markdown).toContain("`/first` · 1/1");
+    expect(output.markdown).toContain("`/second` · 1/2");
+    expect(output.markdown).toContain("`/third` · 1/2");
+    expect(output.markdown).toContain("+3 contract findings omitted");
+    expect(output.warnings).toHaveLength(3);
+    expect(output.warnings[2]).toContain("3 additional contract findings omitted");
+  });
   it("shows accepted count decreases as diagnostics without publication warnings", () => {
     const output = refreshReport({
       generated_at: "2026-08-01T00:00:00.000Z",

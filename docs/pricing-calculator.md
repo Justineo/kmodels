@@ -32,7 +32,7 @@ Coverage distinguishes normalized price availability, semantic charge bindings, 
 
 ## Shared arithmetic and release checks
 
-Canonical and packaged evaluation share rational arithmetic, quantity graphs, applicability predicates, and validity semantics. `round_up` is the exact positive-increment ceiling operation on quantities, composed in graph order with `minimum` and applied separately within each billing boundary. A provider binding uses it only after evidence establishes the increment and boundary. No existing raw billing block is upgraded merely because the operation exists.
+Canonical and packaged evaluation share rational arithmetic, quantity graphs, applicability predicates, and validity semantics. The pure `pricing-applicability.ts` interpreter is shared with website projection; calculator imports do not pass through presentation or formatting modules. `round_up` is the exact positive-increment ceiling operation on quantities, composed in graph order with `minimum` and applied separately within each billing boundary. A provider binding uses it only after evidence establishes the increment and boundary. No existing raw billing block is upgraded merely because the operation exists.
 
 `vp run package:build` emits the neutral ESM bundle/declarations, JSON Schemas, and synthetic conformance fixtures. `vp run package:check` packs the artifact, checks its allowlist and dependency boundary, blocks network access, and executes calculation and error vectors in Node and a bundled browser-like ESM context. Generated-data tests validate every provider export against the canonical pair. CI runs package checks alongside repository checks. Nothing in those commands publishes to a registry.
 

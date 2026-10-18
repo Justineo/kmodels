@@ -39,6 +39,13 @@ Status: implemented
   transport/auth failures do not. A source URL changes only after independent first-party evidence
   establishes its successor. The public evidence CLI reports omitted companions explicitly even
   when the main bundle succeeds.
+- Dependency contract failures enter source investigation even when the root bytes are unchanged
+  and catalog/pricing publication succeeds. Repeated public dependency 404/410 uses that dependency's
+  own history for relocation review. Transient dependency failures mark evidence incomplete without
+  becoming blind parser repairs; truncated dependency evidence also remains incomplete. Native HTTP
+  status takes precedence over legacy report-message matching. Reports identify bundle versus
+  claim impact, individual failure streaks and last success, so fresh root data cannot hide stale
+  acquisition evidence. Public evidence receipts expose the same bounded dependency failures.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
   `gh workflow run catalog-repair.lock.yml`. Manual runs use the same repair-candidate gate and publication
   rules as scheduled runs.
@@ -57,6 +64,16 @@ Status: implemented
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
   repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
   supplies no semantic-audit directory, key, or cache.
+- Daily repair also admits one comprehensive review independently of errors through
+  `KMODELS_PERIODIC_REVIEW=true`. UTC days rotate deterministically over sorted manifest providers,
+  then a global architecture review: currently 20 providers plus one global slot per 21-day cycle.
+  Provider reviews inspect current first-party discovery, identity/lifecycle, complete price/service
+  inventory and scopes, quantity/selector acquisition, retention/replay, calculator/display parity
+  and simplicity. The global slot examines shared model consistency and collection/repair feedback.
+  Reviews use the existing serialized job and evidence artifacts; there is no second scheduler or
+  production semantic classifier. A failed slot is incomplete, visible in Actions, and revisited
+  on its next cycle; a manual dispatch can rerun that day's slot. Error-driven candidates continue
+  to be investigated daily regardless of the selected review provider.
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
@@ -173,10 +190,16 @@ Status: implemented
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   publication request. Automatic repair publication requires every repository validation command to pass.
   Preparation supplies deduplicated fetch commands built from reviewed public source IDs and a
-  runner-owned repair-admission output. The outcome gate rejects `noop` whenever preparation found
-  candidates or a failed refresh execution requiring repair. Only an empty healthy preparation may
-  complete without a patch. An admitted run requires validated code, publication and deployment;
-  an external blocker remains a failed run, never a fabricated repair or successful dismissal.
+  runner-owned repair-admission output. Admission requires investigation; it does not assert that
+  a defect already exists. An admitted `noop` requires every candidate to have independently checked
+  `not_a_defect` evidence, including successful actual parser replay and a concrete alternative
+  diagnostic, and an empty patch. Source-level pricing/location and periodic provider reviews also
+  require successful first-party navigation. The trusted terminal checker and outcome capture
+  independently enforce this conclusion using the runner-restored checker. Blocked, pending or
+  repaired candidates cannot be dismissed as a healthy no-op. Missing source evidence adds its own
+  admission item so an unrelated healthy review cannot conceal acquisition failure. A reproduced
+  defect still requires validated code, publication and deployment; an external blocker remains
+  incomplete, never a fabricated repair or successful dismissal.
   If initial triage finds no repair, the agent must make a second diagnostic pass over hard
   rejections and owned contract omissions before declaring an external blocker. It must correct
   argument/decoding mistakes, inspect rejected rows and parser branches, and test alternative

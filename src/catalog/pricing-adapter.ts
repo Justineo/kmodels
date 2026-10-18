@@ -1,6 +1,8 @@
 import {
   assembleProviderPricing,
   type AtomicModelDisposition,
+  type AtomicAllowanceTerm,
+  type AtomicPricingTerm,
   type AtomicPricingOffer,
   type AtomicPriceState,
   type AtomicProviderPricing,
@@ -10,6 +12,8 @@ import {
   type ProviderPricingPartition,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
+import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
+import { pricingAtomIdentity } from "./pricing-commercial-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 import { rationalFromDecimal } from "./pricing-rational.ts";
 import { canonicalizeInstant, isPublishedTime } from "./pricing-time.ts";
@@ -21,6 +25,7 @@ import {
 } from "./pricing-units.ts";
 import type {
   PriceApplicability,
+  PriceAllowanceTerm,
   PriceCondition,
   PriceDenomination,
   PriceDimension,
@@ -54,16 +59,18 @@ import { applyXaiCommercialTopology } from "./xai-commercial.ts";
 import { applyTypesafeCommercialTopology } from "./typesafe-commercial.ts";
 import {
   sourcePriceFactSchema,
+  sourcePricingFacts,
+  commercialFactSourceRefs,
   type ParsedPricingModel,
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
   type SourceCommercialPricingFact,
   type SourcePricingInputFact,
+  type SourcePricingFacts,
 } from "./pricing-source.ts";
-import { unknownCapabilities } from "./schema.ts";
 
-export interface ParsedPricingSource {
+export interface ParsedPricingSource extends SourcePricingFacts {
   source: SourceManifest;
   models: ParsedPricingModel[];
 }
@@ -110,7 +117,7 @@ interface OfferBuilder {
   name: string;
   billingMode: "usage" | "capacity" | "subscription" | "one_time" | "hybrid";
   states: AtomicPriceState[];
-  terms: Map<string, AtomicRateTerm | AtomicRawTerm>;
+  terms: Map<string, AtomicPricingTerm>;
   modelRefs: Set<string>;
   sourceRefs: Set<string>;
 }
@@ -202,15 +209,15 @@ export function assembleParsedProviderPricing(
         continue;
       }
       const context = adapterContext(contexts, providerId, bookKey, bookName, atoms, labelIndex);
-      addModelPricing(context, source.id, bound, modelRefs);
+      addPricing(context, source.id, bound, modelRefs);
     }
   }
-  const commercialFacts = pricingSources.flatMap(({ models }) =>
-    models.flatMap(({ commercial_facts }) => commercial_facts ?? []),
+  const commercialFacts = pricingSources.flatMap(
+    (source) => sourcePricingFacts(source.models, source).commercial_facts ?? [],
   );
   const pricingInputs = sources
     .filter(({ source }) => isPricingInputSource(source))
-    .flatMap(({ models }) => models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []));
+    .flatMap((source) => sourcePricingFacts(source.models, source).pricing_inputs ?? []);
   const books = [
     ...[...contexts.values()].flatMap(pricingBooks),
     ...commercialPricingBooks(
@@ -221,11 +228,23 @@ export function assembleParsedProviderPricing(
       labelIndex,
     ),
   ];
+  const declaredAtoms = new Map<string, ProviderAtomRegistryEntry>();
+  for (const { vocabulary = [] } of pricingSources)
+    for (const atom of vocabulary) {
+      const key = pricingAtomIdentity(atom);
+      const previous = declaredAtoms.get(key);
+      if (previous !== undefined && canonicalJson(previous) !== canonicalJson(atom))
+        throw new Error(`Source atom ${atom.key} has conflicting definitions`);
+      declaredAtoms.set(key, atom);
+    }
   if (books.length === 0 && dispositions.length === 0) return undefined;
   const input = {
     provider_id: providerId,
     observed_at: observedAt,
-    vocabulary: { provider_id: providerId, atoms: [...atoms.values()] },
+    vocabulary: {
+      provider_id: providerId,
+      atoms: [...new Map([...atoms, ...declaredAtoms]).values()],
+    },
     dispositions,
     books,
   } satisfies AtomicProviderPricing;
@@ -385,10 +404,10 @@ function adapterContext(
   return created;
 }
 
-function addModelPricing(
+function addPricing(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedPricingModel,
+  pricing: Pick<ParsedPricingModel, "uid" | "pricing_state" | "price_facts" | "raw_price_facts">,
   modelRefs: readonly string[],
   forcedOffer?: {
     key: string;
@@ -396,12 +415,12 @@ function addModelPricing(
     billingMode: OfferBuilder["billingMode"];
   },
 ): void {
-  const rates = normalizedSourceFacts(context.providerId, model.price_facts);
-  const hasUsageRate = model.price_facts.some((rate) => rateMode(rate) === "usage");
-  const state = model.pricing_state;
+  const rates = normalizedSourceFacts(context.providerId, pricing.price_facts);
+  const hasUsageRate = pricing.price_facts.some((rate) => rateMode(rate) === "usage");
+  const state = pricing.pricing_state;
   const publishesState =
     !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
-  const hasBaseRaw = model.raw_price_facts.some(({ impact }) => impact === "base_price");
+  const hasBaseRaw = pricing.raw_price_facts.some(({ impact }) => impact === "base_price");
   if (rates.length === 0 && !hasBaseRaw && !publishesState) return;
 
   addScope(context, sourceRef, modelRefs);
@@ -410,8 +429,9 @@ function addModelPricing(
     for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
   }
   for (const { sourceRate, normalizedRate } of rates)
-    addRate(context, sourceRef, model, sourceRate, normalizedRate, forcedOffer);
-  for (const fact of model.raw_price_facts) addRaw(context, sourceRef, model, fact, forcedOffer);
+    addRate(context, sourceRef, pricing.uid, sourceRate, normalizedRate, forcedOffer);
+  for (const fact of pricing.raw_price_facts)
+    addRaw(context, sourceRef, pricing.uid, fact, forcedOffer);
   if (publishesState) addState(context, sourceRef, state, forcedOffer);
 }
 
@@ -431,11 +451,7 @@ function commercialPricingBooks(
     }
   >();
   for (const fact of facts) {
-    if (
-      [...fact.price_facts, ...fact.raw_price_facts].some(
-        ({ source_ref }) => source_ref !== fact.source_ref,
-      )
-    )
+    if (commercialFactSourceRefs(fact).some((sourceRef) => sourceRef !== fact.source_ref))
       throw new Error(`Commercial fact ${fact.book_key} has mixed sources`);
     const sourceRef = fact.source_ref;
     const current = groups.get(fact.book_key);
@@ -461,13 +477,8 @@ function commercialPricingBooks(
         resourceKey: fact.resource_key,
       });
     const modelRefs = fact.model_refs.filter((modelRef) => publishedModelRefs.has(modelRef));
-    const model = {
-      provider_id: providerId,
-      model_id: `resource:${fact.resource_key}`,
+    const pricing = {
       uid: `${providerId}/resource:${fact.resource_key}`,
-      tasks: [],
-      capabilities: unknownCapabilities(),
-      status: "active" as const,
       pricing_state:
         fact.pricing_state === "included" || fact.pricing_state === "externally_billed"
           ? ("unknown" as const)
@@ -475,18 +486,20 @@ function commercialPricingBooks(
       price_facts: fact.price_facts,
       raw_price_facts: fact.raw_price_facts,
     };
-    addModelPricing(context, sourceRef, model, modelRefs, {
+    const forcedOffer = {
       key: fact.offer_key,
       name: fact.offer_name,
       billingMode: fact.billing_mode,
-    });
+    };
+    addPricing(context, sourceRef, pricing, modelRefs, forcedOffer);
+    for (const term of fact.allowance_terms ?? []) {
+      addScope(context, sourceRef, modelRefs);
+      const offer = forcedOfferBuilder(context, forcedOffer, "usage");
+      for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
+      addAllowance(context, offer, term);
+    }
     if (fact.pricing_state === "included" || fact.pricing_state === "externally_billed") {
       addScope(context, sourceRef, modelRefs);
-      const forcedOffer = {
-        key: fact.offer_key,
-        name: fact.offer_name,
-        billingMode: fact.billing_mode,
-      };
       const offer = forcedOfferBuilder(context, forcedOffer, "usage");
       for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
       addState(context, sourceRef, fact.pricing_state, forcedOffer);
@@ -526,12 +539,59 @@ function commercialPricingBooks(
   });
 }
 
+function addAllowance(
+  context: AdapterContext,
+  offer: OfferBuilder,
+  term: PriceAllowanceTerm,
+): void {
+  const offerId = pricingOfferId(
+    pricingBookId(context.providerId, context.bookKey),
+    offer.offerKey,
+  );
+  if (term.id !== pricingTermId(offerId, "allowance", term.term_key))
+    throw new Error(`Allowance ${term.term_key} has a mismatched source identity`);
+  const existing = offer.terms.get(term.term_key);
+  if (existing !== undefined && existing.kind !== "allowance")
+    throw new Error(`Pricing term ${term.term_key} changed kind`);
+  const allowance: AtomicAllowanceTerm = existing ?? {
+    term_key: term.term_key,
+    kind: "allowance",
+    variants: [],
+    raw_variants: [],
+    source_refs: [],
+  };
+  allowance.variants.push(
+    ...term.variants.flatMap(({ observations, validity, ...variant }) =>
+      observations.map((observation) => ({
+        ...variant,
+        ...(validity === undefined ? {} : { validity }),
+        observation,
+      })),
+    ),
+  );
+  allowance.raw_variants.push(
+    ...term.raw_variants.flatMap(
+      ({ observations, validity, possible_scope, resolution_policy, ...variant }) =>
+        observations.map((observation) => ({
+          ...variant,
+          ...(validity === undefined ? {} : { validity }),
+          ...(possible_scope === undefined ? {} : { possible_scope }),
+          ...(resolution_policy === undefined ? {} : { resolution_policy }),
+          observation,
+        })),
+    ),
+  );
+  allowance.source_refs.push(...term.source_refs);
+  for (const sourceRef of term.source_refs) offer.sourceRefs.add(sourceRef);
+  offer.terms.set(term.term_key, allowance);
+}
+
 function addRaw(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedPricingModel,
+  uid: string,
   fact: SourceRawPricingFact,
-  forcedOffer?: Parameters<typeof addModelPricing>[4],
+  forcedOffer?: Parameters<typeof addPricing>[4],
 ): void {
   const offer = forcedOfferBuilder(context, forcedOffer, "usage");
   const term = rawTerm(offer, fact.term_key);
@@ -549,7 +609,7 @@ function addRaw(
       locator: {
         kind: "provider_key",
         value: JSON.stringify([
-          model.uid,
+          uid,
           fact.term_key,
           fact.impact,
           fact.reason,
@@ -567,7 +627,7 @@ function addState(
   context: AdapterContext,
   sourceRef: string,
   state: "free" | "included" | "externally_billed" | "custom_quote" | "not_published",
-  forcedOffer?: Parameters<typeof addModelPricing>[4],
+  forcedOffer?: Parameters<typeof addPricing>[4],
 ): void {
   const offer = forcedOfferBuilder(context, forcedOffer, "usage");
   const applicability = unconditionalApplicability;
@@ -598,15 +658,15 @@ function addState(
 function addRate(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedPricingModel,
+  uid: string,
   sourceRate: SourcePriceFact,
   normalizedRate: SourcePriceFact,
-  forcedOffer?: Parameters<typeof addModelPricing>[4],
+  forcedOffer?: Parameters<typeof addPricing>[4],
 ): void {
   const mode = rateMode(sourceRate);
   const offer = forcedOfferBuilder(context, forcedOffer, mode);
   const fact = rawFact(sourceRate);
-  const locator = rateLocator(model, sourceRate);
+  const locator = rateLocator(uid, sourceRate);
   const meter = canonicalMeter(context, sourceRate);
   if (meter === undefined) {
     const term = rawTerm(
@@ -652,6 +712,9 @@ function addRate(
   term.variants.push({
     price: normalized.price,
     applicability: normalized.applicability,
+    ...(sourceRate.charge_binding === undefined
+      ? {}
+      : { charge_binding: sourceRate.charge_binding }),
     ...(sourceRate.resolution_policy === undefined
       ? {}
       : { resolution_policy: sourceRate.resolution_policy }),
@@ -722,14 +785,7 @@ function completeReviewedDefault<K extends keyof SourcePriceFact["conditions"]>(
   for (const group of groupRates(rates, ({ meter }) => meter).values()) {
     const explicit = group.filter(({ conditions }) => conditions[key] !== undefined);
     const missing = group.filter(({ conditions }) => conditions[key] === undefined);
-    if (
-      explicit.length === 0 ||
-      missing.length === 0 ||
-      !missing.some((left) =>
-        explicit.some((right) => ratePayloadKey(left) !== ratePayloadKey(right)),
-      )
-    )
-      continue;
+    if (explicit.length === 0) continue;
     for (const rate of missing) rate.conditions[key] = value;
   }
 }
@@ -746,10 +802,6 @@ function groupRates(
     groups.set(value, group);
   }
   return groups;
-}
-
-function ratePayloadKey(rate: SourcePriceFact): string {
-  return canonicalJson([rate.price, rate.currency, rate.unit]);
 }
 
 function pricingBooks(context: AdapterContext): AtomicProviderPricing["books"] {
@@ -809,7 +861,7 @@ function offerBuilder(
 
 function forcedOfferBuilder(
   context: AdapterContext,
-  forced: Parameters<typeof addModelPricing>[4],
+  forced: Parameters<typeof addPricing>[4],
   fallback: "usage" | "capacity",
 ): OfferBuilder {
   return forced === undefined
@@ -1452,8 +1504,7 @@ function categoricalLabelIdentity(dimension: PriceDimension, value: string): str
 }
 
 function addAtom(context: AdapterContext, atom: ProviderAtomRegistryEntry): void {
-  const dimension = "dimension" in atom ? canonicalJson(atom.dimension) : "";
-  const identity = `${atom.kind}\0${dimension}\0${atom.key}`;
+  const identity = pricingAtomIdentity(atom);
   const current = context.atoms.get(identity);
   if (current !== undefined && canonicalJson(current) !== canonicalJson(atom))
     throw new Error(`Provider atom ${atom.key} has conflicting definitions`);
@@ -1508,12 +1559,12 @@ function rawFact(rate: SourcePriceFact): RawPriceFact {
   };
 }
 
-function rateLocator(model: ParsedPricingModel, rate: SourcePriceFact): PriceSourceLocator {
+function rateLocator(uid: string, rate: SourcePriceFact): PriceSourceLocator {
   if (rate.source_locator !== undefined) return rate.source_locator;
   return {
     kind: "provider_key",
     value: JSON.stringify([
-      model.uid,
+      uid,
       rate.meter,
       rate.conditions,
       rate.raw_price ?? rate.price,

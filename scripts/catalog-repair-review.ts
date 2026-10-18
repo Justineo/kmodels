@@ -43,7 +43,12 @@ export async function validateRepairReview(
   admissionText: string,
   reviewText: string,
   readEvidence: (path: string) => Promise<string>,
-  options: { allowPending?: boolean; requireRepair?: boolean; now?: number } = {},
+  options: {
+    allowPending?: boolean;
+    requireRepair?: boolean;
+    requireNoDefect?: boolean;
+    now?: number;
+  } = {},
 ): Promise<ReviewSummary> {
   if (reviewText.length > 1024 * 1024) throw new Error("Repair review exceeds 1 MiB");
   const admission = record(JSON.parse(admissionText));
@@ -163,9 +168,11 @@ export async function validateRepairReview(
         }
         if (
           !sourceBlocked &&
-          ["source_location_change", "source_pricing_structure"].includes(
-            text(candidate.trigger),
-          ) &&
+          [
+            "source_location_change",
+            "source_pricing_structure",
+            "scheduled_provider_review",
+          ].includes(text(candidate.trigger)) &&
           !has("navigation", undefined, true)
         )
           throw new Error(`Inspect first-party navigation or linked types before closing: ${id}`);
@@ -180,6 +187,11 @@ export async function validateRepairReview(
   if (missing.length > 0) throw new Error(`Unreviewed repair candidates: ${missing.join(", ")}`);
   if (options.requireRepair && counts.repaired === 0)
     throw new Error("Publication requires at least one reviewed repair");
+  if (
+    options.requireNoDefect &&
+    (candidates.length === 0 || counts.not_a_defect !== candidates.length)
+  )
+    throw new Error("A reviewed no-op requires every admitted candidate to be proven not a defect");
   return counts;
 }
 
@@ -262,8 +274,12 @@ async function main(): Promise<void> {
     process.exitCode = result.status ?? 1;
     return;
   }
-  if (!["check", "check-repair", "check-incomplete", "terminal"].includes(operation ?? ""))
-    throw new Error("Expected check, check-repair, check-incomplete, or terminal");
+  if (
+    !["check", "check-repair", "check-no-defect", "check-incomplete", "terminal"].includes(
+      operation ?? "",
+    )
+  )
+    throw new Error("Expected check, check-repair, check-no-defect, check-incomplete, or terminal");
   const admission = process.env.KMODELS_REPAIR_ADMISSION;
   if (!admission) throw new Error("Missing runner-owned repair admission");
   const types =
@@ -279,6 +295,7 @@ async function main(): Promise<void> {
         operation === "check-incomplete" ||
         types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
       requireRepair: operation === "check-repair" || types.includes("commit_repair"),
+      requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
     },
   );
   console.log(

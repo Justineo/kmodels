@@ -57,6 +57,7 @@ import {
   assembleParsedProviderPricing,
   isPricingDependencySource,
   isRequiredPricingSource,
+  isPricingSource,
 } from "./pricing-adapter.ts";
 import { validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import {
@@ -66,7 +67,9 @@ import {
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
+  type SourcePricingFacts,
 } from "./pricing-source.ts";
+import type { SourceParseResult } from "./source-parse.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { emptyPricingCatalog, type PricingRefreshFailureCode } from "./pricing-schema.ts";
 import {
@@ -85,7 +88,16 @@ import {
   type ProviderRefreshAttempt,
   type SourceRefreshAttempt,
 } from "./summary.ts";
-import { contractEvidence, type SourceContractEvidence } from "./source-contract.ts";
+import {
+  contractEvidence,
+  createContractFindingCollector,
+  isContractDrift,
+} from "./source-contract.ts";
+import {
+  sourceErrorMessage as message,
+  sourceFailure,
+  summarizeDependencyFailures,
+} from "./source-failure.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -114,16 +126,6 @@ interface CollectionOptions {
   rebuildProvider?: string;
   pricingTransitions?: readonly ProviderPricingTransition[];
   pricingSafetyFindings?: readonly AcceptedPairSafetyFinding[];
-}
-
-function message(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-        .replace(/https?:\/\/\S+/g, "[source]")
-        .replace(/\barn:aws(?:-[a-z0-9-]+)?:[^\s,;"']+/gi, "[resource]")
-        .replace(/\b\d{12}\b/g, "[account]")
-        .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[identity]")
-    : "Unknown collection failure";
 }
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
@@ -185,7 +187,7 @@ function recordSourceFailure(
   };
 }
 
-export interface SourceGroup {
+export interface SourceGroup extends SourcePricingFacts {
   source: SourceManifest;
   models: ParsedProviderModel[];
 }
@@ -598,6 +600,10 @@ function credentialLabel(source: SourceManifest): string {
   return requiredEnvs(source).join(" and ") || "Credential";
 }
 
+function retainsPricingOnFailure(source: SourceManifest): boolean {
+  return isPricingSource(source) || isRequiredPricingSource(source);
+}
+
 async function fetchProviderSources(sources: readonly SourceManifest[]): Promise<SourceFetch[]> {
   return mapConcurrentByKey(
     sources.filter((source) => !missingCredential(source)),
@@ -724,10 +730,12 @@ function providerSources(
   models: ProviderModel[],
   pricing: ProviderPricingPartition | undefined,
   sources: ReadonlyMap<string, SourceRecord>,
+  replaySources: readonly PricingReplaySource[] | undefined,
 ): SourceRecord[] {
   const sourceIds = new Set([
     ...models.flatMap((model) => model.source_refs),
     ...(pricing === undefined ? [] : providerPartitionSourceRefs(pricing)),
+    ...(replaySources ?? []).map(({ source_id }) => source_id),
   ]);
   const result = [...sourceIds].flatMap((sourceId) => {
     const source = sources.get(sourceId);
@@ -737,7 +745,7 @@ function providerSources(
   return result;
 }
 
-async function collectProvider(
+export async function collectProvider(
   manifest: ProviderManifest,
   previous: Catalog | undefined,
   state: FetchState,
@@ -791,6 +799,7 @@ async function collectProvider(
   let providerFailure: PricingRefreshFailureCode = "provider_refresh_failed";
   const pricingSources: SourceGroup[] = [];
   const omittedPricingDependencies = new Set<string>();
+  const invalidPricingDependencies = new Set<string>();
   const collectedSources: SourceRecord[] = [];
   function capturePricingInputs(): PricingReplaySource[] | undefined {
     try {
@@ -819,7 +828,7 @@ async function collectProvider(
       if (role === "inventory") unavailableInventories.push(source);
       else if (source.retainOmittedFacts === true)
         retainedOmissions.push({ source, observed: new Set() });
-      if (isPricingDependencySource(source)) omittedPricingDependencies.add(source.id);
+      if (retainsPricingOnFailure(source)) omittedPricingDependencies.add(source.id);
     }
     for (const source of manifest.sources) {
       const role = source.role ?? "catalog";
@@ -861,10 +870,8 @@ async function collectProvider(
         );
         sourceAttempts.push({
           source_id: source.id,
-          outcome: evidence === undefined ? "fetch_failed" : "parse_failed",
-          message: message(error),
+          ...sourceFailure(error),
           ...failureState,
-          ...(evidence === undefined ? {} : { contract_finding: evidence }),
         });
         if (source.optional) {
           recordOptionalOmission(source, role);
@@ -875,24 +882,31 @@ async function collectProvider(
       }
       const { result } = fetch;
 
-      if ((result.omittedOptionalDocuments?.length ?? 0) > 0)
+      const dependencyFailures = (result.dependencyFailures ?? []).map((failure) => ({
+        ...failure,
+        ...recordSourceFailure(state, failure.dependency_id, observedAt),
+      }));
+      const dependencySummary = summarizeDependencyFailures(dependencyFailures);
+      if (dependencyFailures.length > 0)
         warnings.push(
           sourceWarning(
             "source_partial",
             manifest.provider.id,
             source.id,
-            `${result.omittedOptionalDocuments?.length ?? 0} discovered documents were unavailable; independently observed facts were refreshed.`,
+            `${dependencyFailures.length} optional dependencies failed; bundle and claim impacts are reported separately.`,
           ),
         );
 
       let parsed: ParsedProviderModel[];
-      let contractFinding: SourceContractEvidence | undefined;
+      let parsedSource: SourceParseResult;
+      const contractFindings = createContractFindingCollector();
       const pricingReconciliationItems: PricingReconciliationItem[] = [];
       try {
-        if (isPricingDependencySource(source))
-          for (const dependency of result.omittedOptionalDependencies ?? [])
-            omittedPricingDependencies.add(dependency);
-        parsed = parseSource({
+        if (retainsPricingOnFailure(source))
+          for (const dependency of dependencyFailures)
+            if (dependency.impact === "bundle")
+              omittedPricingDependencies.add(dependency.dependency_id);
+        parsedSource = parseSource({
           provider: providerRecord(manifest, [], undefined),
           source,
           body: result.body,
@@ -900,18 +914,19 @@ async function collectProvider(
           ...(role === "catalog"
             ? {}
             : { catalogModels: applyPublicGroups(groups, supplements, overlays) }),
-          onContractFinding: (finding) => {
-            contractFinding = finding;
-          },
+          onContractFinding: contractFindings.add,
           onPricingReconciliation: (item) => {
             pricingReconciliationItems.push(item);
           },
-        })
-          .map(normalizeModelTasks)
-          .map(normalizeDeliveryModes);
+          onPricingDependencyFailure: (url) => {
+            if (retainsPricingOnFailure(source)) invalidPricingDependencies.add(url);
+          },
+        });
+        parsed = parsedSource.models.map(normalizeModelTasks).map(normalizeDeliveryModes);
       } catch (error) {
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
         const evidence = contractEvidence(error);
+        if (evidence !== undefined) contractFindings.add(evidence);
         warnings.push(
           sourceWarning("source_parse_failed", manifest.provider.id, source.id, message(error)),
         );
@@ -920,7 +935,8 @@ async function collectProvider(
           outcome: "parse_failed",
           message: message(error),
           ...failureState,
-          ...(evidence === undefined ? {} : { contract_finding: evidence }),
+          ...dependencySummary,
+          ...contractFindings.summary(),
         });
         if (source.optional) {
           recordOptionalOmission(source, role);
@@ -937,17 +953,16 @@ async function collectProvider(
         retainedOmissions.push({
           source,
           observed:
-            (result.omittedOptionalDependencies?.length ?? 0) === 0 &&
-            (result.omittedOptionalDocuments?.length ?? 0) === 0
-              ? new Set(parsed.map(({ uid }) => uid))
-              : new Set(),
+            dependencyFailures.length === 0 ? new Set(parsed.map(({ uid }) => uid)) : new Set(),
         });
+      const contractSummary = contractFindings.summary();
       sourceAttempts.push({
         source_id: source.id,
         outcome: contentChanged || extractorChanged ? "changed" : "unchanged",
         parsed_models: parsed.length,
         content_changed: contentChanged,
         extractor_changed: extractorChanged,
+        ...dependencySummary,
         ...(isPricingDependencySource(source)
           ? {
               pricing_extraction: sourcePricingExtraction(parsed),
@@ -958,19 +973,21 @@ async function collectProvider(
               ),
             }
           : {}),
-        ...(contractFinding === undefined ? {} : { contract_finding: contractFinding }),
+        ...contractSummary,
       });
-      const firstFinding = contractFinding?.diagnostics[0];
-      if (contractFinding !== undefined && firstFinding !== undefined)
+      for (const finding of contractSummary.contract_findings ?? []) {
+        const firstFinding = finding.diagnostics[0];
+        if (firstFinding === undefined) continue;
         warnings.push(
           sourceWarning(
-            "source_contract_extension",
+            isContractDrift(finding) ? "source_contract_drift" : "source_contract_extension",
             manifest.provider.id,
             source.id,
-            `${firstFinding.kind} at ${firstFinding.path}; ${firstFinding.affected_items}/${contractFinding.observed_items} items; fingerprint ${firstFinding.fingerprint}`,
+            `${firstFinding.kind} at ${firstFinding.path}; ${firstFinding.affected_items}/${finding.observed_items} items; fingerprint ${firstFinding.fingerprint}`,
           ),
         );
-      pricingSources.push({ source, models: parsed });
+      }
+      pricingSources.push({ source, ...parsedSource, models: parsed });
       if (role === "catalog") groups.push({ source, models: parsed });
       if (role === "supplement") supplements.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });
@@ -995,9 +1012,16 @@ async function collectProvider(
         extractor_version: source.extractorVersion,
       });
       state.sources[source.id] = sourceState(result, observedAt);
-      const dependencyKeys = new Set(result.dependencies.map((dependency) => dependency.key));
+      const failedDependencyKeys = new Set(
+        dependencyFailures.map(({ dependency_id }) => dependency_id),
+      );
+      const dependencyKeys = new Set([
+        ...result.dependencies.map((dependency) => dependency.key),
+        ...failedDependencyKeys,
+      ]);
       for (const dependency of result.dependencies)
-        state.sources[dependency.key] = sourceState(dependency, observedAt);
+        if (!failedDependencyKeys.has(dependency.key))
+          state.sources[dependency.key] = sourceState(dependency, observedAt);
       for (const key of Object.keys(state.sources))
         if (key.startsWith(`${source.id}/`) && !dependencyKeys.has(key)) delete state.sources[key];
     }
@@ -1108,6 +1132,12 @@ async function collectProvider(
     let pricingFailure: PricingRefreshFailureCode | undefined;
     let pricingFailureMessage: string | undefined;
     try {
+      if (invalidPricingDependencies.size > 0) {
+        pricingFailure = "source_schema_changed";
+        throw new Error(
+          `Commercial source bundle contains rejected documents: ${[...invalidPricingDependencies].join(", ")}`,
+        );
+      }
       if (omittedPricingDependencies.size > 0) {
         pricingFailure = "source_unavailable";
         throw new Error(
@@ -1145,7 +1175,7 @@ async function collectProvider(
       pricing = undefined;
       pricingFailure ??= "pricing_validation_failed";
     }
-    const retainedSources = providerSources(models, pricing, sourceById);
+    const retainedSources = providerSources(models, pricing, sourceById, pricingReplaySources);
     return {
       provider,
       models,
@@ -1192,7 +1222,12 @@ async function collectProvider(
     const hasCompletePricingBundle = manifest.sources
       .filter(isRequiredPricingSource)
       .every(({ id }) => fetchedPricingSourceIds.has(id));
-    if (hasPrevious && omittedPricingDependencies.size === 0 && hasCompletePricingBundle) {
+    if (
+      hasPrevious &&
+      omittedPricingDependencies.size === 0 &&
+      invalidPricingDependencies.size === 0 &&
+      hasCompletePricingBundle
+    ) {
       try {
         pricingReplaySources = capturePricingInputs();
         pricing = assembleParsedProviderPricing(
@@ -1219,7 +1254,7 @@ async function collectProvider(
         pricing = undefined;
       }
     }
-    const retainedSources = providerSources(oldModels, pricing, sourceById);
+    const retainedSources = providerSources(oldModels, pricing, sourceById, pricingReplaySources);
     return {
       provider: providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),
       models: oldModels,
