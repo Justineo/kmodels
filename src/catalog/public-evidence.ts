@@ -1,5 +1,6 @@
 import { manifests, type SourceManifest } from "./manifests.ts";
 import type { FetchState } from "./fetch.ts";
+import { load } from "cheerio";
 
 /** The accepted refresh report and fetch state must describe the same collection attempt. */
 export function publicEvidenceBaseline(
@@ -80,5 +81,45 @@ export function reviewedPublicSource(sourceId: string, documentUrl?: string): So
       source.maxResponseBytes,
       document.maxResponseBytes ?? source.maxResponseBytes,
     ),
+  };
+}
+
+/** One diagnostic hop from freshly fetched reviewed HTML; never a collection dependency. */
+export function linkedPublicSource(
+  parent: SourceManifest,
+  body: string,
+  targetUrl: string,
+): SourceManifest {
+  if (parent.access !== "public" || parent.auth || parent.format !== "html")
+    throw new Error("Linked evidence requires a reviewed public HTML parent");
+  const target = new URL(targetUrl);
+  if (
+    target.protocol !== "https:" ||
+    target.username !== "" ||
+    target.password !== "" ||
+    target.port !== "" ||
+    !parent.allowedHosts.includes(target.hostname)
+  )
+    throw new Error("Linked evidence left the reviewed public host boundary");
+  target.hash = "";
+  const linked = load(body)("a[href]")
+    .toArray()
+    .some((element) => {
+      const href = element.attribs.href;
+      if (href === undefined) return false;
+      try {
+        const candidate = new URL(href, parent.url);
+        candidate.hash = "";
+        return candidate.href === target.href;
+      } catch {
+        return false;
+      }
+    });
+  if (!linked) throw new Error("Evidence URL is not linked by the fetched reviewed parent");
+  const { transport: _transport, linkedDocuments: _linkedDocuments, ...plain } = parent;
+  return {
+    ...plain,
+    url: target.href,
+    maxResponseBytes: Math.min(parent.maxResponseBytes, 4 * 1024 * 1024),
   };
 }

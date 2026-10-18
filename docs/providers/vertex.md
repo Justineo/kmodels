@@ -143,6 +143,15 @@ The current reviewed accounting surface is:
 - Veo: requested duration and actual returned video count, multiplied to produce generated seconds,
   plus requested resolution and audio selection.
 
+The former Veo generation guide now redirects to the generic `endpoints.predict` method. Its
+`parameters` field links to the first-party
+[VideoGenerationModelParams](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/Shared.Types/VideoGenerationModelParams)
+type, which documents `durationSeconds`, `sampleCount`, `resolution`, and `generateAudio`.
+The fixed video companion uses that type page for request fields. Historical bundles with the
+former combined guide remain replayable. The parameter page does not establish a completed
+operation's `videos` result envelope, so that result mapping stays unavailable unless separate
+reviewed evidence supplies it; request selectors survive independently.
+
 Uncached Gemini input is calculated as prompt input minus cached input with a zero floor, plus tool
 execution results provided back to the model. Grok input subtracts cached input with the same zero
 floor. Gemini image-rate input and cache quantities include image and document modality buckets.

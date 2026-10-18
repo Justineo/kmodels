@@ -33,8 +33,12 @@ export function parseRepairOutcome(output: string): RepairOutcome {
   for (const item of items) {
     if (!object(item) || typeof item.type !== "string")
       throw new Error("Invalid catalog repair outcome");
-    if (["missing_data", "missing_tool", "report_incomplete"].includes(item.type))
-      throw new Error(`Catalog repair incomplete (${item.type})`);
+    if (["missing_data", "missing_tool", "report_incomplete"].includes(item.type)) {
+      const reason = typeof item.reason === "string" ? item.reason.trim().slice(0, 1000) : "";
+      throw new Error(
+        `Catalog repair incomplete (${item.type})${reason === "" ? "" : `: ${JSON.stringify(reason)}`}`,
+      );
+    }
     if (!["noop", "commit_repair"].includes(item.type))
       throw new Error(`Catalog repair cannot emit ${item.type}`);
   }
@@ -83,7 +87,7 @@ export function assertRepairChanges(raw: string, patch: string): void {
       !/^(?:src\/catalog\/[^/]+\.ts|tests\/[^/]+\.test\.ts|tests\/fixtures\/.+|docs\/providers\/[^/]+\.md|docs\/semantic-audit-decisions\.json)$/.test(
         path,
       ) ||
-      /^(?:src\/catalog|tests)\/catalog-repair(?:[.-]|$)/.test(path)
+      /^(?:src\/catalog|tests)\/(?:catalog-repair|public-evidence)(?:[.-]|$)/.test(path)
     )
       throw new Error(`Catalog repair cannot modify ${path ?? "an invalid path"}`);
   }
