@@ -5,6 +5,22 @@ import { z } from "zod";
 const source = new URL("../.github/workflows/catalog-repair.md", import.meta.url);
 const compiled = new URL("../.github/workflows/catalog-repair.lock.yml", import.meta.url);
 
+it("routes repair and threat detection to DeepSeek without exposing the inference key to their agents", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  for (const name of ["agent", "detection"]) {
+    const phase = job(workflow, name);
+    expect(phase).toContain("COPILOT_MODEL: deepseek-flash");
+    expect(phase).toContain("COPILOT_PROVIDER_BASE_URL: https://api.deepseek.com");
+    expect(phase).toContain("COPILOT_PROVIDER_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}");
+    expect(phase).toContain("COPILOT_PROVIDER_TYPE: openai");
+    expect(phase).toContain("COPILOT_PROVIDER_WIRE_API: responses");
+    expect(phase).toContain("--exclude-env COPILOT_PROVIDER_API_KEY");
+    expect(phase).toContain(String.raw`\"targets\":{\"copilot\":{\"host\":\"api.deepseek.com\"}}`);
+    expect(phase).not.toContain("COPILOT_MODEL: gpt-5.6-luna");
+  }
+  expect(job(workflow, "agent")).toContain(String.raw`\"modelFallback\":{\"enabled\":false}`);
+});
+
 it("exercises the same isolated repair bootstrap in CI, preparation, and publication", async () => {
   const workflow = await readFile(compiled, "utf8");
   const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
