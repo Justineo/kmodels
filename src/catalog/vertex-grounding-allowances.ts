@@ -1,174 +1,275 @@
-import { canonicalJson } from "./canonical-json.ts";
+import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import type {
-  AtomicPricingBook,
-  AtomicPricingOffer,
-  AtomicRawTerm,
-  AtomicRawVariant,
-} from "./pricing-assembly.ts";
-import type { UnitExpression } from "./pricing-schema.ts";
+  PriceAllowanceTerm,
+  PriceApplicability,
+  ProviderAtomRegistryEntry,
+  UnitExpression,
+} from "./pricing-schema.ts";
+import type {
+  SourceCommercialPricingFact,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 
 interface AllowanceRule {
   key: string;
   quantity: string;
   reset: "daily" | "monthly";
-  unit: UnitExpression;
+  unit: "request" | "search_unit";
+}
+
+export interface VertexGroundingClaim {
+  model_ref: string;
+  operation: string;
+  label: string;
+  fragment: string;
+  rule: AllowanceRule | undefined;
 }
 
 const dailyPatterns = {
-  "google-search": {
+  google_search: {
     flash:
       /Gemini 2\.0 Flash, 2\.5 Flash and 2\.5 Flash-Lite include a combined ([\d,]+) Grounding Prompts per day at no additional charge\./i,
     pro: /Gemini 2\.5 Pro includes ([\d,]+) Grounding Prompts per day at no additional charge\./i,
   },
-  "google-maps": {
+  google_maps: {
     flash: /Gemini Flash and Flash-Lite: combined ([\d,]+) grounded prompts per day\./i,
     pro: /Gemini Pro: ([\d,]+) grounded prompts per day\./i,
   },
 };
 
-function allowanceRule(
+function quantity(value: string | undefined): string | undefined {
+  return value !== undefined && /^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(value)
+    ? value.replaceAll(",", "")
+    : undefined;
+}
+
+/** Interpret only the native Usage/Pricing cell, before it becomes passive evidence. */
+export function vertexGroundingAllowance(
   fragment: string,
-  model: string,
-  service: string,
+  modelRef: string,
+  operation: string,
 ): AllowanceRule | undefined {
   const monthly = fragment.match(
-    /Includes ([\d,]+) (?:Grounding|search) Queries per month at no charge, aggregated across all Gemini 3 models\./i,
+    /Includes ([\d,]+) (?:Grounding|search) Queries per month at no charge, aggregated across all Gemini 3( and Gemini 4)? models\./i,
   );
-  if (monthly?.[1] !== undefined && /^vertex\/gemini-3[.-]/.test(model))
+  const monthlyQuantity = quantity(monthly?.[1]);
+  const monthlyModel =
+    monthly?.[2] === undefined
+      ? /^vertex\/gemini-3[.-]/.test(modelRef)
+      : /^vertex\/gemini-[34][.-]/.test(modelRef);
+  if (
+    monthlyQuantity !== undefined &&
+    monthlyModel &&
+    ["google_search", "google_image_search", "web_grounding_enterprise", "google_maps"].includes(
+      operation,
+    )
+  )
     return {
-      key: `gemini-3-${service === "google-maps" ? "maps" : "web"}-monthly`,
-      quantity: monthly[1].replaceAll(",", ""),
+      key: `gemini-3-${operation === "google_maps" ? "maps" : "web"}-monthly`,
+      quantity: monthlyQuantity,
       reset: "monthly",
-      unit: {
-        factors: [
-          {
-            unit: { namespace: "provider", provider_id: "vertex", value: "search_unit" },
-            power: 1,
-          },
-        ],
-      },
+      unit: "search_unit",
     };
-  if (service !== "google-search" && service !== "google-maps") return;
-  const family = /^vertex\/gemini-(?:2\.0|2\.5)-flash(?:-|$)/.test(model)
+  if (operation !== "google_search" && operation !== "google_maps") return;
+  const family = /^vertex\/gemini-(?:2\.0|2\.5)-flash(?:-|$)/.test(modelRef)
     ? "flash"
-    : /^vertex\/gemini-2\.5-pro(?:-|$)/.test(model)
+    : /^vertex\/gemini-2\.5-pro(?:-|$)/.test(modelRef)
       ? "pro"
       : undefined;
   if (family === undefined) return;
-  const amount = fragment.match(dailyPatterns[service][family])?.[1];
+  const amount = quantity(fragment.match(dailyPatterns[operation][family])?.[1]);
   if (amount === undefined) return;
   return {
-    key: `${service}-${family}-daily`,
-    quantity: amount.replaceAll(",", ""),
+    key: `${operation.replaceAll("_", "-")}-${family}-daily`,
+    quantity: amount,
     reset: "daily",
-    unit: { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },
+    unit: "request",
   };
 }
 
-/** One pool covers all its model/service rate targets; consumers must not multiply it by model. */
-export function bindVertexGroundingAllowances(books: AtomicPricingBook[]): void {
+function allowanceUnit(value: AllowanceRule["unit"]): UnitExpression {
+  return {
+    factors: [
+      {
+        unit:
+          value === "request"
+            ? { namespace: "kmodels", value: "request" }
+            : { namespace: "provider", provider_id: "vertex", value: "search_unit" },
+        power: 1,
+      },
+    ],
+  };
+}
+
+function rateUnit(value: SourcePriceFact["unit"]): AllowanceRule["unit"] | undefined {
+  if (value === "request" || value === "thousand_requests") return "request";
+  if (value === "search_unit" || value === "thousand_search_units") return "search_unit";
+  return undefined;
+}
+
+function rawAllowance(claim: VertexGroundingClaim, sourceRef: string): SourceRawPricingFact {
+  return {
+    term_key: "grounding_allowance",
+    impact: "allowance",
+    reason: "unsupported_structure",
+    conditions: { operation: claim.operation },
+    source_ref: sourceRef,
+    raw: { label: claim.label, fragment: claim.fragment },
+  };
+}
+
+function applicability(claims: readonly VertexGroundingClaim[]): PriceApplicability {
+  const dimension = { namespace: "kmodels", value: "operation" } as const;
+  return canonicalizeApplicability({
+    any_of: claims.map((claim) => ({
+      all_of: [
+        {
+          kind: "categorical",
+          dimension,
+          values: [{ namespace: "provider", provider_id: "vertex", value: claim.operation }],
+        },
+      ],
+    })),
+  });
+}
+
+/** One canonical pool covers exact model/service targets, including targets in other books. */
+export function vertexGroundingAllowances(
+  facts: SourceCommercialPricingFact[],
+  claims: readonly VertexGroundingClaim[],
+  sourceRef: string,
+  reconcile?: (item: PricingReconciliationItem) => void,
+): { facts: SourceCommercialPricingFact[]; vocabulary: ProviderAtomRegistryEntry[] } {
   const groups = new Map<
     string,
     Array<{
-      book: AtomicPricingBook;
-      offer: AtomicPricingOffer;
-      term: AtomicRawTerm;
-      raw: AtomicRawVariant;
+      claim: VertexGroundingClaim;
       rule: AllowanceRule;
-      targets: string[];
+      fact: SourceCommercialPricingFact;
     }>
   >();
-  for (const book of books) {
-    if (book.scope.kind !== "provider_resource") continue;
-    for (const offer of book.offers) {
-      const model = offer.model_refs?.length === 1 ? offer.model_refs[0] : undefined;
-      if (model === undefined) continue;
-      for (const term of offer.terms) {
-        if (term.kind !== "raw" || term.term_key !== "grounding_allowance") continue;
-        for (const raw of term.variants) {
-          const rule = allowanceRule(
-            raw.observation.raw.fragment ?? "",
-            model,
-            book.scope.resource_key,
-          );
-          if (rule === undefined || raw.possible_scope === undefined) continue;
-          const targets = offer.terms.flatMap((rate) =>
-            rate.kind === "rate" &&
-            rate.raw_variants.length === 0 &&
-            rate.variants.length > 0 &&
-            rate.variants.every(
-              ({ price }) => canonicalJson(price.per) === canonicalJson(rule.unit),
-            )
-              ? [
-                  pricingTermId(
-                    pricingOfferId(pricingBookId("vertex", book.book_key), offer.offer_key),
-                    "rate",
-                    rate.term_key,
-                  ),
-                ]
-              : [],
-          );
-          if (targets.length === 0) continue;
-          const group = groups.get(rule.key) ?? [];
-          group.push({ book, offer, term, raw, rule, targets });
-          groups.set(rule.key, group);
-        }
-      }
-    }
-  }
-  for (const [key, group] of groups) {
-    const first = group[0];
-    if (
-      first === undefined ||
-      group.some(({ rule }) => canonicalJson(rule) !== canonicalJson(first.rule))
-    )
-      continue;
-    const refs = [...new Set(group.flatMap(({ offer }) => offer.model_refs ?? []))].sort();
-    const host = group.find(({ book }) =>
-      refs.every((ref) => book.scope.model_refs.includes(ref)),
-    )?.book;
-    if (host === undefined) continue;
-    const applicability = canonicalizeApplicability({
-      any_of: group.flatMap(({ raw }) => raw.possible_scope?.any_of ?? []),
+  const vocabulary: ProviderAtomRegistryEntry[] = [];
+  const retainRaw = (claim: VertexGroundingClaim, fact: SourceCommercialPricingFact) => {
+    fact.raw_price_facts.push(rawAllowance(claim, sourceRef));
+    reconcile?.({
+      disposition: "raw",
+      reason_code: "grounding_allowance",
+      sample: claim.model_ref,
     });
-    const sources = [...new Set(group.map(({ raw }) => raw.observation.source_ref))].sort();
-    const targets = [...new Set(group.flatMap(({ targets }) => targets))].sort();
-    host.offers.push({
-      offer_key: `allowance:${key}`,
-      name: "Shared grounding allowance",
-      model_refs: refs,
-      billing_mode: { namespace: "kmodels", value: "usage" },
-      states: [],
-      relations: [],
-      source_refs: sources,
-      terms: [
+  };
+  for (const claim of claims) {
+    const fact = facts.find(
+      (candidate) =>
+        candidate.offer_key === `request:${claim.model_ref}` &&
+        [...candidate.price_facts, ...candidate.raw_price_facts].some(
+          ({ conditions }) => conditions.operation === claim.operation,
+        ),
+    );
+    if (fact === undefined) throw new Error("Grounding claim has no source service identity");
+    if (claim.rule === undefined) {
+      retainRaw(claim, fact);
+      continue;
+    }
+    const group = groups.get(claim.rule.key) ?? [];
+    group.push({ claim, rule: claim.rule, fact });
+    groups.set(claim.rule.key, group);
+  }
+  for (const group of groups.values()) {
+    const first = group[0];
+    if (first === undefined) continue;
+    const { rule } = first;
+    if (
+      group.some(
+        (entry) =>
+          canonicalJson(entry.rule) !== canonicalJson(rule) ||
+          entry.fact.price_facts.length === 0 ||
+          entry.fact.price_facts.some((rate) => rateUnit(rate.unit) !== rule.unit) ||
+          entry.fact.raw_price_facts.some(({ impact }) => impact === "base_price"),
+      )
+    ) {
+      for (const { claim, fact } of group) retainRaw(claim, fact);
+      continue;
+    }
+    const host = group.reduce(
+      (host, { fact }) => (fact.book_key.localeCompare(host.book_key) < 0 ? fact : host),
+      first.fact,
+    );
+    const offerKey = `allowance:${rule.key}`;
+    const scope = applicability(group.map(({ claim }) => claim));
+    const term: PriceAllowanceTerm = {
+      id: pricingTermId(
+        pricingOfferId(pricingBookId("vertex", host.book_key), offerKey),
+        "allowance",
+        "free-grounding-usage",
+      ),
+      term_key: "free-grounding-usage",
+      kind: "allowance",
+      source_refs: [sourceRef],
+      raw_variants: [],
+      variants: [
         {
-          kind: "allowance",
-          term_key: "free-grounding-usage",
-          source_refs: sources,
-          raw_variants: [],
-          variants: group.map(({ raw }) => ({
-            benefit: {
-              kind: "quantity",
-              quantity: {
-                value: { numerator: first.rule.quantity, denominator: "1" },
-                unit: first.rule.unit,
-              },
+          benefit: {
+            kind: "quantity",
+            quantity: {
+              value: { numerator: rule.quantity, denominator: "1" },
+              unit: allowanceUnit(rule.unit),
             },
-            target: { kind: "rate_terms", term_refs: targets },
-            reset: { namespace: "kmodels", value: first.rule.reset },
-            applicability,
-            observation: { ...raw.observation, establishes_applicability: applicability },
+          },
+          target: {
+            kind: "rate_terms",
+            term_refs: [
+              ...new Set(
+                group.flatMap(({ fact }) =>
+                  fact.price_facts.map(({ meter }) =>
+                    pricingTermId(
+                      pricingOfferId(pricingBookId("vertex", fact.book_key), fact.offer_key),
+                      "rate",
+                      meter,
+                    ),
+                  ),
+                ),
+              ),
+            ].sort(),
+          },
+          reset: { namespace: "kmodels", value: rule.reset },
+          applicability: scope,
+          observations: group.map(({ claim }) => ({
+            source_ref: sourceRef,
+            locator: {
+              kind: "provider_key",
+              value: JSON.stringify([claim.model_ref, claim.operation]),
+            },
+            raw: { label: claim.label, fragment: claim.fragment },
+            establishes_applicability: scope,
           })),
         },
       ],
+    };
+    facts.push({
+      ...host,
+      model_refs: [...new Set(group.map(({ claim }) => claim.model_ref))].sort(),
+      offer_key: offerKey,
+      offer_name: "Shared grounding allowance",
+      price_facts: [],
+      raw_price_facts: [],
+      terms: [term],
     });
-    for (const { offer, term, raw } of group) {
-      term.variants = term.variants.filter((candidate) => candidate !== raw);
-      if (term.variants.length === 0)
-        offer.terms = offer.terms.filter((candidate) => candidate !== term);
-    }
+    if (rule.unit === "search_unit")
+      vocabulary.push({
+        kind: "unit",
+        key: "search_unit",
+        definition: "One executed Agent Platform grounding query",
+      });
+    for (const { claim } of group)
+      reconcile?.({
+        disposition: "normalized",
+        reason_code: "grounding_allowance_bound",
+        sample: claim.model_ref,
+      });
   }
+  return { facts, vocabulary: uniqueCanonicalValues(vocabulary) };
 }

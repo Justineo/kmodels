@@ -2449,7 +2449,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v11",
+        extractorVersion: "vertex-pricing-v12",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],

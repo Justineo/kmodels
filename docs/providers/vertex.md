@@ -106,20 +106,27 @@ price cell alone cannot establish those rules. Column layout changes must not si
 accepted allowance topology.
 
 A combined Google Search / Web Grounding for Enterprise label applies to both services. Published
-Gemini 3 monthly web-query allowances share one pool across the matched models and web services;
-Maps has a separate monthly pool. Reviewed Gemini 2.0/2.5 Flash and Flash-Lite daily prompt
+monthly web-query allowances share one pool across the explicitly named model families and web
+services; Maps has a separate monthly pool. The current pricing page names Gemini 3 and Gemini 4
+together. A clause naming only Gemini 3 cannot grant the benefit to Gemini 4 or a future family.
+Reviewed Gemini 2.0/2.5 Flash and Flash-Lite daily prompt
 allowances share their published Search pool; Pro uses its separately published daily quantity.
 The Maps daily benefit appears in the Gemini 2.0 section and is not inherited by 2.5 models.
-The current accepted catalog therefore has four pools: monthly web, monthly Maps, daily Search
-Flash/Flash-Lite and daily Search Pro. The Live 2.5 Flash allowance remains raw because the clause
+The Live 2.5 Flash allowance remains raw because the clause
 names Flash and Flash-Lite without explicitly binding Live. Query and grounded-prompt units
-are never interchangeable.
+come from the native price's explicit denominator, rather than a model-generation guess. A price
+whose denominator is unknown stays bounded service-level raw evidence. An unrecognized Gemini
+family heading cannot inherit the previous family's pricing section.
 
-The allowance targets exact rate terms, including cross-service targets, instead of granting the
-full allowance separately to each model. Consumers supply already-consumed shared usage when
-evaluating a marginal charge. Only reviewed sharing/reset wording and matching rate units
-normalize; unrecognized allowance clauses retain bounded raw evidence. Grounding billing-rule
-notes remain informational evidence instead of being silently discarded.
+The source parser recognizes allowance clauses and creates canonical allowance terms with exact
+rate targets, including targets in other service books. Services, allowances, accounting inputs
+and reviewed vocabulary are independent source facts; none needs an arbitrary model carrier.
+Commercial assembly binds documented quantities and relationships without interpreting raw prose
+as an executable allowance policy. Consumers supply already-consumed shared usage when evaluating
+a marginal charge. Only reviewed sharing/reset wording, valid grouped integers, agreeing quantities
+and matching target units normalize. Unknown or conflicting allowances retain bounded raw evidence.
+Unequal native prices survive extraction so canonical conflict resolution can withhold the affected
+rate. Grounding billing-rule notes remain informational evidence.
 
 See the [pricing research](../pricing-research.md) for the unresolved DeepSeek-OCR billing contract.
 
