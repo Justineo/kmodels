@@ -78,6 +78,12 @@ projections without network access.
 The canonical compilation input is bound to the exact catalog core, and each
 replay source records its content hash and extractor version. Provider snapshot
 metadata comes from the accepted canonical pair rather than being duplicated.
+Reviewed offline numeric corrections can use exact retained native observations when the source
+semantics and defect are independently established. Preserve the captured source hash, extractor
+version, freshness and catalog bytes, and prove the intended amounts are the only semantic changes.
+Canonical assembly handles necessary variant sorting and compaction; ordinary pair validation and
+publication rebuild both projection packs with the corrected price identity. Retained pricing can
+have older input than the current catalog source record, so each keeps its own original evidence.
 When one source describes the same exact model identity in several
 operation-specific records, compilation coalesces those records and preserves
 the union of distinct normalized rate facts and bounded source-native raw

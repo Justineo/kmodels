@@ -11,10 +11,57 @@ import {
 import { validatePricingCatalogEnvelopeMetadata } from "../src/catalog/pricing-envelope.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
+import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 describe("provider pricing validation", () => {
+  it("keeps accepted Bedrock Guardrail prices at their native machine-unit amounts", async () => {
+    const { pricing } = await generatedData();
+    let checked = 0;
+    for (const book of pricing.data.books) {
+      if (
+        book.provider_id !== "amazon-bedrock" ||
+        book.scope.kind !== "provider_resource" ||
+        book.scope.resource_key !== "guardrails"
+      )
+        continue;
+      for (const offer of book.offers)
+        for (const term of offer.terms) {
+          if (term.kind !== "rate") continue;
+          for (const variant of term.variants)
+            for (const { raw, source_ref, locator } of variant.observations) {
+              if (
+                source_ref !== "bedrock-models" ||
+                locator.kind !== "sku" ||
+                raw.denomination !== "USD" ||
+                raw.amount === undefined ||
+                (raw.unit !== "TextUnit" && raw.unit !== "Images Processed")
+              )
+                continue;
+              checked++;
+              expect(variant.price.value, locator.value).toEqual(rationalFromDecimal(raw.amount));
+              expect(variant.price.per).toEqual({
+                factors: [
+                  {
+                    unit:
+                      raw.unit === "TextUnit"
+                        ? {
+                            namespace: "provider",
+                            provider_id: "amazon-bedrock",
+                            value: "guardrail_text_unit",
+                          }
+                        : { namespace: "kmodels", value: "image" },
+                    power: 1,
+                  },
+                ],
+              });
+            }
+        }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("validates every committed provider pricing partition", async () => {
     const { catalog, pricing, pricingDataHash } = await generatedData();
 
