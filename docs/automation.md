@@ -70,6 +70,13 @@ Status: implemented
   usage/billing records for spend. The repair agent's model fallback is disabled to preserve the
   requested model ID; the pinned compiler does not propagate this setting to its separate detection
   proxy. Both phases explicitly select `deepseek-flash` and target DeepSeek's API.
+  The `models.providers.github-copilot.models.deepseek-flash.cost` overlay supplies AWF's missing
+  BYOK pricing for both phases. Values are USD per token: input `0.0000003`, output `0.0000012`,
+  cache read `0.000000006`, cache write `0`. These are the official peak rates on 2026-10-18;
+  off-peak rates are half, so the proxy records a conservative budget estimate rather than an
+  exact time-dependent bill. Keep the cache-read rate: charging cached input at the ordinary
+  input rate would greatly overstate these long sessions. Unknown models still fail pricing
+  admission; do not disable the AI-credit guard or supply zero prices to bypass it.
   API compatibility and successful tool execution do not establish repair quality;
   candidate investigation, regression, exact-patch publication and delivery gates remain required.
   Threat detection inherits the same DeepSeek model and BYOK transport and remains a separate
