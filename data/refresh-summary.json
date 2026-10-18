@@ -1,8 +1,8 @@
 {
-  "catalog_version": "fa51b6486523aa97c25bb7334d98e69a8ae5e27fef2c17fbea563b1281d22257",
-  "generated_at": "2026-10-18T21:03:27.412Z",
+  "catalog_version": "9f8911c2645e74d2f0378ddcb68692207cba8042aaa00f792207081c7d70c2b1",
+  "generated_at": "2026-10-18T22:03:41.448Z",
   "outcome": "changed",
-  "previous_catalog_version": "4743328d277fac64d4cc4a409e6ba73363351e0c57ed6c7dd72b740122797ed7",
+  "previous_catalog_version": "fa51b6486523aa97c25bb7334d98e69a8ae5e27fef2c17fbea563b1281d22257",
   "providers": [
     {
       "attempt": {
@@ -116,14 +116,101 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 4,
+        "changed_fields": {
+          "api_endpoints": 1,
+          "description": 1,
+          "limits": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "name": "Converse",
+                    "path": "model/{modelId}/converse"
+                  },
+                  {
+                    "name": "Invoke",
+                    "path": "model/{modelId}/invoke"
+                  },
+                  {
+                    "name": "Chat Completions",
+                    "path": "openai/v1/chat/completions"
+                  },
+                  {
+                    "name": "Responses",
+                    "path": "openai/v1/responses"
+                  }
+                ],
+                "path": "api_endpoints",
+                "previous": [
+                  {
+                    "name": "Converse",
+                    "path": "model/{modelId}/converse"
+                  },
+                  {
+                    "name": "Chat Completions",
+                    "path": "openai/v1/chat/completions"
+                  },
+                  {
+                    "name": "Responses",
+                    "path": "openai/v1/responses"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-6-astra"
+          },
+          {
+            "field_changes": [
+              {
+                "current": 256000,
+                "path": "limits.context_tokens",
+                "previous": 128000
+              }
+            ],
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-480b-a35b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": 256000,
+                "path": "limits.context_tokens",
+                "previous": 128000
+              }
+            ],
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "GLM 5.3 is Z.AI's flagship open weight text generation model for complex software engineering and agentic tasks. It uses a Mixture-of-Experts architecture with 753B total parameters (744B excluding the multi-token-prediction layer) and approximately 40B active per token, and is built on the same base model as GLM 5.2 with improvements driven by scaled post-training. The model provides a 1M-token context window with up to 128K output tokens, and supports selectable reasoning effort levels so you can trade latency and token consumption against task performance. Typical uses include agentic coding and autonomous software engineering, terminal and CLI task execution, repository-scale code generation and refactoring, long-horizon multi-step engineering tasks spanning many tool calls, infrastructure diagnosis, and long-context analysis of large codebases. It supports function calling, structured JSON output, and response streaming including streamed reasoning content. For more information about model development and performance, see the model card.",
+                "path": "description",
+                "previous": "GLM 5.3 is Z.AI's flagship open weight text generation model for complex software engineering and agentic tasks. It uses a Mixture-of-Experts architecture with 744B total parameters and approximately 40B active per token, and is built on the same base model as GLM 5.2 with improvements driven by scaled post-training. The model provides a 1M-token context window with up to 128K output tokens, and supports selectable reasoning effort levels so you can trade latency and token consumption against task performance. Typical uses include agentic coding and autonomous software engineering, terminal and CLI task execution, repository-scale code generation and refactoring, long-horizon multi-step engineering tasks spanning many tool calls, infrastructure diagnosis, and long-context analysis of large codebases. It supports function calling, structured JSON output, and response streaming including streamed reasoning content. For more information about model development and performance, see the model card."
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "amazon-bedrock/zai.glm-5.3"
+          }
+        ],
         "current": 142,
         "previous": 142,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 142
+        "unchanged": 138
       },
       "pricing": {
         "commercial_hash": "2aedd809e977c98a66c81bf80ebdb4096682cd9652b20098b2d2519e56afb081",
@@ -33199,7 +33286,7 @@
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 73,
+            "consecutive_failures": 74,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -34569,22 +34656,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1587,
+            "parsed_models": 1585,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1587,
+              "model_records": 1585,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1587
+              "unknown_models": 1585
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1816,
+              "diagnostic_count": 1812,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -34629,11 +34716,11 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6818,
+                "excluded": 6822,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1816,
+                "unbound": 1812,
                 "unresolved": 0,
                 "unsupported": 0
               },
@@ -34641,8 +34728,8 @@
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1454,
-                "partner_route_price_not_published": 362,
-                "single_partner_inventory_without_product_evidence": 6747
+                "partner_route_price_not_published": 358,
+                "single_partner_inventory_without_product_evidence": 6751
               },
               "unit": "reviewed source pricing item"
             },
@@ -34657,13 +34744,13 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 132,
-              "normalized_facts": 386,
+              "normalized_facts": 384,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 109,
+              "numeric_models": 108,
               "raw_facts": 106,
               "raw_models": 95,
-              "unknown_models": 23
+              "unknown_models": 24
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -34714,18 +34801,18 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 194,
+                "normalized": 193,
                 "raw": 0,
                 "unbound": 106,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 302,
+              "observed_items": 301,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 193,
+                "route_price_normalized": 192,
                 "route_price_not_published": 106
               },
               "unit": "reviewed source pricing item"
@@ -34736,15 +34823,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 71,
+            "parsed_models": 70,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 71,
-              "normalized_facts": 145,
+              "model_records": 70,
+              "normalized_facts": 143,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 71,
+              "numeric_models": 70,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -34771,18 +34858,18 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 22175,
+                "excluded": 22177,
                 "explicit_non_numeric": 0,
-                "normalized": 68,
+                "normalized": 67,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 22246,
+              "observed_items": 22247,
               "reason_counts": {
-                "featherless_model_not_hf_route": 22174,
-                "featherless_price_normalized": 68,
+                "featherless_model_not_hf_route": 22176,
+                "featherless_price_normalized": 67,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
               },
@@ -34809,7 +34896,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 13,
+              "diagnostic_count": 14,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -34820,6 +34907,11 @@
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/aya-vision-32b:cohere:c4ai-aya-vision-32b"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "native_route_price_not_exactly_joinable",
+                  "sample": "CohereLabs/c4ai-command-r7b-arabic-02-2025:cohere:command-r7b-arabic-02-2025"
                 },
                 {
                   "disposition": "unresolved",
@@ -34845,11 +34937,6 @@
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/command-a-translate-08-2025:cohere:command-a-translate-08-2025"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "native_route_price_not_exactly_joinable",
-                  "sample": "CohereLabs/tiny-aya-earth:cohere:tiny-aya-earth"
                 }
               ],
               "disposition_counts": {
@@ -34859,14 +34946,14 @@
                 "normalized": 26,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 12,
+                "unresolved": 13,
                 "unsupported": 0
               },
-              "observed_items": 39,
+              "observed_items": 40,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
                 "native_route_price_normalized": 26,
-                "native_route_price_not_exactly_joinable": 12
+                "native_route_price_not_exactly_joinable": 13
               },
               "unit": "reviewed source pricing item"
             },
@@ -34881,35 +34968,50 @@
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 1630,
+          "field": "models",
+          "previous": 1631
+        },
+        {
+          "current": 1812,
+          "field": "routes",
+          "previous": 1816
+        }
+      ],
       "models": {
         "added": 1,
         "added_model_refs": [
-          "huggingface/stabilityai/stable-diffusion-3.5-medium"
+          "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
         ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1631,
-        "previous": 1630,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1630
+        "current": 1630,
+        "previous": 1631,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/aisingapore/Qwen-SEA-LION-v4-32B-IT",
+          "huggingface/ideogram-ai/ideogram-4-fp8"
+        ],
+        "unchanged": 1629
       },
       "pricing": {
-        "commercial_hash": "38dfb37f6ef35fd137c90fa56f1acb98d0a01afcb6c1f19759ec4c68a257ad6b",
-        "outcome": "provenance_only",
+        "commercial_hash": "1e850aad51bf675b31cf40c41eb1bbc434aad667319b027723beb67bb72e406b",
+        "outcome": "commercial",
         "previous_commercial_hash": "38dfb37f6ef35fd137c90fa56f1acb98d0a01afcb6c1f19759ec4c68a257ad6b"
       },
       "pricing_coverage": {
-        "current_models": 1631,
+        "current_models": 1630,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 1
+          "unknown_models": -1
         },
-        "normalized_rate_models": 126,
+        "normalized_rate_models": 125,
         "not_applicable_models": 0,
         "offer_models": 136,
-        "raw_fact_models": 16,
+        "raw_fact_models": 17,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
           "huggingface/51la5/roberta-large-NER",
@@ -34932,13 +35034,15 @@
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh"
         ],
-        "unknown_model_refs_omitted": 1475,
-        "unknown_models": 1495
+        "unknown_model_refs_omitted": 1474,
+        "unknown_models": 1494
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -35266,7 +35370,7 @@
             "source_id": "kimi-api"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 3,
               "diagnostics": [
@@ -35308,7 +35412,7 @@
               "observed_items": 2
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "kimi-china-api"
           }
@@ -35354,19 +35458,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-china-api"
           },
           {
             "content_changed": true,
@@ -35379,7 +35477,7 @@
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -35876,14 +35974,44 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "modalities": 1,
+          "updated_date": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              },
+              {
+                "current": "2026-10-18",
+                "path": "updated_date",
+                "previous": "2026-04-27"
+              }
+            ],
+            "fields": [
+              "modalities",
+              "updated_date"
+            ],
+            "model_ref": "ollama/nemotron3"
+          }
+        ],
         "current": 266,
         "previous": 266,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 266
+        "unchanged": 265
       },
       "pricing": {
         "commercial_hash": "725a48fe791fed9915bcd23b58f1da685da414b506bbd1b7ed05537be405d4fe",
@@ -36429,9 +36557,9 @@
         "unchanged": 473
       },
       "pricing": {
-        "commercial_hash": "5b486bcf7728b2e83c255e8a818b0a14692ae7b6489ed9a896eb4ec1b38b5296",
+        "commercial_hash": "00766376113d7c9355f812adbceb7cd2d8a4303994f709a76a6ccd77c1780888",
         "outcome": "commercial",
-        "previous_commercial_hash": "02494256d995bca6e757275cb84e9cc2204fae60f906b18da3ec9135dd859aa5"
+        "previous_commercial_hash": "5b486bcf7728b2e83c255e8a818b0a14692ae7b6489ed9a896eb4ec1b38b5296"
       },
       "pricing_coverage": {
         "current_models": 473,
@@ -36942,16 +37070,16 @@
     "accepted": 19,
     "added_models": 1,
     "added_sources": 0,
-    "changed_models": 0,
-    "changed_sources": 25,
-    "models": 4305,
+    "changed_models": 5,
+    "changed_sources": 24,
+    "models": 4304,
     "pricing_accepted": 17,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
