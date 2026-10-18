@@ -3,7 +3,6 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
 } from "./pricing-source.ts";
-import { sourcePriceFactKey } from "./pricing-source.ts";
 
 type MutableFact = Omit<SourceCommercialPricingFact, "source_ref">;
 
@@ -30,23 +29,15 @@ const services = new Map<string, readonly [string, string, SourcePriceFact["mete
 export function extractVertexCommercialFacts(
   models: Iterable<ParsedProviderModel>,
   sourceId: string,
-): void {
-  const values = [...models];
+): SourceCommercialPricingFact[] {
   const facts = new Map<string, MutableFact>();
-  for (const model of values) {
+  for (const model of models) {
     model.price_facts = model.price_facts.filter((rate) => {
       if (rate.meter === "cache_storage") return false;
       if (rate.meter !== "tool_call") return true;
       const service = services.get(rate.conditions.operation ?? "");
       if (service === undefined) return true;
-      const fact = serviceFact(facts, model, service);
-      const mapped = { ...rate, meter: service[2] };
-      if (
-        !fact.price_facts.some(
-          (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(mapped),
-        )
-      )
-        fact.price_facts.push(mapped);
+      serviceFact(facts, model, service).price_facts.push({ ...rate, meter: service[2] });
       return false;
     });
     model.raw_price_facts = model.raw_price_facts.filter((raw) => {
@@ -57,12 +48,7 @@ export function extractVertexCommercialFacts(
       return false;
     });
   }
-  const carrier = values.sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && facts.size > 0)
-    carrier.commercial_facts = [...facts.values()].map((item) => ({
-      source_ref: sourceId,
-      ...item,
-    }));
+  return [...facts.values()].map((item) => ({ source_ref: sourceId, ...item }));
 }
 
 function serviceFact(

@@ -933,14 +933,14 @@ async function geminiCatalog(...args: Parameters<typeof geminiSource>): Promise<
   return (await geminiSource(...args)).models;
 }
 
-async function vertexModels(
+async function vertexModelSource(
   sourceIndex: number,
   documents: readonly (readonly [string, string])[],
   overrides: Readonly<Record<string, string>> = {},
   minModelDocuments = 0,
   index = "<main></main>",
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const pricingAccountingDocuments = [
     ["https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1", "discovery.json"],
     [
@@ -1110,7 +1110,7 @@ async function vertexModels(
     configuredPricing.extractor.kind !== "vertex-pricing" ||
     pricingEntry === undefined
   )
-    return catalog;
+    return { models: catalog };
   const { optional: _optional, ...pricingSource } = configuredPricing;
   const pricingBody = JSON.stringify({
     index: {
@@ -1151,29 +1151,24 @@ async function vertexModels(
     observedAt,
     catalogModels: catalog,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
-  }).models;
-  const pricedByUid = new Map(priced.map((model) => [model.uid, model]));
-  return applyGroups(catalog, [{ source: pricingSource, models: priced }], false).map((model) => {
-    const pricing = pricedByUid.get(model.uid);
-    if (pricing === undefined) return model;
-    return {
-      ...model,
-      pricing_state: pricing.pricing_state,
-      price_facts: pricing.price_facts,
-      raw_price_facts: pricing.raw_price_facts,
-      ...(pricing.pricing_inputs === undefined ? {} : { pricing_inputs: pricing.pricing_inputs }),
-      ...(pricing.commercial_facts === undefined
-        ? {}
-        : { commercial_facts: pricing.commercial_facts }),
-    };
   });
+  return {
+    ...priced,
+    models: applyGroups(catalog, [{ source: pricingSource, ...priced }], false),
+  };
 }
 
-async function vertexCatalog(
+async function vertexModels(
+  ...args: Parameters<typeof vertexModelSource>
+): Promise<ProviderModel[]> {
+  return (await vertexModelSource(...args)).models;
+}
+
+async function vertexSource(
   overrides: Readonly<Record<string, string>> = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): Promise<ProviderModel[]> {
-  return vertexModels(
+): Promise<SourceParseResult> {
+  return vertexModelSource(
     0,
     [
       [
@@ -1220,6 +1215,10 @@ async function vertexCatalog(
     "<main></main>",
     onPricingReconciliation,
   );
+}
+
+async function vertexCatalog(...args: Parameters<typeof vertexSource>): Promise<ProviderModel[]> {
+  return (await vertexSource(...args)).models;
 }
 
 async function cohereCatalog(
@@ -4197,7 +4196,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v11",
+      extractorVersion: "vertex-pricing-v12",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -4216,11 +4215,12 @@ describe("Vertex AI adapters", () => {
   });
 
   it("joins exact card IDs with lifecycle, capabilities, and multimodal pricing", async () => {
-    const models = await vertexCatalog();
+    const result = await vertexSource();
+    const models = result.models;
     const current = models.find((model) => model.model_id === "gemini-test");
     const embedding = models.find((model) => model.model_id === "gemini-embedding-test");
     const retired = models.find((model) => model.model_id === "gemini-old");
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(139);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -4253,20 +4253,18 @@ describe("Vertex AI adapters", () => {
       contextRanges: current?.price_facts
         .filter((rate) => rate.meter === "input_text")
         .map(({ conditions }) => [conditions.context_min_tokens, conditions.context_max_tokens]),
-      outOfScopeResources: models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .filter(({ resource_key }) =>
-          [
-            "explicit-cache-storage",
-            "provisioned-throughput",
-            "model-tuning",
-            "agent:gemini-deep-research-agent",
-            "codemender",
-            "alphaevolve",
-            "model-optimizer",
-            "agent-search",
-          ].includes(resource_key),
-        ).length,
+      outOfScopeResources: (result.commercial_facts ?? []).filter(({ resource_key }) =>
+        [
+          "explicit-cache-storage",
+          "provisioned-throughput",
+          "model-tuning",
+          "agent:gemini-deep-research-agent",
+          "codemender",
+          "alphaevolve",
+          "model-optimizer",
+          "agent-search",
+        ].includes(resource_key),
+      ).length,
       embedding: {
         release: embedding?.release_date,
         limits: embedding?.limits,
@@ -5154,7 +5152,7 @@ describe("Vertex AI adapters", () => {
         .replaceAll("Gemini Test", "Gemini 3 Test")
         .replace("</ul>", "<li>Gemini 2.5 Flash with Gemini Live API native audio</li></ul>");
     const googleItems: PricingReconciliationItem[] = [];
-    const googleModels = await vertexCatalog(
+    const googleResult = await vertexSource(
       {
         "model.html": modelCard,
         "pricing.html": googlePricing,
@@ -5164,11 +5162,12 @@ describe("Vertex AI adapters", () => {
       },
       (item) => googleItems.push(item),
     );
+    const googleModels = googleResult.models;
     const google = googleModels.find(({ model_id }) => model_id === "gemini-3-test");
     const nativeAudio = googleModels.find(
       ({ model_id }) => model_id === "gemini-live-2.5-flash-native-audio",
     );
-    const googleCommercial = googleModels.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const googleCommercial = googleResult.commercial_facts ?? [];
 
     const claudeCard = `
       <main><div class="devsite-article-body">
@@ -5192,41 +5191,39 @@ describe("Vertex AI adapters", () => {
       "Claude Sonnet 5 on Google Cloud",
     );
     const claudeItems: PricingReconciliationItem[] = [];
-    const claude = (
-      await vertexModels(
-        1,
+    const claudeResult = await vertexModelSource(
+      1,
+      [
         [
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/sonnet-5",
-            "sonnet-5.html",
-          ],
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
-            "routes.html",
-          ],
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
-            "routes.html",
-          ],
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
-            "routes.html",
-          ],
-          [
-            "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-            "pricing.html",
-          ],
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/sonnet-5",
+          "sonnet-5.html",
         ],
-        {
-          "sonnet-5.html": claudeCard,
-          "pricing.html": claudePricing,
-          "claude-web-search.html": claudeReference,
-        },
-        0,
-        "<main></main>",
-        (item) => claudeItems.push(item),
-      )
-    )[0];
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+          "routes.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+          "routes.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
+          "routes.html",
+        ],
+        [
+          "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
+          "pricing.html",
+        ],
+      ],
+      {
+        "sonnet-5.html": claudeCard,
+        "pricing.html": claudePricing,
+        "claude-web-search.html": claudeReference,
+      },
+      0,
+      "<main></main>",
+      (item) => claudeItems.push(item),
+    );
 
     expect({
       google: googleCommercial
@@ -5246,7 +5243,7 @@ describe("Vertex AI adapters", () => {
         .flatMap(({ resource_key, price_facts }) =>
           price_facts.map(({ unit }) => ({ service: resource_key, unit })),
         ),
-      claude: claude?.commercial_facts?.find(
+      claude: claudeResult.commercial_facts?.find(
         ({ resource_key }) => resource_key === "claude-web-search",
       )?.price_facts[0],
       problems: [...googleItems, ...claudeItems].filter(
@@ -5261,14 +5258,14 @@ describe("Vertex AI adapters", () => {
       ),
     }).toEqual({
       google: [
+        { service: "google-image-search", price: "14", unit: "thousand_search_units" },
+        { service: "google-maps", price: "14", unit: "thousand_search_units" },
+        { service: "google-search", price: "14", unit: "thousand_search_units" },
         {
           service: "grounded-generation",
           price: "2.50",
           unit: "thousand_requests",
         },
-        { service: "google-image-search", price: "14", unit: "thousand_search_units" },
-        { service: "google-maps", price: "14", unit: "thousand_search_units" },
-        { service: "google-search", price: "14", unit: "thousand_search_units" },
         {
           service: "web-grounding-enterprise",
           price: "14",
@@ -5277,9 +5274,9 @@ describe("Vertex AI adapters", () => {
       ],
       allowances: 4,
       nativeAudio: [
-        { service: "grounded-generation", unit: "thousand_requests" },
         { service: "google-maps", unit: "thousand_requests" },
         { service: "google-search", unit: "thousand_requests" },
+        { service: "grounded-generation", unit: "thousand_requests" },
         { service: "web-grounding-enterprise", unit: "thousand_requests" },
       ],
       claude: expect.objectContaining({
@@ -5319,21 +5316,22 @@ describe("Vertex AI adapters", () => {
             .replaceAll("</td>\n      </tr>", "</td><td>See usage tiers</td>\n      </tr>")
         : original;
       const parse = (pricing: string) =>
-        vertexCatalog({
+        vertexSource({
           "model.html": card,
           "pricing.html": pricing,
           "grounding-search.html": supported,
           "grounding-maps.html": supported,
           "grounding-data.html": supported,
         });
-      const models = await parse(pricing);
+      const result = await parse(pricing);
+      const models = result.models;
       const value = manifest("vertex");
       const source = value.sources.find(({ id }) => id === "vertex-pricing");
       if (source === undefined) throw new Error("Missing Vertex model source");
       const partition = assembleParsedProviderPricing(
         "vertex",
         observedAt,
-        [{ source, models }],
+        [{ source, ...result }],
         models,
         value.pricingCategoricalLabels,
       );
@@ -5374,12 +5372,11 @@ describe("Vertex AI adapters", () => {
       ).toEqual(["vertex/gemini-2.0-flash"]);
       expect(pool("google-maps-pro-daily")).toBeUndefined();
       expect(
-        models
-          .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        (result.commercial_facts ?? [])
           .flatMap(({ raw_price_facts }) => raw_price_facts)
           .some(({ term_key }) => term_key === "grounding_billing_rule"),
       ).toBe(true);
-      const driftedModels = await parse(
+      const driftedResult = await parse(
         pricing.replaceAll(
           /aggregated across all Gemini 3\s+models/g,
           "with a new unspecified sharing rule",
@@ -5388,11 +5385,11 @@ describe("Vertex AI adapters", () => {
       const drifted = assembleParsedProviderPricing(
         "vertex",
         observedAt,
-        [{ source, models: driftedModels }],
-        driftedModels,
+        [{ source, ...driftedResult }],
+        driftedResult.models,
         value.pricingCategoricalLabels,
       );
-      validateParsedPricing(value, source, driftedModels, drifted);
+      validateParsedPricing(value, source, driftedResult.models, drifted);
       expect(
         drifted?.books
           .flatMap(({ offers }) =>
@@ -5535,10 +5532,10 @@ describe("Vertex AI adapters", () => {
       "cacheHitTokens",
     );
     const reconciliation: PricingReconciliationItem[] = [];
-    const usageDrift = await vertexCatalog({ "discovery.json": discovery }, (item) =>
+    const usageDrift = await vertexSource({ "discovery.json": discovery }, (item) =>
       reconciliation.push(item),
     );
-    const pricingInputs = usageDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = usageDrift.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(136);
     expect(pricingInputs.some(({ key }) => key === "generate.cache.total")).toBe(false);
     expect(pricingInputs.some(({ key }) => key === "generate.prompt.total")).toBe(true);

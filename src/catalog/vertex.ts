@@ -3,11 +3,14 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractVertexPricingInputs } from "./vertex-accounting.ts";
 import { extractVertexCommercialFacts } from "./vertex-commercial-source.ts";
+import {
+  vertexGroundingAllowance,
+  vertexGroundingAllowances,
+  type VertexGroundingClaim,
+} from "./vertex-grounding-allowances.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks } from "./task.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
@@ -16,21 +19,9 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
-import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly Pick<
-    ProviderModel,
-    "aliases" | "model_id" | "name" | "service_families" | "tasks" | "uid" | "version"
-  >[];
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
 interface Evidence {
   model: ProviderModel;
@@ -1547,13 +1538,12 @@ function groundingNote(
   termKey: string,
   label: string,
   fragment: string,
-  impact: "allowance" | "informational",
   conditions: SourcePriceFact["conditions"],
   reconcile?: Reconcile,
 ): void {
   model.raw_price_facts.push({
     term_key: termKey,
-    impact,
+    impact: "informational",
     reason: "unsupported_structure",
     conditions,
     source_ref: sourceId,
@@ -1561,7 +1551,7 @@ function groundingNote(
   });
   reconcile?.({
     disposition: "raw",
-    reason_code: impact === "allowance" ? "grounding_allowance" : "grounding_billing_note",
+    reason_code: "grounding_billing_note",
     sample: model.model_id,
   });
 }
@@ -2045,7 +2035,7 @@ function inlineUnitTables(
   });
 }
 
-type GeminiPricingGeneration = "gemini-3" | "gemini-2.5" | "gemini-2.0";
+type GeminiPricingGeneration = "gemini-4" | "gemini-3" | "gemini-2.5" | "gemini-2.0";
 type GroundingReferences = Readonly<Record<"search" | "maps" | "data", string>>;
 
 function geminiPricingGeneration(
@@ -2056,9 +2046,11 @@ function geminiPricingGeneration(
   for (let index = 0; index < headings.length; index += 1) {
     const heading = text($(headings[index]).text());
     if (/^(?:Agents|CodeMender|Gemini Omni|AlphaEvolve)$/i.test(heading)) return undefined;
+    if (/^Gemini 4$/i.test(heading)) return "gemini-4";
     if (/^Gemini 3$/i.test(heading)) return "gemini-3";
     if (/^Gemini 2\.5$/i.test(heading)) return "gemini-2.5";
     if (/^Gemini 2\.0$/i.test(heading)) return "gemini-2.0";
+    if (/^Gemini\b/i.test(heading)) return undefined;
   }
   return undefined;
 }
@@ -2138,6 +2130,7 @@ function googleGroundingTables(
   sourceId: string,
   $: LoadedDocument,
   references: GroundingReferences,
+  claims: VertexGroundingClaim[],
   reconcile?: Reconcile,
 ): void {
   const referenceTargets = {
@@ -2162,7 +2155,7 @@ function googleGroundingTables(
         const fragment = cellText(usageColumn < 0 ? cells.last() : cells.eq(usageColumn));
         const rowText = cellText($(row));
         const match = rowText.match(
-          /\$(\d+(?:\.\d+)?)\s+per\s+(?:1,?000|1000)\s+(search queries|queries|grounded prompts|prompts|requests)/i,
+          /\$(\d+(?:\.\d+)?)\s+per\s+(?:1,?000|1000)\s+(?:Grounding |search )?(queries|grounded prompts|prompts|requests)/i,
         );
         const prices = [...rowText.matchAll(/\$(\d+(?:\.\d+)?)/g)]
           .flatMap((candidate) => (candidate[1] === undefined ? [] : [candidate[1]]))
@@ -2194,31 +2187,42 @@ function googleGroundingTables(
           }
           for (const model of targets) {
             const conditions = { operation };
-            addRate(
-              model,
-              publishedRate(
-                "tool_call",
-                price,
-                generation === "gemini-3" && operation !== "grounding_with_your_data"
-                  ? "thousand_search_units"
-                  : "thousand_requests",
-                sourceId,
-                `${label}; ${fragment}`,
+            if (match?.[2] === undefined) {
+              model.raw_price_facts.push({
+                term_key: "grounding_base_rate",
+                impact: "base_price",
+                reason: "unknown_unit",
                 conditions,
-              ),
-              reconcile,
-            );
-            if (/at no (?:additional )?charge|at no extra cost/i.test(fragment))
-              groundingNote(
+                source_ref: sourceId,
+                raw: { label, fragment: rowText },
+              });
+              reconcile?.({
+                disposition: "raw",
+                reason_code: "grounding_unit_unresolved",
+                sample: model.model_id,
+              });
+            } else {
+              addRate(
                 model,
-                sourceId,
-                "grounding_allowance",
-                label,
-                fragment,
-                "allowance",
-                conditions,
+                publishedRate(
+                  "tool_call",
+                  price,
+                  /^queries$/i.test(match[2]) ? "thousand_search_units" : "thousand_requests",
+                  sourceId,
+                  `${label}; ${fragment}`,
+                  conditions,
+                ),
                 reconcile,
               );
+            }
+            if (/at no (?:additional )?charge|at no extra cost/i.test(fragment))
+              claims.push({
+                model_ref: model.uid,
+                operation,
+                label,
+                fragment,
+                rule: vertexGroundingAllowance(fragment, model.uid, operation),
+              });
             if (
               /charged for each individual|only when a prompt successfully returns|Input tokens .* are not charged/i.test(
                 fragment,
@@ -2230,7 +2234,6 @@ function googleGroundingTables(
                 "grounding_billing_rule",
                 label,
                 fragment,
-                "informational",
                 conditions,
                 reconcile,
               );
@@ -2252,7 +2255,6 @@ function googleGroundingTables(
         "grounding_billing_rule",
         "Legacy successful-grounding billing",
         legacySuccessRule,
-        "informational",
         { operation },
         reconcile,
       );
@@ -2351,15 +2353,16 @@ function applyPricing(
   claudeWebSearchBody: string | undefined,
   groundingReferences: GroundingReferences | undefined,
   reconcile?: Reconcile,
-): void {
+): VertexGroundingClaim[] {
   const $ = pricingDocument(body);
+  const claims: VertexGroundingClaim[] = [];
   tokenTables(models, sourceId, $, evidence, reconcile);
   labeledTables(models, sourceId, $, evidence, reconcile);
   mediaTables(models, sourceId, $, reconcile);
   embeddingCountTables(models, sourceId, $, reconcile);
   inlineUnitTables(models, sourceId, $, reconcile);
   if (groundingReferences !== undefined)
-    googleGroundingTables(models, sourceId, $, groundingReferences, reconcile);
+    googleGroundingTables(models, sourceId, $, groundingReferences, claims, reconcile);
   else
     reconcile?.({
       disposition: "unsupported",
@@ -2389,6 +2392,7 @@ function applyPricing(
     );
     if (model.price_facts.length > 0) model.pricing_state = "numeric";
   }
+  return claims;
 }
 
 function applyOpenExamples(models: Map<string, Evidence>, documents: LinkedDocument[]): void {
@@ -2466,7 +2470,7 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   return values;
 }
 
-export function parseVertexPricing(input: Input): ProviderModel[] {
+export function parseVertexPricing(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "vertex-pricing")
     throw new Error("Wrong Agent Platform pricing extractor");
   if (input.catalogModels === undefined)
@@ -2508,7 +2512,7 @@ export function parseVertexPricing(input: Input): ProviderModel[] {
     groundingSearch === undefined || groundingMaps === undefined || groundingData === undefined
       ? undefined
       : { search: groundingSearch, maps: groundingMaps, data: groundingData };
-  applyPricing(
+  const claims = applyPricing(
     models,
     input.source.id,
     bundle.index.body,
@@ -2518,18 +2522,27 @@ export function parseVertexPricing(input: Input): ProviderModel[] {
     input.onPricingReconciliation,
   );
   const values = [...models.values()].map(({ model }) => model);
-  extractVertexCommercialFacts(values, input.source.id);
+  const commercial = vertexGroundingAllowances(
+    extractVertexCommercialFacts(values, input.source.id),
+    claims,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
   const pricingInputs = extractVertexPricingInputs(
     bundle.documents,
     input.source.id,
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = values.sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return [...models.values()]
-    .map(({ model }) => ({ ...model, aliases: [] }))
-    .sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: values
+      .filter((model) => model.price_facts.length + model.raw_price_facts.length > 0)
+      .map((model) => ({ ...model, aliases: [] }))
+      .sort((left, right) => left.uid.localeCompare(right.uid)),
+    commercial_facts: commercial.facts,
+    vocabulary: commercial.vocabulary,
+    pricing_inputs: pricingInputs,
+  };
 }
 
 export function parseVertexApi(input: Input): ProviderModel[] {
