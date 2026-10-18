@@ -340,7 +340,11 @@ Status: implemented
   metadata comes from the current accepted canonical pair rather than being
   duplicated in the input. Source IDs, extractor versions, content hashes,
   ownership, provenance, and required pricing-source completeness are
-  revalidated before use. An obsolete extractor preserves that provider's accepted partition until
+  revalidated before use. Fresh collection captures every cited source revision on the price
+  snapshot. Retention and replay preserve it independently of newer catalog source metadata;
+  replay inputs must match any captured hash and extractor version. Legacy snapshots without
+  captured revisions do not acquire historical metadata from a later catalog observation.
+  An obsolete extractor preserves that provider's accepted partition until
   collection captures fresh input; other binding or source-contract mismatches abort compilation.
   Authenticated or otherwise non-public pricing inputs are never persisted;
   providers without replay input keep their exact accepted partitions.

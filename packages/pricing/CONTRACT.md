@@ -16,6 +16,12 @@ All references must resolve inside the supplied provider partition. Provider-own
 
 Provider publication `retained` is preserved with its failed-refresh metadata. The caller decides whether a retained or old observation is acceptable. Completeness and freshness are independent: a retained snapshot may calculate a complete amount. No automatic stale threshold, source retrieval, or historical substitution occurs.
 
+Provider `sources` describes the revisions used by the price observation, including retained
+prices. A newer catalog source record cannot replace an older price source's hash or extractor
+version. Evidence and source references must resolve to complete source records; an exporter with
+unverifiable legacy metadata must recover verified records before publication. The portable
+snapshot contains freshness metadata; canonical captured source revisions appear in `sources`.
+
 ## API and normalized input
 
 - `validatePriceData(data)` returns a validated independent data value or throws a stable error.
