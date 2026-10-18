@@ -98,7 +98,9 @@ other observation remains conflict evidence; valid sibling meters survive.
 
 `is_free` is a current route promotion, not permanent model pricing. Kmodels preserves the exact
 free state separately from any published base list rates and invents neither an end date nor a
-provider-wide free claim.
+provider-wide free claim. The native boolean establishes a typed source state scoped to that route
+and promotion. Raw text and marker keys cannot create a free state. Older unrecognized raw
+promotion evidence remains incomplete rather than being reinterpreted as zero cost.
 
 The `hf-inference` documentation supplies a formula—compute time multiplied by underlying hardware
 price—but the public mapping does not bind a request to both a hardware SKU and its billed duration.
@@ -122,7 +124,7 @@ publishes a separate request charge; no such surcharge is currently modeled.
 
 The router source publishes nine field-local pricing inputs. These describe what a downstream cost
 calculator must retain; Kmodels does not collect requests, detect completion, or persist a usage
-ledger.
+ledger. Inputs are independent source facts and do not require an arbitrary model carrier.
 
 | Surface              | Quantity inputs                                               | Availability                            |
 | -------------------- | ------------------------------------------------------------- | --------------------------------------- |
@@ -133,7 +135,13 @@ ledger.
 | route-price selector | normalized exact pinned provider                              | accepted request with an exact provider |
 
 The Responses fields are admitted only while both the Hugging Face compatibility statement and the
-referenced OpenAI `ResponseUsage` schema remain present. Chat and Responses are alternative
+referenced OpenAI schema establish the exact integer counter on the returned object. Synchronous
+locators follow `Response.usage`; streaming locators follow `ResponseCompletedEvent.response.usage`.
+The bounded schema reader follows owned direct properties, local references and reviewed schema
+compositions. Standalone or nested lookalikes, wrong types, duplicate definitions, cyclic references
+and conflicting union types cannot establish a locator. Nullable counters and additive siblings
+preserve established paths. Duplicate companion documents withhold only their dependent methods.
+Chat and Responses are alternative
 quantity methods for the same routed-inference offer; they are never added together. All token
 rates aggregate per request. The prompt/input counter binds to `input_tokens`, and the
 completion/output counter binds to `output_tokens`.

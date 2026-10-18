@@ -372,6 +372,8 @@ Status: implemented
   Gemini and Vertex pricing also return grounding services, canonical allowance pools, acquisition
   contracts and vocabulary at source level. Their pricing results contain only observed model pricing facts;
   service and accounting facts do not require an arbitrary model row.
+  Hugging Face router inputs likewise return independently; native route promotions are typed scoped
+  model-state facts rather than raw control markers. Unrecognized legacy raw evidence stays raw.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

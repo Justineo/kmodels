@@ -5,34 +5,24 @@ import { parseCoherePublicPricingProducts } from "./cohere.ts";
 import { extractHuggingFacePricingInputs } from "./huggingface-accounting.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
-import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import { huggingFacePartnerIds } from "./manifests.ts";
 import { orderedTasks, providerTasks } from "./task.ts";
 import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourcePriceFact,
   SourceRawPricingFact,
+  SourcePriceStateFact,
 } from "./pricing-source.ts";
-import { assertItemCount, type SourceContractEvidence } from "./source-contract.ts";
+import { assertItemCount } from "./source-contract.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelRoute,
   type ModelTask,
-  type Provider,
   unknownCapabilities,
 } from "./schema.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly Pick<ProviderModel, "model_id" | "price_facts" | "routes">[];
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
 
 interface TaskFacts {
   tasks: ModelTask[];
@@ -403,6 +393,7 @@ function availability(values: (boolean | undefined)[]): boolean | "unknown" {
 interface RouteRateFacts {
   rates: SourcePriceFact[];
   rawFacts: SourceRawPricingFact[];
+  stateFacts: SourcePriceStateFact[];
   invalidPrice: boolean;
 }
 
@@ -460,16 +451,16 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Route
       ),
     );
   const rawFacts: SourceRawPricingFact[] = [];
+  const stateFacts: SourcePriceStateFact[] = [];
   if (route.is_free === true)
-    rawFacts.push({
-      term_key: "route_promotional_free",
-      impact: "base_price",
-      reason: "unknown_amount",
+    stateFacts.push({
+      state: "free",
       conditions: { route_provider: route.provider, promotion: true },
       source_ref: sourceId,
       raw: {
         label:
           "The route is currently free; its published list rates remain separate from the temporary promotion",
+        fragment: "is_free: true",
       },
     });
   if (prices.input === undefined || prices.output === undefined)
@@ -491,6 +482,7 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Route
   return {
     rates,
     rawFacts,
+    stateFacts,
     invalidPrice:
       prices.invalid || (route.is_free !== undefined && typeof route.is_free !== "boolean"),
   };
@@ -682,7 +674,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
   }
 }
 
-export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
+export function parseHuggingFaceRouter(input: Input): SourceParseResult {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-router")
     throw new Error("Invalid Hugging Face router extractor");
@@ -753,9 +745,9 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       route,
       ...(route.status === "live"
         ? routeRates(route, input.source.id)
-        : { rates: [], rawFacts: [], invalidPrice: false }),
+        : { rates: [], rawFacts: [], stateFacts: [], invalidPrice: false }),
     }));
-    for (const { route, rates, rawFacts, invalidPrice } of routeFacts) {
+    for (const { route, rates, rawFacts, stateFacts, invalidPrice } of routeFacts) {
       const sample = diagnosticSample(item.id, route.provider);
       if (route.status === "error") {
         input.onPricingReconciliation?.({
@@ -765,7 +757,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         });
         continue;
       }
-      if (rawFacts.some(({ term_key }) => term_key === "route_promotional_free"))
+      if (stateFacts.length > 0)
         input.onPricingReconciliation?.({
           disposition: "explicit_non_numeric",
           reason_code: "route_promotional_free",
@@ -777,7 +769,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
           reason_code: "route_price_field_invalid",
           sample,
         });
-      if (rawFacts.some(({ term_key }) => term_key === "route_price_not_published"))
+      if (rawFacts.length > 0)
         input.onPricingReconciliation?.({
           disposition: "unbound",
           reason_code: "route_price_not_published",
@@ -794,6 +786,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
     if (routes.length === 0) continue;
     const pricing = routes.flatMap(({ rates }) => rates);
     const rawPricing = routes.flatMap(({ rawFacts }) => rawFacts);
+    const stateFacts = routes.flatMap(({ stateFacts }) => stateFacts);
     const contexts = routes.flatMap((route) => {
       const context = positiveInteger(route.route.context_length);
       return context === undefined ? [] : [context];
@@ -832,20 +825,19 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       pricing_state: pricing.length > 0 ? "numeric" : "unknown",
       price_facts: pricing,
       raw_price_facts: rawPricing,
+      ...(stateFacts.length === 0 ? {} : { state_facts: stateFacts }),
       status: "active",
     });
   }
   assertItemCount("Hugging Face router models", models.length, config.minModels, config.maxModels);
   commercialEvidence(input, bundle);
-  const carrier = [...models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   const pricingInputs = extractHuggingFacePricingInputs(
     bundle.documents,
     input.source.id,
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  return models;
+  return { models, pricing_inputs: pricingInputs };
 }
 
 interface FeatherlessRate {

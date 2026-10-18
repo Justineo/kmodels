@@ -3428,7 +3428,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-router-v11",
+        extractorVersion: "huggingface-router-v12",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: [
           "tasks",

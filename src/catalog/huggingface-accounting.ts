@@ -1,4 +1,4 @@
-import { openApiYamlHasPropertyPath } from "./openapi-yaml.ts";
+import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -19,7 +19,7 @@ interface Contract {
 
 type Requirement =
   | { document: string; markers: readonly RegExp[] }
-  | { document: string; schema: string; path: readonly string[] };
+  | { document: string; schema: string; path: readonly string[]; type: "integer" };
 
 const chatPath = "/docs/inference-providers/en/tasks/chat-completion.md";
 const overviewPath = "/docs/inference-providers/en/index.md";
@@ -58,9 +58,18 @@ export function extractHuggingFacePricingInputs(
   onFinding?: (evidence: SourceContractEvidence) => void,
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
-  const bodies = new Map(documents.map(({ url, body }) => [new URL(url).pathname, body]));
+  const bodies = new Map<string, string | undefined>();
+  for (const { url, body } of documents) {
+    const path = new URL(url).pathname;
+    bodies.set(path, bodies.has(path) ? undefined : body);
+  }
+  const schemaReaders = new Map<string, ReturnType<typeof openApiYamlSchemaReader>>();
   const facts = contracts.flatMap((contract) => {
-    if (!contract.requirements.every((requirement) => requirementPresent(bodies, requirement))) {
+    if (
+      !contract.requirements.every((requirement) =>
+        requirementPresent(bodies, schemaReaders, requirement),
+      )
+    ) {
       onFinding?.(
         contractExtensionEvidence([
           `/documents${contract.requirements.map(({ document }) => document).join("+")}/${contract.key}`,
@@ -87,14 +96,17 @@ export function extractHuggingFacePricingInputs(
 }
 
 function requirementPresent(
-  bodies: ReadonlyMap<string, string>,
+  bodies: ReadonlyMap<string, string | undefined>,
+  schemaReaders: Map<string, ReturnType<typeof openApiYamlSchemaReader>>,
   requirement: Requirement,
 ): boolean {
   const body = bodies.get(requirement.document);
   if (body === undefined) return false;
-  return "markers" in requirement
-    ? requirement.markers.every((marker) => marker.test(body))
-    : openApiYamlHasPropertyPath(body, requirement.schema, requirement.path);
+  if ("markers" in requirement) return requirement.markers.every((marker) => marker.test(body));
+  const reader = schemaReaders.get(requirement.document) ?? openApiYamlSchemaReader(body);
+  schemaReaders.set(requirement.document, reader);
+  const types = reader(requirement.schema, requirement.path);
+  return types.length > 0 && types.every((type) => type === requirement.type);
 }
 
 function chatUsage(
@@ -140,7 +152,12 @@ function responsesUsage(
           ...(streaming ? [/\bresponse\.completed\b/] : []),
         ],
       },
-      { document: responsesSchemaPath, schema: "ResponseUsage", path: [field] },
+      {
+        document: responsesSchemaPath,
+        schema: streaming ? "ResponseCompletedEvent" : "Response",
+        path: [...(streaming ? ["response"] : []), "usage", field],
+        type: "integer",
+      },
     ],
   };
 }
