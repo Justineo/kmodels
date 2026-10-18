@@ -60,8 +60,20 @@ Status: implemented
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
-  Code-repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
-  cost-efficient while retaining deeper analysis for source-drift diagnosis.
+  Code-repair inference uses DeepSeek's current `deepseek-flash` alias with high reasoning effort
+  through the existing Copilot CLI BYOK transport and DeepSeek's
+  [stateless Responses API](https://api-docs.deepseek.com/guides/responses_api/). As of
+  2026-10-18 the alias serves DeepSeek-V4.1-Flash-1017; use the current official alias rather than
+  the retired `deepseek-v4-flash` name; [DeepSeek's model table](https://api-docs.deepseek.com/quick_start/pricing/)
+  owns the current alias mapping. The DeepSeek account behind `DEEPSEEK_API_KEY` pays inference
+  directly; a zero Copilot-credit report for BYOK does not mean inference was free. Use DeepSeek's
+  usage/billing records for spend. The repair agent's model fallback is disabled to preserve the
+  requested model ID; the pinned compiler does not propagate this setting to its separate detection
+  proxy. Both phases explicitly select `deepseek-flash` and target DeepSeek's API.
+  API compatibility and successful tool execution do not establish repair quality;
+  candidate investigation, regression, exact-patch publication and delivery gates remain required.
+  Threat detection inherits the same DeepSeek model and BYOK transport and remains a separate
+  mandatory review of the completed patch before publication.
   Public refetches automatically compare body hashes with the matching attempt in
   `data/fetch-state.json`; failed transport attempts cannot establish identity using a retained
   older hash. The refresh summary does not duplicate those hashes. Review runs the
@@ -98,9 +110,9 @@ Status: implemented
   and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.
   Failed or incomplete runs leave their diagnostics in Actions; the next daily run re-evaluates
   the latest committed refresh and retries remaining candidates. There is no issue-based queue,
-  automatic success disposition, or immediate unbounded retry loop. Because this is a personal repository, Copilot inference uses a
-  fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
-  ordinary GitHub CLI OAuth token is not an acceptable substitute.
+  automatic success disposition, or immediate unbounded retry loop. DeepSeek inference uses
+  `DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
+  API proxy, excluded from the agent container, and sent only to `https://api.deepseek.com`.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
   for compilation, including its supported `threat-detection.report-as-issue` switch. Compile with
