@@ -1,8 +1,8 @@
 {
-  "catalog_version": "80eca489cbe46637d82764e85716cba75f907cc616a28c29767f9d61ec3f1511",
-  "generated_at": "2026-10-18T11:03:28.870Z",
+  "catalog_version": "4c7df9df3ab66ce93d0deaa9d98dee4b7d00621e14c33bb3cb8806dbc6b8fb94",
+  "generated_at": "2026-10-18T12:05:11.691Z",
   "outcome": "changed",
-  "previous_catalog_version": "26ee36f77180518ad3de3b5c4273bb4e918f3ce2eff5f915f59f4141340a226a",
+  "previous_catalog_version": "80eca489cbe46637d82764e85716cba75f907cc616a28c29767f9d61ec3f1511",
   "providers": [
     {
       "attempt": {
@@ -33198,7 +33198,7 @@
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 63,
+            "consecutive_failures": 64,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -33578,9 +33578,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -33638,13 +33638,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -34628,7 +34635,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6824,
+                "excluded": 6823,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
@@ -34636,12 +34643,12 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8636,
+              "observed_items": 8635,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1455,
                 "partner_route_price_not_published": 357,
-                "single_partner_inventory_without_product_evidence": 6753
+                "single_partner_inventory_without_product_evidence": 6752
               },
               "unit": "reviewed source pricing item"
             },
@@ -34770,7 +34777,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 22171,
+                "excluded": 22173,
                 "explicit_non_numeric": 0,
                 "normalized": 68,
                 "raw": 0,
@@ -34778,9 +34785,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 22242,
+              "observed_items": 22244,
               "reason_counts": {
-                "featherless_model_not_hf_route": 22170,
+                "featherless_model_not_hf_route": 22172,
                 "featherless_price_normalized": 68,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
@@ -34872,53 +34879,28 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1455,
             "source_id": "huggingface-hub"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1632,
-          "field": "models",
-          "previous": 1634
-        },
-        {
-          "current": 268,
-          "field": "api_endpoints",
-          "previous": 274
-        }
-      ],
       "models": {
         "added": 1,
         "added_model_refs": [
-          "huggingface/pszemraj/long-t5-tglobal-base-sci-simplify"
+          "huggingface/zai-org/GLM-4.7-FP8"
         ],
-        "changed": 3,
+        "changed": 1,
         "changed_fields": {
-          "capabilities": 3
+          "capabilities": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
+                "current": false,
                 "path": "capabilities.structured_output",
                 "previous": true
               }
@@ -34926,42 +34908,27 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
+            "model_ref": "huggingface/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
           }
         ],
         "current": 1632,
-        "previous": 1634,
-        "removed": 3,
+        "previous": 1632,
+        "removed": 1,
         "removed_model_refs": [
-          "huggingface/CohereLabs/command-a-vision-07-2025",
-          "huggingface/zai-org/GLM-4.5",
-          "huggingface/zai-org/GLM-4.7-FP8"
+          "huggingface/zai-org/GLM-4.6-FP8"
         ],
-        "unchanged": 1628
+        "unchanged": 1630
       },
       "pricing": {
-        "commercial_hash": "e30a71b6b1b0adc93ab8b3fe8b56b37ab5d5f83666b6b360ad5db697c51b2c18",
+        "commercial_hash": "f9e0c60dbe89f5e3a1898bfad7e77054042b7569888100f5b813070e36a298dd",
         "outcome": "commercial",
-        "previous_commercial_hash": "127185dbbde171ae24de5c32de4f6221b8eac1de018bd7eb36ea41f99f640604"
+        "previous_commercial_hash": "e30a71b6b1b0adc93ab8b3fe8b56b37ab5d5f83666b6b360ad5db697c51b2c18"
       },
       "pricing_coverage": {
         "current_models": 1632,
         "delta": {
-          "resolved_models": -3,
-          "unknown_models": 1
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 127,
         "not_applicable_models": 0,
@@ -34995,13 +34962,11 @@
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
@@ -35014,12 +34979,6 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -35038,7 +34997,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -35047,9 +35006,15 @@
     },
     {
       "attempt": {
-        "outcome": "accepted",
+        "failure": {
+          "code": "source_unavailable",
+          "message": "Linked document kimi-pricing/files-list failed: Transient transport failure (curl 28: request timed out)"
+        },
+        "outcome": "rejected",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_unavailable",
+          "message": "Linked document kimi-pricing/files-list failed: Transient transport failure (curl 28: request timed out)",
+          "outcome": "failed"
         },
         "sources": [
           {
@@ -35145,237 +35110,11 @@
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 4,
-            "pricing_extraction": {
-              "custom_quote_models": 0,
-              "free_models": 0,
-              "model_records": 4,
-              "normalized_facts": 20,
-              "not_applicable_models": 0,
-              "not_published_models": 0,
-              "numeric_models": 4,
-              "raw_facts": 0,
-              "raw_models": 0,
-              "unknown_models": 0
-            },
-            "pricing_reconciliation": {
-              "basis": "source_item",
-              "diagnostic_count": 4,
-              "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "pricing_document_rejected",
-                  "sample": "/docs/pricing/chat-k25: Kimi document omitted rows={"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_tool_promotion_end_not_published"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "batch_cached_tokens_not_documented"
-                }
-              ],
-              "disposition_counts": {
-                "ambiguous": 0,
-                "excluded": 0,
-                "explicit_non_numeric": 10,
-                "normalized": 25,
-                "raw": 0,
-                "unbound": 4,
-                "unresolved": 0,
-                "unsupported": 0
-              },
-              "observed_items": 39,
-              "reason_counts": {
-                "batch_cached_tokens_not_documented": 1,
-                "file_service_promotional_free": 1,
-                "formula_tool_promotion_end_not_published": 1,
-                "formula_tool_promotional_free": 9,
-                "formula_web_search_billing_trigger_ambiguous": 1,
-                "price_fact_normalized": 20,
-                "pricing_document_rejected": 1,
-                "pricing_input_contract_bound": 1,
-                "rest_tool_service_normalized": 3,
-                "web_search_service_normalized": 1
-              },
-              "unit": "reviewed source pricing item"
-            },
+            "consecutive_failures": 1,
+            "last_success_at": "2026-10-18T11:03:28.870Z",
+            "message": "Linked document kimi-pricing/files-list failed: Transient transport failure (curl 28: request timed out)",
+            "outcome": "fetch_failed",
             "source_id": "kimi-pricing"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 4,
-            "pricing_extraction": {
-              "custom_quote_models": 0,
-              "free_models": 0,
-              "model_records": 4,
-              "normalized_facts": 20,
-              "not_applicable_models": 0,
-              "not_published_models": 0,
-              "numeric_models": 4,
-              "raw_facts": 0,
-              "raw_models": 0,
-              "unknown_models": 0
-            },
-            "pricing_reconciliation": {
-              "basis": "source_item",
-              "diagnostic_count": 4,
-              "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "pricing_document_rejected",
-                  "sample": "/docs/pricing/chat-k25: Kimi document omitted rows={"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_tool_promotion_end_not_published"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "batch_cached_tokens_not_documented"
-                }
-              ],
-              "disposition_counts": {
-                "ambiguous": 0,
-                "excluded": 0,
-                "explicit_non_numeric": 10,
-                "normalized": 25,
-                "raw": 0,
-                "unbound": 4,
-                "unresolved": 0,
-                "unsupported": 0
-              },
-              "observed_items": 39,
-              "reason_counts": {
-                "batch_cached_tokens_not_documented": 1,
-                "file_service_promotional_free": 1,
-                "formula_tool_promotion_end_not_published": 1,
-                "formula_tool_promotional_free": 9,
-                "formula_web_search_billing_trigger_ambiguous": 1,
-                "price_fact_normalized": 20,
-                "pricing_document_rejected": 1,
-                "pricing_input_contract_bound": 1,
-                "rest_tool_service_normalized": 3,
-                "web_search_service_normalized": 1
-              },
-              "unit": "reviewed source pricing item"
-            },
-            "source_id": "kimi-international-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 12,
-            "source_id": "kimi-releases"
-          },
-          {
-            "content_changed": true,
-            "contract_finding": {
-              "diagnostic_count": 3,
-              "diagnostics": [
-                {
-                  "affected_items": 2,
-                  "fingerprint": "46b89b71244a070e",
-                  "kind": "unknown_field",
-                  "observed": "array",
-                  "path": "/permission",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                },
-                {
-                  "affected_items": 2,
-                  "fingerprint": "aaaff6321adbaa87",
-                  "kind": "unknown_field",
-                  "observed": "string",
-                  "path": "/parent",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                },
-                {
-                  "affected_items": 2,
-                  "fingerprint": "d90fbd39aa93a658",
-                  "kind": "unknown_field",
-                  "observed": "string",
-                  "path": "/root",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                }
-              ],
-              "disposition": "accept_with_signal",
-              "observed_items": 2
-            },
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 2,
-            "source_id": "kimi-api"
-          },
-          {
-            "content_changed": false,
-            "contract_finding": {
-              "diagnostic_count": 3,
-              "diagnostics": [
-                {
-                  "affected_items": 2,
-                  "fingerprint": "46b89b71244a070e",
-                  "kind": "unknown_field",
-                  "observed": "array",
-                  "path": "/permission",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                },
-                {
-                  "affected_items": 2,
-                  "fingerprint": "aaaff6321adbaa87",
-                  "kind": "unknown_field",
-                  "observed": "string",
-                  "path": "/parent",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                },
-                {
-                  "affected_items": 2,
-                  "fingerprint": "d90fbd39aa93a658",
-                  "kind": "unknown_field",
-                  "observed": "string",
-                  "path": "/root",
-                  "sample_model_ids": [
-                    "kimi-k2.6",
-                    "kimi-k2.7-code"
-                  ]
-                }
-              ],
-              "disposition": "accept_with_signal",
-              "observed_items": 2
-            },
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 2,
-            "source_id": "kimi-china-api"
           }
         ]
       },
@@ -35410,42 +35149,24 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 0
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "kimi",
-      "publication": "accepted",
-      "signals": [
-        "unreviewed_extension"
-      ],
+      "publication": "retained",
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 9
       },
-      "status": "fresh",
+      "status": "stale",
       "warning_codes": {
-        "catalog_api_set_mismatch": 2,
-        "missing_field": 2,
-        "scope_limited": 2,
-        "source_contract_extension": 2
+        "source_fetch_failed": 1
       }
     },
     {
@@ -36482,9 +36203,9 @@
         "unchanged": 473
       },
       "pricing": {
-        "commercial_hash": "35898568f3457063e8bcb06c6fb6b69d798e34d16952fb0c581d904068a14c44",
+        "commercial_hash": "1fcd414dbc4ae7771dc6f8d11daa5dc2f0f9e295bd6a644e3882b07a5f8d6b2c",
         "outcome": "commercial",
-        "previous_commercial_hash": "3ee5bf01a2dd8325b88c446d727fa79aa2c693e454f4e60b8ec3597fda13374c"
+        "previous_commercial_hash": "35898568f3457063e8bcb06c6fb6b69d798e34d16952fb0c581d904068a14c44"
       },
       "pricing_coverage": {
         "current_models": 473,
@@ -36992,21 +36713,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 19,
+    "accepted": 18,
     "added_models": 1,
     "added_sources": 0,
-    "changed_models": 3,
-    "changed_sources": 24,
+    "changed_models": 1,
+    "changed_sources": 22,
     "models": 4306,
-    "pricing_accepted": 17,
+    "pricing_accepted": 16,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 3,
+    "pricing_retained": 4,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 3,
+    "removed_models": 1,
     "removed_sources": 0,
-    "retained": 1,
+    "retained": 2,
     "withheld": 0
   }
 }
