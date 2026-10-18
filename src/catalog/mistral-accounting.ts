@@ -1,8 +1,4 @@
-import {
-  openApiYamlHasPropertyPath,
-  openApiYamlPropertyReferencesSchema,
-  openApiYamlSchemaReferencesSchema,
-} from "./openapi-yaml.ts";
+import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -24,9 +20,13 @@ interface Contract {
 
 type Requirement =
   | { document: string; markers: readonly RegExp[] }
-  | { document: string; schema: string; path: readonly string[] }
-  | { document: string; schema: string; property: string; references: string }
-  | { document: string; schema: string; references: string };
+  | {
+      document: string;
+      schema: string;
+      path: readonly string[];
+      type: "integer" | "number" | "string" | "array";
+      member?: "map_value";
+    };
 
 const repositoryRoot = "/mistralai/platform-docs-public/main";
 const openApiPath = `${repositoryRoot}/openapi.yaml`;
@@ -37,31 +37,26 @@ const webSearchPath = `${agentToolsRoot}/websearch/page.mdx`;
 const imageGenerationPath = `${agentToolsRoot}/image_generation/page.mdx`;
 const librariesPath = `${repositoryRoot}/src/content/en/docs/studio/search/libraries/page.mdx`;
 
-const usageResponse = (schema: string): Requirement => ({
-  document: openApiPath,
-  schema,
-  property: "usage",
-  references: "UsageInfo",
-});
+function schemaField(
+  schema: string,
+  path: readonly string[],
+  type: "integer" | "number" | "string" | "array",
+  member?: "map_value",
+): Requirement {
+  return { document: openApiPath, schema, path, type, ...(member === undefined ? {} : { member }) };
+}
 
-const usageField = (field: string): Requirement => ({
-  document: openApiPath,
-  schema: "UsageInfo",
-  path: [field],
-});
-
-const conversationField = (field: string): Requirement => ({
-  document: openApiPath,
-  schema: "ConversationUsageInfo",
-  path: [field],
-});
-
-const conversationResponse: Requirement = {
-  document: openApiPath,
-  schema: "ConversationResponse",
-  property: "usage",
-  references: "ConversationUsageInfo",
-};
+function completionFields(
+  streaming: boolean,
+  path: readonly string[],
+  type: "integer" | "number" = "integer",
+): Requirement[] {
+  // This common contract serves Chat and FIM, so both response owners must establish it.
+  const schemas = streaming
+    ? ["CompletionChunk"]
+    : ["ChatCompletionResponse", "FIMCompletionResponse"];
+  return schemas.map((schema) => schemaField(schema, ["usage", ...path], type));
+}
 
 const contracts: readonly Contract[] = [
   completionUsage("response", "prompt_tokens"),
@@ -75,15 +70,7 @@ const contracts: readonly Contract[] = [
     channel: "response",
     locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
     availability: "success_only",
-    requirements: [
-      usageField("prompt_tokens"),
-      usageResponse("ResponseBase"),
-      {
-        document: openApiPath,
-        schema: "EmbeddingResponse",
-        references: "ResponseBase",
-      },
-    ],
+    requirements: [schemaField("EmbeddingResponse", ["usage", "prompt_tokens"], "integer")],
   },
   conversationUsage("prompt_tokens"),
   conversationUsage("completion_tokens"),
@@ -93,15 +80,7 @@ const contracts: readonly Contract[] = [
     channel: "response",
     locator: { kind: "json_pointer", value: "/usage_info/pages_processed" },
     availability: "success_only",
-    requirements: [
-      { document: openApiPath, schema: "OCRUsageInfo", path: ["pages_processed"] },
-      {
-        document: openApiPath,
-        schema: "OCRResponse",
-        property: "usage_info",
-        references: "OCRUsageInfo",
-      },
-    ],
+    requirements: [schemaField("OCRResponse", ["usage_info", "pages_processed"], "integer")],
   },
   transcriptionUsage("response"),
   transcriptionUsage("stream"),
@@ -115,7 +94,7 @@ const contracts: readonly Contract[] = [
       value: "SpeechRequest.accepted_billing_characters",
     },
     availability: "always",
-    requirements: [{ document: openApiPath, schema: "SpeechRequest", path: ["input"] }],
+    requirements: [schemaField("SpeechRequest", ["input"], "string")],
   },
   connectorUsage("code_interpreter", codeInterpreterPath, [
     /\btool\.execution\b/,
@@ -135,7 +114,7 @@ const contracts: readonly Contract[] = [
     absent_value: "zero",
     availability: "success_only",
     requirements: [
-      conversationResponse,
+      schemaField("ConversationResponse", ["outputs"], "array"),
       {
         document: imageGenerationPath,
         markers: [/\bimage_generation\b/, /\btool_file\b/, /\bfile_id\b/],
@@ -154,9 +133,18 @@ export function extractMistralPricingInputs(
   onFinding?: (evidence: SourceContractEvidence) => void,
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
-  const bodies = new Map(documents.map(({ url, body }) => [new URL(url).pathname, body]));
+  const bodies = new Map<string, string | undefined>();
+  for (const { url, body } of documents) {
+    const path = new URL(url).pathname;
+    bodies.set(path, bodies.has(path) ? undefined : body);
+  }
+  const schemaReaders = new Map<string, ReturnType<typeof openApiYamlSchemaReader>>();
   const facts = contracts.flatMap((contract): SourcePricingInputFact[] => {
-    if (!contract.requirements.every((requirement) => requirementPresent(bodies, requirement))) {
+    if (
+      !contract.requirements.every((requirement) =>
+        requirementPresent(bodies, schemaReaders, requirement),
+      )
+    ) {
       onFinding?.(
         contractExtensionEvidence([
           `/documents${contract.requirements.map(({ document }) => document).join("+")}/${contract.key}`,
@@ -179,22 +167,22 @@ export function extractMistralPricingInputs(
 }
 
 function requirementPresent(
-  bodies: ReadonlyMap<string, string>,
+  bodies: ReadonlyMap<string, string | undefined>,
+  schemaReaders: Map<string, ReturnType<typeof openApiYamlSchemaReader>>,
   requirement: Requirement,
 ): boolean {
   const body = bodies.get(requirement.document);
   if (body === undefined) return false;
   if ("markers" in requirement) return requirement.markers.every((marker) => marker.test(body));
-  if ("property" in requirement)
-    return openApiYamlPropertyReferencesSchema(
-      body,
-      requirement.schema,
-      requirement.property,
-      requirement.references,
-    );
-  if ("references" in requirement)
-    return openApiYamlSchemaReferencesSchema(body, requirement.schema, requirement.references);
-  return openApiYamlHasPropertyPath(body, requirement.schema, requirement.path);
+  const reader = schemaReaders.get(requirement.document) ?? openApiYamlSchemaReader(body);
+  schemaReaders.set(requirement.document, reader);
+  const types = reader(requirement.schema, requirement.path, requirement.member);
+  return (
+    types.length > 0 &&
+    types.every(
+      (type) => type === requirement.type || (requirement.type === "number" && type === "integer"),
+    )
+  );
 }
 
 function completionUsage(
@@ -207,10 +195,7 @@ function completionUsage(
     channel: streaming ? "stream_event" : "response",
     locator: { kind: "json_pointer", value: `/usage/${field}` },
     availability: streaming ? "terminal_only" : "success_only",
-    requirements: [
-      usageField(field),
-      usageResponse(streaming ? "CompletionChunk" : "ResponseBase"),
-    ],
+    requirements: completionFields(streaming, [field]),
   };
 }
 
@@ -223,14 +208,7 @@ function completionCachedUsage(responseKind: "response" | "stream"): Contract {
     absent_value: "zero",
     availability: streaming ? "terminal_only" : "success_only",
     requirements: [
-      { document: openApiPath, schema: "PromptTokensDetails", path: ["cached_tokens"] },
-      {
-        document: openApiPath,
-        schema: "UsageInfo",
-        property: "prompt_tokens_details",
-        references: "PromptTokensDetails",
-      },
-      usageResponse(streaming ? "CompletionChunk" : "ResponseBase"),
+      ...completionFields(streaming, ["prompt_tokens_details", "cached_tokens"]),
       {
         document: promptCachingPath,
         markers: [
@@ -251,10 +229,7 @@ function completionAudioUsage(responseKind: "response" | "stream"): Contract {
     channel: streaming ? "stream_event" : "response",
     locator: { kind: "json_pointer", value: "/usage/prompt_audio_seconds" },
     availability: streaming ? "terminal_only" : "success_only",
-    requirements: [
-      usageField("prompt_audio_seconds"),
-      usageResponse(streaming ? "CompletionChunk" : "ResponseBase"),
-    ],
+    requirements: completionFields(streaming, ["prompt_audio_seconds"], "number"),
   };
 }
 
@@ -268,7 +243,7 @@ function conversationUsage(
     locator: { kind: "json_pointer", value: `/usage/${field}` },
     ...(absent_value === undefined ? {} : { absent_value }),
     availability: "success_only",
-    requirements: [conversationField(field), conversationResponse],
+    requirements: [schemaField("ConversationResponse", ["usage", field], "integer")],
   };
 }
 
@@ -280,8 +255,11 @@ function transcriptionUsage(responseKind: "response" | "stream"): Contract {
     locator: { kind: "json_pointer", value: "/usage/prompt_audio_seconds" },
     availability: streaming ? "terminal_only" : "success_only",
     requirements: [
-      usageField("prompt_audio_seconds"),
-      usageResponse(streaming ? "TranscriptionStreamDone" : "TranscriptionResponse"),
+      schemaField(
+        streaming ? "TranscriptionStreamDone" : "TranscriptionResponse",
+        ["usage", "prompt_audio_seconds"],
+        "number",
+      ),
     ],
   };
 }
@@ -297,6 +275,9 @@ function connectorUsage(
     locator: { kind: "json_pointer", value: `/usage/connectors/${connector}` },
     absent_value: "zero",
     availability: "success_only",
-    requirements: [conversationField("connectors"), conversationResponse, { document, markers }],
+    requirements: [
+      schemaField("ConversationResponse", ["usage", "connectors"], "integer", "map_value"),
+      { document, markers },
+    ],
   };
 }

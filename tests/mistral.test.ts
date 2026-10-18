@@ -10,6 +10,7 @@ import {
   parseMistralPricingCards,
 } from "../src/catalog/mistral-commercial-source.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { mistralCurrencyUrl, mistralPriorityUrl } from "../src/catalog/mistral-pricing-policy.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
@@ -22,6 +23,7 @@ import type { PricingReconciliationItem } from "../src/catalog/pricing-reconcili
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import type { Catalog, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
+import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
@@ -39,7 +41,7 @@ function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
 
-async function mistralCatalog(
+async function mistralSource(
   overrides: {
     endpoints?: string;
     large?: string;
@@ -52,7 +54,7 @@ async function mistralCatalog(
   } = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (evidence: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const value = manifest("mistral");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "mistral-catalog")
@@ -127,7 +129,7 @@ async function mistralCatalog(
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
   }).models;
-  if (overrides.omitDocument === "https://mistral.ai/pricing/api/") return catalog;
+  if (overrides.omitDocument === "https://mistral.ai/pricing/api/") return { models: catalog };
   const configuredPricing = value.sources.find(({ id }) => id === "mistral-pricing");
   if (configuredPricing === undefined || configuredPricing.extractor.kind !== "mistral-pricing")
     throw new Error("Missing Mistral pricing source");
@@ -191,22 +193,27 @@ async function mistralCatalog(
     catalogModels: catalog,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
-  const pricedByUid = new Map(pricing.map((model) => [model.uid, model]));
-  return applyGroups(catalog, [{ source: pricingSource, models: pricing }], false).map((model) => {
-    const priced = pricedByUid.get(model.uid);
-    if (priced === undefined) return model;
-    return {
-      ...model,
-      pricing_state: priced.pricing_state,
-      price_facts: priced.price_facts,
-      raw_price_facts: priced.raw_price_facts,
-      ...(priced.commercial_facts === undefined
-        ? {}
-        : { commercial_facts: priced.commercial_facts }),
-      ...(priced.pricing_inputs === undefined ? {} : { pricing_inputs: priced.pricing_inputs }),
-    };
   });
+  const pricingByUid = new Map(pricing.models.map((model) => [model.uid, model]));
+  return {
+    ...pricing,
+    // Catalog merging resolves metadata; canonical pricing still needs every native price peer.
+    models: applyGroups(catalog, [{ source: pricingSource, ...pricing }], false).map((model) => {
+      const priced = pricingByUid.get(model.uid);
+      return priced === undefined
+        ? model
+        : {
+            ...model,
+            pricing_state: priced.pricing_state,
+            price_facts: priced.price_facts,
+            raw_price_facts: priced.raw_price_facts,
+          };
+    }),
+  };
+}
+
+async function mistralCatalog(...args: Parameters<typeof mistralSource>): Promise<ProviderModel[]> {
+  return (await mistralSource(...args)).models;
 }
 
 function withoutMistralPrices(body: string): string {
@@ -222,7 +229,7 @@ function withoutMistralPublicMedium(body: string): string {
 describe("Mistral adapters", () => {
   it("accounts for the regional control without inventing model availability or replacing missing service topology", async () => {
     const items: PricingReconciliationItem[] = [];
-    const models = await mistralCatalog(
+    const result = await mistralSource(
       {
         pricing: (await fixture("mistral/pricing-table.html")).replace(
           "<main>",
@@ -231,6 +238,7 @@ describe("Mistral adapters", () => {
       },
       (item) => items.push(item),
     );
+    const models = result.models;
     expect(items).toContainEqual({
       disposition: "excluded",
       reason_code: "regional_pricing_requires_model_availability",
@@ -245,7 +253,7 @@ describe("Mistral adapters", () => {
     const partition = assembleParsedProviderPricing(
       "mistral",
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
     );
     if (partition === undefined) throw new Error("Missing Mistral partition");
@@ -262,14 +270,15 @@ describe("Mistral adapters", () => {
         order === "before"
           ? body.replace("<main>", `<main>${extra}`)
           : body.replace("</main>", `${extra}</main>`);
-      const models = await mistralCatalog({ pricing });
+      const result = await mistralSource({ pricing });
+      const models = result.models;
       const value = manifest("mistral");
       const source = value.sources.find(({ id }) => id === "mistral-pricing");
       if (source === undefined) throw new Error("Missing Mistral pricing source");
       const partition = assembleParsedProviderPricing(
         "mistral",
         observedAt,
-        [{ source, models }],
+        [{ source, ...result }],
         models,
       );
       const sync = partition?.books
@@ -290,13 +299,14 @@ describe("Mistral adapters", () => {
   );
 
   it("derives current EUR and served Priority rates without applying Priority to Batch or non-completion models", async () => {
-    const models = await mistralCatalog({
+    const result = await mistralSource({
       pricing: await fixture("mistral/pricing-table.html"),
       pricingDocuments: [
         { url: mistralCurrencyUrl, body: await fixture("mistral/pricing-currency.ts") },
         { url: mistralPriorityUrl, body: await fixture("mistral/priority-tier.md") },
       ],
     });
+    const models = result.models;
     const medium = models.find(({ model_id }) => model_id === "mistral-medium-3-5");
     if (medium === undefined) throw new Error("Missing Mistral medium");
     expect(medium.price_facts).toEqual(
@@ -351,7 +361,7 @@ describe("Mistral adapters", () => {
     const partition = assembleParsedProviderPricing(
       "mistral",
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
     );
     if (partition === undefined) throw new Error("Missing Mistral partition");
@@ -500,7 +510,7 @@ describe("Mistral adapters", () => {
   });
 
   it("counts only the currencies published for a library retrieval price", () => {
-    const carrier = baseModel({
+    const model = baseModel({
       providerId: "mistral",
       id: "example-model",
       name: "Example",
@@ -508,8 +518,8 @@ describe("Mistral adapters", () => {
       observedAt,
     });
     const items: PricingReconciliationItem[] = [];
-    extractMistralCommercialFacts(
-      { models: [carrier], sourceId: "mistral-pricing", reconcile: (item) => items.push(item) },
+    const facts = extractMistralCommercialFacts(
+      { models: [model], sourceId: "mistral-pricing", reconcile: (item) => items.push(item) },
       [
         {
           id: "",
@@ -521,7 +531,7 @@ describe("Mistral adapters", () => {
         },
       ],
     );
-    expect(carrier.commercial_facts?.[0]?.price_facts).toMatchObject([
+    expect(facts[0]?.price_facts).toMatchObject([
       { currency: "USD", price: "0.01", unit: "request" },
     ]);
     expect(items).toEqual([
@@ -534,15 +544,22 @@ describe("Mistral adapters", () => {
       ">Codestral Embed <span",
       ">Unbound embedding <span",
     );
-    const models = await mistralCatalog({ pricing });
-    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(20);
+    const result = await mistralSource({ pricing });
+    const models = result.models;
+    expect(result.pricing_inputs).toHaveLength(20);
+    expect(
+      models.every(
+        ({ pricing_inputs, commercial_facts }) =>
+          pricing_inputs === undefined && commercial_facts === undefined,
+      ),
+    ).toBe(true);
     const value = manifest("mistral");
     const source = value.sources.find(({ id }) => id === "mistral-pricing");
     if (source === undefined) throw new Error("Missing Mistral pricing source");
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
     );
     const input = partition?.books
@@ -559,6 +576,66 @@ describe("Mistral adapters", () => {
     ).toContainEqual(
       expect.objectContaining({ locator: { kind: "json_pointer", value: "/usage/prompt_tokens" } }),
     );
+  });
+
+  it("captures and replays a service-only pricing source without a model carrier", async () => {
+    const value = manifest("mistral");
+    const configured = value.sources.find(({ id }) => id === "mistral-pricing");
+    if (configured === undefined) throw new Error("Missing Mistral pricing source");
+    const source = {
+      ...configured,
+      extractor: { kind: "mistral-pricing", minCards: 1, maxCards: 1 },
+    } satisfies SourceManifest;
+    const parsed = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [],
+      body: JSON.stringify({
+        index: {
+          url: source.url,
+          body: `<mistral-block-card-model><p>Libraries</p><div><p>Call</p><mistral-atom-text-price data-prices='{"priceUsd":0.01,"priceEur":0.009,"suffix":"/call"}'></mistral-atom-text-price></div></mistral-block-card-model>`,
+        },
+        documents: [],
+      }),
+    });
+    expect(parsed.models).toEqual([]);
+    expect(parsed.commercial_facts).toHaveLength(1);
+    const record = {
+      id: source.id,
+      provider_id: value.provider.id,
+      url: source.url,
+      source: source.source ?? [source.type],
+      stability: source.stability,
+      scope: source.scope ?? "global",
+      exhaustive: source.exhaustive ?? false,
+      role: source.role ?? "catalog",
+      field_paths: source.fields,
+      ...(source.pricingEvidence === undefined ? {} : { pricing_evidence: source.pricingEvidence }),
+      content_hash: "1".repeat(64),
+      extractor_version: source.extractorVersion,
+      observed_at: observedAt,
+    };
+    const captured = capturePricingReplaySources([{ source, ...parsed }], [record])?.[0];
+    if (captured === undefined) throw new Error("Missing service-only compilation input");
+    expect(captured.models).toEqual([]);
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, ...parsed }],
+      [],
+      value.pricingCategoricalLabels,
+    );
+    expect(partition?.books.map(({ book_key }) => book_key)).toEqual(["service:library-retrieval"]);
+    expect(
+      assembleParsedProviderPricing(
+        value.provider.id,
+        observedAt,
+        [{ source, ...captured }],
+        [],
+        value.pricingCategoricalLabels,
+      ),
+    ).toEqual(partition);
   });
 
   it("reports an unsupported repository denominator instead of a normalized rate", async () => {
@@ -859,13 +936,14 @@ describe("Mistral adapters", () => {
     expect(sourcePrices(await mistralCatalog({ pricing, large }))).toEqual([]);
   });
   it("parses exact API names, non-exclusive tasks, lifecycle, and native prices", async () => {
-    const models = await mistralCatalog();
+    const result = await mistralSource();
+    const models = result.models;
     const medium = models.find((model) => model.model_id === "mistral-medium-3-5");
     const embed = models.find((model) => model.model_id === "codestral-embed-2505");
     const ocr = models.find((model) => model.model_id === "mistral-ocr-4-0");
     const speech = models.find((model) => model.model_id === "voxtral-mini-tts-2603");
     const retired = models.find((model) => model.model_id === "mistral-large-2407");
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(20);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -1354,7 +1432,7 @@ describe("Mistral adapters", () => {
 
   it("accounts for every reviewed repository and public-page price observation", async () => {
     const items: PricingReconciliationItem[] = [];
-    const models = await mistralCatalog({}, (item) => items.push(item));
+    const result = await mistralSource({}, (item) => items.push(item));
     expect(items.filter(({ disposition }) => disposition === "normalized").length).toBeGreaterThan(
       20,
     );
@@ -1363,17 +1441,15 @@ describe("Mistral adapters", () => {
         ["unbound", "unsupported", "unresolved"].includes(disposition),
       ),
     ).toEqual([]);
-    expect(
-      models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .map(({ book_key }) => book_key),
-    ).toEqual([
-      "service:code-execution",
-      "service:web-search",
-      "service:premium-news",
-      "service:image-generation",
-      "service:library-retrieval",
-    ]);
+    expect(result.commercial_facts?.map(({ book_key }) => book_key).sort()).toEqual(
+      [
+        "service:code-execution",
+        "service:web-search",
+        "service:premium-news",
+        "service:image-generation",
+        "service:library-retrieval",
+      ].sort(),
+    );
     expect(items).toContainEqual({
       disposition: "ambiguous",
       reason_code: "public_price_retired_model_conflict",
@@ -1418,11 +1494,12 @@ describe("Mistral adapters", () => {
     const value = manifest("mistral");
     const source = value.sources.find(({ id }) => id === "mistral-pricing");
     if (source === undefined) throw new Error("Missing Mistral source");
-    const models = await mistralCatalog();
+    const result = await mistralSource();
+    const models = result.models;
     const pricing = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -1644,17 +1721,18 @@ describe("Mistral adapters", () => {
     const source = value.sources.find(({ id }) => id === "mistral-pricing");
     if (source === undefined) throw new Error("Missing Mistral source");
     const items: PricingReconciliationItem[] = [];
-    const models = await mistralCatalog(
+    const result = await mistralSource(
       {
         omitDocument:
           "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
       },
       (item) => items.push(item),
     );
+    const models = result.models;
     const pricing = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -1704,8 +1782,8 @@ describe("Mistral adapters", () => {
       '{"priceEur":"quote","priceUsd":30,"prefix":null,"suffix":null}',
     );
     const items: PricingReconciliationItem[] = [];
-    const models = await mistralCatalog({ pricing }, (item) => items.push(item));
-    const facts = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const result = await mistralSource({ pricing }, (item) => items.push(item));
+    const facts = result.commercial_facts ?? [];
     expect(facts.some(({ book_key }) => book_key === "service:code-execution")).toBe(false);
     expect(facts.some(({ book_key }) => book_key === "service:web-search")).toBe(true);
     expect(items).toContainEqual(
@@ -1738,9 +1816,10 @@ describe("Mistral adapters", () => {
       "renamed_cached_tokens",
     );
     const openapiItems: PricingReconciliationItem[] = [];
-    const retained = await mistralCatalog({ openapi }, (item) => openapiItems.push(item));
+    const result = await mistralSource({ openapi }, (item) => openapiItems.push(item));
+    const retained = result.models;
     expect(retained).toHaveLength(6);
-    const retainedInputs = retained.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const retainedInputs = result.pricing_inputs ?? [];
     expect(retainedInputs).toHaveLength(18);
     expect(retainedInputs.some(({ key }) => key.endsWith(".cached_tokens"))).toBe(false);
     expect(retainedInputs.some(({ key }) => key === "completion.response.prompt_tokens")).toBe(
@@ -1766,7 +1845,7 @@ describe("Mistral adapters", () => {
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source: pricingSource, models: retained }],
+      [{ source: pricingSource, ...result }],
       retained,
       value.pricingCategoricalLabels,
     );
@@ -2027,7 +2106,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v7",
+        extractorVersion: "mistral-pricing-v8",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

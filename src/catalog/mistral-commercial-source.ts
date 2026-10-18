@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { attachCommercialFacts, commercialResource, publishedRate } from "./pricing.ts";
+import { commercialResource, publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel,
@@ -9,7 +9,7 @@ import type {
 } from "./pricing-source.ts";
 
 interface Input {
-  models: readonly ParsedProviderModel[];
+  models: readonly Pick<ParsedProviderModel, "api_endpoints" | "status" | "uid">[];
   reconcile?: (item: PricingReconciliationItem) => void;
   sourceId: string;
 }
@@ -230,7 +230,7 @@ export function parseMistralPricingCards(
 export function extractMistralCommercialFacts(
   input: Input,
   cards: readonly MistralPricingCard[],
-): void {
+): SourceCommercialPricingFact[] {
   const facts: SourceCommercialPricingFact[] = [];
   const agentModels = input.models
     .filter(
@@ -241,7 +241,7 @@ export function extractMistralCommercialFacts(
     .map(({ uid }) => uid)
     .sort();
   for (const card of cards) addCard(input, facts, card, agentModels);
-  attachCommercialFacts(input.models, facts);
+  return facts;
 }
 
 function addCard(

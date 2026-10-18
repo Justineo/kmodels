@@ -374,6 +374,8 @@ Status: implemented
   service and accounting facts do not require an arbitrary model row.
   Hugging Face router inputs likewise return independently; native route promotions are typed scoped
   model-state facts rather than raw control markers. Unrecognized legacy raw evidence stays raw.
+  Mistral pricing returns independent request-service facts and accounting inputs; source-only
+  services can survive compilation without a model observation.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

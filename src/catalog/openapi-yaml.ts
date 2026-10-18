@@ -1,88 +1,5 @@
 import { yamlBlock } from "./yaml.ts";
 
-export function openApiYamlHasPropertyPath(
-  body: string,
-  schema: string,
-  path: readonly string[],
-): boolean {
-  let block = schemaBlock(body, schema);
-  if (block === undefined) return false;
-  for (const property of path) {
-    const next = propertyBlock(block, property);
-    if (next === undefined) return false;
-    block = next;
-  }
-  return true;
-}
-
-export function openApiYamlPropertyReferencesSchema(
-  body: string,
-  schema: string,
-  property: string,
-  referencedSchema: string,
-): boolean {
-  const block = schemaBlock(body, schema);
-  const propertyValue = block === undefined ? undefined : propertyBlock(block, property);
-  return propertyValue === undefined
-    ? false
-    : schemaReference(referencedSchema).test(propertyValue);
-}
-
-export function openApiYamlSchemaReferencesSchema(
-  body: string,
-  schema: string,
-  referencedSchema: string,
-): boolean {
-  const block = schemaBlock(body, schema);
-  return block === undefined ? false : schemaReference(referencedSchema).test(block);
-}
-
-function schemaReference(schema: string): RegExp {
-  return new RegExp(`\\$ref:\\s*["']?#/components/schemas/${escapeRegExp(schema)}["']?`);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function schemaBlock(body: string, schema: string): string | undefined {
-  const lines = body.split(/\r?\n/);
-  const start = lines.findIndex((line) => line === `    ${schema}:`);
-  if (start < 0) return;
-  const end = lines.findIndex((line, index) => index > start && /^    [A-Za-z0-9_]+:$/.test(line));
-  return lines.slice(start, end < 0 ? undefined : end).join("\n");
-}
-
-function propertyBlock(body: string, property: string): string | undefined {
-  const lines = body.split("\n");
-  for (const [propertiesIndex, line] of lines.entries()) {
-    const marker = line.match(/^(\s*)properties:$/);
-    if (marker === null) continue;
-    const markerIndentation = marker[1]?.length ?? 0;
-    const propertyIndentation = markerIndentation + 2;
-    const target = `${" ".repeat(propertyIndentation)}${property}:`;
-    let start = -1;
-    for (let index = propertiesIndex + 1; index < lines.length; index += 1) {
-      const candidate = lines[index]!;
-      if (candidate.trim() === "") continue;
-      const indentation = candidate.length - candidate.trimStart().length;
-      if (indentation <= markerIndentation) break;
-      if (candidate === target) {
-        start = index;
-        break;
-      }
-    }
-    if (start < 0) continue;
-    const end = lines.findIndex(
-      (candidate, index) =>
-        index > start &&
-        candidate.trim() !== "" &&
-        candidate.length - candidate.trimStart().length <= propertyIndentation,
-    );
-    return lines.slice(start, end < 0 ? undefined : end).join("\n");
-  }
-}
-
 interface YamlNode {
   lines: readonly string[];
   indentation: number;
@@ -103,18 +20,24 @@ function entry(node: YamlNode, key: string): YamlEntry | null | undefined {
   const start = indexes[0];
   if (indexes.length > 1) return null;
   if (start === undefined) return;
+  const value = (node.lines[start] ?? "").slice(prefix.length).trim();
+  const list = value === "" && ["type", "allOf", "anyOf", "oneOf"].includes(key);
   const end = node.lines.findIndex(
     (line, index) =>
       index > start &&
       line.trim() !== "" &&
       !line.trimStart().startsWith("#") &&
-      line.length - line.trimStart().length <= node.indentation,
+      line.length - line.trimStart().length <= node.indentation &&
+      !(list && line.startsWith(" ".repeat(node.indentation) + "- ")),
   );
+  const lines = node.lines.slice(start + 1, end < 0 ? undefined : end);
+  const first = lines.find((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
+  const indentless = list && first?.startsWith(" ".repeat(node.indentation) + "- ") === true;
   return {
-    value: (node.lines[start] ?? "").slice(prefix.length).trim(),
+    value,
     node: {
-      lines: node.lines.slice(start + 1, end < 0 ? undefined : end),
-      indentation: node.indentation + 2,
+      lines,
+      indentation: node.indentation + (indentless ? 0 : 2),
     },
   };
 }
@@ -152,10 +75,11 @@ function declaredTypes(value: YamlEntry): string[] {
 }
 
 // This recognizes the reviewed block-style schema shapes, not arbitrary YAML.
-// Only direct properties, local schema references and schema compositions establish paths.
+// Properties, local references and compositions establish paths. Map values need an explicit
+// additionalProperties schema and are requested separately from ordinary property lookup.
 export function openApiYamlSchemaReader(
   body: string,
-): (schema: string, path: readonly string[]) => string[] {
+): (schema: string, path: readonly string[], member?: "map_value") => string[] {
   const components = yamlBlock(body, "components", 0);
   const schemas = components === undefined ? undefined : yamlBlock(components, "schemas", 2);
   const schemaNodes = new Map<string, YamlNode | undefined>();
@@ -176,22 +100,32 @@ export function openApiYamlSchemaReader(
     node: YamlNode,
     path: readonly string[],
     ancestors: ReadonlySet<YamlNode>,
+    mapValue: boolean,
   ): string[] | undefined {
     if (ancestors.has(node) || ancestors.size > 64) return;
     const seen = new Set([...ancestors, node]);
     const type = entry(node, "type");
     const properties = entry(node, "properties");
     const reference = entry(node, "$ref");
-    if (type === null || properties === null || reference === null) return;
+    const map = mapValue && path.length === 0 ? entry(node, "additionalProperties") : undefined;
+    if (type === null || properties === null || reference === null || map === null) return;
     const types = type === undefined ? [] : declaredTypes(type);
-    if (path.length > 0 && types.some((type) => type !== "object" && type !== "null")) return;
-    const result = path.length === 0 ? types.filter((type) => type !== "null") : [];
+    if (type !== undefined && types.length === 0) return;
+    if ((path.length > 0 || mapValue) && types.some((type) => type !== "object" && type !== "null"))
+      return;
+    const result = path.length === 0 && !mapValue ? types.filter((type) => type !== "null") : [];
+    if (map !== undefined) {
+      if (map.value !== "") return;
+      const found = read(map.node, [], seen, false);
+      if (found === undefined) return;
+      result.push(...found);
+    }
     const name = path[0];
     if (properties !== undefined && name !== undefined) {
       const property = entry(properties.node, name);
       if (property === null) return;
       if (property !== undefined) {
-        const found = read(property.node, path.slice(1), seen);
+        const found = read(property.node, path.slice(1), seen, mapValue);
         if (found === undefined) return;
         result.push(...found);
       }
@@ -202,7 +136,7 @@ export function openApiYamlSchemaReader(
       )?.[1];
       const schema = target === undefined ? undefined : schemaNodes.get(target);
       if (schema === undefined) return;
-      const found = read(schema, path, seen);
+      const found = read(schema, path, seen, mapValue);
       if (found === undefined) return;
       result.push(...found);
     }
@@ -217,18 +151,21 @@ export function openApiYamlSchemaReader(
         if (
           type !== undefined &&
           type !== null &&
+          declaredTypes(type).length > 0 &&
           declaredTypes(type).every((type) => type === "null")
         )
           continue;
-        const found = read(alternative.node, path, seen);
+        const found = read(alternative.node, path, seen, mapValue);
         if (found === undefined || (composition !== "allOf" && found.length === 0)) return;
         result.push(...found);
       }
     }
     return result;
   }
-  return (schema, path) => {
+  return (schema, path, member) => {
     const node = schemaNodes.get(schema);
-    return node === undefined ? [] : [...new Set(read(node, path, new Set()) ?? [])];
+    return node === undefined
+      ? []
+      : [...new Set(read(node, path, new Set(), member === "map_value") ?? [])];
   };
 }
