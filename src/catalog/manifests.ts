@@ -2873,7 +2873,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "cohere-pricing", minProducts: 5, maxProducts: 30 },
-        extractorVersion: "cohere-pricing-v4",
+        extractorVersion: "cohere-pricing-v5",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["pricing"],
         allowedHosts: ["cohere.com"],
