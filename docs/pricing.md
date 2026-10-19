@@ -84,6 +84,11 @@ version, freshness and catalog bytes, and prove the intended amounts are the onl
 Canonical assembly handles necessary variant sorting and compaction; ordinary pair validation and
 publication rebuild both projection packs with the corrected price identity. Retained pricing can
 have older input than the current catalog source record, so each keeps its own original evidence.
+Semantic repairs use the same boundary: an exact retained SKU and rate identifier can be reconciled
+with independently published native labels to correct a misclassified quantity, while preserving
+its amount, unit, validity and commercial scope. Semantic bindings may be repaired without adding
+acquisition contracts that were absent from that price transaction. Old interpreted inputs remain
+available for audit and cannot bypass the current-extractor replay gate.
 When a parsed applicability bound is proven to be an unsupported implementation assumption,
 withdraw the affected executable observations into `unknown_applicability` raw variants. Preserve
 their exact quote, unit, locator and validity, retain independently proven selectors as possible

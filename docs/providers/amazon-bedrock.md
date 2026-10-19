@@ -146,7 +146,9 @@ and the specific [API compatibility section](https://docs.aws.amazon.com/bedrock
 The older general API page's single-model statement does not exclude newer models positively
 documented by the specific compatibility guide. These contracts do not create catalog models or
 publish prices. Separate source records retain their own hashes, extractor versions and observation
-times, so an API contract update need not relabel retained price evidence.
+times, so accounting extraction can evolve independently of the price extractor. Provider-atomic
+retention still preserves the whole accepted price transaction when the required bundle cannot
+refresh; a new API document cannot silently add current contracts to historical price evidence.
 
 API fields must be owned by the corresponding Contents or Response Elements definition list, with
 the exact declared object/scalar type. Request fields, nested definitions, prose mentions, duplicate
