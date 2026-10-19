@@ -94,6 +94,9 @@ const repairableReconciliationReasons = new Set([
   "model_card_price_scope_unresolved",
   "model_card_price_cell_unreadable",
   "model_card_service_tier_scope_unresolved",
+  "inference_geo_contract_drift",
+  "inference_geo_multiplier_drift",
+  "inference_geo_eligibility_conflict",
   "open_model_pricing_rejected",
   "partner_model_pricing_rejected",
 ]);
