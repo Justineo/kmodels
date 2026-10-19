@@ -780,12 +780,6 @@ describe("parsed-source canonical pricing adapter", () => {
         expected: "global",
       },
       {
-        provider: "anthropic",
-        key: "speed",
-        explicit: "fast",
-        expected: "standard",
-      },
-      {
         provider: "amazon-bedrock",
         key: "speed",
         explicit: "optimized",
@@ -833,6 +827,52 @@ describe("parsed-source canonical pricing adapter", () => {
       ).toBe(scenario.expected);
     }
   });
+
+  it.each([false, true])(
+    "requires source-owned Anthropic speed scopes (explicit=%s)",
+    (explicit) => {
+      const { source: pricingSource } = pricingManifest();
+      const parsedModel: ParsedProviderModel = {
+        ...model(),
+        provider_id: "anthropic",
+        uid: "anthropic/test-model",
+        price_facts: [
+          tokenRate("1", explicit ? { speed: "standard" } : {}),
+          tokenRate("2", { speed: "fast" }),
+        ],
+      };
+      const partition = assembleParsedProviderPricing(
+        "anthropic",
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      );
+      const term = partition?.books[0]?.offers[0]?.terms[0];
+      if (term?.kind !== "rate") throw new Error("Missing Anthropic input rate");
+      if (explicit) {
+        expect(term.raw_variants).toEqual([]);
+        expect(term.variants).toHaveLength(2);
+        expect(term.variants.map(({ applicability }) => applicability.any_of[0]?.all_of)).toEqual(
+          expect.arrayContaining(
+            ["standard", "fast"].map((value) => [
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "speed" },
+                values: [{ namespace: "provider", provider_id: "anthropic", value }],
+              },
+            ]),
+          ),
+        );
+      } else {
+        expect(term.variants).toEqual([]);
+        expect(term.raw_variants).toHaveLength(2);
+        expect(term.raw_variants.every(({ reason }) => reason === "conflicting_values")).toBe(true);
+        expect(partition?.vocabulary.atoms).not.toContainEqual(
+          expect.objectContaining({ key: "standard" }),
+        );
+      }
+    },
+  );
 
   it("keeps reviewed applicability independent of alternative price amounts", () => {
     const { source: pricingSource } = pricingManifest();
@@ -2911,10 +2951,10 @@ describe("parsed-source canonical pricing adapter", () => {
       provider_id: "anthropic",
       uid: "anthropic/test-model",
       price_facts: [
-        tokenRate("1", {}),
+        tokenRate("1", { speed: "standard" }),
         tokenRate("0.5", { service_tier: "batch" }),
         tokenRate("2", { speed: "fast" }),
-        tokenRate("1.1", { inference_geo: "us" }),
+        tokenRate("1.1", { inference_geo: "us", speed: "standard" }),
       ],
     };
     const partition = assembleParsedProviderPricing(
@@ -2939,7 +2979,6 @@ describe("parsed-source canonical pricing adapter", () => {
       );
     };
     expect(conditions("batch", "0.5")).toEqual({
-      speed: "standard",
       inference_geo: "global",
     });
     expect(conditions("sync", "2")).toEqual({

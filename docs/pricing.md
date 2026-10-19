@@ -832,6 +832,10 @@ the independently established applicability. Without that exact
 evidence, the dimension remains missing and overlapping unequal values fall
 back to raw.
 
+Anthropic speed is established by its ordinary or Fast source matrix before assembly. A missing
+speed cannot be filled from another variant, and Batch does not acquire an inapplicable speed
+selector from a synchronous quote.
+
 The pure applicability interpreter lives in `pricing-applicability.ts`. Website
 projection and the portable calculator use that same implementation, including
 partial OR clauses, interval selectors and exact decimal bounds. The calculator

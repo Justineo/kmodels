@@ -132,6 +132,12 @@ distinct asynchronous execution mechanism; separate offers already express the c
 exclusivity relation is emitted. The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
 
+The ordinary model-price matrix establishes `speed=standard`; the Fast matrix establishes
+`speed=fast`. Both readable amounts and raw cells retain that source-owned scope even when another
+matrix is missing. Shared assembly does not infer Anthropic speed from sibling prices. Batch is
+already a distinct execution mechanism and has no speed selector, because Fast is unavailable for
+Batch. Derived cache and geography rates retain their owning matrix's speed scope.
+
 The same bucket distinction applies to a raw price in an explicitly reviewed five-minute or
 one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
 dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.

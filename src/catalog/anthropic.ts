@@ -1200,8 +1200,9 @@ function pricing(
       const scope = effective(nativeLabel);
       const conditions = {
         ...scope,
-        ...(kind === "batch" ? { service_tier: "batch" } : {}),
-        ...(kind === "fast" ? { speed: "fast" } : {}),
+        ...(kind === "batch"
+          ? { service_tier: "batch" }
+          : { speed: kind === "fast" ? "fast" : "standard" }),
       };
       const claims = anthropicPriceRow(
         kind,
