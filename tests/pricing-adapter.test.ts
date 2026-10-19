@@ -803,45 +803,50 @@ describe("parsed-source canonical pricing adapter", () => {
     },
   );
 
-  it("applies provider defaults only where official alternatives establish them", () => {
-    const { source: pricingSource } = pricingManifest();
-    const scenarios = [
-      { provider: "databricks", key: "promotion", explicit: true, expected: false },
-      { provider: "vertex", key: "promotion", explicit: true, expected: false },
-    ] as const;
-
-    for (const scenario of scenarios) {
+  it.each([
+    ["databricks", false],
+    ["databricks", true],
+    ["vertex", false],
+    ["vertex", true],
+  ] as const)(
+    "requires source-owned %s promotion eligibility (explicit=%s)",
+    (provider, explicit) => {
+      const { source: pricingSource } = pricingManifest();
       const base = model();
       const parsedModel: ParsedProviderModel = {
         ...base,
-        provider_id: scenario.provider,
-        uid: `${scenario.provider}/test-model`,
-        price_facts: [tokenRate("1", {}), tokenRate("2", { [scenario.key]: scenario.explicit })],
+        provider_id: provider,
+        uid: `${provider}/test-model`,
+        price_facts: [
+          tokenRate("1", explicit ? { promotion: false } : {}),
+          tokenRate("2", { promotion: true }),
+        ],
       };
       const partition = assembleParsedProviderPricing(
-        scenario.provider,
+        provider,
         observedAt,
         [{ source: pricingSource, models: [parsedModel] }],
         [parsedModel],
       );
       const term = partition?.books[0]?.offers[0]?.terms[0];
       if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
+      if (!explicit) {
+        expect(term.variants).toEqual([]);
+        expect(term.raw_variants).toHaveLength(2);
+        expect(term.raw_variants.every(({ reason }) => reason === "conflicting_values")).toBe(true);
+        return;
+      }
+      expect(term.variants).toHaveLength(2);
       expect(term.raw_variants).toEqual([]);
       const normalizedBase = term.variants.find(({ observations }) =>
         observations.some(({ raw }) => raw.amount === "1"),
       );
       const condition = normalizedBase?.applicability.any_of[0]?.all_of.find(
-        ({ dimension }) => dimension.value === scenario.key,
+        ({ dimension }) => dimension.value === "promotion",
       );
-      expect(
-        condition?.kind === "categorical"
-          ? condition.values[0]?.value
-          : condition?.kind === "boolean"
-            ? condition.value
-            : undefined,
-      ).toBe(scenario.expected);
-    }
-  });
+      expect(condition?.kind === "boolean" ? condition.value : undefined).toBe(false);
+    },
+  );
 
   it.each([
     ["anthropic", false, "speed", "standard", "fast"],

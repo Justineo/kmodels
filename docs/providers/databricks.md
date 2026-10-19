@@ -139,6 +139,9 @@ pricing joins remain required.
   Standard-rate families are parsed from first-party footnotes. Tiered tables also recognize
   explicit discounts, post-promotion percentages, and the documented two-times list-price rule.
   Model IDs, rates, and dates are not hard-coded.
+  A post-promotion list price keeps its published start date without acquiring an unobserved
+  `promotion=false` condition. Promotion eligibility is retained only where the source establishes
+  it; another dated or differently scoped promotional quote cannot supply the opposite predicate.
 - Blank, `-`, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
   that numeric amount; tiered tables retain its raw evidence. A malformed pricing page loses only that page; catalog identity and the independent
   pricing page survive.
