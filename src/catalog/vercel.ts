@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
-import type { SourceManifest } from "./manifests.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
   type ParsedProviderModel as ProviderModel,
@@ -15,27 +14,11 @@ import {
   contractExtensionEvidence,
   recognizeItems,
   zodContractEvidence,
-  type SourceContractEvidence,
 } from "./source-contract.ts";
-import {
-  modalitySchema,
-  type ModelRoute,
-  type ModelTask,
-  type Provider,
-  unknownCapabilities,
-} from "./schema.ts";
+import { modalitySchema, type ModelRoute, type ModelTask, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { vercelCommercialFacts } from "./vercel-commercial-source.ts";
 import { extractVercelPricingInputs } from "./vercel-accounting.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
@@ -1362,7 +1345,7 @@ function isFastSlug(
   );
 }
 
-export function parseVercelCatalog(input: Input): ProviderModel[] {
+export function parseVercelCatalog(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "vercel-catalog")
     throw new Error("Vercel catalog used the wrong extractor");
   const value: unknown = JSON.parse(input.body);
@@ -1389,9 +1372,11 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
   reportPricingExtensions(list.data, pricingKeys, input);
   const byId = new Map(parsed.map((item) => [item.id, item]));
   if (!bundled.success)
-    return parsed.map((item) =>
-      model(item, input, [], undefined, undefined, isFastSlug(item, byId, [])),
-    );
+    return {
+      models: parsed.map((item) =>
+        model(item, input, [], undefined, undefined, isFastSlug(item, byId, [])),
+      ),
+    };
   if (bundled.data.index.url !== input.source.url)
     throw new Error("Vercel bundle index URL changed");
   const endpoints = new Map<string, Endpoint[]>();
@@ -1508,12 +1493,7 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = result.find(({ price_facts: rates }) => rates.length > 0) ?? result[0];
-  if (carrier !== undefined) {
-    if (commercialFacts.length > 0) carrier.commercial_facts = commercialFacts;
-    if (pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
-  }
-  return result;
+  return { models: result, commercial_facts: commercialFacts, pricing_inputs: pricingInputs };
 }
 
 function reportPricingExtensions(

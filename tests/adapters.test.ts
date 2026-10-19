@@ -340,7 +340,7 @@ async function vercelCatalog(
   }).models;
 }
 
-async function vercelDocumentedCatalog(path: string): Promise<ProviderModel[]> {
+async function vercelDocumentedCatalogResult(path: string): Promise<SourceParseResult> {
   const value = manifest("vercel");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "vercel-catalog")
@@ -357,7 +357,7 @@ async function vercelDocumentedCatalog(path: string): Promise<ProviderModel[]> {
       documents: vercelDocumentation(),
     }),
     observedAt,
-  }).models;
+  });
 }
 
 function vercelDocumentation(): { url: string; body: string }[] {
@@ -7615,6 +7615,70 @@ describe("xAI adapter", () => {
 });
 
 describe("Vercel adapter", () => {
+  it("captures independent search prices and inputs without model rows", () => {
+    const value = manifest("vercel");
+    const configured = value.sources[0];
+    if (configured === undefined || configured.extractor.kind !== "vercel-catalog")
+      throw new Error("Missing Vercel source");
+    const source = { ...configured, extractor: { ...configured.extractor, minModels: 0 } };
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify({
+        index: { url: source.url, body: JSON.stringify({ object: "list", data: [] }) },
+        documents: vercelDocumentation(),
+      }),
+    });
+    expect(result.models).toEqual([]);
+    expect(result.commercial_facts).toHaveLength(9);
+    expect(result.pricing_inputs).toHaveLength(25);
+    const captured = capturePricingReplaySources(
+      [{ source, ...result }],
+      [
+        {
+          id: source.id,
+          provider_id: "vercel",
+          url: source.url,
+          source: [source.type],
+          stability: source.stability,
+          scope: source.scope ?? "global",
+          exhaustive: false,
+          role: source.role ?? "catalog",
+          field_paths: source.fields,
+          pricing_evidence: source.pricingEvidence,
+          observed_at: observedAt,
+          content_hash: "1".repeat(64),
+          extractor_version: source.extractorVersion,
+        },
+      ],
+    )?.[0];
+    expect(captured?.commercial_facts).toEqual(result.commercial_facts);
+    expect(captured?.pricing_inputs).toEqual(result.pricing_inputs);
+    if (captured === undefined) throw new Error("Missing Vercel source compilation input");
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      [],
+      value.pricingCategoricalLabels,
+    );
+    expect(
+      partition?.books
+        .flatMap(({ scope }) => (scope.kind === "provider_resource" ? [scope.resource_key] : []))
+        .sort(),
+    ).toEqual(["exa-search", "parallel-search", "perplexity-search", "tako-search"]);
+    expect(
+      assembleParsedProviderPricing(
+        "vercel",
+        observedAt,
+        [{ source, ...captured }],
+        [],
+        value.pricingCategoricalLabels,
+      ),
+    ).toEqual(partition);
+  });
+
   it.each(["flex", "priority"])(
     "aligns %s long-context boundaries with standard prices in model lists and endpoints",
     async (serviceTier) => {
@@ -8118,13 +8182,14 @@ describe("Vercel adapter", () => {
       ],
     });
     const reconciliations: PricingReconciliationItem[] = [];
-    const models = parseSource({
+    const result = parseSource({
       provider: provider(value),
       source,
       body,
       observedAt,
       onPricingReconciliation: (item) => reconciliations.push(item),
-    }).models;
+    });
+    const { models } = result;
     const model = models[0];
     expect({
       routes: model?.routes,
@@ -8196,21 +8261,29 @@ describe("Vercel adapter", () => {
     expect(
       dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "excluded"]),
     ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 1 });
-    expect(model?.commercial_facts?.map(({ resource_key: key }) => key)).toEqual([
-      "perplexity-search",
-      "exa-search",
-      "exa-search",
-      "tako-search",
-      "tako-search",
-      "tako-search",
-      "tako-search",
-      "parallel-search",
-      "parallel-search",
-    ]);
+    expect(
+      models.every(
+        ({ commercial_facts, pricing_inputs }) =>
+          commercial_facts === undefined && pricing_inputs === undefined,
+      ),
+    ).toBe(true);
+    expect(result.commercial_facts?.map(({ resource_key: key }) => key).sort()).toEqual(
+      [
+        "perplexity-search",
+        "exa-search",
+        "exa-search",
+        "tako-search",
+        "tako-search",
+        "tako-search",
+        "tako-search",
+        "parallel-search",
+        "parallel-search",
+      ].sort(),
+    );
     const pricing = assembleParsedProviderPricing(
       "vercel",
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -8758,11 +8831,12 @@ describe("Vercel adapter", () => {
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Vercel source");
     if (source.source === undefined) throw new Error("Missing Vercel source kinds");
-    const models = await vercelDocumentedCatalog("vercel/pricing.json");
+    const result = await vercelDocumentedCatalogResult("vercel/pricing.json");
+    const { models } = result;
     const pricing = assembleParsedProviderPricing(
       "vercel",
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
