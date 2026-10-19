@@ -72,6 +72,8 @@ replacement.
   synthetic default region for another quote, including a globally routed or differently dated row.
 - Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
   independent applicability dimensions.
+  A dated ordinary price remains unqualified by promotion unless its own source establishes
+  eligibility. A promotional quote cannot add `promotion=false` to a sibling price or date.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only
   under the reviewed model-provider section titles. The Gemini 2.5 layout keeps its exact
   short/long-context and cached-input columns. Unrelated abbreviated tables remain excluded.

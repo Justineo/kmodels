@@ -828,16 +828,13 @@ term are alternative assertions about the same charge, never additional charges 
 consumer must resolve the applicable contract and reject inconsistent available calculations before
 adding that term once. The rate-only website may compact equivalent display rows independently.
 
-Adapters may fill a missing applicability dimension only through a reviewed
-provider rule that identifies the source's unqualified base row against an
-explicit alternative, such as standard versus long-context or
-promotion false versus true. This is a source-schema normalization rule, not a
-provider recommendation or a choice of cheapest offer. The rule depends on the
-source's structure and evidence, never on whether the amounts currently differ.
-Equal prices may compact equivalent rate variants; they cannot widen or erase
-the independently established applicability. Without that exact
-evidence, the dimension remains missing and overlapping unequal values fall
-back to raw.
+Source extraction establishes applicability from each quote's owned table, field or contract.
+Shared assembly validates those facts without completing missing dimensions from peer quotes.
+An alternative price cannot establish a base scope, including promotion eligibility. Explicit
+eligibility remains independent of amount and validity; a dated ordinary price does not require
+`promotion=false` just because a promotional quote exists for another date. Equal prices may
+compact equivalent variants without widening or erasing their independently established scope.
+Unknown applicability remains missing, and overlapping unequal quotes fall back to raw evidence.
 
 Anthropic speed is established by its ordinary or Fast source matrix before assembly. A missing
 speed cannot be filled from another variant, and Batch does not acquire an inapplicable speed

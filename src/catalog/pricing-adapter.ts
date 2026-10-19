@@ -421,8 +421,8 @@ function addPricing(
     billingMode: OfferBuilder["billingMode"];
   },
 ): void {
-  const rates = normalizedSourceFacts(context.providerId, pricing.price_facts);
-  const hasUsageRate = pricing.price_facts.some((rate) => rateMode(rate) === "usage");
+  const rates = pricing.price_facts.map((rate) => sourcePriceFactSchema.parse(rate));
+  const hasUsageRate = rates.some((rate) => rateMode(rate) === "usage");
   const state = pricing.pricing_state;
   const publishesState =
     !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
@@ -440,8 +440,7 @@ function addPricing(
     const offer = forcedOfferBuilder(context, forcedOffer, "usage");
     for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
   }
-  for (const { sourceRate, normalizedRate } of rates)
-    addRate(context, sourceRef, pricing.uid, sourceRate, normalizedRate, forcedOffer);
+  for (const rate of rates) addRate(context, sourceRef, pricing.uid, rate, forcedOffer);
   for (const fact of pricing.raw_price_facts)
     addRaw(context, sourceRef, pricing.uid, fact, forcedOffer);
   for (const fact of pricing.state_facts ?? [])
@@ -777,7 +776,6 @@ function addRate(
   sourceRef: string,
   uid: string,
   sourceRate: SourcePriceFact,
-  normalizedRate: SourcePriceFact,
   forcedOffer?: Parameters<typeof addPricing>[4],
 ): void {
   const mode = rateMode(sourceRate);
@@ -803,7 +801,7 @@ function addRate(
     return;
   }
   const term = rateTerm(offer, meterKey(meter), meter);
-  const normalized = normalizeRate(context, normalizedRate);
+  const normalized = normalizeRate(context, sourceRate);
   offer.sourceRefs.add(sourceRef);
   term.source_refs.push(sourceRef);
 
@@ -838,48 +836,6 @@ function addRate(
     ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
     observation: normalizedObservation(sourceRef, locator, fact, normalized.applicability),
   });
-}
-
-function normalizedSourceFacts(
-  providerId: string,
-  rates: readonly SourcePriceFact[],
-): Array<{ sourceRate: SourcePriceFact; normalizedRate: SourcePriceFact }> {
-  const normalized = rates.map((rate) => sourcePriceFactSchema.parse(rate));
-
-  if (providerId === "databricks" || providerId === "vertex")
-    completeReviewedDefault(normalized, "promotion", false);
-
-  return rates.map((sourceRate, index) => ({
-    sourceRate,
-    normalizedRate: normalized[index]!,
-  }));
-}
-
-function completeReviewedDefault<K extends keyof SourcePriceFact["conditions"]>(
-  rates: SourcePriceFact[],
-  key: K,
-  value: NonNullable<SourcePriceFact["conditions"][K]>,
-): void {
-  for (const group of groupRates(rates, ({ meter }) => meter).values()) {
-    const explicit = group.filter(({ conditions }) => conditions[key] !== undefined);
-    const missing = group.filter(({ conditions }) => conditions[key] === undefined);
-    if (explicit.length === 0) continue;
-    for (const rate of missing) rate.conditions[key] = value;
-  }
-}
-
-function groupRates(
-  rates: readonly SourcePriceFact[],
-  key: (rate: SourcePriceFact) => string,
-): Map<string, SourcePriceFact[]> {
-  const groups = new Map<string, SourcePriceFact[]>();
-  for (const rate of rates) {
-    const value = key(rate);
-    const group = groups.get(value) ?? [];
-    group.push(rate);
-    groups.set(value, group);
-  }
-  return groups;
 }
 
 function pricingBooks(context: AdapterContext): AtomicProviderPricing["books"] {

@@ -5006,6 +5006,35 @@ describe("Vertex AI adapters", () => {
         ["input_text", "0.10", "batch"],
       ]),
     );
+    const source = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
+    if (source === undefined) throw new Error("Missing Vertex pricing source");
+    const globalPricing = {
+      ...regional,
+      price_facts: regional.price_facts.filter(
+        ({ conditions }) => conditions.deployment_scope === "global",
+      ),
+    };
+    const partition = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source, models: [globalPricing] }],
+      models,
+    );
+    const future = partition?.books
+      .flatMap((book) =>
+        book.offers.flatMap((offer) =>
+          offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        ),
+      )
+      .filter(({ validity }) => validity?.from?.value === "2026-09-01");
+    expect(future?.length).toBeGreaterThan(0);
+    expect(
+      future?.every(({ applicability }) =>
+        applicability.any_of.every(({ all_of }) =>
+          all_of.every(({ dimension }) => dimension.value !== "promotion"),
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("resolves only document-verified Vertex pricing ambiguities", async () => {
@@ -6243,6 +6272,29 @@ describe("Databricks adapters", () => {
         (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
       )?.conditions.effective_until,
     ).toBe("2026-08-31");
+    const source = manifest("databricks").sources[0];
+    if (source === undefined) throw new Error("Missing Databricks pricing source");
+    const partition = assembleParsedProviderPricing(
+      "databricks",
+      observedAt,
+      [{ source, models }],
+      models,
+    );
+    const future = partition?.books
+      .flatMap((book) =>
+        book.offers.flatMap((offer) =>
+          offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        ),
+      )
+      .filter(({ validity }) => validity?.from?.value === "2027-02-01");
+    expect(future?.length).toBeGreaterThan(0);
+    expect(
+      future?.every(({ applicability }) =>
+        applicability.any_of.every(({ all_of }) =>
+          all_of.every(({ dimension }) => dimension.value !== "promotion"),
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("derives Databricks promotions from published notes", async () => {
