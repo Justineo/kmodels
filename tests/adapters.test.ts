@@ -240,12 +240,12 @@ async function databricksWithout(...paths: string[]): Promise<ProviderModel[]> {
   }).models;
 }
 
-async function databricksCatalog(
+async function databricksCatalogResult(
   overrides: Readonly<Record<string, string>> = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   extraDocuments: readonly { url: string; body: string }[] = [],
   onContractFinding?: (finding: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const value = manifest("databricks");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "databricks-catalog")
@@ -306,7 +306,13 @@ async function databricksCatalog(
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
+  });
+}
+
+async function databricksCatalog(
+  ...args: Parameters<typeof databricksCatalogResult>
+): Promise<ProviderModel[]> {
+  return (await databricksCatalogResult(...args)).models;
 }
 
 async function vercelCatalog(
@@ -5688,7 +5694,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v16");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v17");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5828,9 +5834,11 @@ describe("Databricks adapters", () => {
     const value = manifest("databricks");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Databricks source");
-    const models = await databricksCatalog();
+    const result = await databricksCatalogResult();
+    const { models } = result;
     expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual([]);
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(5);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -5862,10 +5870,41 @@ describe("Databricks adapters", () => {
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
+    const record = {
+      id: source.id,
+      provider_id: "databricks",
+      url: source.url,
+      source: [source.type],
+      stability: source.stability,
+      scope: source.scope ?? "global",
+      exhaustive: false,
+      role: source.role ?? "catalog",
+      field_paths: source.fields,
+      pricing_evidence: source.pricingEvidence,
+      observed_at: observedAt,
+      content_hash: "1".repeat(64),
+      extractor_version: source.extractorVersion,
+    } satisfies SourceRecord;
+    const captured = capturePricingReplaySources([{ source, ...result }], [record])?.[0];
+    expect(captured?.pricing_inputs).toEqual(pricingInputs);
+    expect(
+      capturePricingReplaySources([{ source, ...result, models: [] }], [record])?.[0]
+        ?.pricing_inputs,
+    ).toEqual(pricingInputs);
+    if (captured === undefined) throw new Error("Missing Databricks source compilation input");
+    expect(
+      assembleParsedProviderPricing(
+        "databricks",
+        observedAt,
+        [{ source, ...captured }],
+        models,
+        value.pricingCategoricalLabels,
+      ),
+    ).toEqual(partition);
     const sol = partition?.books.find(
       ({ scope }) =>
         scope.kind === "models" && scope.model_refs.includes("databricks/databricks-gpt-5-6-sol"),
@@ -5978,13 +6017,14 @@ describe("Databricks adapters", () => {
     const findings: SourceContractEvidence[] = [];
     const reconciliation: PricingReconciliationItem[] = [];
     const reference = await fixture("databricks/api-reference.html");
-    const models = await databricksCatalog(
+    const result = await databricksCatalogResult(
       { "api-reference.html": reference.replace("reasoning_tokens", "thinking_tokens") },
       (item) => reconciliation.push(item),
       [],
       (finding) => findings.push(finding),
     );
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const { models } = result;
+    const inputs = result.pricing_inputs ?? [];
     expect(inputs).toHaveLength(4);
     expect(inputs.some(({ key }) => key === "response.usage.reasoning_tokens")).toBe(false);
     expect(models.some(({ pricing_state }) => pricing_state === "numeric")).toBe(true);

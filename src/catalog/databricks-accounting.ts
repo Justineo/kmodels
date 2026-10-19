@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { htmlText as text } from "./html.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -42,15 +43,17 @@ export function extractDatabricksPricingInputs(
   onFinding?: (evidence: SourceContractEvidence) => void,
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
-  const $ = load(body);
-  const fields = documentedFields($);
-  const commonUsage = /responses include a usage sub-message.*same across all task types/is.test(
-    text($("main").text()),
-  );
+  const fields = documentedUsage(body);
   const facts = contracts.flatMap((contract) => {
-    const descriptions = fields.get(contract.field) ?? [];
+    const declarations = fields.get(contract.field) ?? [];
+    const first = declarations[0];
     const available =
-      commonUsage && descriptions.some((description) => contract.description.test(description));
+      first !== undefined &&
+      first.type === "integer" &&
+      contract.description.test(first.description) &&
+      declarations.every(
+        ({ type, description }) => type === first.type && description === first.description,
+      );
     if (!available) {
       onFinding?.(contractExtensionEvidence([`/documents/api-reference/${contract.field}`]));
       return [];
@@ -92,29 +95,53 @@ function usage(
   };
 }
 
-function documentedFields($: ReturnType<typeof load>): ReadonlyMap<string, string[]> {
-  const result = new Map<string, string[]>();
-  $("main table").each((_tableIndex, table) => {
-    const headers = $(table)
-      .find("thead th")
+function documentedUsage(body: string) {
+  const $ = load(body);
+  const mains = $("main");
+  const result = new Map<string, Array<{ type: string; description: string }>>();
+  if (mains.length !== 1) return result;
+  const main = mains.clone();
+  main.find("pre, blockquote, script, style, template").remove();
+  const headings = "h1, h2, h3, h4, h5, h6";
+  const usage = main.find("h2").filter((_, heading) => text($(heading).text()) === "Usage");
+  const owner = usage.get(0);
+  if (usage.length !== 1 || owner === undefined) return result;
+  const prose: string[] = [];
+  const elements = main.find(`${headings}, p, table`).toArray();
+  for (const element of elements.slice(elements.indexOf(owner) + 1)) {
+    const selection = $(element);
+    if (selection.is(headings)) break;
+    if (selection.is("p") && selection.parents("table").length === 0)
+      prose.push(text(selection.text()));
+    if (!selection.is("table") || selection.parents("table").length > 0) continue;
+    const headers = selection
+      .children("thead")
+      .children("tr")
+      .first()
+      .children("th")
       .map((_index, cell) => text($(cell).text()))
       .get();
-    if (headers.join("|") !== "Field|Type|Description") return;
-    $(table)
-      .find("tbody tr")
+    if (headers.join("|") !== "Field|Type|Description") continue;
+    selection
+      .children("tbody")
+      .children("tr")
       .each((_rowIndex, row) => {
         const cells = $(row).children("td");
         const field = text(cells.eq(0).text());
-        const description = text(cells.eq(2).text());
-        if (field === "" || description === "") return;
-        const current = result.get(field);
-        if (current === undefined) result.set(field, [description]);
-        else current.push(description);
+        if (field === "") return;
+        const declaration =
+          cells.length === 3
+            ? {
+                type: text(cells.eq(1).text()).toLowerCase(),
+                description: text(cells.eq(2).text()),
+              }
+            : { type: "", description: "" };
+        const current = result.get(field) ?? [];
+        current.push(declaration);
+        result.set(field, current);
       });
-  });
+  }
+  if (!/responses include a usage sub-message.*same across all task types/is.test(prose.join(" ")))
+    result.clear();
   return result;
-}
-
-function text(value: string): string {
-  return value.replace(/\s+/gu, " ").trim();
 }

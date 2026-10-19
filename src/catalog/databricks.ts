@@ -3,7 +3,7 @@ import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { extractDatabricksPricingInputs } from "./databricks-accounting.ts";
 import { modelIdSchema } from "./identity.ts";
-import type { SourceManifest } from "./manifests.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
@@ -13,23 +13,9 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import {
-  assertItemCount,
-  contractExtensionEvidence,
-  recognizeItems,
-  type SourceContractEvidence,
-} from "./source-contract.ts";
-import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
+import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
+import { modalitySchema, type Modality, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
 
 type Document = ReturnType<typeof load>;
 type Selection = ReturnType<Document>;
@@ -1543,7 +1529,7 @@ function applyReleases(models: ProviderModel[], body: string): void {
   if (observed === 0) throw new Error("Databricks release feed contained no matching models");
 }
 
-export function parseDatabricksCatalog(input: Input): ProviderModel[] {
+export function parseDatabricksCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const apiReference = requiredDocument(
     bundle,
@@ -1659,10 +1645,7 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = result[0];
-  if (carrier !== undefined && pricingInputs.length > 0)
-    result[0] = { ...carrier, pricing_inputs: pricingInputs };
-  return result;
+  return { models: result, pricing_inputs: pricingInputs };
 }
 
 function apiTask(value: string | undefined): {
@@ -1676,7 +1659,7 @@ function apiTask(value: string | undefined): {
   return { modalities: { input: [], output: [] } };
 }
 
-export function parseDatabricksApi(input: Input): ProviderModel[] {
+export function parseDatabricksApi(input: Input): SourceParseResult {
   const list = endpointListSchema.parse(JSON.parse(input.body));
   const endpoints = recognizeItems({
     label: "Databricks serving endpoint",
@@ -1684,19 +1667,21 @@ export function parseDatabricksApi(input: Input): ProviderModel[] {
     schema: endpointSchema,
     modelId: "name",
   });
-  return endpoints.map((endpoint) => {
-    const task = apiTask(endpoint.task);
-    return {
-      ...baseModel({
-        providerId: input.provider.id,
-        id: endpoint.name,
-        name: endpoint.name,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      tasks: task.operation === undefined ? [] : [task.operation],
-      modalities: task.modalities,
-      scope: "runtime_observation",
-    };
-  });
+  return {
+    models: endpoints.map((endpoint) => {
+      const task = apiTask(endpoint.task);
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id: endpoint.name,
+          name: endpoint.name,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        tasks: task.operation === undefined ? [] : [task.operation],
+        modalities: task.modalities,
+        scope: "runtime_observation",
+      };
+    }),
+  };
 }
