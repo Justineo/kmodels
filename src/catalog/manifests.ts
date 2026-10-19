@@ -1037,7 +1037,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-sdk" },
-        extractorVersion: "sagemaker-sdk-v1",
+        extractorVersion: "sagemaker-sdk-v2",
         fields: [
           "model_id",
           "tasks",
@@ -1067,7 +1067,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-pricing" },
-        extractorVersion: "sagemaker-pricing-v5",
+        extractorVersion: "sagemaker-pricing-v6",
         fields: ["pricing"],
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
@@ -1096,7 +1096,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "sagemaker-api" },
-        extractorVersion: "sagemaker-api-v2",
+        extractorVersion: "sagemaker-api-v3",
         fields: ["name", "description", "model_card", "modalities", "capabilities", "availability"],
         allowedHosts: [
           "api.sagemaker.us-west-2.amazonaws.com",

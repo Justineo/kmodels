@@ -5,7 +5,12 @@ import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import { baseModel } from "./model.ts";
 import { modalitySchema } from "./schema.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
-import { packageVersion, sagemakerTasks, type SageMakerRow } from "./sagemaker.ts";
+import {
+  assertSagemakerSpecMetadata,
+  packageVersion,
+  sagemakerTasks,
+  type SageMakerRow,
+} from "./sagemaker.ts";
 
 const headerSchema = z.object({
   model_id: modelIdSchema,
@@ -20,6 +25,10 @@ export function sagemakerOpenSpecs(body: string, rows: readonly SageMakerRow[]) 
   const groups = new Map<string, typeof headers>();
   for (const header of headers) {
     const group = groups.get(header.model_id) ?? [];
+    assertSagemakerSpecMetadata(
+      group.find(({ version }) => version === header.version),
+      header,
+    );
     group.push(header);
     groups.set(header.model_id, group);
   }

@@ -14,10 +14,10 @@ import {
   sagemakerSpecSchema,
 } from "./sagemaker.ts";
 
-export async function fetchSagemakerPricing(
+function sagemakerReader(
   source: SourceManifest,
   fetchPayload: (source: SourceManifest) => Promise<FetchPayload>,
-): Promise<FetchResult> {
+) {
   const dependencies: FetchObservation[] = [];
   const read = async (
     key: string,
@@ -39,6 +39,14 @@ export async function fetchSagemakerPricing(
     });
     return result.body;
   };
+  return { read, dependencies };
+}
+
+export async function fetchSagemakerPricing(
+  source: SourceManifest,
+  fetchPayload: (source: SourceManifest) => Promise<FetchPayload>,
+): Promise<FetchResult> {
+  const { read, dependencies } = sagemakerReader(source, fetchPayload);
   const [catalog, manifest, openManifest, prices] = await Promise.all([
     read("catalog", source.url, 4, "html"),
     read("manifest", sagemakerManifestUrl, 4, "json"),
@@ -92,27 +100,7 @@ export async function fetchSagemakerSdk(
   source: SourceManifest,
   fetchPayload: (source: SourceManifest) => Promise<FetchPayload>,
 ): Promise<FetchResult> {
-  const dependencies: FetchObservation[] = [];
-  const read = async (
-    key: string,
-    url: string,
-    maxMiB: number,
-    format: SourceManifest["format"],
-  ) => {
-    const result = await fetchPayload({
-      ...source,
-      url,
-      format,
-      maxResponseBytes: maxMiB * 1024 * 1024,
-    });
-    dependencies.push({
-      key: `${source.id}/${key}`,
-      contentHash: result.contentHash,
-      etag: result.etag,
-      lastModified: result.lastModified,
-    });
-    return result.body;
-  };
+  const { read, dependencies } = sagemakerReader(source, fetchPayload);
   const [catalog, open, proprietary] = await Promise.all([
     read("catalog", source.url, 4, "html"),
     read("open-manifest", sagemakerOpenManifestUrl, 32, "json"),

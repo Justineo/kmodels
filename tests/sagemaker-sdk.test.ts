@@ -79,6 +79,50 @@ const spec = {
 };
 
 describe("SageMaker SDK catalog", () => {
+  it("rejects conflicting metadata for one exact manifest identity before admission", () => {
+    for (const changes of [{ deprecated: true }, { search_keywords: ["Classification"] }]) {
+      const original = header("new-video");
+      const conflicting = { ...original, ...changes };
+      for (const rows of [
+        [original, conflicting],
+        [conflicting, original],
+      ])
+        expect(() => sagemakerOpenSpecs(JSON.stringify(rows), [])).toThrow("conflicting");
+    }
+    const original = {
+      model_id: "new-generator",
+      version: "1.0",
+      spec_key: "proprietary-models/new-generator/proprietary_specs_1.0.json",
+      search_keywords: ["Text", "Generation"],
+    };
+    const conflicting = { ...original, search_keywords: ["Classification"] };
+    for (const rows of [
+      [original, conflicting],
+      [conflicting, original],
+    ])
+      expect(() => sagemakerPricingSpecs(JSON.stringify(rows), [], true)).toThrow("conflicting");
+    expect(
+      sagemakerOpenSpecs(JSON.stringify([header("new-video"), header("new-video")]), []),
+    ).toHaveLength(1);
+    expect(sagemakerPricingSpecs(JSON.stringify([original, original]), [], true)).toHaveLength(1);
+    const reordered = { ...original, search_keywords: ["Generation", "Text"], future_field: true };
+    expect(sagemakerPricingSpecs(JSON.stringify([original, reordered]), [], true)).toHaveLength(1);
+    const open = header("new-video");
+    expect(
+      sagemakerOpenSpecs(
+        JSON.stringify([
+          open,
+          {
+            ...open,
+            search_keywords: [...open.search_keywords].reverse(),
+            future_field: true,
+          },
+        ]),
+        [],
+      ),
+    ).toHaveLength(1);
+  });
+
   it("requires positive foundation or text-generation evidence for new proprietary IDs", () => {
     const body = JSON.stringify([
       {
