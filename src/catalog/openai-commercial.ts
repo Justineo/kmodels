@@ -8,7 +8,8 @@ import type {
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { compareUtf8, uniqueCanonicalValues as uniqueCanonical } from "./canonical-value.ts";
-import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import { applicabilitiesOverlap, canonicalizeApplicability } from "./pricing-canonical.ts";
+import { publishedValiditiesOverlap } from "./pricing-time.ts";
 import {
   addAtom,
   isStandardUnit,
@@ -35,7 +36,7 @@ import {
   mergeQuantityMethods,
   pricingInputFacts,
   pricingInputObservation,
-  usageInputSources,
+  subtractQuantityMethods,
   type BoundQuantityMethods,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -43,7 +44,7 @@ import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { preferOpenAiPricingPage } from "./openai-price-authority.ts";
 import type { ProviderModel } from "./schema.ts";
 
-type PublishedModel = Pick<ProviderModel, "capabilities" | "tasks" | "uid">;
+type PublishedModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "tasks" | "uid">;
 
 const eventUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "event" }, power: 1 }],
@@ -64,7 +65,7 @@ export function applyOpenAiCommercialTopology(
     .map((book) =>
       book.scope.kind === "models"
         ? splitModelBook(book, modelByRef, input, inputIndex)
-        : bindResourceBook(book, input, inputIndex),
+        : bindResourceBook(book, input),
     )
     .map(includePricingInputSourceRefs);
   return { ...input, books };
@@ -106,9 +107,10 @@ function partitionBook(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
+  const scopedInputs = modelInputs(model, inputIndex);
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== sourceOfferKey) return [offer];
-    const sync = partitionOffer(offer, "sync", syncName, "sync", model, input, inputIndex);
+    const sync = partitionOffer(offer, "sync", syncName, "sync", model, input, scopedInputs);
     const batch = partitionOffer(
       offer,
       "batch",
@@ -116,7 +118,7 @@ function partitionBook(
       "batch",
       model,
       input,
-      inputIndex,
+      scopedInputs,
     );
     return [sync, batch].filter((candidate): candidate is AtomicPricingOffer =>
       hasCommercialContent(candidate),
@@ -157,9 +159,8 @@ function partitionOffer(
       },
     ];
   });
-  const rateMeters = offer.terms.flatMap((term) => (term.kind === "rate" ? [term.meter] : []));
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, partition, model, input, inputIndex, rateMeters),
+    partitionTerm(term, partition, model, input, inputIndex, offer.terms),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -178,7 +179,7 @@ function partitionTerm(
   model: PublishedModel | undefined,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  rateMeters: readonly PriceMeter[],
+  terms: readonly AtomicPricingTerm[],
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => {
@@ -206,9 +207,10 @@ function partitionTerm(
       model,
       input,
       inputIndex,
-      rateMeters,
+      overlappingMeters(terms, variant, partition),
     );
-    const selector_sources = selectorSources(next.applicability, inputIndex, model);
+    const selector_sources =
+      partition === "batch" ? [] : selectorSources(next.applicability, inputIndex, model);
     return [
       {
         ...next,
@@ -275,8 +277,20 @@ function modelChargeBinding(
 ): ChargeBinding | undefined {
   const spec = modelSignal(meter, variant.price.per, model, input, rateMeters);
   if (spec === undefined) return;
+  const unownedOperation =
+    supportsApi(model, "Realtime", "v1/realtime") &&
+    variant.applicability.any_of.some(({ all_of }) =>
+      all_of.some(
+        ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "operation",
+      ),
+    );
+  const missingPartition =
+    spec.realtimeInput !== undefined &&
+    rateMeters.some((meter) => meter.value.startsWith("cache_write_"));
   const quantity =
-    partition === "batch" ? { methods: [], facts: [] } : quantityMethods(spec, inputIndex);
+    partition === "batch" || unownedOperation || missingPartition
+      ? { methods: [], facts: [] }
+      : quantityMethods(spec, inputIndex, input);
   return {
     signal: spec.signal,
     aggregation:
@@ -297,6 +311,79 @@ interface ModelSignalSpec {
   signal: UsageSignal;
   directKeys: string[];
   derivedUncached?: boolean;
+  realtimeInput?: string;
+}
+
+function supportsApi(model: PublishedModel | undefined, name: string, path: string): boolean {
+  return (
+    model?.api_endpoints?.some((endpoint) => endpoint.name === name && endpoint.path === path) ===
+    true
+  );
+}
+
+function modelInputs(
+  model: PublishedModel | undefined,
+  index: PricingInputIndex,
+): PricingInputIndex {
+  const permits = (key: string) => {
+    if (key.startsWith("realtime.")) return supportsApi(model, "Realtime", "v1/realtime");
+    if (key.startsWith("responses.usage.") || key === "responses.served_service_tier")
+      return supportsApi(model, "Responses", "v1/responses");
+    if (key === "responses.embedding_input_tokens")
+      return supportsApi(model, "Embeddings", "v1/embeddings");
+    if (key === "responses.generated_seconds" || key === "responses.video_resolution")
+      return supportsApi(model, "Videos", "v1/videos");
+    return (
+      (key.startsWith("responses.image_") || key === "responses.generated_images") &&
+      (supportsApi(model, "Image generation", "v1/images/generations") ||
+        supportsApi(model, "Image edit", "v1/images/edits"))
+    );
+  };
+  return new Map(
+    [...index]
+      .filter(([key]) => permits(key))
+      .map(([key, facts]) => [key, facts.filter((fact) => fact.channel !== "account_report")]),
+  );
+}
+
+function overlappingMeters(
+  terms: readonly AtomicPricingTerm[],
+  variant: AtomicRateVariant,
+  partition: "sync" | "batch",
+): PriceMeter[] {
+  const scope = partitionApplicability(variant.applicability, partition);
+  if (scope === undefined) return [];
+  return terms.flatMap((term) =>
+    term.kind === "rate" &&
+    term.variants.some((candidate) => {
+      const candidateScope = partitionApplicability(candidate.applicability, partition);
+      return (
+        candidateScope !== undefined &&
+        canonicalJson(candidate.price.denomination) === canonicalJson(variant.price.denomination) &&
+        canonicalJson(candidate.price.per) === canonicalJson(variant.price.per) &&
+        applicabilitiesOverlap(scope, candidateScope) &&
+        publishedValiditiesOverlap(candidate.validity, variant.validity)
+      );
+    })
+      ? [term.meter]
+      : [],
+  );
+}
+
+function providerModelSignal(
+  input: AtomicProviderPricing,
+  key: string,
+  definition: string,
+  directKeys: string[],
+): ModelSignalSpec {
+  addAtom(input, {
+    kind: "usage_signal",
+    key,
+    definition,
+    unit: tokenUnit,
+    resolution_phase: "outcome",
+  });
+  return { signal: { namespace: "provider", provider_id: "openai", value: key }, directKeys };
 }
 
 function modelSignal(
@@ -315,25 +402,43 @@ function modelSignal(
     directKeys,
     ...(derivedUncached ? { derivedUncached: true } : {}),
   });
-  const provider = (key: string, definition: string, directKeys: string[]): ModelSignalSpec => {
-    addAtom(input, {
-      kind: "usage_signal",
-      key,
-      definition,
-      unit: tokenUnit,
-      resolution_phase: "outcome",
-    });
-    return {
-      signal: { namespace: "provider", provider_id: "openai", value: key },
-      directKeys,
-    };
-  };
+  const provider = (key: string, definition: string, directKeys: string[]): ModelSignalSpec =>
+    providerModelSignal(input, key, definition, directKeys);
+  if (
+    supportsApi(model, "Realtime", "v1/realtime") &&
+    isStandardUnit(unit, "token") &&
+    (meter.namespace === "kmodels" || meter.provider_id === "openai")
+  ) {
+    const match = meter.value.match(/^(input|output|cache_read)_(text|audio|image)$/);
+    const direction = match?.[1];
+    const modality = match?.[2];
+    if (direction !== undefined && modality !== undefined) {
+      if (direction === "input")
+        return {
+          ...provider(
+            `uncached_input_${modality}_tokens`,
+            `Billable uncached ${modality}-input tokens`,
+            [],
+          ),
+          realtimeInput: modality,
+        };
+      if (direction === "cache_read")
+        return provider(
+          `cached_input_${modality}_tokens`,
+          `Billable cached ${modality}-input tokens`,
+          [`realtime.cached_${modality}_tokens`],
+        );
+      return provider(
+        `output_${modality}_tokens`,
+        `Billable ${modality}-output tokens`,
+        modality === "image" ? [] : [`realtime.output_${modality}_tokens`],
+      );
+    }
+  }
   if (meter.namespace === "provider") {
     if (meter.provider_id !== "openai" || !isStandardUnit(unit, "token")) return;
     if (meter.value === "cache_read_audio")
-      return provider("cached_input_audio_tokens", "Billable cached audio-input tokens", [
-        "organization.completions.input_cached_audio_tokens",
-      ]);
+      return provider("cached_input_audio_tokens", "Billable cached audio-input tokens", []);
     if (meter.value === "cache_read_image")
       return model?.tasks.includes("image_generation") === true
         ? provider(
@@ -341,9 +446,7 @@ function modelSignal(
             "Billable cached image-input tokens for an image-generation response",
             [],
           )
-        : provider("cached_input_image_tokens", "Billable cached image-input tokens", [
-            "organization.completions.input_cached_image_tokens",
-          ]);
+        : provider("cached_input_image_tokens", "Billable cached image-input tokens", []);
     return;
   }
   if (meter.value === "session_runtime" && isStandardUnit(unit, "second"))
@@ -356,15 +459,7 @@ function modelSignal(
           "Billable uncached text-input tokens for an image-generation response",
           [],
         )
-      : standard(
-          "uncached_input_tokens",
-          [
-            partitioned
-              ? "organization.completions.input_text_tokens"
-              : "organization.completions.input_uncached_tokens",
-          ],
-          !partitioned,
-        );
+      : standard("uncached_input_tokens", [], !partitioned);
   }
   if (meter.value === "cache_read_text" && isStandardUnit(unit, "token")) {
     if (model?.tasks.includes("image_generation") === true)
@@ -374,69 +469,44 @@ function modelSignal(
         [],
       );
     const partitioned =
-      hasMeter(rateMeters, "cache_read_audio") || hasMeter(rateMeters, "cache_read_image");
-    return standard("cached_input_tokens", [
-      ...(partitioned ? [] : ["responses.usage.cached_input_tokens"]),
-      partitioned
-        ? "organization.completions.input_cached_text_tokens"
-        : "organization.completions.input_cached_tokens",
-    ]);
+      hasMeter(rateMeters, "input_audio") ||
+      hasMeter(rateMeters, "input_image") ||
+      hasMeter(rateMeters, "cache_read_audio") ||
+      hasMeter(rateMeters, "cache_read_image");
+    return standard(
+      "cached_input_tokens",
+      partitioned ? [] : ["responses.usage.cached_input_tokens"],
+    );
   }
   if (meter.value === "cache_write_text" && isStandardUnit(unit, "token"))
-    return standard("cache_write_tokens", [
-      "responses.usage.cache_write_tokens",
-      "organization.completions.input_cache_write_tokens",
-    ]);
+    return standard("cache_write_tokens", ["responses.usage.cache_write_tokens"]);
   if (meter.value === "output_text" && isStandardUnit(unit, "token")) {
     const partitioned =
       hasMeter(rateMeters, "output_audio") || hasMeter(rateMeters, "output_image");
-    return standard("output_tokens", [
-      ...(partitioned ? [] : ["responses.usage.output_tokens"]),
-      partitioned
-        ? "organization.completions.output_text_tokens"
-        : "organization.completions.output_tokens",
-    ]);
+    return standard("output_tokens", partitioned ? [] : ["responses.usage.output_tokens"]);
   }
   if (meter.value === "input_audio" && isStandardUnit(unit, "token"))
-    return provider("uncached_input_audio_tokens", "Billable uncached audio-input tokens", [
-      "organization.completions.input_audio_tokens",
-    ]);
+    return provider("uncached_input_audio_tokens", "Billable uncached audio-input tokens", []);
   if (meter.value === "output_audio" && isStandardUnit(unit, "token"))
-    return provider("output_audio_tokens", "Billable audio-output tokens", [
-      "organization.completions.output_audio_tokens",
-    ]);
+    return provider("output_audio_tokens", "Billable audio-output tokens", []);
   if (meter.value === "input_image" && isStandardUnit(unit, "token"))
-    return provider(
-      "uncached_input_image_tokens",
-      "Billable uncached image-input tokens",
-      model?.tasks.includes("image_generation")
-        ? []
-        : ["organization.completions.input_image_tokens"],
-    );
+    return provider("uncached_input_image_tokens", "Billable uncached image-input tokens", []);
   if (meter.value === "output_image" && isStandardUnit(unit, "token"))
     return provider(
       "output_image_tokens",
       "Billable image-output tokens",
-      model?.tasks.includes("image_generation")
-        ? ["responses.image_output_tokens"]
-        : ["organization.completions.output_image_tokens"],
+      model?.tasks.includes("image_generation") ? ["responses.image_output_tokens"] : [],
     );
   if (meter.value === "output_audio" && isStandardUnit(unit, "character"))
-    return standard("input_characters", ["organization.audio_speeches.characters"]);
+    return standard("input_characters", []);
   if (meter.value === "embedding" && isStandardUnit(unit, "token"))
-    return standard("input_tokens", [
-      "responses.embedding_input_tokens",
-      "organization.embeddings.input_tokens",
-    ]);
+    return standard("input_tokens", ["responses.embedding_input_tokens"]);
   if (meter.value === "image_generation" && isStandardUnit(unit, "image"))
-    return standard("generated_images", [
-      "responses.generated_images",
-      "organization.images.images",
-    ]);
+    return standard("generated_images", ["responses.generated_images"]);
   if (meter.value === "video_generation" && isStandardUnit(unit, "second"))
     return standard("generated_seconds", ["responses.generated_seconds"]);
   if (meter.value === "transcription" && isStandardUnit(unit, "second"))
-    return standard("processed_audio_seconds", ["organization.audio_transcriptions.seconds"]);
+    return standard("processed_audio_seconds", []);
 }
 
 function hasMeter(meters: readonly PriceMeter[], value: string): boolean {
@@ -446,7 +516,30 @@ function hasMeter(meters: readonly PriceMeter[], value: string): boolean {
 function quantityMethods(
   spec: ModelSignalSpec,
   inputIndex: PricingInputIndex,
+  input: AtomicProviderPricing,
 ): BoundQuantityMethods {
+  if (spec.realtimeInput !== undefined) {
+    const modality = spec.realtimeInput;
+    const total = providerModelSignal(
+      input,
+      `realtime_reported_input_${modality}_tokens`,
+      `OpenAI Realtime reported ${modality} input tokens, including cached tokens`,
+      [],
+    ).signal;
+    const cached = providerModelSignal(
+      input,
+      `cached_input_${modality}_tokens`,
+      `Billable cached ${modality}-input tokens`,
+      [],
+    ).signal;
+    return subtractQuantityMethods(
+      total,
+      [`realtime.input_${modality}_tokens`],
+      cached,
+      [`realtime.cached_${modality}_tokens`],
+      inputIndex,
+    );
+  }
   const direct = directQuantityMethods(spec.signal, spec.directKeys, inputIndex);
   if (spec.derivedUncached !== true) return mergeQuantityMethods([direct]);
 
@@ -489,7 +582,7 @@ function selectorSources(
     if (dimension.namespace !== "kmodels") continue;
     const keys =
       dimension.value === "served_service_tier"
-        ? ["responses.served_service_tier", "organization.completions.service_tier"]
+        ? ["responses.served_service_tier"]
         : dimension.value === "context_tokens"
           ? ["responses.usage.input_tokens"]
           : dimension.value === "quality"
@@ -569,10 +662,10 @@ function compareCanonical(left: unknown, right: unknown): number {
 function bindResourceBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
-  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const resourceKey = book.scope.resource_key;
+  const inputIndex: PricingInputIndex = new Map();
   const partitioned = resourceKey.startsWith("fine-tuned-inference:")
     ? partitionBook(book, "inference", "Fine-tuned model inference", undefined, input, inputIndex)
     : book;
@@ -630,8 +723,6 @@ function resourceChargeBinding(
       "file_search_calls",
       "Provider-reported File Search call events",
       eventUnit,
-      ["organization.file_search_calls.num_requests"],
-      inputIndex,
     );
   if (resourceKey === "web-search" && isUnitTerm(term, "event"))
     return providerBinding(
@@ -639,8 +730,6 @@ function resourceChargeBinding(
       "web_search_calls",
       "Provider-reported billable Web Search call events",
       eventUnit,
-      ["organization.web_search_calls.num_requests"],
-      inputIndex,
     );
   if (resourceKey.startsWith("fine-tuned-inference:"))
     return (variant) => {
@@ -663,8 +752,6 @@ function providerBinding(
   key: string,
   definition: string,
   unit: UnitExpression,
-  keys: string[],
-  inputIndex: PricingInputIndex,
 ): (variant: AtomicRateVariant) => ChargeBinding {
   addAtom(input, {
     kind: "usage_signal",
@@ -675,17 +762,10 @@ function providerBinding(
   });
   const signal = { namespace: "provider", provider_id: "openai", value: key } as const;
   return (variant) => {
-    const facts = pricingInputFacts(inputIndex, keys);
     return {
       signal,
       aggregation: "request",
-      ...(facts.length === 0
-        ? {}
-        : { quantity_methods: [{ input_sources: usageInputSources(signal, facts) }] }),
-      observations: uniqueObservations([
-        rawEvidence(variant.observation),
-        ...facts.map(pricingInputObservation),
-      ]),
+      observations: [rawEvidence(variant.observation)],
     };
   };
 }

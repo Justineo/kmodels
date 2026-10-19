@@ -581,6 +581,10 @@ cannot consume such a fact, and a book spanning models requires proof for every 
 This scope lives in compilation inputs and is resolved before publishing the book's acquisition
 method; it adds no caller-selected model predicate to the calculation wire.
 An adapter may preserve an explicitly quoted modality through the source's typed charge binding.
+The counter's aggregation boundary must match the binding's calculation boundary. A time-bucket
+report does not become a request counter through a reconciliation-only availability label. When
+the required grouping and homogeneous price scope are not established, retain the semantic binding
+and withhold the acquisition method.
 Other quoted prices may expose an unsafe aggregate acquisition path, but cannot redefine that
 source-owned quantity as a different modality.
 A missing or drifted accounting field therefore removes only

@@ -15,7 +15,7 @@ const observedAt = "2026-07-21T00:00:00.000Z";
 const fixture = (name: string) =>
   readFile(new URL("./fixtures/openai/" + name, import.meta.url), "utf8");
 const accounting =
-  "components:\n  schemas:\n    UsageWebSearchCallsResult:\n      properties:\n        num_requests:\n          type: integer";
+  "components:\n  schemas:\n    Response:\n      properties:\n        usage:\n          properties:\n            input_tokens:\n              type: integer";
 
 describe("OpenAI optional accounting collection", () => {
   it.each(["unavailable", "unrecognized", "partial", "unused"])(
@@ -105,14 +105,27 @@ describe("OpenAI optional accounting collection", () => {
       respond();
       const prior = await collectProvider(selected, undefined, { sources: {} }, observedAt);
       if (prior.pricing === undefined) throw new Error(JSON.stringify(prior.attempt));
+      expect(
+        prior.pricing.books.some((book) =>
+          book.offers.some((offer) =>
+            offer.terms.some(
+              (term) =>
+                term.kind === "rate" &&
+                term.variants.some((variant) =>
+                  variant.charge_binding?.quantity_methods?.some((method) =>
+                    method.input_sources?.some((source) => source.channel === "response"),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      ).toBe(true);
       partial = failure === "partial";
       if (failure === "unavailable") bodies.delete("openai-accounting");
       else if (failure === "unused")
         bodies.set(
           "openai-accounting",
-          accounting
-            .replace("UsageWebSearchCallsResult", "UsageCodeInterpreterSessionsResult")
-            .replace("num_requests", "num_sessions"),
+          "components:\n  schemas:\n    VideoResource:\n      properties:\n        seconds:\n          type: string",
         );
       else bodies.set("openai-accounting", "components: {}");
       const next = await collectProvider(selected, undefined, { sources: {} }, observedAt);
@@ -137,9 +150,7 @@ describe("OpenAI optional accounting collection", () => {
           next.pricingReplaySources?.find(({ source_id }) => source_id === accountingSource.id),
         ).toMatchObject({
           models: [],
-          pricing_inputs: [
-            expect.objectContaining({ key: "organization.code_interpreter_sessions.num_sessions" }),
-          ],
+          pricing_inputs: [expect.objectContaining({ key: "responses.generated_seconds" })],
         });
         return;
       }

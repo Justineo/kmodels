@@ -150,6 +150,10 @@ function accountingBody(): string {
     "      properties:",
     "        num_requests:",
     "          type: integer",
+    "    VideoResource:",
+    "      properties:",
+    "        seconds:",
+    "          type: string",
   ].join("\n");
 }
 
@@ -312,9 +316,7 @@ describe("OpenAI adapters", () => {
     );
     const inputs = parse(change(accountingBody()));
     expect(inputs.some(({ key }) => key === "responses.usage.input_tokens")).toBe(false);
-    expect(inputs.some(({ key }) => key === "organization.web_search_calls.num_requests")).toBe(
-      true,
-    );
+    expect(inputs.some(({ key }) => key === "responses.generated_seconds")).toBe(true);
   });
   it.each([
     ["unreviewed table", "| Model | Future input |\n| --- | --- |\n| gpt-new | $2 |"],
@@ -695,7 +697,6 @@ describe("OpenAI adapters", () => {
     });
     expect(parsed.models).toEqual([]);
     expect(parsed.pricing_inputs?.map(({ key }) => key)).toEqual([
-      "organization.web_search_calls.num_requests",
       "responses.usage.cache_write_tokens",
       "responses.usage.cached_input_tokens",
       "responses.usage.input_tokens",

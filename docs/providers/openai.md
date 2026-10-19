@@ -36,7 +36,7 @@ that call and are excluded.
 | [`/api/docs/models/all`](https://developers.openai.com/api/docs/models/all) and its HTML cards                            | Optional card-local price fallback where the Markdown rendering omits tier state |
 | [Changelog](https://developers.openai.com/api/docs/changelog)                                                             | Exact public model release dates                                                 |
 | [Pricing](https://developers.openai.com/api/docs/pricing)                                                                 | Current public amount authority and provider-service rates                       |
-| [Official OpenAPI](https://github.com/openai/openai-openapi/blob/master/openapi.yaml)                                     | Optional response and Organization Usage pricing-input contracts                 |
+| [Official OpenAPI](https://github.com/openai/openai-openapi/blob/master/openapi.yaml)                                     | Optional response and Realtime pricing-input contracts                           |
 | [Batch guide](https://developers.openai.com/api/docs/guides/batch)                                                        | Asynchronous result and output-file accounting contract evidence                 |
 | [Fast mode](https://developers.openai.com/api/docs/guides/fast-mode)                                                      | Fast request and returned served-tier semantics                                  |
 | [Flex processing](https://developers.openai.com/api/docs/guides/flex-processing)                                          | Flex request-tier and processing semantics                                       |
@@ -186,33 +186,48 @@ inference. Returned usage selects cache, modality, generated quantity, and serve
 request selector alone is not treated as final billed usage.
 
 The optional accounting contract maps Responses usage, image-generation usage, embedding usage,
-video result duration/resolution, and Organization Usage result fields into charge quantity methods.
+video result duration/resolution, and Realtime response events into charge quantity methods.
 These are source-level facts and do not create a model row.
 The known uncached-input equation remains available with surviving locators when an accounting
-field drifts; unmapped required signals remain caller inputs. Text uncached input has two exact
-alternatives where available: the Organization Usage
-aggregate `input_uncached_tokens` counter, or the response calculation
-`input_tokens - cached_tokens - cache_write_tokens` with a zero floor. Completion audio/image token
-partitions, image-generation output tokens, speech characters, transcription seconds,
-generated-image counts, and Web/File Search request counts use provider fields whose schemas
-establish those exact units. Reasoning usage remains a reported subset of output tokens and is not
-charged twice.
+field drifts; unmapped required signals remain caller inputs. Responses uncached input uses
+`input_tokens - cached_tokens - cache_write_tokens` with a zero floor. Image output tokens,
+embedding prompt tokens, generated-image counts and video durations use their own API's exact units.
+Speech characters and transcription seconds remain caller quantities when no direct response field
+establishes them. Reasoning usage remains a reported subset of output tokens and is not charged twice.
+
+Every acquired field requires positive catalog support for its exact endpoint name and route.
+Realtime, Responses, image, embedding and video contracts are not interchangeable. Batch result
+items do not borrow synchronous response counters or selectors. Fine-tuned service schedules have
+no inferred endpoint contract; their semantic quantities and known equations remain caller inputs.
 
 Accounting paths require owned properties and declared types, including the returned object's
 actual attachment to its usage schema. The recognizer follows reviewed local references and schema
 compositions, rejects duplicate schemas/properties/types, nested lookalikes, reference cycles and
-conflicting union types, and withholds only the affected mappings. Counters require integer/number
+conflicting union types, and withholds only the affected mappings. Counters require integer
 types; selectors and video duration retain their source-declared String representations; generated
 image counts require an Array. Missing or partial mappings are reported as partial contracts.
-The current official OpenAPI establishes all 37 reviewed fields; the
+The current official OpenAPI establishes all 23 reviewed fields; the
 [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) independently
 establishes the total-minus-cache-read-minus-cache-write quantity equation. Cache writes form their
 own input partition rather than an additional charge on ordinary input.
 
-When a model publishes distinct text, audio, or image token rates, Kmodels does not reuse aggregate
-response totals for the text term. It binds the text, audio, image, and cached partitions only to
-their matching Organization Usage counters. This prevents one multimodal quantity from being
-charged under two modality rates.
+For a model supporting the native Realtime API, the owned `response.done` event supplies text,
+audio and image input counters, their separate cached subsets, and text/audio output counters.
+Its typed event discriminator and attachment to `RealtimeResponse` must agree. The
+[per-response cost guide](https://developers.openai.com/api/docs/guides/voice-latency-cost#example)
+and OpenAPI establish that cached tokens are included in input totals. Each uncached modality
+therefore subtracts its own cached counter with a zero floor; cache and output charges use only
+their own partitions. The calculation boundary is one response, including terminal usage after a
+failed, cancelled or incomplete response. There is no session-total substitution or absent-as-zero
+rule. Missing counters keep known equations and surviving mappings while required values stay
+unknown. Uncached quantities do not change meaning when a peer cache price is missing.
+
+Realtime mappings require the matching endpoint and no unrelated operation restriction. A priced
+cache-write partition with no native counter withholds the unproved uncached-input equation.
+Related-rate checks use the same denomination, unit, overlapping applicability, published validity
+and execution mechanism, so a different currency, time interval or Batch tariff cannot change a
+synchronous quantity method. Other separately priced modalities do not acquire aggregate Responses
+input/output or cached counters; a missing per-request partition is not filled from an account report.
 
 The image-generation response reports total text/image input partitions but does not split either
 partition into uncached and cache-read quantities. Because the pricing page publishes different
@@ -223,9 +238,11 @@ authoritative source. Kmodels does not mislabel the response totals as uncached 
 Rate variants also expose source mappings for selectors that the contracts actually return:
 served service tier, response input-token context, image quality/size, and video size. Deployment
 scope, account eligibility, and tool operation remain required route/request inputs because the
-accounting response does not establish them at the needed scope. Organization Usage mappings are
-marked reconciliation-only; they are an aggregate calculation path, not a request lifecycle or an
-invoice reconciliation feature inside Kmodels.
+accounting response does not establish them at the needed scope. Realtime does not borrow Responses'
+served-tier or context selectors. Organization Usage results are time-bucket aggregates with optional
+model, tier and Batch grouping. Neither a `results[*]` locator nor a reconciliation-only label proves
+a single request or a homogeneous price scope. They are not pricing-input contracts for the
+request, session or result-item bindings published here.
 The served-tier selector also publishes the response normalization proven by OpenAI's contract:
 `default` selects Standard, `flex` selects Flex, returned `priority` or `fast` selects Fast mode,
 and `ultrafast` selects the independently published Ultrafast schedule. Request
@@ -255,10 +272,8 @@ minute costs $0.075. Backend model and tool calls are separately priced componen
 fee alone is not the complete workflow cost. No whole-minute rounding is introduced.
 
 Web Search and File Search calls are separate service books because they have their own event rates.
-Their provider-owned charge signals map to Organization Usage `num_requests`, rather than assuming
-that emitted or successful tool-call events have the same billing semantics. Those mappings are
-reconciliation-only; a request-time calculator still needs an equally authoritative per-request
-counter if it cannot wait for the account report.
+Their provider-owned charge signals require billable per-request counts from the caller. Emitted or
+successful tool-call events and Organization Usage bucket totals do not establish that quantity.
 Web Search content normally uses the model input-token rate. For the non-preview tool on
 `gpt-4o-mini` and `gpt-4.1-mini`, the pricing page explicitly charges a fixed 8,000-input-token
 block per call. A model-specific `web-search-content:<model>` service contributes
@@ -327,8 +342,9 @@ methods. Fixed Web Search content contributes 8,000 input tokens per eligible ca
 referenced model input rate. Batch output-file locations, regional deployment scope, and
 account-eligibility selectors remain explicit required inputs. Container proration remains a
 localized raw limitation where the reviewed contracts do not prove an exact rule.
-Organization Usage may calculate or compare grouped public-list cost later; actual spend, discounts,
-credits, and invoice reconciliation remain outside Kmodels.
+Organization Usage can support external grouped comparisons when all relevant price scopes are
+independently established; actual spend, discounts, credits and invoice reconciliation remain
+outside Kmodels.
 
 Model books use separate synchronous and Batch offers, but do not add redundant `exclusive_with`
 edges: the mechanisms already select different executions. Service-book `model_refs` fully express
