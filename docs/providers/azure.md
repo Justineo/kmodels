@@ -75,6 +75,12 @@ a freshness warning.
 
 ## Pricing mapping
 
+All Azure parsers return the explicit source envelope. Public tool prices and accounting contracts
+belong to their respective sources, independently of model observations; no selected model stores
+these facts. A service-only result can be captured and replayed against the admitted catalog.
+Source-specific model-count and public catalog requirements still apply, and model prices retain
+their exact identity/version joins and pricing-source evidence.
+
 ### Request-cost input contract
 
 Kmodels is a price book, not a request observer. The optional `azure-accounting` source publishes

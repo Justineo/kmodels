@@ -8,6 +8,7 @@ import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
@@ -1227,105 +1228,141 @@ describe("Azure adapters", () => {
     ]);
   });
 
-  it("keeps only request-attributable built-in tool rates", async () => {
-    const value = manifest("azure");
-    const source = azurePublicPricingSource(2, 2);
-    const llama: ProviderModel = {
-      ...azurePricingModel("Llama-3.3-70B-Instruct"),
-      service_families: ["Foundry Models sold by Azure"],
-    };
-    const published = [azurePricingModel("gpt-4o", "2024-08-06"), llama];
-    const models = parseSource({
-      provider: provider(value),
-      source,
-      body: JSON.stringify({
-        index: {
-          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
-          body: await fixture("azure/commercial-openai-pricing.html"),
-        },
-        documents: [
+  it.each([false, true])(
+    "keeps built-in tool rates without a model carrier (service only: %s)",
+    async (serviceOnly) => {
+      const value = manifest("azure");
+      const source = azurePublicPricingSource(serviceOnly ? 0 : 2, 2);
+      const llama: ProviderModel = {
+        ...azurePricingModel("Llama-3.3-70B-Instruct"),
+        service_families: ["Foundry Models sold by Azure"],
+      };
+      const published = [azurePricingModel("gpt-4o", "2024-08-06"), llama];
+      const page = await fixture("azure/commercial-openai-pricing.html");
+      const parsed = parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify({
+          index: {
+            url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+            body: serviceOnly
+              ? page.replace(/<table aria-label="GPT-4o">[\s\S]*?<\/table>/, "")
+              : page,
+          },
+          documents: serviceOnly
+            ? []
+            : [
+                {
+                  url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/llama/",
+                  body: await fixture("azure/public-llama-pricing.html"),
+                },
+              ],
+        }),
+        observedAt,
+        catalogModels: published,
+      });
+      const { models } = parsed;
+      expect(models).toHaveLength(serviceOnly ? 0 : 2);
+      const commercial = parsed.commercial_facts ?? [];
+      expect(commercial.map(({ resource_key }) => resource_key).sort()).toEqual([
+        "computer-use",
+        "responses-code-interpreter",
+        "responses-file-search",
+      ]);
+      expect(commercial).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            resource_key: "responses-file-search",
+            price_facts: [
+              expect.objectContaining({ meter: "file_search", unit: "thousand_requests" }),
+            ],
+          }),
+          expect.objectContaining({
+            resource_key: "responses-code-interpreter",
+            price_facts: [expect.objectContaining({ meter: "code_execution", unit: "session" })],
+          }),
+          expect.objectContaining({
+            resource_key: "computer-use",
+            price_facts: expect.arrayContaining([
+              expect.objectContaining({ meter: "input_text", price: "3" }),
+              expect.objectContaining({ meter: "output_text", price: "12" }),
+            ]),
+          }),
+        ]),
+      );
+      const pricing = assembleParsedProviderPricing(
+        "azure",
+        observedAt,
+        [{ source, ...parsed }],
+        published,
+      );
+      const fileSearch = pricing?.books.find(
+        ({ scope }) =>
+          scope.kind === "provider_resource" && scope.resource_key === "responses-file-search",
+      );
+      expect(fileSearch?.offers[0]).toMatchObject({
+        enrollment: [],
+        settlement: [],
+        relations: [],
+        terms: [
+          expect.objectContaining({
+            variants: [
+              expect.objectContaining({
+                charge_binding: expect.objectContaining({ aggregation: "result_item" }),
+              }),
+            ],
+          }),
+        ],
+      });
+      const computerUse = pricing?.books.find(
+        ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "computer-use",
+      );
+      expect(
+        computerUse?.offers[0]?.terms
+          .filter((term) => term.kind === "rate")
+          .map(({ meter }) => meter.value)
+          .sort(),
+      ).toEqual(["input_text", "output_text"]);
+      expect(
+        computerUse?.offers[0]?.terms.flatMap((term) =>
+          term.kind === "raw" ? term.variants : term.raw_variants,
+        ),
+      ).toEqual([]);
+      expect(
+        pricing?.books.some(
+          ({ scope }) =>
+            scope.kind === "provider_resource" &&
+            ["responses-file-search-storage", "managed-compute"].includes(scope.resource_key),
+        ),
+      ).toBe(false);
+      expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+      const captured = capturePricingReplaySources(
+        [{ source, ...parsed }],
+        [
           {
-            url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/llama/",
-            body: await fixture("azure/public-llama-pricing.html"),
+            id: source.id,
+            provider_id: "azure",
+            url: source.url,
+            source: [source.type],
+            stability: source.stability,
+            scope: source.scope ?? "global",
+            exhaustive: false,
+            role: source.role ?? "catalog",
+            field_paths: source.fields,
+            pricing_evidence: source.pricingEvidence,
+            observed_at: observedAt,
+            content_hash: "1".repeat(64),
+            extractor_version: source.extractorVersion,
           },
         ],
-      }),
-      observedAt,
-      catalogModels: published,
-    }).models;
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
-    expect(commercial.map(({ resource_key }) => resource_key).sort()).toEqual([
-      "computer-use",
-      "responses-code-interpreter",
-      "responses-file-search",
-    ]);
-    expect(commercial).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          resource_key: "responses-file-search",
-          price_facts: [
-            expect.objectContaining({ meter: "file_search", unit: "thousand_requests" }),
-          ],
-        }),
-        expect.objectContaining({
-          resource_key: "responses-code-interpreter",
-          price_facts: [expect.objectContaining({ meter: "code_execution", unit: "session" })],
-        }),
-        expect.objectContaining({
-          resource_key: "computer-use",
-          price_facts: expect.arrayContaining([
-            expect.objectContaining({ meter: "input_text", price: "3" }),
-            expect.objectContaining({ meter: "output_text", price: "12" }),
-          ]),
-        }),
-      ]),
-    );
-    const pricing = assembleParsedProviderPricing(
-      "azure",
-      observedAt,
-      [{ source, models }],
-      published,
-    );
-    const fileSearch = pricing?.books.find(
-      ({ scope }) =>
-        scope.kind === "provider_resource" && scope.resource_key === "responses-file-search",
-    );
-    expect(fileSearch?.offers[0]).toMatchObject({
-      enrollment: [],
-      settlement: [],
-      relations: [],
-      terms: [
-        expect.objectContaining({
-          variants: [
-            expect.objectContaining({
-              charge_binding: expect.objectContaining({ aggregation: "result_item" }),
-            }),
-          ],
-        }),
-      ],
-    });
-    const computerUse = pricing?.books.find(
-      ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "computer-use",
-    );
-    expect(
-      computerUse?.offers[0]?.terms
-        .filter((term) => term.kind === "rate")
-        .map(({ meter }) => meter.value)
-        .sort(),
-    ).toEqual(["input_text", "output_text"]);
-    expect(
-      computerUse?.offers[0]?.terms.flatMap((term) =>
-        term.kind === "raw" ? term.variants : term.raw_variants,
-      ),
-    ).toEqual([]);
-    expect(
-      pricing?.books.some(
-        ({ scope }) =>
-          scope.kind === "provider_resource" &&
-          ["responses-file-search-storage", "managed-compute"].includes(scope.resource_key),
-      ),
-    ).toBe(false);
-  });
+      )?.[0];
+      expect(captured?.commercial_facts).toEqual(commercial);
+      if (captured === undefined) throw new Error("Missing Azure source compilation input");
+      expect(
+        assembleParsedProviderPricing("azure", observedAt, [{ source, ...captured }], published),
+      ).toEqual(pricing);
+    },
+  );
 
   it("normalizes official partner meters with provider-native billing units", () => {
     const value = manifest("azure");

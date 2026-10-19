@@ -12,10 +12,9 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { stableCompactJson } from "./io.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
 import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import {
   sourcePriceFactKey,
   type ParsedProviderModel as ProviderModel,
@@ -26,26 +25,15 @@ import {
   assertItemCount,
   contractExtensionEvidence,
   recognizeItems,
-  type SourceContractEvidence,
 } from "./source-contract.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
-import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
+import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
 type RetailCatalogModel = Pick<
   ProviderModel,
   "aliases" | "model_id" | "name" | "service_families" | "tasks" | "version"
 > &
   Partial<Pick<ProviderModel, "availability" | "status">>;
-
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  catalogModels?: readonly RetailCatalogModel[];
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
 
 interface MarkdownTable {
   section: string;
@@ -969,7 +957,7 @@ function catalogPivot(body: string, pivot: string): string {
   return content;
 }
 
-export function parseAzureCatalog(input: Input): ProviderModel[] {
+export function parseAzureCatalog(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-catalog") throw new Error("Wrong Azure catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
@@ -1050,7 +1038,7 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
         : model.capabilities,
   }));
   assertItemCount("Azure model catalog", values.length, extractor.minModels, extractor.maxModels);
-  return values.sort((left, right) => left.uid.localeCompare(right.uid));
+  return { models: values.sort((left, right) => left.uid.localeCompare(right.uid)) };
 }
 
 function azurePortalModelId(item: unknown): string | undefined {
@@ -1154,7 +1142,7 @@ function azurePortalStatus(
   };
 }
 
-export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
+export function parseAzurePortalCatalog(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-portal-catalog")
     throw new Error("Wrong Azure portal catalog extractor");
@@ -1287,7 +1275,7 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
     extractor.minModels,
     extractor.maxModels,
   );
-  return values;
+  return { models: values };
 }
 
 const azureClaudeMonths = new Map([
@@ -1421,7 +1409,7 @@ function azureClaudeSupportsDataZone(id: string): boolean {
   return major > 4 || (major === 4 && minor >= 6);
 }
 
-export function parseAzureClaudePricing(input: Input): ProviderModel[] {
+export function parseAzureClaudePricing(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-claude-pricing")
     throw new Error("Wrong Azure Claude pricing extractor");
@@ -1531,7 +1519,7 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
     extractor.minModels,
     extractor.maxModels,
   );
-  return values.sort((left, right) => left.uid.localeCompare(right.uid));
+  return { models: values.sort((left, right) => left.uid.localeCompare(right.uid)) };
 }
 
 function booleanCapability(values: Map<string, string>, keys: string[]): boolean | "unknown" {
@@ -2036,7 +2024,7 @@ function retailDefaultMeter(
   return meters.length === 1 ? meters[0] : undefined;
 }
 
-export function parseAzureRetailPrices(input: Input): ProviderModel[] {
+export function parseAzureRetailPrices(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-retail-prices")
     throw new Error("Wrong Azure Retail Prices extractor");
@@ -2137,7 +2125,7 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   assertCoverage("Azure retail-price binding", boundRows, baseRows, extractor.minHandledRatio, [
     "prices",
   ]);
-  return values.sort((left, right) => left.uid.localeCompare(right.uid));
+  return { models: values.sort((left, right) => left.uid.localeCompare(right.uid)) };
 }
 
 interface AzurePublicPricingPage {
@@ -2325,7 +2313,7 @@ function isAzurePublicBaseTable(label: string): boolean {
   return !/managed compute|provisioned|fine-tuning|built-in tools/i.test(label);
 }
 
-export function parseAzurePublicPricing(input: Input): ProviderModel[] {
+export function parseAzurePublicPricing(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-public-pricing")
     throw new Error("Wrong Azure public pricing extractor");
@@ -2543,15 +2531,13 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
       ? {}
       : { onPricingReconciliation: input.onPricingReconciliation }),
   });
-  const carrier = values[0];
-  if (carrier !== undefined && commercial.length > 0) carrier.commercial_facts = commercial;
   assertItemCount(
     "Azure public-priced models",
     values.length,
     extractor.minModels,
     extractor.maxModels,
   );
-  return values;
+  return { models: values, commercial_facts: commercial };
 }
 
 function commercialWords(value: string): string {
@@ -2790,7 +2776,7 @@ function mergeAzureApiModels(models: ProviderModel[]): ProviderModel[] {
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-export function parseAzureApi(input: Input): ProviderModel[] {
+export function parseAzureApi(input: Input): SourceParseResult {
   const bundle = azureApiBundleSchema.parse(JSON.parse(input.body));
   const prices = recognizeItems({
     label: "Azure API retail price",
@@ -2877,5 +2863,5 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       };
     });
   });
-  return mergeAzureApiModels(models);
+  return { models: mergeAzureApiModels(models) };
 }
