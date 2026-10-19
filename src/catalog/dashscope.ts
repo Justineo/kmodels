@@ -3,9 +3,9 @@ import { z } from "zod";
 import { linkedBundleSchema, type LinkedBundle } from "./bundle.ts";
 import { extractDashscopePricingInputs } from "./dashscope-accounting.ts";
 import {
-  attachDashscopeImageSearchFacts,
-  attachDashscopeTextToImageSearchFacts,
-  attachDashscopeWebSearchFacts,
+  extractDashscopeImageSearchFacts,
+  extractDashscopeTextToImageSearchFacts,
+  extractDashscopeWebSearchFacts,
   type DashscopeToolRate,
 } from "./dashscope-commercial-source.ts";
 import {
@@ -21,32 +21,18 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   assertCoverage,
   assertItemCount,
   contractExtensionEvidence,
   recognizeItems,
-  type SourceContractEvidence,
 } from "./source-contract.ts";
-import { type Modality, type ModelTask, type Provider } from "./schema.ts";
+import { type Modality, type ModelTask } from "./schema.ts";
 
 type TriState = ProviderModel["capabilities"]["reasoning"];
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
-
-interface ParseInput {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
-
-const pricingBundleSchema = linkedBundleSchema.extend({
-  documents: z.array(linkedBundleSchema.shape.documents.element),
-});
 
 interface CommercialEvidence {
   cacheBody?: string;
@@ -622,7 +608,7 @@ function bounded(
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
+export function parseDashscopeCatalog(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-catalog") throw new Error("Wrong DashScope catalog extractor");
   const models = new Map<string, ProviderModel>();
@@ -724,7 +710,7 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
   }
   assertItemCount("DashScope catalog tables", catalogTables, 1);
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, 1, extractor.maxModels, `DashScope ${extractor.category}`);
+  return { models: bounded(models, 1, extractor.maxModels, `DashScope ${extractor.category}`) };
 }
 
 const recommendedEndpoints = new Map<string, { name: string; protocol: "https:" | "wss:" }>([
@@ -982,7 +968,7 @@ function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, Provi
   return models;
 }
 
-export function parseDashscopeRecommended(input: ParseInput): ProviderModel[] {
+export function parseDashscopeRecommended(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-recommended")
     throw new Error("Wrong DashScope recommended-model extractor");
@@ -1060,7 +1046,14 @@ export function parseDashscopeRecommended(input: ParseInput): ProviderModel[] {
     }
   });
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope recommended-model");
+  return {
+    models: bounded(
+      models,
+      extractor.minModels,
+      extractor.maxModels,
+      "DashScope recommended-model",
+    ),
+  };
 }
 
 function decimal(raw: string): string | undefined {
@@ -1896,10 +1889,10 @@ function cacheRate(
   };
 }
 
-export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
+export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-pricing") throw new Error("Wrong DashScope pricing extractor");
-  const bundle = pricingBundleSchema.parse(JSON.parse(input.body));
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const evidence = commercialEvidence(input, bundle);
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
@@ -2024,21 +2017,23 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     }
   }
   assertCoverage("DashScope pricing model rows", coveredRows, observedRows, 1);
-  attachDashscopeWebSearchFacts(
-    models,
-    input.source.id,
-    webSearchRates(input, evidence.webSearchBody, models),
-  );
-  attachDashscopeImageSearchFacts(
-    models,
-    input.source.id,
-    imageSearchRates(input, evidence.imageSearchBody, models, "image_search"),
-  );
-  attachDashscopeTextToImageSearchFacts(
-    models,
-    input.source.id,
-    imageSearchRates(input, evidence.textToImageSearchBody, models, "web_search_image"),
-  );
+  const commercialFacts = [
+    ...extractDashscopeWebSearchFacts(
+      models,
+      input.source.id,
+      webSearchRates(input, evidence.webSearchBody, models),
+    ),
+    ...extractDashscopeImageSearchFacts(
+      models,
+      input.source.id,
+      imageSearchRates(input, evidence.imageSearchBody, models, "image_search"),
+    ),
+    ...extractDashscopeTextToImageSearchFacts(
+      models,
+      input.source.id,
+      imageSearchRates(input, evidence.textToImageSearchBody, models, "web_search_image"),
+    ),
+  ];
   for (const [key, idsForRegion] of cache) {
     const [mode = "", region = ""] = key.split("\0");
     for (const id of idsForRegion) {
@@ -2142,10 +2137,12 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, 1, extractor.maxModels, "DashScope pricing");
+  return {
+    models: bounded(models, 1, extractor.maxModels, "DashScope pricing"),
+    commercial_facts: commercialFacts,
+    pricing_inputs: pricingInputs,
+  };
 }
 
 function lifecycleOperations(category: string, id: string): ModelTask[] {
@@ -2202,7 +2199,7 @@ function documentBodies(body: string): string[] {
   return [bundle.index.body, ...bundle.documents.map((document) => document.body)];
 }
 
-export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
+export function parseDashscopeLifecycle(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-lifecycle")
     throw new Error("Wrong DashScope lifecycle extractor");
@@ -2255,10 +2252,12 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
     }
   }
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope lifecycle");
+  return {
+    models: bounded(models, extractor.minModels, extractor.maxModels, "DashScope lifecycle"),
+  };
 }
 
-export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
+export function parseDashscopeReleases(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-releases")
     throw new Error("Wrong DashScope releases extractor");
@@ -2308,10 +2307,12 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
       scope: "regional_catalog",
     });
   }
-  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope releases");
+  return {
+    models: bounded(models, extractor.minModels, extractor.maxModels, "DashScope releases"),
+  };
 }
 
-export function parseDashscopeApi(input: ParseInput): ProviderModel[] {
+export function parseDashscopeApi(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-api") throw new Error("Wrong DashScope API extractor");
   const page = deploymentPageSchema.parse(JSON.parse(input.body)).output;
@@ -2352,5 +2353,5 @@ export function parseDashscopeApi(input: ParseInput): ProviderModel[] {
     });
   }
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
-  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope API");
+  return { models: bounded(models, extractor.minModels, extractor.maxModels, "DashScope API") };
 }

@@ -11236,12 +11236,12 @@ describe("DashScope adapters", () => {
     throw new Error(`Wrong DashScope source ${id}`);
   }
 
-  function parse(
+  function parseResult(
     sourceManifest: SourceManifest,
     body: string,
     onPricingReconciliation?: (item: PricingReconciliationItem) => void,
     onContractFinding?: (evidence: SourceContractEvidence) => void,
-  ): ProviderModel[] {
+  ): SourceParseResult {
     const value = manifest("dashscope");
     return parseSource({
       provider: provider(value),
@@ -11250,7 +11250,11 @@ describe("DashScope adapters", () => {
       observedAt,
       ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
       ...(onContractFinding === undefined ? {} : { onContractFinding }),
-    }).models;
+    });
+  }
+
+  function parse(...args: Parameters<typeof parseResult>): ProviderModel[] {
+    return parseResult(...args).models;
   }
 
   function documentBundle(
@@ -11565,7 +11569,8 @@ describe("DashScope adapters", () => {
     const pricingBody = await fixture("dashscope/pricing.html");
     const parsePricing = (body: string) =>
       pricingBundle(Promise.resolve(body)).then((bundle) => parse(pricingSource, bundle));
-    const models = await parsePricing(pricingBody);
+    const result = parseResult(pricingSource, await pricingBundle(Promise.resolve(pricingBody)));
+    const { models } = result;
     const model = models.find(({ model_id }) => model_id === "qwen3.7-plus");
     expect(model?.aliases).toEqual(["qwen3.7-plus-2026-05-26"]);
     expect(
@@ -11605,8 +11610,7 @@ describe("DashScope adapters", () => {
       false,
     );
     expect(
-      models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+      (result.commercial_facts ?? [])
         .filter(
           ({ resource_key, model_refs }) =>
             resource_key === "web-search" && model_refs.includes("dashscope/qwen3.7-plus"),
@@ -11620,14 +11624,14 @@ describe("DashScope adapters", () => {
           scope: conditions.deployment_scope,
         })),
     ).toEqual([
-      { meter: "web_search", price: "10", unit: "thousand_events", scope: "International" },
-      { meter: "web_search", price: "0.573411", unit: "thousand_events", scope: "Global" },
       {
         meter: "web_search",
         price: "0.573411",
         unit: "thousand_events",
         scope: "Chinese mainland",
       },
+      { meter: "web_search", price: "0.573411", unit: "thousand_events", scope: "Global" },
+      { meter: "web_search", price: "10", unit: "thousand_events", scope: "International" },
     ]);
     expect(
       models
@@ -11774,11 +11778,12 @@ describe("DashScope adapters", () => {
       const body = hasDiscontinuedRow
         ? original
         : original.replace(/<tr>\s*<td>deepseek-r1-distill-llama-8b<\/td>[\s\S]*?<\/tr>/, "");
-      const models = parse(pricingSource, await pricingBundle(Promise.resolve(body)));
+      const result = parseResult(pricingSource, await pricingBundle(Promise.resolve(body)));
+      const { models } = result;
       const partition = assembleParsedProviderPricing(
         "dashscope",
         observedAt,
-        [{ source: pricingSource, models }],
+        [{ source: pricingSource, ...result }],
         models,
         value.pricingCategoricalLabels,
       );
@@ -11815,10 +11820,20 @@ describe("DashScope adapters", () => {
 
   it("publishes field-local accounting inputs for token, tool, media, and regional rates", async () => {
     const findings: SourceContractEvidence[] = [];
-    const models = parse(source("dashscope-pricing"), await pricingBundle(), undefined, (finding) =>
-      findings.push(finding),
+    const result = parseResult(
+      source("dashscope-pricing"),
+      await pricingBundle(),
+      undefined,
+      (finding) => findings.push(finding),
     );
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const { models } = result;
+    expect(
+      models.every(
+        ({ pricing_inputs, commercial_facts }) =>
+          pricing_inputs === undefined && commercial_facts === undefined,
+      ),
+    ).toBe(true);
+    const inputs = result.pricing_inputs ?? [];
     expect(findings).toEqual([]);
     const completeInputCount = inputs.length;
     expect(completeInputCount).toBeGreaterThan(0);
@@ -11879,7 +11894,7 @@ describe("DashScope adapters", () => {
       ]),
     );
 
-    const services = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const services = result.commercial_facts ?? [];
     expect(
       services
         .filter(({ resource_key }) => resource_key === "image-search")
@@ -11891,13 +11906,13 @@ describe("DashScope adapters", () => {
           region: conditions.region,
         })),
     ).toEqual([
-      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
       {
         meter: "image_search",
         price: "6.881",
         unit: "thousand_events",
         region: "China (Beijing)",
       },
+      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
     ]);
     expect(
       services
@@ -11910,22 +11925,23 @@ describe("DashScope adapters", () => {
           region: conditions.region,
         })),
     ).toEqual([
-      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
       {
         meter: "image_search",
         price: "3.44",
         unit: "thousand_events",
         region: "China (Beijing)",
       },
+      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
     ]);
 
     const usage = await fixture("dashscope/usage.html");
-    const drifted = parse(
-      source("dashscope-pricing"),
-      await pricingBundle(undefined, {
-        "image-accounting": usage.replace("usage.image_count", "usage.generated_count"),
-      }),
-    ).flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const drifted =
+      parseResult(
+        source("dashscope-pricing"),
+        await pricingBundle(undefined, {
+          "image-accounting": usage.replace("usage.image_count", "usage.generated_count"),
+        }),
+      ).pricing_inputs ?? [];
     expect(drifted).toHaveLength(completeInputCount - 1);
     expect(drifted.some(({ key }) => key === "image.generated_images")).toBe(false);
     expect(drifted.some(({ key }) => key === "video.generated_videos")).toBe(true);
@@ -11935,7 +11951,7 @@ describe("DashScope adapters", () => {
     const pricing = assembleParsedProviderPricing(
       "dashscope",
       observedAt,
-      [{ source: pricingSource, models }],
+      [{ source: pricingSource, ...result }],
       models,
       manifestValue.pricingCategoricalLabels,
     );
@@ -12077,6 +12093,24 @@ describe("DashScope adapters", () => {
       content_hash: "1".repeat(64),
       extractor_version: pricingSource.extractorVersion,
     };
+    const captured = capturePricingReplaySources(
+      [{ source: pricingSource, ...result, models: [] }],
+      [sourceRecord],
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    expect(captured?.commercial_facts).toEqual(services);
+    expect(captured?.pricing_inputs).toEqual(inputs);
+    if (captured === undefined) throw new Error("Missing DashScope source compilation input");
+    const detached = assembleParsedProviderPricing(
+      "dashscope",
+      observedAt,
+      [{ source: pricingSource, ...captured }],
+      models,
+      manifestValue.pricingCategoricalLabels,
+    );
+    expect(detached?.books.filter(({ scope }) => scope.kind === "provider_resource")).toEqual(
+      pricing.books.filter(({ scope }) => scope.kind === "provider_resource"),
+    );
     const core: Pick<Catalog, "providers" | "models" | "sources"> = {
       providers: [provider(manifestValue)],
       models,
@@ -12404,16 +12438,15 @@ describe("DashScope adapters", () => {
       reconciliation.filter(({ reason_code }) => reason_code === "cache_rate_normalized"),
     ).toHaveLength(3);
 
-    const markdownModels = parse(
+    const markdownResult = parseResult(
       pricingSource,
       await pricingBundle(undefined, { "web-search": await fixture("dashscope/web-search.md") }),
     );
     expect(
-      markdownModels
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+      (markdownResult.commercial_facts ?? [])
         .filter(({ resource_key }) => resource_key === "web-search")
         .map(({ offer_key }) => offer_key),
-    ).toEqual(["built-in:singapore", "built-in:china-beijing"]);
+    ).toEqual(["built-in:china-beijing", "built-in:singapore"]);
 
     const cache = await fixture("dashscope/cache.html");
     const cacheReconciliation: PricingReconciliationItem[] = [];
@@ -12432,7 +12465,7 @@ describe("DashScope adapters", () => {
     );
     const webSearch = await fixture("dashscope/web-search.html");
     const webReconciliation: PricingReconciliationItem[] = [];
-    const webModels = parse(
+    const webResult = parseResult(
       pricingSource,
       await pricingBundle(undefined, {
         "web-search": webSearch.replace("<h2>Global</h2>", "<h2>Other</h2>"),
@@ -12440,9 +12473,9 @@ describe("DashScope adapters", () => {
       (item) => webReconciliation.push(item),
     );
     expect(
-      webModels
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
-        .filter(({ resource_key }) => resource_key === "web-search"),
+      (webResult.commercial_facts ?? []).filter(
+        ({ resource_key }) => resource_key === "web-search",
+      ),
     ).toHaveLength(2);
     expect(webReconciliation).toContainEqual(
       expect.objectContaining({ reason_code: "web_search_scope_unsupported", sample: "Other" }),
@@ -12725,7 +12758,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v19",
+      extractorVersion: "dashscope-pricing-v20",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
