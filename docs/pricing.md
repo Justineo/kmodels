@@ -84,6 +84,13 @@ version, freshness and catalog bytes, and prove the intended amounts are the onl
 Canonical assembly handles necessary variant sorting and compaction; ordinary pair validation and
 publication rebuild both projection packs with the corrected price identity. Retained pricing can
 have older input than the current catalog source record, so each keeps its own original evidence.
+When a parsed applicability bound is proven to be an unsupported implementation assumption,
+withdraw the affected executable observations into `unknown_applicability` raw variants. Preserve
+their exact quote, unit, locator and validity, retain independently proven selectors as possible
+scope, and remove the fabricated bound from executable predicates and duplicated quote metadata.
+A current refetch cannot establish a replacement historical threshold. Keep the old interpreted
+compilation input unchanged for audit; its obsolete extractor version prevents it from restoring
+the withdrawn rule. A new collection must establish its own source-owned bounds.
 When one source describes the same exact model identity in several
 operation-specific records, compilation coalesces those records and preserves
 the union of distinct normalized rate facts and bounded source-native raw
