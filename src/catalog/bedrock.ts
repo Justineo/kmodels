@@ -5,6 +5,7 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
 import { bedrockGroundingFact, bedrockServiceTerm } from "./bedrock-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact, scaleDecimal } from "./pricing.ts";
@@ -46,7 +47,14 @@ interface Card {
   tasks: ModelTask[];
   identityKeys: Set<string>;
   pricingSection: string | undefined;
+  contextPricing: ContextPricing;
   serviceTierSection: string | undefined;
+}
+
+interface ContextPricing {
+  short: number | undefined;
+  long: number | undefined;
+  scoped: boolean;
 }
 
 type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle" | "bedrock-agent-runtime";
@@ -311,6 +319,55 @@ function section(body: string, heading: string): string | undefined {
   const content = body.slice(start + heading.length + 3);
   const end = content.search(/\n## /);
   return end < 0 ? content : content.slice(0, end);
+}
+
+function modelContextPricing(body: string): ContextPricing {
+  body = body.replaceAll("\r\n", "\n");
+  const content = markdownSection(body, 2, "Pricing");
+  const headings = [...markdownProse(body).matchAll(/^## Pricing[ \t]*$/gm)];
+  if (content === undefined)
+    return { short: undefined, long: undefined, scoped: headings.length > 1 };
+  const prose = markdownProse(content)
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n");
+  const count = (value: string): number | undefined => {
+    const match = value.match(/^(0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(K)?$/);
+    if (match?.[1] === undefined) return;
+    const result = Number(match[1].replaceAll(",", "")) * (match[2] === "K" ? 1000 : 1);
+    return Number.isSafeInteger(result) ? result : undefined;
+  };
+  const bound = (patterns: RegExp[]): number | undefined => {
+    const matches = patterns.flatMap((pattern) => [...prose.matchAll(pattern)]);
+    const values = matches.map((match) => count(match[1] ?? ""));
+    if (values.some((value) => value === undefined)) return;
+    const unique = new Set(values);
+    return unique.size === 1 ? unique.values().next().value : undefined;
+  };
+  const short = bound([
+    /^### (?:(?:Standard|Ultrafast) — )?Commercial Regions(?: —|,) short context \(([^()\s]+) input tokens or fewer\)[ \t]*$/gm,
+    /Prompts of ([^\s]+) tokens or fewer are billed at the standard per-token rates\./g,
+  ]);
+  const long = bound([
+    /^### (?:(?:Standard|Ultrafast) — )?Commercial Regions(?: —|,) long context \(more than ([^()\s]+) input tokens\)[ \t]*$/gm,
+    /Prompts that exceed ([^\s]+) tokens are billed at higher rates for input, output, and cache read and write operations\./g,
+  ]);
+  return {
+    short,
+    long: long === undefined || long === Number.MAX_SAFE_INTEGER ? undefined : long + 1,
+    scoped: /(?:short|long)[ -]context|Prompts (?:of|that exceed)/.test(prose),
+  };
+}
+
+function priceContext(
+  pricing: ContextPricing,
+  text: string,
+): SourcePriceFact["conditions"] | undefined {
+  if (!/token/.test(text)) return {};
+  if (/long[ _-]?(?:context|ctx)/.test(text))
+    return pricing.long === undefined ? undefined : { context_min_tokens: pricing.long };
+  if (pricing.short !== undefined) return { context_max_tokens: pricing.short };
+  return pricing.scoped ? undefined : {};
 }
 
 function plain(value: string): string {
@@ -1220,7 +1277,8 @@ function parseCard(
     releaseStage,
     tasks,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
-    pricingSection: section(body, "Pricing"),
+    pricingSection: markdownSection(body, 2, "Pricing"),
+    contextPricing: modelContextPricing(body),
     serviceTierSection: section(body, "Service Tiers"),
   };
 }
@@ -1282,6 +1340,7 @@ function supplementalRerankCards(documents: BedrockDocuments): Card[] {
         tasks: ["reranking"],
         identityKeys: cardIdentityKeys(name, publisher, ids),
         pricingSection: undefined,
+        contextPricing: { short: undefined, long: undefined, scoped: false },
         serviceTierSection: undefined,
       },
     ];
@@ -1482,7 +1541,6 @@ function conditions(
     ...(deploymentScope === undefined ? {} : { deployment_scope: deploymentScope }),
     ...(serviceTier === undefined ? {} : { service_tier: serviceTier }),
     ...(resolvedSpeed === undefined ? {} : { speed: resolvedSpeed }),
-    ...(/long.?(?:context|ctx)/.test(lower) ? { context_min_tokens: 200_001 } : {}),
     ...(ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
     ...(capacity === undefined ? {} : { capacity }),
     ...(modality === undefined ? {} : { modality }),
@@ -1505,6 +1563,7 @@ function rate(
   tasks: ModelTask[],
   sourceId: string,
   endpoint: BedrockModelEndpoint | undefined,
+  context: SourcePriceFact["conditions"],
 ): SourcePriceFact | undefined {
   const text = pricingText(attributes, description);
   const priceText = `${attributes.inferenceType ?? ""} ${description}`.toLowerCase();
@@ -1568,7 +1627,7 @@ function rate(
     price: normalizedPrice,
     currency: "USD",
     unit: normalizedUnit,
-    conditions: rateConditions,
+    conditions: { ...rateConditions, ...context },
     source_ref: sourceId,
     derived: derivation !== undefined,
     ...(derivation === undefined ? {} : { derivation }),
@@ -2384,21 +2443,32 @@ function parsePrices(
           });
           continue;
         }
-        const parsed = rate(
-          attributes,
-          dimension.description,
-          dimension.unit,
-          price,
-          term.effectiveDate,
-          card.tasks,
-          sourceId,
-          target.endpoint,
+        const context = priceContext(
+          card.contextPricing,
+          pricingText(attributes, dimension.description),
         );
+        const parsed =
+          context === undefined
+            ? undefined
+            : rate(
+                attributes,
+                dimension.description,
+                dimension.unit,
+                price,
+                term.effectiveDate,
+                card.tasks,
+                sourceId,
+                target.endpoint,
+                context,
+              );
         if (parsed === undefined) {
           unsupported.add(`${label}: ${dimension.unit}`);
           onPricingReconciliation?.({
-            disposition: "unsupported",
-            reason_code: "price_dimension_unsupported",
+            disposition: context === undefined ? "raw" : "unsupported",
+            reason_code:
+              context === undefined
+                ? "price_context_scope_unresolved"
+                : "price_dimension_unsupported",
             sample: `${label}: ${dimension.description}`,
           });
           const raw = commercialRawFact(
@@ -2414,6 +2484,7 @@ function parsePrices(
           for (const id of target.ids)
             rawFor(id).push({
               ...raw,
+              reason: context === undefined ? "unknown_applicability" : raw.reason,
               conditions: conditions(
                 attributes,
                 pricingText(attributes, dimension.description),

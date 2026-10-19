@@ -1148,7 +1148,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v32",
+        extractorVersion: "bedrock-catalog-v33",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1237,7 +1237,7 @@ export const manifests = [
             [
               "pricing-foundation-models",
               "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
-              8,
+              16,
               undefined,
               true,
             ],

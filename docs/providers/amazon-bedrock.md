@@ -52,6 +52,10 @@ Public rates come from three machine-readable AWS Price List offers:
 - [AmazonBedrockFoundationModels](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json)
 - [AmazonBedrockService](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json)
 
+The Foundation Models feed has its own 16 MiB response ceiling so the growing native inventory
+fits within a bounded acquisition budget. Oversized or malformed feeds still fail as pricing
+dependencies rather than publishing a partial commercial partition.
+
 The [Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) is an optional, narrower overlay
 for reviewed OpenAI and Stability tables that can lead the bulk feeds. The exact
 [Cohere Embed 4 Marketplace page](https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs) is an
@@ -178,6 +182,14 @@ Region/scope claims remain rejected.
 A model book contains separate on-demand and batch offers. Batch is removed from the service-tier
 dimension after it becomes the offer mechanism. Standard, Priority, Flex, resolved speed, Region,
 routing scope, cache behavior, and context thresholds remain ordinary applicability dimensions.
+
+Price List context ranges come from the exact model card's unique `Pricing` section. Native
+short/long-context headings or the reviewed prompt-length pricing statement establish each bound
+independently; a model's maximum context window does not establish its tariff threshold. Quoted,
+fenced, duplicate, malformed or contradictory claims cannot supply a bound. A `long_ctx` SKU
+without a proven lower bound remains raw with its exact amount, unit and SKU; no universal 200K
+cutoff is assumed. A missing opposite band does not manufacture a complementary range.
+Full input-context length is caller supplied; uncached Converse input usage alone is not that total.
 
 Price List and reviewed pricing-page rows share the same deployment-scope vocabulary:
 `in_region`, `geo_cross_region`, and `global_cross_region`. The page does not introduce a separate
