@@ -4164,6 +4164,7 @@ export const manifests = [
     pricingCategoricalLabels: pricingLabels("billing_period", {
       base: "Base",
       peak: "Peak",
+      off_peak: "Off-peak",
     }),
     sources: [
       {
@@ -4201,7 +4202,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v10",
+        extractorVersion: "ollama-cloud-v11",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4248,6 +4249,7 @@ export const manifests = [
                 "markdown",
               ],
               ["cloud", "https://docs.ollama.com/cloud.md", "markdown"],
+              ["pricing", "https://ollama.com/pricing", "html"],
               [
                 "api-types-v0.33.3",
                 "https://raw.githubusercontent.com/ollama/ollama/v0.33.3/api/types.go",

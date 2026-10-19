@@ -15125,7 +15125,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v10",
+      extractorVersion: "ollama-cloud-v11",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });
@@ -15139,6 +15139,11 @@ describe("Ollama adapters", () => {
         dimension: { namespace: "kmodels", value: "billing_period" },
         value: "peak",
         label: "Peak",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        value: "off_peak",
+        label: "Off-peak",
       },
     ]);
   });
