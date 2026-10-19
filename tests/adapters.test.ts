@@ -428,6 +428,7 @@ function vercelDocumentation(): { url: string; body: string }[] {
         "inferenceEndpoint",
         "geoRegion",
         "Leave it unset (the `global` default)",
+        "When you don't pin a region, `inferenceEndpoint` is `null`, matching the `global` default.",
       ].join("\n"),
     },
     {
@@ -8401,7 +8402,6 @@ describe("Vercel adapter", () => {
       vercelCommercialFacts({
         documents: new Map([[path, body]]),
         sourceId: "vercel-models",
-        modelRefs: ["vercel/acme/text-1"],
       });
     const facts = parse(body);
     expect(facts).toHaveLength(9);
@@ -8438,7 +8438,6 @@ describe("Vercel adapter", () => {
     const facts = vercelCommercialFacts({
       documents,
       sourceId: "vercel-models",
-      modelRefs: ["vercel/acme/text-1"],
       onPricingReconciliation: (item) => reconciliations.push(item),
     });
     expect(facts.map(({ resource_key: key }) => key)).not.toContain("perplexity-search");
@@ -8758,8 +8757,8 @@ describe("Vercel adapter", () => {
       pricingState: "numeric",
     });
     expect(
-      dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "excluded"]),
-    ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 1 });
+      dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "unbound"]),
+    ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 0, unbound: 2 });
     expect(
       models.every(
         (model) =>
@@ -8925,7 +8924,7 @@ describe("Vercel adapter", () => {
       limits: { context_tokens: 32768, max_output_tokens: 4096 },
       capabilities: { reasoning: false, structuredOutput: false, toolCall: false },
       release: "2025-05-29",
-      pricing: "not_published",
+      pricing: "unknown",
     });
   });
 
@@ -8935,7 +8934,7 @@ describe("Vercel adapter", () => {
       ({ model_id }) => model_id === "microsoft/mai-transcribe-2-streaming",
     );
     const priced = models.find(({ model_id }) => model_id === "microsoft/mai-transcribe-2");
-    expect(unpriced).toMatchObject({ pricing_state: "not_published", price_facts: [] });
+    expect(unpriced).toMatchObject({ pricing_state: "unknown", price_facts: [] });
     expect(priced).toMatchObject({ pricing_state: "numeric" });
     expect(priced?.price_facts).toEqual([
       expect.objectContaining({
@@ -9501,7 +9500,7 @@ describe("Vercel adapter", () => {
         },
       )
     )[0];
-    expect(unsupported).toMatchObject({ model_id: "acme/text-1", pricing_state: "not_published" });
+    expect(unsupported).toMatchObject({ model_id: "acme/text-1", pricing_state: "unknown" });
     expect(pricingFinding).toMatchObject({
       disposition: "accept_with_signal",
       diagnostics: [

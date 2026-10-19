@@ -292,17 +292,18 @@ function tokenMethods(
   if (meter === "cache_write_text")
     return directMethods(signal, ["generation.native_cache_creation_tokens"], inputIndex);
   if (!["input_text", "embedding", "output_text"].includes(meter)) return emptyMethods();
-  const inputMeters = tokenMeters(terms).filter((value) =>
+  const meters = tokenMeters(terms);
+  const inputMeters = meters.filter((value) =>
     ["input_text", "embedding", "input_audio", "input_image"].includes(value),
   );
-  const outputMeters = tokenMeters(terms).filter((value) =>
+  const outputMeters = meters.filter((value) =>
     ["output_text", "output_audio", "output_image"].includes(value),
   );
   if (["input_text", "embedding", "input_audio", "input_image"].includes(meter)) {
     if (
       inputMeters.length !== 1 ||
       (meter === "input_text" &&
-        tokenMeters(terms).some((value) => ["cache_read_text", "cache_write_text"].includes(value)))
+        meters.some((value) => ["cache_read_text", "cache_write_text"].includes(value)))
     )
       return emptyMethods();
     return directMethods(signal, ["generation.native_prompt_tokens"], inputIndex);
@@ -368,6 +369,8 @@ function nativeBooks(
     if (selected.length === 0) return [];
     const modelRefs = unique(selected.flatMap(({ modelRefs: refs }) => refs));
     const sourceRefs = unique(selected.flatMap(({ sourceBook }) => sourceBook.source_refs));
+    const [sourceRef] = sourceRefs;
+    if (sourceRef === undefined) throw new Error("Native search pricing omitted its source");
     const scope = {
       kind: "provider_resource" as const,
       resource_kind: { namespace: "kmodels" as const, value: "service" as const },
@@ -381,7 +384,7 @@ function nativeBooks(
         scope,
         scope_observations: [
           {
-            source_ref: sourceRefs[0]!,
+            source_ref: sourceRef,
             locator: { kind: "provider_key" as const, value: `resource:native-${kind}` },
             establishes: scope,
             raw: {

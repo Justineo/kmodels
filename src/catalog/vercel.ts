@@ -2,15 +2,17 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
+import { canonicalJson } from "./canonical-json.ts";
 import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
-  sourcePriceFactKey,
+  parsedPriceFact,
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
 } from "./pricing-source.ts";
 import {
   assertItemCount,
+  assertSourceConstraint,
   contractExtensionEvidence,
   recognizeItems,
   zodContractEvidence,
@@ -124,6 +126,8 @@ const pricingSchema = tokenPriceSchema
     realtime_session_duration_cost_per_second: decimal.optional(),
     web_search: decimal.optional(),
     maps_search: decimal.optional(),
+    varies_by_provider: z.boolean().optional(),
+    peak_pricing: z.unknown().optional(),
   })
   .strip();
 
@@ -187,7 +191,10 @@ const itemSchema = z.object({
   supported_parameters: z.array(z.string().min(1)).optional(),
   supported_specifications: z.array(z.string().min(1)).min(1),
   deprecated_at: z.number().int().nonnegative().optional(),
-  interleaved: z.boolean().optional(),
+  // Unconsumed reasoning representation and privacy metadata cannot invalidate a model.
+  interleaved: z.unknown().optional(),
+  no_training: z.unknown().optional(),
+  zdr: z.unknown().optional(),
   knowledge: z
     .string()
     .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
@@ -229,7 +236,7 @@ const endpointPricingSchema = endpointTokenPriceSchema
     request: z.literal("0"),
     image: z.literal("0"),
     image_output: z.literal("0"),
-    web_search: z.literal("0"),
+    web_search: decimal,
     internal_reasoning: z.literal("0"),
     discount: z.literal(0),
     service_tiers: z.record(z.string().min(1), endpointServiceTierSchema).optional(),
@@ -241,6 +248,7 @@ const endpointPricingSchema = endpointTokenPriceSchema
     transcription_duration_cost_per_second: decimal.optional(),
     realtime_client_message_cost: decimal.optional(),
     realtime_session_duration_cost_per_second: decimal.optional(),
+    peak_pricing: z.unknown().optional(),
   })
   .strip();
 
@@ -577,13 +585,12 @@ function videoConditions(variants: z.infer<typeof videoPriceSchema>[]) {
   const dimensions = {
     resolution: variants.some(({ resolution }) => resolution !== undefined),
     quality: variants.some(({ mode }) => mode !== undefined),
-    voice_control: variants.some(({ voice_control }) => voice_control !== undefined),
   };
   return (variant: z.infer<typeof videoPriceSchema>): SourcePriceFact["conditions"] => ({
     resolution: dimensions.resolution ? (variant.resolution ?? "default") : undefined,
     quality: dimensions.quality ? (variant.mode ?? "default") : undefined,
     audio: variant.audio,
-    voice_control: dimensions.voice_control ? (variant.voice_control ?? false) : undefined,
+    voice_control: variant.voice_control,
   });
 }
 
@@ -765,13 +772,62 @@ function mergedRates(
   routeRates: SourcePriceFact[],
 ): SourcePriceFact[] {
   const routedTerms = new Set(routeRates.map(routeComparableFact));
+  return uniqueRates([
+    ...catalogRates.filter((rate) => !routedTerms.has(routeComparableFact(rate))),
+    ...routeRates,
+  ]);
+}
+
+function uniqueRates(rates: SourcePriceFact[]): SourcePriceFact[] {
   return [
-    ...new Map(
-      [
-        ...catalogRates.filter((rate) => !routedTerms.has(routeComparableFact(rate))),
-        ...routeRates,
-      ].map((rate) => [sourcePriceFactKey(rate), rate]),
-    ).values(),
+    ...new Map(rates.map(parsedPriceFact).map((rate) => [canonicalJson(rate), rate])).values(),
+  ];
+}
+
+function peakPricingFacts(
+  rates: SourcePriceFact[],
+  policy: unknown,
+): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
+  if (policy === undefined) return { rates, raw: [] };
+  // The schedule may depend on weekdays or a provider holiday calendar. Neither
+  // the request clock nor another route establishes its billed period.
+  const fragment = `Unreviewed peak pricing: ${JSON.stringify(policy)}`.slice(0, 4096);
+  return {
+    rates: [],
+    raw: rates.map((rate) => ({
+      term_key: `unreviewed_peak_pricing:${rate.meter}`,
+      impact: "base_price",
+      reason: "unknown_applicability",
+      conditions: rate.conditions,
+      source_ref: rate.source_ref,
+      raw: {
+        fragment,
+        amount: rate.raw_price ?? rate.price,
+        denomination: rate.currency,
+        meter: rate.meter,
+        unit: rate.raw_unit ?? rate.unit,
+      },
+    })),
+  };
+}
+
+function endpointRawPrices(endpoint: Endpoint, sourceId: string): SourceRawPricingFact[] {
+  if (decimalsEqual(endpoint.pricing.web_search, "0")) return [];
+  return [
+    {
+      term_key: "endpoint_web_search",
+      impact: "base_price",
+      reason: "unknown_unit",
+      conditions: { route_provider: endpoint.provider_name },
+      source_ref: sourceId,
+      raw: {
+        amount: endpoint.pricing.web_search,
+        denomination: "USD",
+        unit: "endpoint.pricing.web_search",
+        meter: "web_search",
+        fragment: "The endpoint publishes a web_search amount without a reviewed denominator.",
+      },
+    },
   ];
 }
 
@@ -1139,44 +1195,59 @@ function model(
   const realtimeTag = tags.find(
     (tag) => tag === "websocket-realtime" || tag === "websocket-transcription",
   );
-  const catalogRates = [
-    ...pricing(item, input.source.id, fastSlug),
-    ...videoInputRates(videoInputs, input.source.id),
-  ];
-  const routeRateGroups = endpointValues.map((endpoint) => ({
-    endpoint,
-    rates: endpointRates(item, endpoint, input.source.id, fastSlug),
-  }));
+  const catalogPricing =
+    item.pricing.varies_by_provider === true
+      ? { rates: [], raw: [] }
+      : peakPricingFacts(pricing(item, input.source.id, fastSlug), item.pricing.peak_pricing);
+  const catalogRates = [...catalogPricing.rates, ...videoInputRates(videoInputs, input.source.id)];
+  const routeRateGroups = endpointValues.map((endpoint) => {
+    const facts = peakPricingFacts(
+      endpointRates(item, endpoint, input.source.id, fastSlug),
+      endpoint.pricing.peak_pricing,
+    );
+    return {
+      endpoint,
+      ...facts,
+      raw: [...facts.raw, ...endpointRawPrices(endpoint, input.source.id)],
+    };
+  });
   const routeRates = routeRateGroups.flatMap(({ rates: values }) => values);
   const pagePricing =
     page === undefined
       ? { rates: [], raw: [], free: false }
       : modelPageRates(item, page, pageDetails, input.source.id);
-  const catalogFree = tags.includes("free");
+  const catalogFree = tags.includes("free") && item.pricing.varies_by_provider !== true;
   const explicitlyFree = catalogFree || pagePricing.free;
   input.onPricingReconciliation?.(
-    catalogRates.length === 0
-      ? {
-          disposition: "explicit_non_numeric",
-          reason_code: catalogFree ? "catalog_price_free" : "catalog_price_empty",
-          sample: item.id,
-        }
-      : { disposition: "normalized", reason_code: "catalog_price_object", sample: item.id },
+    item.pricing.varies_by_provider === true
+      ? { disposition: "normalized", reason_code: "catalog_route_prices", sample: item.id }
+      : catalogPricing.raw.length > 0
+        ? { disposition: "raw", reason_code: "pricing_policy_unavailable", sample: item.id }
+        : catalogRates.length === 0
+          ? {
+              disposition: catalogFree ? "explicit_non_numeric" : "unbound",
+              reason_code: catalogFree ? "catalog_price_free" : "catalog_price_empty",
+              sample: item.id,
+            }
+          : { disposition: "normalized", reason_code: "catalog_price_object", sample: item.id },
   );
-  for (const { endpoint, rates: endpointPriceFacts } of routeRateGroups)
-    input.onPricingReconciliation?.(
-      endpointPriceFacts.length === 0
-        ? {
-            disposition: "excluded",
-            reason_code: "route_amount_not_published",
-            sample: `${item.id}:${endpoint.provider_name}`,
-          }
-        : {
-            disposition: "normalized",
-            reason_code: "route_price_object",
-            sample: `${item.id}:${endpoint.provider_name}`,
-          },
-    );
+  for (const { endpoint, rates: endpointPriceFacts, raw } of routeRateGroups) {
+    if (endpointPriceFacts.length > 0 || raw.length === 0)
+      input.onPricingReconciliation?.({
+        disposition: endpointPriceFacts.length > 0 ? "normalized" : "unbound",
+        reason_code: endpointPriceFacts.length > 0 ? "route_price_object" : "route_price_unbound",
+        sample: `${item.id}:${endpoint.provider_name}`,
+      });
+    for (const fact of raw)
+      input.onPricingReconciliation?.({
+        disposition: "raw",
+        reason_code:
+          fact.reason === "unknown_unit"
+            ? "pricing_unit_unsupported"
+            : "pricing_policy_unavailable",
+        sample: `${item.id}:${endpoint.provider_name}:${fact.raw.meter}`,
+      });
+  }
   for (const _rate of pagePricing.rates)
     input.onPricingReconciliation?.({
       disposition: "normalized",
@@ -1195,14 +1266,7 @@ function model(
       reason_code: "model_page_free",
       sample: item.id,
     });
-  const rates = [
-    ...new Map(
-      [...mergedRates(catalogRates, routeRates), ...pagePricing.rates].map((rate) => [
-        sourcePriceFactKey(rate),
-        rate,
-      ]),
-    ).values(),
-  ];
+  const rates = uniqueRates([...mergedRates(catalogRates, routeRates), ...pagePricing.rates]);
   const deprecatedAt = date(item.deprecated_at, true);
   const deprecated = deprecatedAt !== undefined && deprecatedAt <= input.observedAt.slice(0, 10);
   const preview = /(?:^|[\s/_-])preview(?:$|[\s/_-])/i.test(`${item.id} ${item.name}`);
@@ -1276,16 +1340,13 @@ function model(
       region,
       deployment_type: "regional_inference",
     })),
-    pricing_state:
-      rates.length > 0
-        ? "numeric"
-        : explicitlyFree
-          ? "free"
-          : pagePricing.raw.length > 0
-            ? "unknown"
-            : "not_published",
+    pricing_state: rates.length > 0 ? "numeric" : explicitlyFree ? "free" : "unknown",
     price_facts: rates,
-    raw_price_facts: pagePricing.raw,
+    raw_price_facts: [
+      ...catalogPricing.raw,
+      ...routeRateGroups.flatMap(({ raw }) => raw),
+      ...pagePricing.raw,
+    ],
   };
 }
 
@@ -1416,21 +1477,27 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
         continue;
       }
       const endpointDocument = parsedDocument.data;
-      if (endpointDocument.data.id !== id) continue;
-      if (
+      assertSourceConstraint(
+        `Vercel endpoint identity disagreed for ${id}`,
+        endpointDocument.data.id === id,
+        endpointDocument.data.id,
+      );
+      assertSourceConstraint(
+        `Vercel endpoint route ownership was duplicated for ${id}`,
         new Set(
           endpointDocument.data.endpoints.map(({ provider_name: providerName }) => providerName),
-        ).size !== endpointDocument.data.endpoints.length
-      )
-        continue;
-      if (
-        endpointDocument.data.endpoints.some(
+        ).size === endpointDocument.data.endpoints.length,
+        endpointDocument.data.endpoints,
+      );
+      assertSourceConstraint(
+        `Vercel endpoint route identity disagreed for ${id}`,
+        endpointDocument.data.endpoints.every(
           (endpoint) =>
-            endpoint.name !== `${endpoint.provider_name} | ${id}` ||
-            endpoint.model_name !== endpointDocument.data.name,
-        )
-      )
-        continue;
+            endpoint.name === `${endpoint.provider_name} | ${id}` &&
+            endpoint.model_name === endpointDocument.data.name,
+        ),
+        endpointDocument.data.endpoints,
+      );
       endpoints.set(id, endpointDocument.data.endpoints);
       const capabilities = z
         .object({ pricing: videoInputPricingSchema })
@@ -1486,7 +1553,6 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
   const commercialFacts = vercelCommercialFacts({
     documents: documentation,
     sourceId: input.source.id,
-    modelRefs: result.map(({ uid }) => uid),
     ...(input.onPricingReconciliation === undefined
       ? {}
       : { onPricingReconciliation: input.onPricingReconciliation }),

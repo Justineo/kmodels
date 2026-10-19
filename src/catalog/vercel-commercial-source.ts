@@ -8,7 +8,6 @@ import type {
 interface Input {
   documents: ReadonlyMap<string, string>;
   sourceId: string;
-  modelRefs: readonly string[];
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -177,7 +176,7 @@ function commercialFact(
     book_name: name,
     resource_kind: "service",
     resource_key: key,
-    model_refs: [...input.modelRefs],
+    model_refs: [],
     offer_key: offerKey,
     offer_name:
       offerKey === "search"
@@ -186,7 +185,7 @@ function commercialFact(
           ? `${name} additional results`
           : `${name} data export`,
     billing_mode: "usage",
-    pricing_state: rates.length > 0 ? "numeric" : "not_published",
+    pricing_state: rates.length > 0 ? "numeric" : "unknown",
     price_facts: rates,
     raw_price_facts: rawRates,
   };

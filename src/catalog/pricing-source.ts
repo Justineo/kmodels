@@ -229,6 +229,7 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
     "externally_billed",
     "custom_quote",
     "not_published",
+    "unknown",
   ]),
   price_facts: z.array(sourcePriceFactSchema),
   raw_price_facts: z.array(sourceRawPricingFactSchema),
