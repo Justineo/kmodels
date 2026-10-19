@@ -38,8 +38,8 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 
 Repair investigates persistent consumed-contract drift even when bytes are unchanged. A purely
 additive field does not retrigger solely because it persists. Truncated evidence remains reviewable.
-Known missing accounting, endpoint, identity, currency, tier and served-tier contracts can require
-investigation while publication succeeds. An unknown meter or unbound product alone is not proof
+Known missing accounting, endpoint, identity, currency, owned tariff/API scope, tier and served-tier
+contracts can require investigation while publication succeeds. An unknown meter or unbound product alone is not proof
 of an implementation defect.
 
 A public source or dependency with two consecutive HTTP 404/410 failures enters relocation review.

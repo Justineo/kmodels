@@ -126,18 +126,19 @@ describe("Bedrock adapters", () => {
       ["openai.gpt-6-astra", 272_000],
     ] as const) {
       const model = models.find(({ model_id }) => model_id === id);
+      expect(model).toBeDefined();
+      const rates =
+        model?.price_facts.filter(({ source_locator }) => source_locator?.kind === "sku") ?? [];
       expect(model?.raw_price_facts).toEqual([]);
-      expect(model?.price_facts).toHaveLength(4);
+      expect(rates).toHaveLength(4);
       expect(
-        model?.price_facts.filter(({ conditions }) => conditions.context_max_tokens === threshold),
+        rates.filter(({ conditions }) => conditions.context_max_tokens === threshold),
       ).toHaveLength(2);
       expect(
-        model?.price_facts.filter(
-          ({ conditions }) => conditions.context_min_tokens === threshold + 1,
-        ),
+        rates.filter(({ conditions }) => conditions.context_min_tokens === threshold + 1),
       ).toHaveLength(2);
       expect(
-        model?.price_facts.every(
+        rates.every(
           ({ price, raw_price, unit, raw_unit, source_locator }) =>
             price === raw_price &&
             unit === "million_tokens" &&
@@ -175,7 +176,9 @@ describe("Bedrock adapters", () => {
         ),
       ).toBe(true);
       expect(
-        models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.price_facts,
+        models
+          .find(({ model_id }) => model_id === "openai.gpt-6-astra")
+          ?.price_facts.filter(({ source_locator }) => source_locator?.kind === "sku"),
       ).toHaveLength(4);
     },
   );
@@ -221,7 +224,9 @@ describe("Bedrock adapters", () => {
         ["fenced", "quoted", "unowned"].includes(change) ? 2 : 4,
       );
       expect(
-        models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.price_facts,
+        models
+          .find(({ model_id }) => model_id === "openai.gpt-6-astra")
+          ?.price_facts.filter(({ source_locator }) => source_locator?.kind === "sku"),
       ).toHaveLength(4);
     },
   );
@@ -237,10 +242,12 @@ describe("Bedrock adapters", () => {
         )
         .replaceAll("\n", "\r\n");
     const models = bedrockModels(bundle);
+    expect(models).toHaveLength(2);
     expect(
       models.every(
         ({ price_facts, raw_price_facts }) =>
-          price_facts.length === 4 && raw_price_facts.length === 0,
+          price_facts.filter(({ source_locator }) => source_locator?.kind === "sku").length === 4 &&
+          raw_price_facts.length === 0,
       ),
     ).toBe(true);
   });
@@ -558,7 +565,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v33");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v34");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,

@@ -91,6 +91,9 @@ const repairableReconciliationReasons = new Set([
   "endpoint_reference_drift",
   "endpoint_model_list_drift",
   "model_card_identity_drift",
+  "model_card_price_scope_unresolved",
+  "model_card_price_cell_unreadable",
+  "model_card_service_tier_scope_unresolved",
   "open_model_pricing_rejected",
   "partner_model_pricing_rejected",
 ]);
