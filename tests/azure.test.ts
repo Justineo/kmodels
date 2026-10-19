@@ -200,6 +200,39 @@ async function azureCatalog(
 }
 
 describe("Azure adapters", () => {
+  it("retains an unclassified built-in quote without claiming prices are unpublished", async () => {
+    const value = manifest("azure");
+    const source = azurePublicPricingSource(0, 2);
+    const page = (await fixture("azure/commercial-openai-pricing.html"))
+      .replace(/<table aria-label="GPT-4o">[\s\S]*?<\/table>/, "")
+      .replace("File Search Tool Call (Responses API only)", "Unreviewed tool usage");
+    const parsed = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [azurePricingModel("gpt-4o", "2024-08-06")],
+      body: JSON.stringify({
+        index: {
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+          body: page,
+        },
+        documents: [],
+      }),
+    });
+    const fact = parsed.commercial_facts?.find(({ resource_key }) =>
+      resource_key.startsWith("unclassified-built-in:"),
+    );
+    expect(fact).toMatchObject({
+      pricing_state: "unknown",
+      price_facts: [],
+      raw_price_facts: [expect.objectContaining({ reason: "unknown_meter" })],
+    });
+    const pricing = assembleParsedProviderPricing("azure", observedAt, [{ source, ...parsed }], []);
+    expect(
+      pricing?.books.flatMap(({ offers }) => offers.flatMap(({ states }) => states)),
+    ).not.toContainEqual(expect.objectContaining({ state: "not_published" }));
+  });
+
   it.each([false, true])(
     "does not subtract another region's cache charge (broad input scope=%s)",
     (broad) => {

@@ -581,7 +581,6 @@ function applyGemma(
     item.capabilities.reasoning = true;
     item.capabilities.tool_call = true;
     item.status = "active";
-    item.pricing_state = "not_published";
   }
 }
 

@@ -28,12 +28,14 @@ The following are outside the rate-book boundary and are not preserved as raw or
   official price is part of an index query whose base compute/storage cost cannot be reconstructed
   from that request alone, so publishing only the surcharge would understate the operation.
 
-The [pricing research](../pricing-research.md) establishes the calculation path: sum each
-billable token partition times its applicable DBU rate, then multiply by the effective price for
-the matching SKU/cloud/currency/date. Databricks Labs publishes this same conversion method. Its
-reviewed pricing export includes a $0.07/DBU Gemini SKU, which makes the current 20%-discounted
-image schedule approximately equal to the delegated Google USD rates. This is a conditional
-explanation, not proof of a universal conversion or of post-promotion precedence.
+The calculation path is the sum of each billable token partition times its applicable DBU rate.
+Account settlement then multiplies by the effective currency price for the matching
+SKU/cloud/currency/date, as represented by the documented
+[`system.billing.list_prices`](https://docs.databricks.com/aws/en/admin/system-tables/pricing).
+Apply a token promotion and a SKU promotion only at the layer where each is defined. Approximate
+agreement with delegated Google currency prices cannot prove a universal conversion or determine
+post-promotion precedence. An unresolved cross-denomination overlap remains explicit rather than
+adding both observations of the same charge.
 
 DBU remains the denomination exactly as Databricks publishes it. Kmodels does not apply a universal
 DBU-to-USD multiplier. A Gateway can accumulate DBU usage from request results; currency settlement

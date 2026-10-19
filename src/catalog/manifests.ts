@@ -1930,7 +1930,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "azure-public-pricing", minModels: 1, maxModels: 300 },
-        extractorVersion: "azure-public-pricing-v6",
+        extractorVersion: "azure-public-pricing-v7",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
         fields: ["pricing"],
         allowedHosts: ["azure.microsoft.com"],
@@ -2127,7 +2127,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v10",
+        extractorVersion: "gemini-catalog-v11",
         fields: [
           "model_id",
           "name",
@@ -2948,7 +2948,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v15",
+        extractorVersion: "mistral-catalog-v16",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",

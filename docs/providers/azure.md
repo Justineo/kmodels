@@ -199,6 +199,9 @@ capacity row is discarded rather than serialized as raw. When one Computer Use c
 Input and Output regional amounts, each amount is classified from its nearest local label rather
 than from the combined cell text.
 
+An unclassified tool quote carries no `not_published` state: its literal amount is present while
+the meter or denominator remains unresolved. Raw interpretation and commercial states are separate.
+
 ### Excluded commercial facts
 
 The collector discards:
