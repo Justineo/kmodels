@@ -39,6 +39,13 @@ All admitted facts use the shared book → offer → term → variant model. Pro
 limited to dimension values, model IDs, meters, and exact usage-field locators; DashScope has no
 provider-specific pricing structure.
 
+All parsers return the explicit source envelope. Pricing returns built-in search facts and usage
+contracts independently of model observations; selecting or merging a model row does not own their
+storage. Search facts retain their exact admitted model and regional scope. Compilation captures
+the source facts once, and replay can assemble services against the published catalog even when
+the source's model observations are omitted. Required catalog and pricing model-count guards
+still reject empty or truncated source inventories.
+
 ## Official source graph
 
 Production collection uses only Alibaba Cloud first-party sources:

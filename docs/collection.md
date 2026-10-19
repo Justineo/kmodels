@@ -375,6 +375,8 @@ Status: implemented
   published Batch price state. API field evidence is separate from cache-price policy evidence.
   xAI returns service rates and accounting contracts independently as well; a source with no model
   rows can still preserve its provider-resource prices through capture and replay.
+  DashScope's built-in search facts likewise have source-owned storage while retaining their
+  positive model/region joins and the source's required model inventory checks.
   Anthropic also returns services, acquisition inputs and reviewed vocabulary at source level,
   including typed Code Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
   fixed-search contributions and container calculations; service-only input needs no model carrier.

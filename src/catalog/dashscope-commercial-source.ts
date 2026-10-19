@@ -1,4 +1,3 @@
-import { attachCommercialFacts } from "./pricing.ts";
 import type {
   ParsedProviderModel,
   SourceCommercialPricingFact,
@@ -11,12 +10,12 @@ export interface DashscopeToolRate {
   rate: SourcePriceFact;
 }
 
-export function attachDashscopeWebSearchFacts(
-  models: Map<string, ParsedProviderModel>,
+export function extractDashscopeWebSearchFacts(
+  models: ReadonlyMap<string, ParsedProviderModel>,
   sourceId: string,
   rates: readonly DashscopeToolRate[],
-): void {
-  attachToolFacts(models, sourceId, rates, {
+): SourceCommercialPricingFact[] {
+  return toolFacts(models, sourceId, rates, {
     bookKey: "service:web-search",
     bookName: "Model Studio built-in web search",
     resourceKey: "web-search",
@@ -24,12 +23,12 @@ export function attachDashscopeWebSearchFacts(
   });
 }
 
-export function attachDashscopeImageSearchFacts(
-  models: Map<string, ParsedProviderModel>,
+export function extractDashscopeImageSearchFacts(
+  models: ReadonlyMap<string, ParsedProviderModel>,
   sourceId: string,
   rates: readonly DashscopeToolRate[],
-): void {
-  attachToolFacts(models, sourceId, rates, {
+): SourceCommercialPricingFact[] {
+  return toolFacts(models, sourceId, rates, {
     bookKey: "service:image-search",
     bookName: "Model Studio built-in image search",
     resourceKey: "image-search",
@@ -37,12 +36,12 @@ export function attachDashscopeImageSearchFacts(
   });
 }
 
-export function attachDashscopeTextToImageSearchFacts(
-  models: Map<string, ParsedProviderModel>,
+export function extractDashscopeTextToImageSearchFacts(
+  models: ReadonlyMap<string, ParsedProviderModel>,
   sourceId: string,
   rates: readonly DashscopeToolRate[],
-): void {
-  attachToolFacts(models, sourceId, rates, {
+): SourceCommercialPricingFact[] {
+  return toolFacts(models, sourceId, rates, {
     bookKey: "service:text-to-image-search",
     bookName: "Model Studio text-to-image search",
     resourceKey: "text-to-image-search",
@@ -50,8 +49,8 @@ export function attachDashscopeTextToImageSearchFacts(
   });
 }
 
-function attachToolFacts(
-  models: Map<string, ParsedProviderModel>,
+function toolFacts(
+  models: ReadonlyMap<string, ParsedProviderModel>,
   sourceId: string,
   rates: readonly DashscopeToolRate[],
   identity: {
@@ -60,7 +59,7 @@ function attachToolFacts(
     resourceKey: string;
     offerPrefix: string;
   },
-): void {
+): SourceCommercialPricingFact[] {
   const groups = new Map<
     string,
     { modelRefs: Set<string>; rate: SourcePriceFact; scope: string }
@@ -73,23 +72,20 @@ function attachToolFacts(
     group.modelRefs.add(model.uid);
     groups.set(key, group);
   }
-  const facts = [...groups.values()].map(
-    ({ modelRefs, rate, scope }): SourceCommercialPricingFact => ({
-      source_ref: sourceId,
-      book_key: identity.bookKey,
-      book_name: identity.bookName,
-      resource_kind: "service",
-      resource_key: identity.resourceKey,
-      model_refs: [...modelRefs].sort(),
-      offer_key: `built-in:${slug(scope)}`,
-      offer_name: `${identity.offerPrefix} in ${scope}`,
-      billing_mode: "usage",
-      pricing_state: "numeric",
-      price_facts: [rate],
-      raw_price_facts: [],
-    }),
-  );
-  attachCommercialFacts([...models.values()], facts);
+  return [...groups.values()].map(({ modelRefs, rate, scope }): SourceCommercialPricingFact => ({
+    source_ref: sourceId,
+    book_key: identity.bookKey,
+    book_name: identity.bookName,
+    resource_kind: "service",
+    resource_key: identity.resourceKey,
+    model_refs: [...modelRefs].sort(),
+    offer_key: `built-in:${slug(scope)}`,
+    offer_name: `${identity.offerPrefix} in ${scope}`,
+    billing_mode: "usage",
+    pricing_state: "numeric",
+    price_facts: [rate],
+    raw_price_facts: [],
+  }));
 }
 
 function slug(value: string): string {
