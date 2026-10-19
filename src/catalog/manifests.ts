@@ -1878,7 +1878,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "azure-public-pricing", minModels: 1, maxModels: 300 },
-        extractorVersion: "azure-public-pricing-v5",
+        extractorVersion: "azure-public-pricing-v6",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
         fields: ["pricing"],
         allowedHosts: ["azure.microsoft.com"],
