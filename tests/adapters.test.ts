@@ -450,20 +450,21 @@ function vercelDocumentation(): { url: string; body: string }[] {
   ] as const;
 }
 
-async function xaiCatalog(
+async function xaiCatalogResult(
   index = "xai/models.txt",
   edit: (body: string) => string = (body) => body,
   editLlms: (body: string) => string = (body) => body,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (item: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+  minModels = 4,
+): Promise<SourceParseResult> {
   const value = manifest("xai");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "xai-catalog")
     throw new Error("Missing xAI source");
   const source: SourceManifest = {
     ...configured,
-    extractor: { kind: "xai-catalog", minModels: 4, maxModels: 20 },
+    extractor: { kind: "xai-catalog", minModels, maxModels: 20 },
   };
   const body = JSON.stringify({
     index: { url: source.url, body: edit(await fixture(index)) },
@@ -478,7 +479,11 @@ async function xaiCatalog(
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
+  });
+}
+
+async function xaiCatalog(...args: Parameters<typeof xaiCatalogResult>): Promise<ProviderModel[]> {
+  return (await xaiCatalogResult(...args)).models;
 }
 
 function huggingFaceRouterSource(value: ProviderManifest): SourceManifest {
@@ -6515,8 +6520,90 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it("captures independent services and accounting without a model carrier", async () => {
+    const result = await xaiCatalogResult(
+      "xai/models.txt",
+      (body) =>
+        body.replace(
+          /globalThis\.__XAI_PUBLIC_MODELS__=.*?;<\/script>/s,
+          () =>
+            'globalThis.__XAI_PUBLIC_MODELS__={"clusterConfigs":[{"clusterName":"us-east-1"}]};</script>',
+        ),
+      (body) =>
+        body
+          .replace("===/developers/migration/may-15-retirement===", "===/other===")
+          .replace(
+            "===/developers/model-capabilities/audio/speech-to-speech===",
+            "===/other-voice===",
+          ),
+      undefined,
+      undefined,
+      0,
+    );
+    expect(result.models).toEqual([]);
+    expect(result.pricing_inputs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "chat.usage.prompt_tokens" })]),
+    );
+    expect(result.commercial_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resource_key: "text-to-speech",
+          price_facts: [expect.objectContaining({ price: "15", unit: "million_characters" })],
+        }),
+      ]),
+    );
+    const value = manifest("xai");
+    const configured = value.sources[0];
+    if (configured === undefined) throw new Error("Missing xAI source");
+    const captured = capturePricingReplaySources(
+      [{ source: configured, ...result }],
+      [
+        {
+          id: configured.id,
+          provider_id: "xai",
+          url: configured.url,
+          source: [configured.type],
+          stability: configured.stability,
+          scope: configured.scope ?? "global",
+          exhaustive: false,
+          role: configured.role ?? "catalog",
+          field_paths: configured.fields,
+          pricing_evidence: configured.pricingEvidence,
+          content_hash: "1".repeat(64),
+          extractor_version: configured.extractorVersion,
+          observed_at: observedAt,
+        },
+      ],
+    )?.[0];
+    expect(captured?.commercial_facts).toEqual(result.commercial_facts);
+    expect(captured?.pricing_inputs).toEqual(result.pricing_inputs);
+    if (captured === undefined) throw new Error("Missing xAI compilation input");
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source: configured, ...result }],
+      [],
+      value.pricingCategoricalLabels,
+    );
+    expect(
+      partition?.books.some(
+        ({ scope }) =>
+          scope.kind === "provider_resource" && scope.resource_key === "text-to-speech",
+      ),
+    ).toBe(true);
+    expect(
+      assembleParsedProviderPricing(
+        "xai",
+        observedAt,
+        [{ source: configured, ...captured }],
+        [],
+        value.pricingCategoricalLabels,
+      ),
+    ).toEqual(partition);
+  });
+
   it("prices fetched X posts and profiles separately without reusing tool-call counters", async () => {
-    const models = await xaiCatalog(
+    const result = await xaiCatalogResult(
       "xai/models.txt",
       (body) => body,
       (body) =>
@@ -6525,7 +6612,8 @@ describe("xAI adapter", () => {
           "| X Search | `x_search` | Search X posts, user profiles, and threads | $5 / 1k posts, $10 / 1k profiles |\n\nX Search is billed per item fetched rather than per call: every post returned by a search or thread fetch, including parent and quoted posts, counts toward the post rate, and every profile returned by a user search counts toward the profile rate.",
         ),
     );
-    const facts = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const { models } = result;
+    const facts = result.commercial_facts ?? [];
     expect(facts.some(({ resource_key }) => resource_key === "x-search")).toBe(false);
     for (const [key, amount] of [
       ["x-search-posts", "5"],
@@ -6543,7 +6631,7 @@ describe("xAI adapter", () => {
     const partition = assembleParsedProviderPricing(
       "xai",
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -6726,7 +6814,8 @@ describe("xAI adapter", () => {
   });
 
   it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
-    const models = await xaiCatalog();
+    const result = await xaiCatalogResult();
+    const { models } = result;
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "grok-3",
       "grok-4.20-multi-agent-0309",
@@ -6740,8 +6829,8 @@ describe("xAI adapter", () => {
       "grok-voice-think-fast-1.0",
       "grok-voice-think-fast-2.0",
     ]);
-    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(54);
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const inputs = result.pricing_inputs ?? [];
+    expect(inputs).toHaveLength(54);
     expect(inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -6891,7 +6980,8 @@ describe("xAI adapter", () => {
 
   it("keeps standard, long-context, batch, priority, media, and tool rates distinct", async () => {
     const value = manifest("xai");
-    const models = await xaiCatalog();
+    const result = await xaiCatalogResult();
+    const { models } = result;
     const multiAgent = models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309");
     const build = models.find(({ model_id }) => model_id === "grok-build-0.1");
     expect(
@@ -6941,7 +7031,7 @@ describe("xAI adapter", () => {
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -7034,11 +7124,18 @@ describe("xAI adapter", () => {
     const value = manifest("xai");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing xAI pricing source");
-    const models = await xaiCatalog();
+    const result = await xaiCatalogResult();
+    const { models } = result;
+    expect(
+      models.every(
+        ({ pricing_inputs, commercial_facts }) =>
+          pricing_inputs === undefined && commercial_facts === undefined,
+      ),
+    ).toBe(true);
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
-      [{ source, models }],
+      [{ source, ...result }],
       models,
       value.pricingCategoricalLabels,
     );
@@ -7125,14 +7222,15 @@ describe("xAI adapter", () => {
   it("keeps pricing-input contract drift field-local", async () => {
     const findings: SourceContractEvidence[] = [];
     const items: PricingReconciliationItem[] = [];
-    const models = await xaiCatalog(
+    const result = await xaiCatalogResult(
       "xai/models.txt",
       (body) => body,
       (body) => body.replace("uncached\n`prompt_text_tokens`", "uncached\n`future_text_tokens`"),
       (item) => items.push(item),
       (item) => findings.push(item),
     );
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const { models } = result;
+    const inputs = result.pricing_inputs ?? [];
     expect(inputs).toHaveLength(53);
     expect(inputs.some(({ key }) => key === "sdk.agent.prompt_text_tokens")).toBe(false);
     expect(inputs).toEqual(
@@ -7164,7 +7262,8 @@ describe("xAI adapter", () => {
   });
 
   it("keeps request-attributable rates and excludes account resources", async () => {
-    const models = await xaiCatalog();
+    const result = await xaiCatalogResult();
+    const { models } = result;
     const model = models.find(({ model_id }) => model_id === "grok-4.5");
     expect(
       model?.price_facts.find(
@@ -7176,7 +7275,7 @@ describe("xAI adapter", () => {
       ),
     ).toMatchObject({ price: "2", unit: "million_tokens" });
     expect(model?.raw_price_facts).toEqual([]);
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = result.commercial_facts ?? [];
     expect(commercial).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -7210,7 +7309,7 @@ describe("xAI adapter", () => {
 
   it("isolates drift in one tool or Voice service price", async () => {
     const items: PricingReconciliationItem[] = [];
-    const models = await xaiCatalog(
+    const result = await xaiCatalogResult(
       "xai/models.txt",
       (body) => body,
       (body) =>
@@ -7225,7 +7324,7 @@ describe("xAI adapter", () => {
           ),
       (item) => items.push(item),
     );
-    const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    const commercial = result.commercial_facts ?? [];
     expect(commercial.some(({ resource_key }) => resource_key === "attachment-search")).toBe(false);
     expect(commercial.some(({ resource_key }) => resource_key === "text-to-speech")).toBe(false);
     expect(commercial).toEqual(
@@ -7246,13 +7345,13 @@ describe("xAI adapter", () => {
   });
 
   it("does not make account-settlement prose a refresh dependency", async () => {
-    const models = await xaiCatalog(
+    const result = await xaiCatalogResult(
       "xai/models.txt",
       (body) => body,
       (body) => body.replace("exact cost you were charged", "estimated cost"),
     );
-    expect(models).toHaveLength(11);
-    expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual(
+    expect(result.models).toHaveLength(11);
+    expect(result.commercial_facts).toEqual(
       expect.arrayContaining([expect.objectContaining({ resource_key: "web-search" })]),
     );
   });
@@ -7359,7 +7458,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v17");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v18");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);

@@ -373,6 +373,8 @@ Status: implemented
   The price overlay retains its own identity when combined with catalog and accounting evidence.
   Cerebras likewise returns independent usage contracts; a Batch result contract does not imply a
   published Batch price state. API field evidence is separate from cache-price policy evidence.
+  xAI returns service rates and accounting contracts independently as well; a source with no model
+  rows can still preserve its provider-resource prices through capture and replay.
   Anthropic also returns services, acquisition inputs and reviewed vocabulary at source level,
   including typed Code Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
   fixed-search contributions and container calculations; service-only input needs no model carrier.

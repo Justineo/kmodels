@@ -3,8 +3,6 @@ import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type {
@@ -12,30 +10,11 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import {
-  assertItemCount,
-  contractExtensionEvidence,
-  recognizeItems,
-  type SourceContractEvidence,
-} from "./source-contract.ts";
+import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import { extractXaiPricingInputs } from "./xai-accounting.ts";
-import {
-  modalitySchema,
-  type Modality,
-  type ModelTask,
-  type Provider,
-  unknownCapabilities,
-} from "./schema.ts";
-
-interface ParseInput {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (item: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
+import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 
@@ -2256,7 +2235,7 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
   });
 }
 
-export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
+export function parseXaiCatalog(input: ParseInput): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms-full.txt");
   const current = currentModels(
@@ -2270,15 +2249,12 @@ export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const combined = combine([...current.models, ...lifecycle]);
   const models =
     reviewClaim(input, "redirect_price_join_drift", () => redirectedModels(combined)) ?? combined;
-  extractXaiCommercialFacts(models, input.source.id, current.evidence);
   const pricingInputs = extractXaiPricingInputs(
     llms,
     input.source.id,
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = models[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const model of models)
     input.onPricingReconciliation?.({
       disposition: model.price_facts.length > 0 ? "normalized" : "unresolved",
@@ -2290,10 +2266,14 @@ export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
           : "model_price_set_unresolved",
       sample: model.model_id,
     });
-  return models;
+  return {
+    models,
+    commercial_facts: extractXaiCommercialFacts(models, input.source.id, current.evidence),
+    pricing_inputs: pricingInputs,
+  };
 }
 
-export function parseXaiApi(input: ParseInput): ProviderModel[] {
+export function parseXaiApi(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-api") throw new Error("Invalid xAI API extractor");
   const body: unknown = JSON.parse(input.body);
@@ -2308,13 +2288,15 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
       skipInvalidItems: true,
       ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
     });
-    return values.map((value) =>
-      model(input, value.id, {
-        aliases: value.aliases,
-        limits: value.context_length === null ? {} : { context_tokens: value.context_length },
-        scope: "runtime_observation",
-      }),
-    );
+    return {
+      models: values.map((value) =>
+        model(input, value.id, {
+          aliases: value.aliases,
+          limits: value.context_length === null ? {} : { context_tokens: value.context_length },
+          scope: "runtime_observation",
+        }),
+      ),
+    };
   }
   const schema =
     extractor.category === "language"
@@ -2346,13 +2328,15 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
       : extractor.category === "image"
         ? "image_generation"
         : "video_generation";
-  return values.map((value) =>
-    model(input, value.id, {
-      version: value.version,
-      aliases: value.aliases,
-      tasks: [type],
-      modalities: { input: value.input_modalities, output: value.output_modalities },
-      scope: "runtime_observation",
-    }),
-  );
+  return {
+    models: values.map((value) =>
+      model(input, value.id, {
+        version: value.version,
+        aliases: value.aliases,
+        tasks: [type],
+        modalities: { input: value.input_modalities, output: value.output_modalities },
+        scope: "runtime_observation",
+      }),
+    ),
+  };
 }
