@@ -807,12 +807,6 @@ describe("parsed-source canonical pricing adapter", () => {
     const { source: pricingSource } = pricingManifest();
     const scenarios = [
       {
-        provider: "amazon-bedrock",
-        key: "speed",
-        explicit: "optimized",
-        expected: "standard",
-      },
-      {
         provider: "azure",
         key: "context_tier",
         explicit: "long_context",
@@ -856,31 +850,33 @@ describe("parsed-source canonical pricing adapter", () => {
   });
 
   it.each([
-    [false, "speed", "standard", "fast"],
-    [true, "speed", "standard", "fast"],
-    [false, "inference_geo", "global", "us"],
-    [true, "inference_geo", "global", "us"],
+    ["anthropic", false, "speed", "standard", "fast"],
+    ["anthropic", true, "speed", "standard", "fast"],
+    ["anthropic", false, "inference_geo", "global", "us"],
+    ["anthropic", true, "inference_geo", "global", "us"],
+    ["amazon-bedrock", false, "speed", "standard", "optimized"],
+    ["amazon-bedrock", true, "speed", "standard", "optimized"],
   ] as const)(
-    "requires source-owned Anthropic scopes (explicit=%s, dimension=%s)",
-    (explicit, dimension, base, alternative) => {
+    "requires source-owned %s scopes (explicit=%s, dimension=%s)",
+    (provider, explicit, dimension, base, alternative) => {
       const { source: pricingSource } = pricingManifest();
       const parsedModel: ParsedProviderModel = {
         ...model(),
-        provider_id: "anthropic",
-        uid: "anthropic/test-model",
+        provider_id: provider,
+        uid: `${provider}/test-model`,
         price_facts: [
           tokenRate("1", explicit ? { [dimension]: base } : {}),
           tokenRate("2", { [dimension]: alternative }),
         ],
       };
       const partition = assembleParsedProviderPricing(
-        "anthropic",
+        provider,
         observedAt,
         [{ source: pricingSource, models: [parsedModel] }],
         [parsedModel],
       );
       const term = partition?.books[0]?.offers[0]?.terms[0];
-      if (term?.kind !== "rate") throw new Error("Missing Anthropic input rate");
+      if (term?.kind !== "rate") throw new Error("Missing source input rate");
       if (explicit) {
         expect(term.raw_variants).toEqual([]);
         expect(term.variants).toHaveLength(2);
@@ -890,7 +886,7 @@ describe("parsed-source canonical pricing adapter", () => {
               {
                 kind: "categorical",
                 dimension: { namespace: "kmodels", value: dimension },
-                values: [{ namespace: "provider", provider_id: "anthropic", value }],
+                values: [{ namespace: "provider", provider_id: provider, value }],
               },
             ]),
           ),

@@ -87,6 +87,25 @@ async function contextBundle() {
   };
 }
 
+async function latencyBundle() {
+  return {
+    index: {
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
+      body: "# Model cards",
+    },
+    documents: [
+      {
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-3-1-70b-instruct.md",
+        body: await fixture("bedrock/model-card-llama-latency.md"),
+      },
+      {
+        url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
+        body: await fixture("bedrock/latency-price-list.json"),
+      },
+    ],
+  };
+}
+
 function priceDimension(unit: string, usage: string) {
   return {
     url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
@@ -565,7 +584,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v34");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v35");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -1607,6 +1626,71 @@ describe("Bedrock adapters", () => {
           resolution_policy: "bedrock_marketplace_product_page_over_price_list",
         }),
       ]);
+    },
+  );
+
+  it.each([false, true])(
+    "owns ordinary SKU speed independently of an optimized peer (%s)",
+    async (withOptimized) => {
+      const bundle = linkedBundle(await fixture("document/bedrock.json"));
+      if (withOptimized) {
+        const optimized = priceDimension(
+          "1K tokens",
+          "USE1-ClaudeHaiku45-input-tokens-latency-optimized",
+        );
+        bundle.documents.push({
+          ...optimized,
+          body: optimized.body.replace("Command R", "Claude Haiku 4.5"),
+        });
+      }
+      const model = bedrockModels(bundle).find(
+        ({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
+      );
+      const ordinary = model?.price_facts.filter(({ source_locator }) =>
+        source_locator?.value.includes(":HAIKUINPUT:"),
+      );
+      expect(ordinary).toHaveLength(1);
+      expect(ordinary?.[0]).toMatchObject({ price: "0.8", conditions: { speed: "standard" } });
+      expect(model?.price_facts.some(({ conditions }) => conditions.speed === "optimized")).toBe(
+        withOptimized,
+      );
+    },
+  );
+
+  it("binds native Llama ordinary and latency-optimized SKUs to the same callable model", async () => {
+    const models = bedrockModels(await latencyBundle());
+    const model = models.find(({ model_id }) => model_id === "meta.llama3-1-70b-instruct-v1:0");
+    expect(
+      model?.price_facts.map(({ meter, price, conditions }) => ({
+        meter,
+        price,
+        speed: conditions.speed,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { meter: "input_text", price: "0.72", speed: "standard" },
+        { meter: "output_text", price: "0.72", speed: "standard" },
+        { meter: "input_text", price: "0.9", speed: "optimized" },
+        { meter: "output_text", price: "0.9", speed: "optimized" },
+      ]),
+    );
+    expect(model?.price_facts).toHaveLength(4);
+    expect(model?.raw_price_facts).toEqual([]);
+  });
+
+  it.each(["-latency-turbo", "-priority"])(
+    "does not remove an optimized label for an unrelated native SKU (%s)",
+    async (suffix) => {
+      const bundle = await latencyBundle();
+      bundle.documents = bundle.documents.map((document) => ({
+        ...document,
+        body: document.body.replaceAll("-latency-optimized", suffix),
+      }));
+      const model = bedrockModels(bundle).find(
+        ({ model_id }) => model_id === "meta.llama3-1-70b-instruct-v1:0",
+      );
+      expect(model?.price_facts).toHaveLength(2);
+      expect(model?.price_facts.every(({ price }) => price === "0.72")).toBe(true);
     },
   );
 

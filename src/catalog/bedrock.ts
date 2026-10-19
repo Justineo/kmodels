@@ -1616,8 +1616,10 @@ function tier(attributes: Record<string, string>, text: string): string | undefi
   if (/standard|on-demand/.test(value)) return "standard";
 }
 
-function speed(text: string): string | undefined {
-  return /latency.?optimized/.test(text) ? "optimized" : undefined;
+function nativeTokenSpeed(attributes: Record<string, string>): string | undefined {
+  if (attributes.feature !== "On-demand Inference") return;
+  const usage = attributes.usagetype?.match(/-(?:input|output)-tokens(-latency-optimized)?$/i);
+  if (usage) return usage[1] === undefined ? "standard" : "optimized";
 }
 
 function priceDeploymentType(text: string): DeploymentType {
@@ -1680,7 +1682,9 @@ function conditions(
     attributes.imageresolution;
   const quality =
     inference.match(/\b(Standard|Premium)\b/i)?.[1]?.toLowerCase() ?? attributes.imagequality;
-  const resolvedSpeed = speed(lower);
+  const resolvedSpeed = /latency.?optimized/.test(lower)
+    ? "optimized"
+    : nativeTokenSpeed(attributes);
   return {
     ...(attributes.regionCode === undefined ? {} : { region: attributes.regionCode }),
     ...(endpoint === undefined ? {} : { endpoint }),
@@ -2492,9 +2496,13 @@ function parsePrices(
       const attributes = value.attributes;
       const explicitLabel = attributes.model ?? attributes.titanModel ?? attributes.titanModelUnit;
       const usage = attributes.usagetype ?? "";
-      const identityLabel =
+      const nativeLabel =
         explicitLabel ??
         (list.offerCode === "AmazonBedrockFoundationModels" ? (attributes.servicename ?? "") : "");
+      const identityLabel =
+        nativeTokenSpeed(attributes) === "optimized"
+          ? nativeLabel.replace(/ Latency Optimized$/i, "")
+          : nativeLabel;
       const excludedFromInvocation = outsideInvocationScope(attributes);
       const card = excludedFromInvocation
         ? undefined
