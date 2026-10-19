@@ -22,6 +22,11 @@ Pair publication and `vp run prepare:assets` generate these separate export-pack
 - `/pricing/calculation/providers/{provider}.json`: one complete provider partition;
 - `/pricing/calculation/coverage.json`: calculation coverage by offer, operation selector, and logical charge component, with source and freshness references.
 
+Only admitted commercial partitions appear in these exports. Catalog-only registry or SDK evidence
+does not establish a pricing partition merely by naming a hosted route. A provider without such a
+partition remains in the core catalog with unknown model pricing; absence from a price export is
+not absence from the model catalog.
+
 The checked-in export pack must include these endpoints. After a projection change, regenerate it from the accepted local pair with `vp run prepare:assets`; this does not collect live prices. `vp run build` verifies the materialized calculation index, matching coverage and every provider partition, including calculator initialization. A stale pack missing the endpoints fails the build.
 
 The calculation envelope has its own `schemaVersion` and the canonical pair identity. It preserves vocabulary, models and explicit dispositions, source hashes, provider freshness, books/offers/terms/variants, bindings, applicability, validity, relations, enrollment/settlement context, raw reasons, and evidence locators. It omits bulky observation fragments. The canonical `/pricing/index.json` remains the audit resource and cannot initialize the npm package directly.

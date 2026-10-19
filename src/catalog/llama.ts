@@ -4,25 +4,10 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
-import {
-  assertItemCount,
-  contractExtensionEvidence,
-  recognizeItems,
-  type SourceContractEvidence,
-} from "./source-contract.ts";
-import { type Provider, unknownCapabilities } from "./schema.ts";
-
-interface ParseInput {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import type { SourceParseInput as ParseInput } from "./source-parse.ts";
+import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
+import { unknownCapabilities } from "./schema.ts";
 
 interface RegisteredModel {
   key: string;
@@ -126,9 +111,9 @@ const safetyReleaseSpecs: {
 
 const llamaApiItemSchema = z.object({
   id: modelIdSchema,
-  created: z.number().int().nonnegative(),
   object: z.literal("model"),
-  owned_by: z.string().min(1),
+  created: z.unknown().optional(),
+  owned_by: z.unknown().optional(),
 });
 const llamaApiListSchema = z.object({ data: z.array(z.unknown()) });
 const llamaApiItemKeys = ["id", "created", "object", "owned_by"] as const;
@@ -551,6 +536,8 @@ function hostedApiBase(client: string): string {
   const base = new URL(required(baseUrls[0], "API base URL"));
   if (
     base.protocol !== "https:" ||
+    base.hostname !== "api.llama.com" ||
+    base.port !== "" ||
     base.username !== "" ||
     base.password !== "" ||
     base.search !== "" ||
@@ -640,128 +627,6 @@ function toolCall(
   return "unknown";
 }
 
-function auditHostedUsageShape(
-  input: ParseInput,
-  bundle: z.infer<typeof linkedBundleSchema>,
-): void {
-  const response = optionalDocument(bundle, "/types/create_chat_completion_response.py");
-  const stream = optionalDocument(bundle, "/types/create_chat_completion_response_stream_chunk.py");
-  if (
-    response !== undefined &&
-    (!/class Metric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
-      response,
-    ) ||
-      !/metrics: Optional\[List\[Metric\]\]/.test(response))
-  )
-    diagnostic(input, "chat_metrics_contract_drift", "response metrics");
-  if (
-    stream !== undefined &&
-    (!/class EventMetric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
-      stream,
-    ) ||
-      !/event_type: Literal\["start", "complete", "progress", "metrics"\]/.test(stream) ||
-      !/metrics: Optional\[List\[EventMetric\]\]/.test(stream))
-  )
-    diagnostic(input, "stream_metrics_contract_drift", "stream metrics");
-}
-
-function auditHostedModelInventory(
-  input: ParseInput,
-  bundle: z.infer<typeof linkedBundleSchema>,
-): void {
-  if (
-    [
-      "/src/llama_api_client/resources/models.py",
-      "/src/llama_api_client/types/llama_model.py",
-      "/src/llama_api_client/types/model_list_response.py",
-    ].every((suffix) => optionalDocument(bundle, suffix) !== undefined)
-  )
-    claim(input, "model_inventory_contract_drift", "generated Models resource", () =>
-      hostedModelInventory(bundle),
-    );
-}
-
-function auditHistoricalPreview(
-  input: ParseInput,
-  bundle: z.infer<typeof linkedBundleSchema>,
-): void {
-  const launch = optionalDocument(bundle, "/blog/llamacon-llama-news/");
-  if (launch !== undefined) {
-    const historicalPreview =
-      claim(input, "launch_terms_drift", "LlamaCon launch", () => {
-        if (
-          announcementDate(launch, "Everything we announced at our first-ever LlamaCon", [
-            "Llama API",
-            "limited free preview",
-            "Llama 4 Scout",
-            "Llama 4 Maverick",
-            "all usage tracked in one location",
-          ]) !== "2025-04-29"
-        )
-          throw new Error("Llama API launch terms drifted");
-        return true;
-      }) === true;
-    if (historicalPreview)
-      input.onPricingReconciliation?.({
-        disposition: "excluded",
-        reason_code: "historical_limited_free_preview",
-      });
-  }
-}
-
-function hostedModelInventory(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const resource = document(bundle, "/src/llama_api_client/resources/models.py");
-  const model = document(bundle, "/src/llama_api_client/types/llama_model.py");
-  const list = document(bundle, "/src/llama_api_client/types/model_list_response.py");
-
-  const syncResource = resource.match(
-    /class ModelsResource\(SyncAPIResource\):([\s\S]*?)\nclass AsyncModelsResource\(/,
-  )?.[1];
-  const signature = syncResource?.match(
-    /\n {4}def list\(([\s\S]*?)\n {4}\) -> ModelListResponse:/,
-  )?.[1];
-  const method = syncResource?.match(
-    /\n {4}def list\([\s\S]*?\n {4}\) -> ModelListResponse:([\s\S]*)$/,
-  )?.[1];
-  if (signature === undefined || method === undefined)
-    throw new Error("Llama API model-list resource drifted");
-  const parameters = unique(
-    [...signature.matchAll(/^ {8}([a-z][a-z0-9_]*):/gm)].map((match) => match[1] ?? ""),
-  );
-  const expectedParameters = ["extra_body", "extra_headers", "extra_query", "timeout"];
-  if (
-    parameters.length !== expectedParameters.length ||
-    parameters.toSorted().join(",") !== expectedParameters.join(",") ||
-    [...method.matchAll(/self\._get\(\s*[f]?(["'])(.*?)\1/g)].map((match) => match[2]).join(",") !==
-      "/models" ||
-    !/post_parser\s*=\s*DataWrapper\[ModelListResponse\]\._unwrapper/.test(method) ||
-    !/cast_to\s*=\s*cast\(\s*Type\[ModelListResponse\]\s*,\s*DataWrapper\[ModelListResponse\]\s*\)/.test(
-      method,
-    )
-  )
-    throw new Error("Llama API model-list resource drifted");
-
-  const classBody = model.match(/class LlamaModel\(BaseModel\):([\s\S]*)$/)?.[1];
-  const fields =
-    classBody === undefined
-      ? []
-      : [...classBody.matchAll(/^ {4}([a-z][a-z0-9_]*): ([^\n]+)$/gm)].map((match) => ({
-          name: match[1] ?? "",
-          type: match[2] ?? "",
-        }));
-  const fieldTypes = new Map(fields.map(({ name, type }) => [name, type]));
-  if (
-    fields.length !== 4 ||
-    fieldTypes.get("id") !== "str" ||
-    fieldTypes.get("created") !== "int" ||
-    !/^Literal\[["']model["']\]$/.test(fieldTypes.get("object") ?? "") ||
-    fieldTypes.get("owned_by") !== "str"
-  )
-    throw new Error("Llama API model schema drifted");
-  if (!/^ModelListResponse\s*:\s*TypeAlias\s*=\s*(?:List|list)\[LlamaModel\]\s*$/m.test(list))
-    throw new Error("Llama API model-list response drifted");
-}
-
 export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const skuTypes = document(bundle, "/models/sku_types.py");
@@ -813,16 +678,13 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       : claim(input, "hosted_route_drift", "Moderations", () =>
           hostedEndpoint(apiBase, moderations, "Moderations"),
         );
-  auditHostedUsageShape(input, bundle);
-  auditHostedModelInventory(input, bundle);
-  auditHistoricalPreview(input, bundle);
   const hosted = hostedEvidence(input, models, {
     asyncChat: optionalDocument(bundle, "/examples/async_chat.py"),
     chat: optionalDocument(bundle, "/examples/chat.py"),
     structured: optionalDocument(bundle, "/examples/structured.py"),
     tool: optionalDocument(bundle, "/examples/tool_call.py"),
   });
-  const parsed = models.map((model) => {
+  return models.map((model) => {
     const evidence = hosted.get(model.id);
     const safetyRelease = releases.get(model.id);
     const capability = (name: HostedCapability): true | "unknown" =>
@@ -836,7 +698,6 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
         ? []
         : [moderationEndpoint]),
     ];
-    const hostedOffer = endpoints.length > 0;
     const vision =
       model.key.includes("vision") ||
       model.family === "llama4" ||
@@ -871,16 +732,8 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       limits: { context_tokens: contextTokens(model, contexts) },
       release_date: releaseDate(model, dates, quantizedDate, llama33Date, safetyRelease),
       status: "active",
-      pricing_state: hostedOffer ? ("not_published" as const) : ("unknown" as const),
     } satisfies ProviderModel;
   });
-  for (const model of parsed)
-    if (model.pricing_state === "not_published")
-      input.onPricingReconciliation?.({
-        disposition: "explicit_non_numeric",
-        reason_code: "hosted_price_not_published",
-      });
-  return parsed;
 }
 
 export function parseLlamaApi(input: ParseInput): ProviderModel[] {
