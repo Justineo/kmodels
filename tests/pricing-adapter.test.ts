@@ -728,7 +728,7 @@ describe("parsed-source canonical pricing adapter", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
-      tokenRate("1", {}),
+      tokenRate("1", { context_max_tokens: 200_000 }),
       tokenRate("2", { context_min_tokens: 200_001 }),
       tokenRate("0.5", { service_tier: "batch" }),
     ];
@@ -767,8 +767,51 @@ describe("parsed-source canonical pricing adapter", () => {
         }),
       ]),
     );
-    expect(base?.observations[0]?.raw.conditions).toBeUndefined();
+    expect(base?.observations[0]?.raw.conditions).toEqual([
+      { dimension: "context_max_tokens", value: "200000" },
+    ]);
   });
+
+  it.each([false, true])(
+    "requires source-owned complementary context bounds (explicit=%s)",
+    (explicit) => {
+      const { source: pricingSource } = pricingManifest();
+      const parsedModel = model();
+      parsedModel.price_facts = [
+        tokenRate("1", explicit ? { context_max_tokens: 200000 } : {}),
+        tokenRate("2", { context_min_tokens: 200001 }),
+      ];
+      const partition = assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      );
+      const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")
+        ?.terms[0];
+      if (term?.kind !== "rate") throw new Error("Missing context rate term");
+      if (explicit) {
+        expect(term.variants).toHaveLength(2);
+        expect(term.raw_variants).toEqual([]);
+      } else {
+        expect(term.variants).toEqual([]);
+        expect(term.raw_variants).toHaveLength(2);
+        expect(term.raw_variants.every((variant) => variant.reason === "conflicting_values")).toBe(
+          true,
+        );
+        expect(
+          term.raw_variants.some((variant) =>
+            variant.possible_scope?.any_of.some((clause) =>
+              clause.all_of.some(
+                (predicate) =>
+                  predicate.kind === "decimal_range" && predicate.upper?.value === "200000",
+              ),
+            ),
+          ),
+        ).toBe(false);
+      }
+    },
+  );
 
   it("applies provider defaults only where official alternatives establish them", () => {
     const { source: pricingSource } = pricingManifest();

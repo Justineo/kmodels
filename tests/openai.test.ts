@@ -217,7 +217,23 @@ describe("OpenAI adapters", () => {
       )?.terms;
       const input = terms?.find(({ term_key }) => term_key === "input_text");
       if (input?.kind !== "rate") throw new Error("Missing input rate");
-      expect(input.variants).toEqual([]);
+      expect(input.variants).toHaveLength(1);
+      expect(input.variants[0]).toMatchObject({
+        price: { value: { numerator: "1", denominator: "2000000" } },
+        applicability: {
+          any_of: [
+            {
+              all_of: expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "decimal_range",
+                  dimension: { namespace: "kmodels", value: "context_tokens" },
+                  lower: { inclusive: true, value: "272001" },
+                }),
+              ]),
+            },
+          ],
+        },
+      });
       expect(
         input.raw_variants
           .filter(({ reason }) => reason === "conflicting_values")
@@ -1502,7 +1518,11 @@ describe("OpenAI adapters", () => {
     expect(ultrafast.map(({ price, conditions }) => ({ price, conditions }))).toEqual([
       {
         price: "60",
-        conditions: { service_tier: "ultrafast", deployment_scope: "global_processing" },
+        conditions: {
+          service_tier: "ultrafast",
+          deployment_scope: "global_processing",
+          context_max_tokens: 272000,
+        },
       },
       {
         price: "66",
@@ -1510,11 +1530,16 @@ describe("OpenAI adapters", () => {
           service_tier: "ultrafast",
           deployment_scope: "regional_processing",
           region: "United States",
+          context_max_tokens: 272000,
         },
       },
       {
         price: "300",
-        conditions: { service_tier: "ultrafast", deployment_scope: "global_processing" },
+        conditions: {
+          service_tier: "ultrafast",
+          deployment_scope: "global_processing",
+          context_max_tokens: 272000,
+        },
       },
       {
         price: "330",
@@ -1522,6 +1547,7 @@ describe("OpenAI adapters", () => {
           service_tier: "ultrafast",
           deployment_scope: "regional_processing",
           region: "United States",
+          context_max_tokens: 272000,
         },
       },
     ]);
@@ -1591,22 +1617,38 @@ describe("OpenAI adapters", () => {
       {
         meter: "input_text",
         price: "1.00",
-        conditions: { service_tier: "standard", deployment_scope: "global_processing" },
+        conditions: {
+          service_tier: "standard",
+          deployment_scope: "global_processing",
+          context_max_tokens: 272000,
+        },
       },
       {
         meter: "input_text",
         price: "1.1",
-        conditions: { service_tier: "standard", deployment_scope: "regional_processing" },
+        conditions: {
+          service_tier: "standard",
+          deployment_scope: "regional_processing",
+          context_max_tokens: 272000,
+        },
       },
       {
         meter: "output_text",
         price: "2.00",
-        conditions: { service_tier: "standard", deployment_scope: "global_processing" },
+        conditions: {
+          service_tier: "standard",
+          deployment_scope: "global_processing",
+          context_max_tokens: 272000,
+        },
       },
       {
         meter: "output_text",
         price: "2.2",
-        conditions: { service_tier: "standard", deployment_scope: "regional_processing" },
+        conditions: {
+          service_tier: "standard",
+          deployment_scope: "regional_processing",
+          context_max_tokens: 272000,
+        },
       },
     ]);
     expect(models.find(({ model_id }) => model_id === "gpt-test")?.raw_price_facts).toEqual([]);
@@ -1615,8 +1657,8 @@ describe("OpenAI adapters", () => {
         .find(({ model_id }) => model_id === "gpt-old")
         ?.price_facts.map(({ price, conditions }) => ({ price, conditions })),
     ).toEqual([
-      { price: "3.00", conditions: { service_tier: "standard" } },
-      { price: "4.00", conditions: { service_tier: "standard" } },
+      { price: "3.00", conditions: { service_tier: "standard", context_max_tokens: 272000 } },
+      { price: "4.00", conditions: { service_tier: "standard", context_max_tokens: 272000 } },
     ]);
     const assembled = assembleParsedProviderPricing(
       "openai",

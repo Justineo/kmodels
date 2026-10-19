@@ -308,7 +308,7 @@ describe("OpenAI source pricing evidence", () => {
     expect(report.disposition_counts.raw).toBe(2);
     expect(models[0]?.raw_price_facts).toContainEqual(
       expect.objectContaining({
-        conditions: { service_tier: "fast" },
+        conditions: { service_tier: "fast", context_max_tokens: 272000 },
         raw: expect.objectContaining({ amount: "Free", unit: "per 1M tokens" }),
       }),
     );
