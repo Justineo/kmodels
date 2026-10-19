@@ -70,6 +70,11 @@ catalog presence, and repository creation time is not treated as model release t
   provide paid token-rate overlays only after an exact live Hugging Face route and provider model ID
   have already been established. These sources cannot create catalog presence or cross provider
   boundaries.
+  Fireworks joins the published card slug to the native route ID suffix; display titles never
+  establish an alias. Cohere uses the shared structured pricing parser and central pricing quotes;
+  the Command A card is a fallback only when the central page has no usable quote. Groq requires
+  an explicit per-million-token denominator in the owned pricing section; rounded tokens-per-dollar
+  summaries cannot establish that unit.
 
 models.dev, LiteLLM, Portkey, gateways, and marketplaces are comparison inputs only. They may reveal
 a missing official claim but cannot create Hugging Face identities or rates.
@@ -190,6 +195,9 @@ quantity or selector acquisition method is omitted. The compiler never substitut
   route, the collector retains only its last verified facts on exact current model matches; current
   router and mapping rates still refresh. A newly parsed Featherless snapshot replaces facts only
   for rows it actually observes.
+  The documented list and model-detail endpoints can be unavailable even while Hugging Face
+  publishes live Featherless routes. That is a source availability gap, not evidence of model
+  retirement or zero cost. The collector uses no undocumented replacement endpoint.
 - Native provider price pages form an optional commercial overlay bundle. Only exact current paid
   joins are published; if a dependency is unavailable, the last accepted Hugging Face pricing
   partition is retained. An ambiguous, promotional, or structurally changed native row leaves the

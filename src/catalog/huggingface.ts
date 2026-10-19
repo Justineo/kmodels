@@ -574,7 +574,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
           sample: provider,
         });
     for (const provider of documented)
-      if (!huggingFacePartnerIds.includes(provider as (typeof huggingFacePartnerIds)[number]))
+      if (!huggingFacePartnerIds.some((id) => id === provider))
         input.onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "documented_partner_not_collected",
@@ -1159,7 +1159,7 @@ function nativePartnerRoutes(
     const match = /^\/api\/partners\/(cohere|fireworks-ai|groq|zai-org)\/models$/.exec(
       url.pathname,
     );
-    const provider = match?.[1] as NativePricingProvider | undefined;
+    const provider = nativePricingProviders.find((id) => id === match?.[1]);
     if (provider === undefined) continue;
     let value: unknown;
     try {
@@ -1228,10 +1228,6 @@ function nativeRoutes(input: Input, bundle: z.infer<typeof linkedBundleSchema>):
   return result;
 }
 
-function normalizeNativeName(value: string): string {
-  return value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
-}
-
 function pricedToken(value: string): string | undefined {
   const parsed = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/.exec(value.trim());
   return parsed?.[1];
@@ -1239,7 +1235,6 @@ function pricedToken(value: string): string | undefined {
 
 interface FireworksRow extends NativePrice {
   slug: string;
-  title: string;
 }
 
 function fireworksRows(body: string): FireworksRow[] {
@@ -1261,7 +1256,6 @@ function fireworksRows(body: string): FireworksRow[] {
       output: price[2],
       locator: `fireworks:${href}`,
       slug,
-      title,
     });
   });
   return [...rows.values()];
@@ -1376,6 +1370,7 @@ function groqSafeguardRow(body: string): NativePrice | undefined {
   const outputPrice = price("Output");
   if (
     !rawText.includes("openai/gpt-oss-safeguard-20b") ||
+    !/per\s+(?:1\s*M|million)\s+tokens/i.test(section.text()) ||
     inputPrice === undefined ||
     outputPrice === undefined
   )
@@ -1428,20 +1423,6 @@ function cohereRows(body: string): Map<string, NativePrice> {
     prices.set(providerModelId, {
       input: inputPrice,
       output: outputPrice,
-      locator: `cohere:${providerModelId}`,
-    });
-  }
-  const decoded = body.replaceAll('\\"', '"');
-  for (const [providerModelId, productName] of cohereProductByModel) {
-    if (prices.has(providerModelId)) continue;
-    const escapedName = productName.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(
-      `"modelName":"${escapedName}","per":"1M tokens"[\\s\\S]{0,2500}?"pricings":\\[\\{[\\s\\S]{0,1000}?"inputLabel":"Input","inputPrice":((?:0|[1-9]\\d*)(?:\\.\\d+)?),"outputLabel":"Output","outputPrice":((?:0|[1-9]\\d*)(?:\\.\\d+)?)`,
-    ).exec(decoded);
-    if (match?.[1] === undefined || match[2] === undefined) continue;
-    prices.set(providerModelId, {
-      input: match[1],
-      output: match[2],
       locator: `cohere:${providerModelId}`,
     });
   }
@@ -1576,13 +1557,7 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
     const rows = fireworksRows(fireworks);
     for (const route of routes.filter(({ provider }) => provider === "fireworks-ai")) {
       const suffix = route.providerModelId.split("/").at(-1);
-      const modelName = route.model.model_id.split("/").at(-1);
-      const matches = rows.filter(
-        ({ slug, title }) =>
-          slug === suffix ||
-          (modelName !== undefined &&
-            normalizeNativeName(title) === normalizeNativeName(modelName)),
-      );
+      const matches = rows.filter(({ slug }) => slug === suffix);
       const row = matches.length === 1 ? matches[0] : undefined;
       if (row !== undefined && addNativePrices(input, models, route, row)) resolved.add(route);
       else if (matches.length > 1)
@@ -1631,7 +1606,7 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
   if (cohere !== undefined || commandA !== undefined) {
     const rows = cohere === undefined ? new Map<string, NativePrice>() : cohereRows(cohere);
     const row = commandA === undefined ? undefined : cohereCommandARow(commandA);
-    if (row !== undefined) rows.set("command-a-03-2025", row);
+    if (row !== undefined && !rows.has("command-a-03-2025")) rows.set("command-a-03-2025", row);
     for (const route of routes.filter(({ provider }) => provider === "cohere")) {
       const row = rows.get(route.providerModelId);
       if (row !== undefined && addNativePrices(input, models, route, row)) resolved.add(route);
