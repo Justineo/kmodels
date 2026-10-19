@@ -20,8 +20,9 @@ Status: implemented
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
   safe code repair exists. A provider simply not publishing a price is never a repair candidate,
   but a parser that rejects the whole catalog because one model lacks a price is repairable.
-  Repair preserves that model's `not_published` state and valid sibling models without inventing
-  prices or relaxing checks on malformed non-empty values or source identity.
+  Repair preserves valid sibling models and keeps an unobserved price unknown. A `not_published`
+  state needs an explicit source claim; an absent or empty price field cannot establish it. Repair
+  never invents prices or relaxes checks on malformed non-empty values or source identity.
 - Missing owned mappings and unrecognized pricing cards remain candidates on unchanged source bytes;
   accepted publication or fallback does not resolve them. The gate includes their reason counts and
   bounded diagnostic samples. Source candidates do not hide separate pricing validation failures

@@ -66,7 +66,8 @@ model identity nor the logical term merely because its value changes.
 Parser envelopes can mark model or independent commercial facts `unknown`. Compilation preserves
 their known raw charges without publishing an invented commercial state. When no price, charge
 rule or positive state evidence exists, it publishes no book for that observation. `not_published`
-requires evidence about the public offer; missing parser data cannot establish that state.
+requires a positive source claim about non-publication for the public offer; missing parser data,
+an empty price definition or an unclassified literal quote cannot establish that state.
 
 ## Local compilation
 
