@@ -64,10 +64,22 @@ const requestServices = new Set([
   "responses-web-search",
 ]);
 const quantityDependencies: Readonly<Record<string, readonly string[]>> = {
-  input_text: ["cache_read_text", "cache_write_text", "input_audio", "input_image"],
+  input_text: [
+    "cache_read_text",
+    "cache_write_text",
+    "input_audio",
+    "input_image",
+    "cache_read_audio",
+    "cache_read_image",
+    "cache_read_video",
+    "cache_write_audio",
+    "cache_write_image",
+    "cache_write_video",
+  ],
   cache_read_text: ["cache_read_audio", "cache_read_image", "cache_read_video"],
   cache_write_text: ["cache_write_audio", "cache_write_image", "cache_write_video"],
-  input_audio: ["cache_read_audio"],
+  input_audio: ["cache_read_audio", "cache_write_audio"],
+  input_image: ["cache_read_image", "cache_write_image"],
   output_text: ["output_audio", "output_image", "output_video"],
 };
 
@@ -331,12 +343,7 @@ function scopedMeters(
   const dependencies =
     meter.namespace === "kmodels" ? (quantityDependencies[meter.value] ?? []) : [];
   for (const term of terms) {
-    if (
-      term.kind !== "rate" ||
-      term.meter.namespace !== "kmodels" ||
-      !dependencies.includes(term.meter.value)
-    )
-      continue;
+    if (term.kind !== "rate" || !dependencies.some((value) => isMeter(term.meter, value))) continue;
     const overlapping = term.variants.filter(
       (candidate) =>
         permitsMechanism(candidate.applicability, mechanism) &&
@@ -527,33 +534,10 @@ function quantityMethods(
   rateMeters: readonly PriceMeter[],
   inputIndex: PricingInputIndex,
 ): MethodsAndFacts {
+  // Scoped quantity dependencies can expose overlapping counters, not independent modalities.
+  if (rateMeters.some(isModalityCache)) return { methods: [], facts: [] };
   if (isMeter(meter, "input_text") && isStandardSignal(spec.signal, "uncached_input_tokens"))
     return uncachedInputMethods(mechanism, model, rateMeters, inputIndex);
-  if (
-    isMeter(meter, "cache_read_text") &&
-    rateMeters.some(
-      (candidate) =>
-        isMeter(candidate, "cache_read_audio") ||
-        isMeter(candidate, "cache_read_image") ||
-        isMeter(candidate, "cache_read_video"),
-    )
-  )
-    return { methods: [], facts: [] };
-  if (
-    isMeter(meter, "cache_write_text") &&
-    rateMeters.some(
-      (candidate) =>
-        isMeter(candidate, "cache_write_audio") ||
-        isMeter(candidate, "cache_write_image") ||
-        isMeter(candidate, "cache_write_video"),
-    )
-  )
-    return { methods: [], facts: [] };
-  if (
-    isMeter(meter, "input_audio") &&
-    rateMeters.some((candidate) => isMeter(candidate, "cache_read_audio"))
-  )
-    return { methods: [], facts: [] };
   if (
     isMeter(meter, "output_text") &&
     rateMeters.some(
@@ -825,5 +809,13 @@ function isServiceTier(condition: PriceCondition): boolean {
 }
 
 function isMeter(meter: PriceMeter, value: string): boolean {
-  return meter.namespace === "kmodels" && meter.value === value;
+  return meter.value === value && (meter.namespace === "kmodels" || isModalityCache(meter));
+}
+
+function isModalityCache(meter: PriceMeter): boolean {
+  return (
+    meter.namespace === "provider" &&
+    meter.provider_id === "azure" &&
+    /^cache_(?:read|write)_(?:audio|image|video)$/.test(meter.value)
+  );
 }
