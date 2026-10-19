@@ -321,25 +321,29 @@ function section(body: string, heading: string): string | undefined {
   return end < 0 ? content : content.slice(0, end);
 }
 
+function contextTokenCount(value: string): number | undefined {
+  const match = value.match(/^(0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(K)?$/);
+  if (match?.[1] === undefined) return;
+  const result = Number(match[1].replaceAll(",", "")) * (match[2] === "K" ? 1000 : 1);
+  return Number.isSafeInteger(result) ? result : undefined;
+}
+
+function cardProse(body: string): string {
+  return markdownProse(body)
+    .split("\n")
+    .map((line) => (/^\s*>/.test(line) ? "" : line))
+    .join("\n");
+}
+
 function modelContextPricing(body: string): ContextPricing {
-  body = body.replaceAll("\r\n", "\n");
   const content = markdownSection(body, 2, "Pricing");
   const headings = [...markdownProse(body).matchAll(/^## Pricing[ \t]*$/gm)];
   if (content === undefined)
     return { short: undefined, long: undefined, scoped: headings.length > 1 };
-  const prose = markdownProse(content)
-    .split("\n")
-    .filter((line) => !/^\s*>/.test(line))
-    .join("\n");
-  const count = (value: string): number | undefined => {
-    const match = value.match(/^(0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(K)?$/);
-    if (match?.[1] === undefined) return;
-    const result = Number(match[1].replaceAll(",", "")) * (match[2] === "K" ? 1000 : 1);
-    return Number.isSafeInteger(result) ? result : undefined;
-  };
+  const prose = cardProse(content);
   const bound = (patterns: RegExp[]): number | undefined => {
     const matches = patterns.flatMap((pattern) => [...prose.matchAll(pattern)]);
-    const values = matches.map((match) => count(match[1] ?? ""));
+    const values = matches.map((match) => contextTokenCount(match[1] ?? ""));
     if (values.some((value) => value === undefined)) return;
     const unique = new Set(values);
     return unique.size === 1 ? unique.values().next().value : undefined;
@@ -850,98 +854,240 @@ function modelCardRates(
   return prices;
 }
 
-function openAiModelCardRates(
-  content: string | undefined,
+function openAiCardRoute(
+  card: Card,
+  access: CardId,
+  option: string,
+): { conditions: SourcePriceFact["conditions"]; regions: string[] } | undefined {
+  const match = option.match(/^(In-Region|Geo CRIS|Global CRIS)(?: \(([^()]+)\))?$/);
+  if (match === null) return;
+  const scope = match[1] === "In-Region" ? "in-region" : match[1] === "Geo CRIS" ? "geo" : "global";
+  const endpoint = scope === "in-region" ? "bedrock-mantle" : "bedrock-runtime";
+  const qualifier = match[2];
+  const geographies = new Set(
+    [...access.aliases].flatMap((alias) => alias.match(/^(us|eu|apac)\./)?.[1] ?? []),
+  );
+  const geography =
+    scope !== "geo"
+      ? undefined
+      : (qualifier?.toLowerCase() ??
+        (geographies.size === 1 ? geographies.values().next().value : undefined));
+  if (scope === "geo" && (geography === undefined || !geographies.has(geography))) return;
+  if (scope === "global" && qualifier !== undefined) return;
+  if (
+    scope === "in-region" &&
+    qualifier !== undefined &&
+    !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(qualifier)
+  )
+    return;
+  const regions =
+    !access.deploymentTypes.has(scope) || !access.endpoints.has(endpoint)
+      ? []
+      : [
+          ...new Set(
+            card.availability
+              .filter(
+                (item) =>
+                  item.deploymentType === scope &&
+                  (item.programmaticEndpoint === undefined ||
+                    item.programmaticEndpoint === endpoint) &&
+                  (scope !== "in-region" || qualifier === undefined || item.region === qualifier) &&
+                  !/^(?:us-gov-|cn-)/.test(item.region),
+              )
+              .map(({ region }) => region),
+          ),
+        ].sort();
+  return {
+    conditions: {
+      endpoint,
+      deployment_scope:
+        scope === "in-region"
+          ? "in_region"
+          : scope === "geo"
+            ? "geo_cross_region"
+            : "global_cross_region",
+      ...(geography === undefined ? {} : { inference_geo: geography }),
+      ...(scope === "in-region" && qualifier !== undefined ? { region: qualifier } : {}),
+    },
+    regions,
+  };
+}
+
+const openAiCardMeters = new Map<string, SourcePriceFact["meter"]>([
+  ["Input", "input_text"],
+  ["Output", "output_text"],
+  ["Input — cache read", "cache_read_text"],
+  ["Input — 30m cache write", "cache_write_text"],
+  ["Input — 30-minute cache write", "cache_write_text"],
+]);
+
+function openAiModelCardPricing(
+  card: Card,
   access: CardId,
   sourceId: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
-): SourcePriceFact[] {
-  if (
-    content === undefined ||
-    !content.includes("All prices are in USD per 1 million tokens for the Standard tier.") ||
-    !content.includes("Commercial In-Region prices include a 10% fee over OpenAI rates.")
-  )
-    return [];
-  const prices: SourcePriceFact[] = [];
-  for (const [heading, contextConditions] of [
-    [
-      "Commercial Regions — short context (272K input tokens or fewer)",
-      { context_max_tokens: 272_000 },
-    ],
-    [
-      "Commercial Regions — long context (more than 272K input tokens)",
-      { context_min_tokens: 272_001 },
-    ],
-  ] as const) {
-    const start = content.indexOf(`### ${heading}`);
-    if (start < 0) continue;
-    const following = content.slice(start + heading.length + 4);
-    const end = following.search(/\n### /);
-    const block = end < 0 ? following : following.slice(0, end);
-    const table = markdownTable(block, [
-      "Inference option",
-      "Input",
-      "Input — 30m cache write",
-      "Input — cache read",
-      "Output",
-    ]);
-    if (table === undefined) continue;
+): { rates: SourcePriceFact[]; rawFacts: SourceRawPricingFact[] } {
+  const rates: SourcePriceFact[] = [];
+  const rawFacts: SourceRawPricingFact[] = [];
+  if (card.pricingSection === undefined) return { rates, rawFacts };
+  const content = cardProse(card.pricingSection);
+  const headings = [...content.matchAll(/^### ([^\n]+)$/gm)];
+  const intro = content.slice(0, headings[0]?.index).replaceAll("**", "");
+  const standardOnly =
+    /^[ \t]*All prices are in USD per 1 million tokens for the Standard tier\./m.test(intro);
+  const knownUnit =
+    standardOnly || /^[ \t]*All prices are in USD per 1 million tokens\./m.test(intro);
+  const serviceTiers = cardProse(card.serviceTierSection ?? "")
+    .replaceAll("**", "")
+    .replace(/\s+/g, " ");
+  const responsesTier = serviceTiers.includes(
+    'To request it with the Responses API, set `"service_tier": "ultrafast"`.',
+  );
+  for (const [index, heading] of headings.entries()) {
+    const name = heading[1] ?? "";
+    const match = name.match(
+      /^(?:(Standard|Ultrafast) — )?Commercial Regions(?: —|,) (short|long) context \(([^()]*)\)$/,
+    );
+    if (match === null) continue;
+    const block = content.slice(heading.index + heading[0].length, headings[index + 1]?.index);
+    const owned = markdownSection(content, 3, name) !== undefined;
+    const tier = match[1] === "Ultrafast" ? "ultrafast" : "standard";
+    const long = match[2] === "long";
+    const count = match[3]?.match(
+      long ? /^more than ([^\s]+) input tokens$/ : /^([^\s]+) input tokens or fewer$/,
+    )?.[1];
+    const threshold = count === undefined ? undefined : contextTokenCount(count);
+    const knownContext = threshold !== undefined && (!long || threshold < Number.MAX_SAFE_INTEGER);
+    const context = !knownContext
+      ? {}
+      : long
+        ? { context_min_tokens: threshold + 1 }
+        : { context_max_tokens: threshold };
+    let table: ReturnType<typeof markdownTable>;
+    try {
+      table = markdownTable(block, ["Inference option"]);
+    } catch {
+      table = undefined;
+    }
+    if (table === undefined || !owned) {
+      rawFacts.push(
+        rawPricingFact(
+          sourceId,
+          "model_card_price",
+          "base_price",
+          "unknown_applicability",
+          { label: name, fragment: block.trim() || name },
+          { service_tier: tier, ...context },
+        ),
+      );
+      onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "model_card_price_scope_unresolved",
+        sample: name,
+      });
+      continue;
+    }
     for (const row of table.rows) {
-      const option = row[table.header.indexOf("Inference option")];
-      const deploymentType =
-        option === "In-Region"
-          ? "in-region"
-          : option === "Geo CRIS"
-            ? "geo"
-            : option === "Global CRIS"
-              ? "global"
-              : undefined;
-      if (deploymentType === undefined || !access.deploymentTypes.has(deploymentType)) continue;
-      const endpoint = deploymentType === "in-region" ? "bedrock-mantle" : "bedrock-runtime";
-      if (!access.endpoints.has(endpoint)) continue;
-      for (const [column, meter] of [
-        ["Input", "input_text"],
-        ["Input — 30m cache write", "cache_write_text"],
-        ["Input — cache read", "cache_read_text"],
-        ["Output", "output_text"],
-      ] as const) {
-        const raw = row[table.header.indexOf(column)] ?? "";
-        if (raw === "—") continue;
-        const price = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
-        if (price === undefined) {
+      const option = row[table.header.indexOf("Inference option")] ?? "";
+      const route = openAiCardRoute(card, access, option);
+      if (route?.regions.length === 0) {
+        onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "model_card_price_route_not_applicable",
+          sample: `${name}: ${option}`,
+        });
+        continue;
+      }
+      const knownApi =
+        tier === "standard" ||
+        (responsesTier &&
+          card.apiEndpoints.some(
+            (api) =>
+              api.name === "Responses" && api.programmaticEndpoint === route?.conditions.endpoint,
+          ));
+      const scopeKnown =
+        knownContext && knownApi && (match[1] !== undefined || standardOnly) && route !== undefined;
+      for (const [columnIndex, column] of table.header.entries()) {
+        if (column === "Inference option") continue;
+        const meter = openAiCardMeters.get(column);
+        const raw = row[columnIndex] ?? "";
+        if (raw === "—") {
           onPricingReconciliation?.({
-            disposition: "unsupported",
-            reason_code: "model_card_price_row_unreadable",
-            sample: `${heading}: ${column}`,
+            disposition: "excluded",
+            reason_code: "price_cell_not_available",
+            sample: `${name}: ${column}`,
           });
           continue;
         }
-        prices.push({
-          meter,
-          price,
-          currency: "USD",
-          unit: "million_tokens",
-          conditions: {
-            endpoint,
-            deployment_scope:
-              deploymentType === "in-region"
-                ? "in_region"
-                : deploymentType === "geo"
-                  ? "geo_cross_region"
-                  : "global_cross_region",
-            service_tier: "standard",
-            ...contextConditions,
-            ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
-          },
-          source_ref: sourceId,
-          derived: false,
-          raw_price: raw,
-          raw_unit: "1 million tokens",
+        const price = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+        const conditions: SourcePriceFact["conditions"] = {
+          ...route?.conditions,
+          service_tier: tier,
+          ...context,
+          ...(knownApi && tier === "ultrafast" ? { operation: "responses" } : {}),
+          ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1800 } : {}),
+        };
+        const reason = !knownUnit
+          ? "unknown_unit"
+          : !scopeKnown
+            ? "unknown_applicability"
+            : meter === undefined || table.header.filter((header) => header === column).length !== 1
+              ? "unknown_meter"
+              : price === undefined
+                ? "unsupported_structure"
+                : undefined;
+        if (
+          reason !== undefined ||
+          meter === undefined ||
+          price === undefined ||
+          route === undefined
+        ) {
+          rawFacts.push(
+            rawPricingFact(
+              sourceId,
+              meter ?? "model_card_price",
+              "base_price",
+              reason ?? "unsupported_structure",
+              {
+                label: `${name}: ${option}`,
+                ...(price === undefined ? {} : { amount: price }),
+                ...(knownUnit ? { denomination: "USD", unit: "1 million tokens" } : {}),
+                fragment: `${column}: ${raw}`,
+              },
+              conditions,
+            ),
+          );
+          onPricingReconciliation?.({
+            disposition: reason === "unknown_applicability" ? "unresolved" : "unsupported",
+            reason_code:
+              reason === "unknown_applicability"
+                ? "model_card_price_scope_unresolved"
+                : "model_card_price_cell_unreadable",
+            sample: `${name}: ${option}: ${column}`,
+          });
+          continue;
+        }
+        for (const region of route.regions)
+          rates.push({
+            meter,
+            price,
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: { ...conditions, region },
+            source_ref: sourceId,
+            source_locator: { kind: "table", value: `${card.name}: ${name}: ${option}: ${column}` },
+            derived: false,
+            raw_price: raw,
+            raw_unit: "1 million tokens",
+          });
+        onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "model_card_price_cell_bound",
         });
       }
     }
   }
-  return prices;
+  return { rates, rawFacts };
 }
 
 function cardAvailability(body: string, observedAt: string): BedrockAvailability[] {
@@ -1143,6 +1289,7 @@ function parseCard(
   observedAt: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
 ): Card {
+  body = body.replaceAll("\r\n", "\n");
   const name = plain(body.match(/^# ([^\n]+)$/m)?.[1] ?? "");
   if (name === "") throw new Error("Bedrock model card omitted its name");
   const publisher = plain(body.match(/^## .*\)\s*([^—\n]+?)\s+—\s+/m)?.[1] ?? "");
@@ -1279,7 +1426,7 @@ function parseCard(
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
     pricingSection: markdownSection(body, 2, "Pricing"),
     contextPricing: modelContextPricing(body),
-    serviceTierSection: section(body, "Service Tiers"),
+    serviceTierSection: markdownSection(body, 2, "Service Tiers"),
   };
 }
 
@@ -3007,25 +3154,21 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
       if (current !== undefined && current.name !== card.name)
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
       const listedPricing = prices.modelRates.get(id) ?? [];
-      const pricing =
-        listedPricing.length > 0
-          ? listedPricing
-          : [
-              ...modelCardRates(
-                card.pricingSection,
-                card.serviceTierSection,
-                access,
-                input.source.id,
-                input.onPricingReconciliation,
-              ),
-              ...openAiModelCardRates(
-                card.pricingSection,
-                access,
-                input.source.id,
-                input.onPricingReconciliation,
-              ),
-            ];
-      if (listedPricing.length === 0 && pricing.length > 0)
+      const cardRates = modelCardRates(
+        card.pricingSection,
+        card.serviceTierSection,
+        access,
+        input.source.id,
+        input.onPricingReconciliation,
+      );
+      const cardPricing = openAiModelCardPricing(
+        card,
+        access,
+        input.source.id,
+        input.onPricingReconciliation,
+      );
+      const pricing = [...listedPricing, ...cardRates, ...cardPricing.rates];
+      if (cardRates.length > 0)
         input.onPricingReconciliation?.({
           disposition: "normalized",
           reason_code: "model_card_public_rate",
@@ -3089,7 +3232,7 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
         release_stage: card.releaseStage,
         pricing_state: modelPricing.length > 0 ? "numeric" : "unknown",
         price_facts: modelPricing,
-        raw_price_facts: prices.modelRawFacts.get(id) ?? [],
+        raw_price_facts: [...(prices.modelRawFacts.get(id) ?? []), ...cardPricing.rawFacts],
         availability,
         scope: "regional_catalog",
       };

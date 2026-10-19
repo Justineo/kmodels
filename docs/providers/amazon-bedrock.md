@@ -66,26 +66,44 @@ reviewed page retain equal authority and become a bounded canonical conflict; th
 select a winner.
 If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
 reported for the panel while a recognized sibling panel can still contribute exact rates.
-When none of the Price List offers binds a model, an exact model-card Pricing table can supply
-Standard token rates if the card states the unit and identifies the matching inference-profile
-aliases. Kimi K3 currently publishes Global and US cross-Region input, output, 30-minute cache-write,
+Exact model-card Pricing tables supplement the Price Lists when the card states the unit and
+identifies the matching endpoint and inference-profile aliases. A partial bulk inventory cannot
+suppress another published tariff or meter. Coequal card and bulk observations reach canonical
+assembly together: equal amounts combine their evidence, while unequal overlapping amounts remain
+bounded conflicts. A card does not silently override a native SKU. Kimi K3 currently publishes
+Global and US cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
 These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Its
 Priority and Flex multipliers produce rates explicitly qualified by the Responses or Chat Completions
 operation. They are not broadened to Converse/Invoke, nor bound to those APIs' usage/selector paths.
 If the API restriction cannot be recovered, Standard rates survive and tier scope drift is reported.
-The same fallback accepts cards without a cache-write column, including
+The same reader accepts cards without a cache-write column, including
 [Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
 Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is
 never inferred from the provider name. Explicit, unqualified Priority/Flex multipliers on the
 card derive separate tier rates from its Standard amounts. A bad price cell removes only that
 component, retaining the other meters in its row. Runtime card evidence does not authorize a
 join to a Mantle SKU.
-The OpenAI Bedrock model cards use a separate exact Standard table for Mantle In-Region pricing.
-Their short/long context bands are bounded at 272K input tokens, and an em dash cache-write cell
-does not become a numeric rate. The card already includes its stated commercial fee, so no extra
-percentage is applied. Exact Geo and Global CRIS rows apply to Runtime inference-profile aliases;
-the In-Region row applies to Mantle where that endpoint is published.
+The OpenAI Bedrock cards use separately owned Standard and Ultrafast tables. Each heading supplies
+its own exact short/long input-context bound; its model context window supplies none. Commercial
+rows are limited to the card's positive regional and endpoint availability. An explicit Geo CRIS
+geography must match a published inference-profile alias; a regional qualifier restricts that row.
+The card already includes its stated commercial fee, so no extra percentage is applied. Both
+`30m` and `30-minute` cache-write headers mean a 1,800-second cache TTL with a per-token charge,
+not a multiplication of the token quantity. An em dash is an explicitly unavailable component.
+
+For [GPT-6 Astra](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html),
+literal Ultrafast amounts come from its tables rather than a guessed speed or price multiplier.
+The unique Service Tiers section must establish the Responses `service_tier` instruction and the
+endpoint must independently support Responses. Those quotes carry the Responses operation, with
+Mantle limited to `us-east-1` and Runtime restricted to the published US Geo or Global profile.
+Converse/Invoke counters and selectors cannot supply their acquisition paths; callers can supply
+the semantic billable quantities themselves. Unknown units, headers, API scope and malformed or
+duplicate table owners retain local raw quote evidence and diagnostics while readable sibling
+bands remain usable. Fenced, quoted or unowned instructions establish no contract.
+Loss of these owned price or service-tier contracts produces unresolved/unsupported diagnostics
+and enters the existing repair investigation even when source bytes are unchanged. Ordinary raw
+prices outside a reviewed contract do not gain that trigger.
 
 The [Responses API guide](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html)
 now links its former regional table to
