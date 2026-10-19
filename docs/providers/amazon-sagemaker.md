@@ -1,6 +1,6 @@
 # Amazon SageMaker AI
 
-Status: implemented; source research and access verification 2026-09-23
+Status: current
 
 ## Catalog boundary
 
@@ -12,8 +12,7 @@ Admission starts with the **Open-weight models** and **Proprietary models** sect
 AWS's [foundation-model catalog](https://docs.aws.amazon.com/sagemaker/latest/dg/jumpstart-foundation-models-latest.html).
 Built-in pretrained models and classic ML algorithms are excluded before metadata or pricing
 joins. The source is global and non-exhaustive: its tables are a dated publication rather than
-a guarantee of every currently deployable model. At research time the two admitted sections
-contained 436 and 121 entries; these counts are observations, not permanent assertions.
+a guarantee of every currently deployable model.
 The parser checks each live section's own advertised row count, required headers, and identity
 uniqueness. Section/header drift and partial tables fail the source.
 
@@ -64,13 +63,6 @@ availability. Package revisions do not populate model `version` or release dates
 `<4K` remain labels instead of becoming exact `limits.context_tokens`. Metadata and deployment
 profiles appear in the inspector's deferred, byte-bounded detail chunks, not the homepage core.
 
-The 2026-09-23 accepted snapshot contains 624 models, including 617 with nonempty supported
-instance lists in their published deployment profiles. It contains 452 modality records, 502
-publisher labels, 382 licenses, 318 size labels, 175 context ranges, 347 language lists, 414
-upstream IDs, and 2,379 deployment profiles. These are dated observations, not exhaustiveness
-claims or test thresholds. The accepted Hub enrichment completed 604 detail reads; absence from
-this Region's Hub does not retire globally admitted IDs. All four SageMaker sources succeeded.
-
 ## Optional regional API
 
 The collector reuses the AWS credentials already configured for Bedrock. Its optional-source
@@ -80,10 +72,8 @@ a profile alone does not satisfy the collector's current environment gate. No se
 is needed. `ListHubContents` paginates `SageMakerPublicHub` / `Model`; `DescribeHubContent`
 reads the exact returned version, only for models already admitted by the public tables or SDK
 manifest rules.
-The configured enrichment Region is `us-west-2`. A read-only access probe succeeded for
-`ListHubContents`, `DescribeHubContent`, and `ListHubContentVersions` in both `us-west-2` and
-`us-east-1` after the user's IAM update. Historical-version permission is available but is not
-needed by routine collection.
+The configured enrichment Region is `us-west-2`. Routine collection uses `ListHubContents` and
+`DescribeHubContent`; it does not need historical-version reads.
 
 The API fills display names, descriptions, missing model-card facts, modalities and explicit
 fine-tuning support. A positive
@@ -114,10 +104,16 @@ No create, deploy, invoke, pass-role or Marketplace subscription permission is r
 
 ## Public pricing discovery
 
+All four source parsers return the explicit source envelope. Pricing returns infrastructure and
+Marketplace commercial facts independently of the model observations; no arbitrary model row
+carries them. Their exact catalog/listing/instance joins remain required. Compilation stores these
+facts once and replay can assemble them against the published models without repeating the source
+model rows. Model-only catalog, SDK and regional inventory sources do not create synthetic prices.
+
 The Pricebook combines two public, independently auditable sources:
 
 - The [AmazonSageMaker bulk price list](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSageMaker/current/index.json)
-  supplies current regional service rates. Its approximately 71 MB research response is bounded
+  supplies current regional service rates. The bulk response is bounded
   separately from the assembled bundle. Collection reads all published Regions, not just the
   authenticated enrichment Region.
 - The official [proprietary SDK manifest](https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/proprietary-sdk-manifest.json)
@@ -143,15 +139,9 @@ queries, ambiguous joins, truncated rate-card arrays, or incomplete dependency b
 pricing source. Known sibling rates survive unfamiliar supported-family price cells as bounded
 raw facts. The shared collector retains an accepted provider pricing snapshot on source failure.
 
-The 2026-09-23 accepted price snapshot has 404 books: 298 real-time hosting instance books, 101
-Marketplace hourly software books, two service books, and three model books for Marketplace
-per-inference software. It recognized 4,003 AWS hosting SKUs, 324 infrastructure invocation SKUs,
-652 Marketplace hourly cards, and three per-inference cards; 20 listing pages had no public
-pricing. These are dated coverage observations, not tests against volatile upstream counts or
-proof that every model has a complete inference bill.
-Exact SDK instance lists link hosting capacity to 617 models. Five Nova package records have
-empty supported-instance lists and no public per-inference rate, so the website shows only
-separate service charges for them instead of guessing a hosting SKU.
+Exact SDK instance lists establish each model's hosting-capacity links. A model with an empty
+supported-instance list and no public per-inference rate shows only independently established
+service charges; it gains no inferred hosting SKU or claim of a complete inference bill.
 
 ## Inference and hosting charges
 

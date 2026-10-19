@@ -6,6 +6,7 @@ import { normalizeSagemakerMarketplace } from "../src/catalog/sagemaker-pricing.
 import { sagemakerPricingSpecs, sagemakerRows } from "../src/catalog/sagemaker.ts";
 import { fetchSagemakerInventory } from "../src/catalog/sagemaker-api.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
@@ -88,14 +89,14 @@ function bundle(overrides: object = {}) {
   });
 }
 function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) {
-  const models = parseSource({
+  const parsed = parseSource({
     provider,
     source: source("sagemaker-pricing"),
     body,
     observedAt,
     onPricingReconciliation: (item) => items.push(item),
-  }).models;
-  const open = models.find(
+  });
+  const open = parsed.models.find(
     ({ model_id }) => model_id === "meta-textgeneration-llama-3-1-8b-instruct",
   );
   if (open !== undefined)
@@ -110,15 +111,15 @@ function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) 
         },
       ],
     };
-  return models;
+  return parsed;
 }
 
-function assemblePricing(models: ReturnType<typeof parsePricing>) {
+function assemblePricing(parsed: ReturnType<typeof parsePricing>) {
   const partition = assembleParsedProviderPricing(
     provider.id,
     observedAt,
-    [{ source: source("sagemaker-pricing"), models }],
-    models,
+    [{ source: source("sagemaker-pricing"), ...parsed }],
+    parsed.models,
     labels,
   );
   if (partition === undefined) throw new Error("Missing SageMaker pricing partition");
@@ -204,13 +205,13 @@ describe("SageMaker foundation catalog", () => {
 describe("SageMaker price books", () => {
   it("keeps numeric and raw infrastructure rates in their respective service books", () => {
     const items: PricingReconciliationItem[] = [];
-    const models = parsePricing(
+    const parsed = parsePricing(
       bundle({
         prices: prices.replace('"USD": "0.00004"', '"USD": "0.00004", "EUR": "Contact sales"'),
       }),
       items,
     );
-    const facts = models.flatMap((model) => model.commercial_facts ?? []);
+    const facts = parsed.commercial_facts ?? [];
     const data = facts.find((fact) => fact.resource_key === "endpoint-data-processing");
     const serverless = facts.find((fact) => fact.resource_key === "serverless-inference");
     if (data === undefined || serverless === undefined)
@@ -258,9 +259,11 @@ describe("SageMaker price books", () => {
 
   it("publishes hosting and software capacity alongside request charges", async () => {
     const items: PricingReconciliationItem[] = [];
-    const models = parsePricing(bundle(), items);
+    const parsed = parsePricing(bundle(), items);
+    const { models } = parsed;
+    expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
     const s = source("sagemaker-pricing");
-    const partition = assemblePricing(models);
+    const partition = assemblePricing(parsed);
     validateAdoptedTopology(partition);
     const pricing = {
       provider_vocabularies: [partition.vocabulary],
@@ -297,25 +300,42 @@ describe("SageMaker price books", () => {
     expect(
       rows.find(({ model_id }) => model_id === "fixture-embedding")?.pricing.status?.label,
     ).toBe("$0 / request");
+    const sources = [s, source("sagemaker-sdk")].map((entry) => ({
+      id: entry.id,
+      provider_id: provider.id,
+      url: entry.url,
+      source: entry.source ?? [entry.type],
+      stability: entry.stability,
+      scope: "global" as const,
+      exhaustive: false,
+      role: entry.role ?? "catalog",
+      field_paths: entry.fields,
+      ...(entry.pricingEvidence === undefined ? {} : { pricing_evidence: entry.pricingEvidence }),
+      observed_at: observedAt,
+      content_hash: "1".repeat(64),
+      extractor_version: entry.extractorVersion,
+    }));
     validatePricingCatalog(pricing, {
       providers: [provider],
       models,
-      sources: [s, source("sagemaker-sdk")].map((entry) => ({
-        id: entry.id,
-        provider_id: provider.id,
-        url: entry.url,
-        source: entry.source ?? [entry.type],
-        stability: entry.stability,
-        scope: "global" as const,
-        exhaustive: false,
-        role: entry.role ?? "catalog",
-        field_paths: entry.fields,
-        ...(entry.pricingEvidence === undefined ? {} : { pricing_evidence: entry.pricingEvidence }),
-        observed_at: observedAt,
-        content_hash: "1".repeat(64),
-        extractor_version: entry.extractorVersion,
-      })),
+      sources,
     });
+    const captured = capturePricingReplaySources(
+      [{ source: s, ...parsed, models: [] }],
+      sources,
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    expect(captured?.commercial_facts).toEqual(parsed.commercial_facts);
+    if (captured === undefined) throw new Error("Missing SageMaker source compilation input");
+    expect(
+      assembleParsedProviderPricing(
+        provider.id,
+        observedAt,
+        [{ source: s, ...captured }],
+        models,
+        labels,
+      ),
+    ).toEqual(partition);
     expect(partition.books).toHaveLength(8);
     const serverless = partition.books.find(
       (book) =>
@@ -459,13 +479,13 @@ describe("SageMaker price books", () => {
   });
 
   it("gives each exactly linked model its own software offer when they share a listing", () => {
-    const models = parsePricing(
+    const parsed = parsePricing(
       bundle({
         specs: specs.map((spec) => ({ ...spec, listing_id: "prodview-speech" })),
         listings: [page("prodview-speech", [term([card("6")])])],
       }),
     );
-    const partition = assemblePricing(models);
+    const partition = assemblePricing(parsed);
     const books = partition.books.filter((book) => book.scope.kind === "models");
     expect(books).toHaveLength(2);
     expect(books.flatMap((book) => book.scope.model_refs).sort()).toEqual([
@@ -484,7 +504,7 @@ describe("SageMaker price books", () => {
 
   it("keeps unavailable public pricing unknown and preserves an unsupported inference unit as raw", () => {
     const items: PricingReconciliationItem[] = [];
-    const models = parsePricing(
+    const parsed = parsePricing(
       bundle({
         listings: [
           page("prodview-speech", []),
@@ -501,12 +521,12 @@ describe("SageMaker price books", () => {
       disposition: "raw",
       reason_code: "sagemaker_marketplace_inference_structure",
     });
-    const facts = models.flatMap((model) => model.commercial_facts ?? []);
+    const facts = parsed.commercial_facts ?? [];
     expect(facts.flatMap((fact) => fact.raw_price_facts)).toHaveLength(1);
     expect(
       facts.flatMap((fact) => fact.price_facts).some(({ meter }) => meter === "inference"),
     ).toBe(false);
-    const partition = assemblePricing(models);
+    const partition = assemblePricing(parsed);
     const modelBooks = partition.books.filter((book) => book.scope.kind === "models");
     expect(modelBooks).toHaveLength(1);
     expect(modelBooks[0]?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-embedding"]);
@@ -515,7 +535,7 @@ describe("SageMaker price books", () => {
 
   it("retains unreviewed real-time Marketplace meters as bounded raw prices", () => {
     const items: PricingReconciliationItem[] = [];
-    const models = parsePricing(
+    const parsed = parsePricing(
       bundle({
         listings: [
           page("prodview-speech", [
@@ -531,13 +551,12 @@ describe("SageMaker price books", () => {
       reason_code: "sagemaker_marketplace_unreviewed_realtime_meter",
     });
     expect(
-      models
-        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+      (parsed.commercial_facts ?? [])
         .flatMap(({ raw_price_facts }) => raw_price_facts)
         .find(({ term_key }) => term_key === "prodview-speech:inference.bytes.m.i.c")?.raw,
     ).toMatchObject({ amount: "0.3", denomination: "USD", unit: "Bytes" });
     expect(
-      assemblePricing(models).books.some(
+      assemblePricing(parsed).books.some(
         (book) =>
           book.scope.kind === "models" &&
           book.scope.model_refs.includes("amazon-sagemaker/fixture-speech") &&
@@ -571,11 +590,9 @@ describe("SageMaker price books", () => {
     const changed = parsePricing(
       bundle({ prices: prices.replace('"unit": "seconds"', '"unit": "Hours"') }),
     );
-    expect(
-      changed
-        .flatMap((model) => model.commercial_facts ?? [])
-        .flatMap((fact) => fact.raw_price_facts),
-    ).toHaveLength(1);
+    expect((changed.commercial_facts ?? []).flatMap((fact) => fact.raw_price_facts)).toHaveLength(
+      1,
+    );
   });
 
   it("extracts only the exact pricing query from Marketplace SSR state", () => {
@@ -642,13 +659,14 @@ describe("SageMaker public-hub projection", () => {
           id === "new-video" ? ["Foundation Models", "Text-to-Video"] : ["Classification"],
       })),
     ]);
-    const models = parsePricing(bundle({ openManifest }));
+    const parsed = parsePricing(bundle({ openManifest }));
+    const { models } = parsed;
     expect(models.some((model) => model.model_id === "excluded-classic")).toBe(false);
     expect(models.some((model) => model.model_id === "new-video")).toBe(true);
     const partition = assembleParsedProviderPricing(
       provider.id,
       observedAt,
-      [{ source: source("sagemaker-pricing"), models }],
+      [{ source: source("sagemaker-pricing"), ...parsed }],
       models,
       labels,
     );

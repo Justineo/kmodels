@@ -377,6 +377,8 @@ Status: implemented
   rows can still preserve its provider-resource prices through capture and replay.
   DashScope's built-in search facts likewise have source-owned storage while retaining their
   positive model/region joins and the source's required model inventory checks.
+  SageMaker infrastructure/Marketplace facts likewise return independently, retaining exact
+  admitted catalog, listing and instance joins through compilation and replay.
   Anthropic also returns services, acquisition inputs and reviewed vocabulary at source level,
   including typed Code Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
   fixed-search contributions and container calculations; service-only input needs no model carrier.

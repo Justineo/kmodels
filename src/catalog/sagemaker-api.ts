@@ -6,9 +6,9 @@ import {
 import { z } from "zod";
 import { setTimeout as sleep } from "node:timers/promises";
 import { mapConcurrent } from "./concurrency.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { modalitySchema, type Provider } from "./schema.ts";
+import { modalitySchema } from "./schema.ts";
+import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import { sagemakerModalities } from "./sagemaker-sdk.ts";
 import { modelCardSchema } from "./model-metadata.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -142,33 +142,30 @@ export async function fetchSagemakerInventory(
   }
 }
 
-export function parseSagemakerInventory(input: {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-}) {
+export function parseSagemakerInventory(input: SourceParseInput): SourceParseResult {
   const data = inventorySchema.parse(JSON.parse(input.body));
   if (
     input.source.transport?.kind !== "aws-sagemaker" ||
     data.region !== input.source.transport.region
   )
     throw new Error("SageMaker inventory changed region");
-  return data.models.map((row) => {
-    const model = baseModel({
-      providerId: input.provider.id,
-      id: row.id,
-      name: row.name,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    model.scope = "regional_catalog";
-    if (row.description !== undefined) model.description = row.description;
-    if (row.model_card !== undefined) model.model_card = row.model_card;
-    model.modalities = { input: row.input, output: row.output };
-    model.capabilities.fine_tuning = row.fineTuning ?? "unknown";
-    if (row.available)
-      model.availability = [{ region: data.region, deployment_type: "jumpstart-endpoint" }];
-    return model;
-  });
+  return {
+    models: data.models.map((row) => {
+      const model = baseModel({
+        providerId: input.provider.id,
+        id: row.id,
+        name: row.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      });
+      model.scope = "regional_catalog";
+      if (row.description !== undefined) model.description = row.description;
+      if (row.model_card !== undefined) model.model_card = row.model_card;
+      model.modalities = { input: row.input, output: row.output };
+      model.capabilities.fine_tuning = row.fineTuning ?? "unknown";
+      if (row.available)
+        model.availability = [{ region: data.region, deployment_type: "jumpstart-endpoint" }];
+      return model;
+    }),
+  };
 }
