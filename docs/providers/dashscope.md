@@ -101,8 +101,10 @@ OCR, console data, and third-party catalogs are not refresh inputs. Announcement
 human-facing provenance on Alibaba's maintained summary pages, but the collector does not fetch or
 interpret them.
 
-Task catalogs and the price book may both create exact public model identities. Recommendation,
-lifecycle, release, and authenticated inventory sources are non-creating overlays. The
+Task catalogs, the price book, and maintained exact lifecycle rows may create public model identities.
+Lifecycle admission retains retired models needed to interpret existing integrations; notice links
+without exact model rows create nothing. Recommendation, release, and authenticated inventory
+sources are non-creating overlays. The
 authenticated inventory is account- and region-scoped: presence may enrich an exact public match,
 while absence never removes a public model.
 
@@ -138,8 +140,7 @@ The ID column may mix rendered HTML code elements and literal Markdown backtick 
 multiple snapshot IDs in one cell. Explicit space-delimited slash lists split into exact IDs;
 slashes within an ID remain intact. Numeric JSX row/column spans use the same table expansion
 as HTML attributes; full-width divider rows carry no identity. Specification tables and prose outside the reviewed model
-sections cannot create identities. The 2026-10-11 text source exposed 54 exact IDs, of which 14
-were previously missed because their cells contained literal Markdown.
+sections cannot create identities.
 
 Lifecycle and release pages are structured table sources. Malformed dates or rows without an exact
 model ID are skipped at row scope and reported. When a release row omits its optional deployment-
@@ -161,18 +162,17 @@ floor. Every price table requires a reviewed model column; model tables require 
 every normalized, non-divider row must resolve an exact ID, and the complete source must produce
 nonempty output within the 500-model resource budget. Malformed sparse rows retain their explicit
 row-local diagnostics. Missing headers, wholly absent tables, and unsupported identity rows fail
-closed. This replaces the obsolete 240-model floor without calibrating another floor to today's
-population. Current 2026-10-11 evidence contains 221 identities after recognizing the exact
-`(Invitational preview)` suffix on HappyOyster's ID. A new Billing item column remains explicitly
-unsupported until its operation contract is reviewed; those rows never become unconditioned rates.
+closed. Annotated `(Invitational preview)` IDs retain their exact identity and preview state.
+An unreviewed Billing item retains its amount, original unit, item label and known scope as raw
+evidence until its operation contract is established; it never becomes an unconditioned rate.
 
 The public price book produces one model book per exact catalog identity. A model book has an
 on-demand offer and, where published, a Batch offer. Rates remain separate variants under their
 exact applicability rather than expanding a Cartesian product or choosing a default.
 
 Explicit discontinued rows publish `not_applicable` model dispositions when present. Their
-presence is not an invariant of a current price book: the 2026-10-12 first-party recheck contains
-no discontinued or contact-sales price rows, and the parser produces no model dispositions.
+presence is not an invariant of a current price book. A source without discontinued or contact-sales
+rows produces no model dispositions.
 The adopted-topology gate therefore accepts DashScope both with and without model dispositions,
 while still requiring provider resources and charge bindings and rejecting unadopted topology.
 Missing or unsupported prices stay unknown; do not fabricate a non-numeric state to satisfy the
@@ -192,20 +192,43 @@ provider's billed period; request creation time is not asserted to be billing ti
 ambiguous or unanchored reductions retain their exact quote, amount, unit and known scope as raw
 applicability evidence, with a policy diagnostic. Readable sibling cells remain numeric.
 
-The cache guide contributes only exact model/region eligibility and its published multipliers:
+Contradictory quotes with the same applicability survive source merging. Canonical conflict
+resolution withholds the disputed numeric variant and retains both observations; source order
+does not choose a winning amount. Unrelated scopes remain usable.
+Explicit per-image input and output headers select distinct meters even under a family heading
+that does not identify an image-generation task. Input images never bind to generated-image
+counts; absent a reviewed input-image counter, that input charge remains caller-owned.
+Labeled output-video columns establish video pricing under family headings. Audio/silent variants
+retain their explicit boolean condition, and output-video modes remain separate operations;
+per-second video rates never become text-token meters.
+
+The cache guide contributes exact model, region and deployment-scope eligibility and its multipliers:
 explicit writes are 125% of ordinary input, explicit reads 10%, and implicit reads 20%. A cache
-rate is derived only when its exact base input rate exists. Published exceptions suppress only the
-affected derived read rate; the model, base price, other cache mode, and sibling regions survive.
+rate is derived only when its exact base input rate exists. Regional tabs, anchored headings and
+mode boundaries retain their ownership; eligibility in a US deployment scope does not extend to
+Global prices in the same physical region. The provider dimension `cache_mode` distinguishes
+`explicit` and `implicit` independently of the inference `operation`, including thinking mode.
+A directly published cache-read tariff takes precedence over a generic multiplier where its scope
+covers the base rate. When the guide explicitly withholds an exception's read price, that charge
+remains raw `unknown_amount`; it is not silently omitted or zero. The base price, explicit write,
+other cache mode and sibling regions survive. The explicit cache contract retains its published
+five-minute TTL; no request creation time or undocumented native mode selector is inferred.
 
 Built-in web, image-to-image, and text-to-image search are separate shared provider-service books.
 Equal scope/rate variants are stored once with all exact compatible model references instead of
-copying the same offer into every model. Web search binds to either
-`usage.plugins.search.count` or `usage.x_tools.web_search.count`; the two image search products bind
-to `usage.x_tools.image_search.count` and `usage.x_tools.web_search_image.count` respectively.
+copying the same offer into every model. Web search uses caller-supplied successful retrievals:
+the documented `usage.plugins.search.count` and `usage.x_tools.search.count` are intent counts,
+explicitly unsuitable for billing, and no alternative native counter is inferred. The two image
+search products retain their own documented call counts, `usage.x_tools.image_search.count` and
+`usage.x_tools.web_search_image.count`; their per-call billing is independent of web search's
+successful-retrieval policy.
 Search-result content is already included in the model's reported input tokens, so it does not need
 a second raw pricing fact.
-Markdown web-search guides derive regional scope from `Tab` titles; inline heading anchors are
-presentation markup, not section identity.
+Markdown tool guides derive compatibility from exact known IDs in owned regional tabs, including
+third-party models. Billing owns the explicit `agent` and `agent_max` policy variants and named
+physical regions. A physical region does not imply an account deployment scope. Policy selection
+remains caller-owned where the protocol does not establish it. Unrelated MCP prices and extractor
+promotions do not supply web-search rates. Inline heading anchors are presentation markup.
 
 ### Cost-calculator input contract
 
@@ -225,6 +248,18 @@ not invalidate the price, a different protocol, or another usage field. The curr
   resolution, TTS characters and token details, music duration, and ASR duration; and
 - request-side resolved region, thinking-mode flags, and `prompt_extend` where those values select
   variants.
+
+Owned JSON/JSONC examples may establish nonnegative integer usage fields as well as typed prose.
+Only the response usage envelope is admitted; Responses billing-detail entries require their
+`response_api` discriminator. Malformed JSON, duplicate properties and unrelated example objects
+do not establish fields. Optional fine-grained counters have no absent-as-zero default.
+
+Ordinary HTTP usage envelopes are withheld from positively identified Realtime-only models.
+Documented ordinary routes retain their contracts, including models offering both mechanisms.
+Speech-to-speech capability alone does not establish a Realtime transport. Realtime rates and
+quantity calculations remain available for caller-supplied quantities, and resolved endpoint region
+remains a safe selector; no WebSocket usage field is borrowed from Chat, Responses or offline
+results. Streaming ASR mappings require their own documented inference route and event contract.
 
 Token rate bindings use those observable counters:
 

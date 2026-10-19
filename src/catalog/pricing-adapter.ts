@@ -273,7 +273,7 @@ function applyCommercialTopology(
     case "cohere":
       return applyCohereCommercialTopology(input, publishedModels, pricingInputs);
     case "dashscope":
-      return applyDashscopeCommercialTopology(input, pricingInputs);
+      return applyDashscopeCommercialTopology(input, publishedModels, pricingInputs);
     case "databricks":
       return applyDatabricksCommercialTopology(input, publishedModels, pricingInputs);
     case "deepseek":
@@ -1273,6 +1273,11 @@ function rateApplicability(
       key: "cache_retention",
       definition:
         "Published cache-write retention option; default does not imply an undocumented duration",
+      resolution_phase: "request",
+    },
+    {
+      key: "cache_mode",
+      definition: "Published context-cache mode, independent of the inference operation",
       resolution_phase: "request",
     },
   ] as const;

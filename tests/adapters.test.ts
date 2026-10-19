@@ -12210,12 +12210,12 @@ describe("DashScope adapters", () => {
         expect.objectContaining({
           meter: "cache_read_text",
           price: "0.04",
-          conditions: expect.objectContaining({ operation: "explicit_cache" }),
+          conditions: expect.objectContaining({ cache_mode: "explicit" }),
         }),
         expect.objectContaining({
           meter: "cache_read_text",
           price: "0.08",
-          conditions: expect.objectContaining({ operation: "implicit_cache" }),
+          conditions: expect.objectContaining({ cache_mode: "implicit" }),
         }),
       ]),
     );
@@ -12428,10 +12428,10 @@ describe("DashScope adapters", () => {
     const rates = model?.price_facts.filter(
       (rate) => rate.meter === "input_text" && rate.conditions.service_tier !== "batch",
     );
-    expect(rates).toMatchObject([
+    expect(rates?.toSorted((a, b) => Number(b.price) - Number(a.price))).toMatchObject([
       { price: "0.4", conditions: { promotion: false } },
-      { price: "0.16", conditions: { promotion: true, billing_period: "night" } },
       { price: "0.32", conditions: { promotion: true, billing_period: "daytime" } },
+      { price: "0.16", conditions: { promotion: true, billing_period: "night" } },
     ]);
     expect(rates?.every((rate) => rate.conditions.service_tier === undefined)).toBe(true);
   });
@@ -12826,7 +12826,8 @@ describe("DashScope adapters", () => {
     expect(
       image?.price_facts
         .filter(({ conditions }) => conditions.resolution === "2k")
-        .map(({ price }) => price),
+        .map(({ price }) => price)
+        .sort(),
     ).toEqual(["0.003", "0.075"]);
     expect(models.find(({ model_id }) => model_id === "qwen-tts-nested")?.availability).toEqual([
       { region: "Singapore", deployment_type: "model_api" },
@@ -13058,17 +13059,17 @@ describe("DashScope adapters", () => {
     expect(
       model?.price_facts.some(
         ({ meter, conditions }) =>
-          meter === "cache_read_text" && conditions.operation === "explicit_cache",
+          meter === "cache_read_text" && conditions.cache_mode === "explicit",
       ),
     ).toBe(false);
     expect(
       model?.price_facts.some(
         ({ meter, conditions }) =>
-          meter === "cache_read_text" && conditions.operation === "implicit_cache",
+          meter === "cache_read_text" && conditions.cache_mode === "implicit",
       ),
     ).toBe(true);
     expect(reconciliation).toContainEqual({
-      disposition: "unbound",
+      disposition: "raw",
       reason_code: "explicit_cache_price_not_public",
       sample: "qwen3.8-max:Singapore",
     });
@@ -13084,7 +13085,7 @@ describe("DashScope adapters", () => {
       observed_items: reconciliation.length,
       disposition_counts: {
         ambiguous: 0,
-        raw: 0,
+        raw: 1,
         unresolved: 0,
         unsupported: 0,
       },
@@ -13092,7 +13093,7 @@ describe("DashScope adapters", () => {
     expect(reconciliation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          disposition: "unbound",
+          disposition: "raw",
           reason_code: "implicit_cache_price_not_public",
           sample: "deepseek-v4-pro:Singapore",
         }),
@@ -13425,7 +13426,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v21",
+      extractorVersion: "dashscope-pricing-v22",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),

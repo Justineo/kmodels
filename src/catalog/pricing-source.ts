@@ -89,6 +89,7 @@ const sourcePriceConditionsInputSchema = z.strictObject({
   context_max_tokens: z.number().int().nonnegative().optional(),
   context_tier: z.string().optional(),
   cache_retention: z.string().optional(),
+  cache_mode: z.string().optional(),
   cache_ttl_seconds: z.number().int().nonnegative().optional(),
   capacity: z.string().optional(),
   modality: z.string().optional(),
@@ -382,7 +383,7 @@ function definedProperties(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
-function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {
+export function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {
   const {
     derivation,
     raw_price,
