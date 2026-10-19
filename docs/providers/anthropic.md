@@ -70,10 +70,10 @@ raw evidence for unreadable cells. A missing commercial matrix or an unbound mod
 signals a pricing dependency failure: catalog facts survive, while collection retains the accepted
 complete pricing partition and replay input instead of publishing a partial replacement.
 
-Provider services and pricing-input facts use a deterministic catalog carrier independently of
-model rates. An unreadable model-price matrix cannot discard otherwise established service prices
-or accounting contracts. The carrier establishes neither compatibility nor a model price; explicit
-resource model references retain that responsibility.
+Provider services, pricing-input facts and vocabulary belong to the source independently of model
+observations. An unreadable model-price matrix cannot discard established service prices or
+accounting contracts. Explicit resource model references establish compatibility; independent
+accounting evidence does not establish a model price.
 
 The optional authenticated `GET /v1/models?limit=1000` inventory can fill otherwise unknown public
 fields on matching rows. Enable it with `ANTHROPIC_API_KEY`; it never creates public catalog rows or
