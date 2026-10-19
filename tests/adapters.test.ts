@@ -6733,6 +6733,248 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it("keeps source-owned Voice aliases and deprecation when structured aliases are omitted", async () => {
+    const result = await xaiCatalogResult(
+      "xai/models-voice-services.txt",
+      (body) => body.replaceAll('"aliases":["grok-voice-latest"]', '"aliases":[]'),
+      (body) =>
+        body
+          .replace(
+            "Alias for `grok-voice-think-fast-1.0`. Updates to `grok-voice-think-fast-2.0` on August 5, 2026.",
+            "Alias for `grok-voice-think-fast-1.0`",
+          )
+          .replaceAll(
+            "Speech to Speech (grok-voice-think-fast-1.0) |",
+            "Speech to Speech (grok-voice-think-fast-1.0) — Deprecated |",
+          ),
+    );
+    expect(
+      result.models.find(({ model_id }) => model_id === "grok-voice-think-fast-1.0"),
+    ).toMatchObject({ aliases: ["grok-voice-latest"], status: "deprecated" });
+    expect(
+      result.commercial_facts?.find(({ resource_key }) => resource_key === "code-execution")
+        ?.model_refs,
+    ).toEqual([]);
+  });
+
+  it("keeps Text prices distinct from aggregate tokens and multimodal cached counts", async () => {
+    const value = manifest("xai"),
+      source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI source");
+    const result = await xaiCatalogResult();
+    const target = result.models.find(({ model_id }) => model_id === "grok-4.5");
+    if (target === undefined) throw new Error("Missing Grok model");
+    for (const textOnly of [false, true]) {
+      const models = result.models.map((model) =>
+        model === target && textOnly
+          ? { ...model, modalities: { ...model.modalities, input: ["text" as const] } }
+          : model,
+      );
+      const partition = assembleParsedProviderPricing(
+        "xai",
+        observedAt,
+        [{ source, ...result }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      const book = partition?.books.find(
+        ({ scope }) => scope.kind === "models" && scope.model_refs.includes(target.uid),
+      );
+      const terms = book?.offers.find(({ offer_key }) => offer_key === "sync")?.terms;
+      const binding = (meter: string) =>
+        terms
+          ?.flatMap((term) =>
+            term.kind === "rate" && term.meter.value === meter ? term.variants : [],
+          )
+          .map(({ charge_binding }) => charge_binding)[0];
+      expect(binding("input_text")?.signal).toEqual({
+        namespace: "provider",
+        provider_id: "xai",
+        value: "uncached_input_text_tokens",
+      });
+      expect(binding("cache_read_text")?.signal).toEqual({
+        namespace: "provider",
+        provider_id: "xai",
+        value: "cached_input_text_tokens",
+      });
+      expect(binding("output_text")?.signal).toEqual({
+        namespace: "provider",
+        provider_id: "xai",
+        value: "output_text_tokens",
+      });
+      const uncachedSources =
+        binding("input_text")?.quantity_methods?.flatMap(
+          ({ input_sources }) => input_sources ?? [],
+        ) ?? [];
+      const cachedSources =
+        binding("cache_read_text")?.quantity_methods?.flatMap(
+          ({ input_sources }) => input_sources ?? [],
+        ) ?? [];
+      expect(
+        uncachedSources.some(
+          ({ locator }) => locator.value === "/usage/prompt_tokens_details/cached_tokens",
+        ),
+      ).toBe(textOnly);
+      expect(
+        cachedSources.some(
+          ({ locator }) => locator.value === "/usage/input_tokens_details/cached_tokens",
+        ),
+      ).toBe(textOnly);
+      expect(
+        cachedSources.some(
+          ({ locator }) => locator.value === "ChatResponse.usage.cached_prompt_text_tokens",
+        ),
+      ).toBe(true);
+      expect(
+        terms
+          ?.flatMap((term) =>
+            term.kind === "rate"
+              ? term.variants.flatMap(({ selector_sources }) => selector_sources ?? [])
+              : [],
+          )
+          .some(({ locator }) => locator.value === "ChatResponse.usage.prompt_tokens"),
+      ).toBe(false);
+    }
+  });
+
+  it.each([true, false])(
+    "uses the exact model Batch flag independently of exclusion prose (%s)",
+    async (enabled) => {
+      const findings: PricingReconciliationItem[] = [];
+      const result = await xaiCatalogResult(
+        "xai/models.txt",
+        (body) =>
+          body
+            .replaceAll('"version":', '"batchEnabled":true,"version":')
+            .replaceAll(
+              '"name":"grok-4.5","batchEnabled":true',
+              `"name":"grok-4.5","batchEnabled":${enabled}`,
+            ),
+        (body) =>
+          body.replace(
+            "not currently supported for Batch API requests",
+            "eligibility is described per model",
+          ),
+        (item) => findings.push(item),
+      );
+      const model = result.models.find(({ model_id }) => model_id === "grok-4.5");
+      expect(model?.capabilities.batch).toBe(enabled);
+      expect(model?.price_facts.some(({ conditions }) => conditions.service_tier === "batch")).toBe(
+        enabled,
+      );
+      expect(findings.some(({ reason_code }) => reason_code === "batch_contract_drift")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("leaves quantities and selectors caller supplied when a model has no proven API route", async () => {
+    const result = await xaiCatalogResult();
+    const value = manifest("xai"),
+      source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI source");
+    const target = result.models.find(({ model_id }) => model_id === "grok-4.5");
+    if (target === undefined) throw new Error("Missing Grok model");
+    const models = result.models.map((model) =>
+      model === target ? { ...model, api_endpoints: undefined } : model,
+    );
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source, ...result }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    const book = partition?.books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes(target.uid),
+    );
+    const rates = book?.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+    );
+    expect(rates?.length).toBeGreaterThan(0);
+    expect(
+      rates?.every(
+        ({ charge_binding, selector_sources }) =>
+          charge_binding !== undefined &&
+          charge_binding.quantity_methods === undefined &&
+          selector_sources === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps media Batch availability separate from a missing same-price rule", async () => {
+    const result = await xaiCatalogResult(
+      "xai/models.txt",
+      (body) => body,
+      (body) =>
+        body.replaceAll(
+          "Image and video generation are supported in the Batch API but are billed at standard rates.",
+          "Image and video generation are supported in the Batch API.",
+        ),
+    );
+    const value = manifest("xai"),
+      source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI source");
+    const image = result.models.find(({ model_id }) => model_id === "grok-imagine-image-quality");
+    if (image === undefined) throw new Error("Missing Imagine model");
+    expect(image.capabilities.batch).toBe(true);
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+      value.pricingCategoricalLabels,
+    );
+    const book = partition?.books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes(image.uid),
+    );
+    expect(book?.offers.map(({ offer_key }) => offer_key)).toEqual(["direct"]);
+    expect(book?.offers[0]?.terms.length).toBeGreaterThan(0);
+  });
+
+  it("keeps one media identity while applying Batch eligibility only to its published regions", async () => {
+    const image = {
+      name: "grok-imagine-image-quality",
+      version: "1.0",
+      aliases: [],
+      inputModalities: ["TEXT", "IMAGE"],
+      outputModalities: ["IMAGE"],
+      resolutionPricing: [{ resolution: "IMAGE_RESOLUTION_1K", pricePerImage: "500000000" }],
+      pricePerInputImage: "100000000",
+    };
+    const result = await xaiCatalogResult(
+      "xai/models.txt",
+      () =>
+        `<script>globalThis.__XAI_PUBLIC_MODELS__=${JSON.stringify({
+          clusterConfigs: [
+            { clusterName: "us-east-1", imageGenerationModels: [{ ...image, batchEnabled: true }] },
+            {
+              clusterName: "eu-west-1",
+              imageGenerationModels: [{ ...image, batchEnabled: false }],
+            },
+          ],
+        })};</script>`,
+      (body) => body,
+      undefined,
+      undefined,
+      1,
+    );
+    const matches = result.models.filter(({ model_id }) => model_id === image.name);
+    expect(matches).toHaveLength(1);
+    const model = matches[0];
+    expect(model?.capabilities.batch).toBe(true);
+    const regions = (batch: boolean) =>
+      [
+        ...new Set(
+          model?.price_facts
+            .filter(({ conditions }) => (conditions.service_tier === "batch") === batch)
+            .map(({ conditions }) => conditions.region),
+        ),
+      ].sort((left, right) => (left ?? "").localeCompare(right ?? ""));
+    expect(regions(false)).toEqual(["eu-west-1", "us-east-1"]);
+    expect(regions(true)).toEqual(["us-east-1"]);
+  });
+
   it.each([false, true])(
     "owns the native default text tier independently of Priority price claims (%s)",
     async (withPriority) => {
@@ -6876,9 +7118,9 @@ describe("xAI adapter", () => {
       value.pricingCategoricalLabels,
     );
     validateParsedPricing(value, source, models, partition);
-    for (const [resource, signal] of [
-      ["x-search-posts", "fetched_x_posts"],
-      ["x-search-profiles", "fetched_x_profiles"],
+    for (const [resource, signal, field] of [
+      ["x-search-posts", "fetched_x_posts", "x_posts_fetched"],
+      ["x-search-profiles", "fetched_x_profiles", "x_users_fetched"],
     ]) {
       const book = partition?.books.find(
         ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === resource,
@@ -6889,7 +7131,18 @@ describe("xAI adapter", () => {
       for (const term of terms) {
         if (term.kind !== "rate") throw new Error("Expected X Search rate");
         expect(term.variants[0]?.charge_binding?.signal).toMatchObject({ value: signal });
-        expect(term.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
+        expect(term.variants[0]?.charge_binding?.quantity_methods).toEqual([
+          {
+            input_sources: [
+              expect.objectContaining({
+                locator: {
+                  kind: "json_pointer",
+                  value: `/usage/server_side_tool_usage_details/${field}`,
+                },
+              }),
+            ],
+          },
+        ]);
       }
     }
   });
@@ -7044,7 +7297,7 @@ describe("xAI adapter", () => {
           disposition: "accept_with_signal",
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              kind: "unknown_value",
+              kind: "unknown_field",
               path: expect.stringContaining("futureVoiceRate"),
             }),
           ]),
@@ -7070,7 +7323,7 @@ describe("xAI adapter", () => {
       "grok-voice-think-fast-2.0",
     ]);
     const inputs = result.pricing_inputs ?? [];
-    expect(inputs).toHaveLength(54);
+    expect(inputs).toHaveLength(31);
     expect(inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -7089,8 +7342,8 @@ describe("xAI adapter", () => {
           locator: { kind: "json_pointer", value: "/video/duration" },
         }),
         expect.objectContaining({
-          key: "tts.rest.input_characters",
-          locator: { kind: "provider_field", value: "TtsRequest.accepted_billing_characters" },
+          key: "stt.rest.audio_seconds",
+          locator: { kind: "json_pointer", value: "/duration" },
         }),
       ]),
     );
@@ -7360,12 +7613,16 @@ describe("xAI adapter", () => {
     ).toMatchObject({ price: "15", derived: true });
   });
 
-  it("publishes unit-checked request, result, stream, media, voice, and tool inputs", async () => {
+  it("publishes reviewed inputs and keeps unproved media and voice quantities caller supplied", async () => {
     const value = manifest("xai");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing xAI pricing source");
     const result = await xaiCatalogResult();
     const { models } = result;
+    expect(
+      result.commercial_facts?.find(({ resource_key }) => resource_key === "image-generation-tool")
+        ?.model_refs,
+    ).toEqual([]);
     expect(
       models.every(
         (model) =>
@@ -7386,23 +7643,35 @@ describe("xAI adapter", () => {
         ),
       ) ?? [];
     const bindings = rates.flatMap(({ charge_binding }) => charge_binding ?? []);
-    const uncached = bindings.find(
-      ({ signal }) => signal.namespace === "kmodels" && signal.value === "uncached_input_tokens",
+    const imageTool = partition?.books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "image-generation-tool",
+    );
+    for (const [meter, signal] of [
+      ["input_image", "processed_images"],
+      ["image_generation", "generated_images"],
+    ]) {
+      const term = imageTool?.offers[0]?.terms.find(
+        (term) => term.kind === "rate" && term.meter.value === meter,
+      );
+      expect(term?.kind === "rate" ? term.variants[0]?.charge_binding?.signal : undefined).toEqual({
+        namespace: "kmodels",
+        value: signal,
+      });
+    }
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        signal: { namespace: "provider", provider_id: "xai", value: "uncached_input_text_tokens" },
+      }),
     );
     expect(
-      uncached?.quantity_methods?.some(({ input_sources }) =>
-        input_sources?.some(
-          ({ locator }) =>
-            locator.kind === "provider_field" &&
-            locator.value === "ChatResponse.usage.prompt_text_tokens",
-        ),
-      ),
-    ).toBe(true);
-    expect(
-      uncached?.quantity_methods?.some(({ calculation }) =>
-        calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
-      ),
-    ).toBe(true);
+      bindings
+        .flatMap(
+          ({ quantity_methods }) =>
+            quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []) ?? [],
+        )
+        .some(({ locator }) => locator.value === "ChatResponse.usage.prompt_text_tokens"),
+    ).toBe(false);
     const realtimeAudio = bindings.find(
       ({ signal }) =>
         signal.namespace === "provider" && signal.value === "billed_realtime_audio_seconds",
@@ -7426,25 +7695,13 @@ describe("xAI adapter", () => {
       key: "tts_utterance",
       definition: "One xAI Text to Speech utterance across REST or streaming fragments",
     });
-    expect(
-      ttsCharacters?.quantity_methods
-        ?.flatMap(({ input_sources }) => input_sources ?? [])
-        .map(({ locator }) => locator.value),
-    ).toEqual(
-      expect.arrayContaining([
-        "TtsRequest.accepted_billing_characters",
-        "TtsStream.accepted_text_delta_billing_characters",
-      ]),
-    );
+    expect(ttsCharacters).toBeDefined();
+    expect(ttsCharacters?.quantity_methods).toBeUndefined();
     expect(rates.flatMap(({ selector_sources }) => selector_sources ?? [])).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           dimension: { namespace: "kmodels", value: "served_service_tier" },
           locator: { kind: "json_pointer", value: "/service_tier" },
-        }),
-        expect.objectContaining({
-          dimension: { namespace: "kmodels", value: "resolution" },
-          locator: { kind: "provider_field", value: "VideoRequest.effective_output_resolution" },
         }),
       ]),
     );
@@ -7465,17 +7722,17 @@ describe("xAI adapter", () => {
     const result = await xaiCatalogResult(
       "xai/models.txt",
       (body) => body,
-      (body) => body.replace("uncached\n`prompt_text_tokens`", "uncached\n`future_text_tokens`"),
+      (body) => body.replace("### `cached_prompt_text_tokens`", "### `future_text_tokens`"),
       (item) => items.push(item),
       (item) => findings.push(item),
     );
     const { models } = result;
     const inputs = result.pricing_inputs ?? [];
-    expect(inputs).toHaveLength(53);
-    expect(inputs.some(({ key }) => key === "sdk.agent.prompt_text_tokens")).toBe(false);
+    expect(inputs).toHaveLength(30);
+    expect(inputs.some(({ key }) => key === "sdk.agent.cached_prompt_text_tokens")).toBe(false);
     expect(inputs).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ key: "sdk.agent.cached_prompt_text_tokens" }),
+        expect.objectContaining({ key: "sdk.agent.prompt_image_tokens" }),
         expect.objectContaining({ key: "responses.usage.input_tokens" }),
         expect.objectContaining({ key: "video.generated_seconds" }),
       ]),
@@ -7485,7 +7742,7 @@ describe("xAI adapter", () => {
         expect.objectContaining({
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              path: expect.stringContaining("sdk.agent.prompt_text_tokens"),
+              path: expect.stringContaining("sdk.agent.cached_prompt_text_tokens"),
             }),
           ]),
         }),
@@ -7495,7 +7752,7 @@ describe("xAI adapter", () => {
       expect.objectContaining({
         disposition: "unbound",
         reason_code: "pricing_input_contract_partial",
-        sample: "53/54 xAI pricing inputs",
+        sample: "30/31 xAI pricing inputs",
       }),
     );
     expect(models.find(({ model_id }) => model_id === "grok-4.3")?.pricing_state).toBe("numeric");
@@ -7657,6 +7914,11 @@ describe("xAI adapter", () => {
         "/clusterConfigs/*/languageModels/*/futureCommercialFlag",
       ]),
     );
+    expect(
+      contractFindings
+        .flatMap(({ diagnostics }) => diagnostics)
+        .every(({ kind }) => kind === "unknown_field"),
+    ).toBe(true);
     const pricingItems: PricingReconciliationItem[] = [];
     const withoutDerivedTerms = await xaiCatalog(
       "xai/models.txt",
@@ -7665,10 +7927,19 @@ describe("xAI adapter", () => {
       (item) => pricingItems.push(item),
     );
     expect(
-      withoutDerivedTerms.some(({ price_facts }) =>
-        price_facts.some(({ conditions }) => conditions.service_tier === "batch"),
-      ),
+      withoutDerivedTerms
+        .filter(({ tasks }) => tasks.includes("text_generation"))
+        .some(({ price_facts }) =>
+          price_facts.some(({ conditions }) => conditions.service_tier === "batch"),
+        ),
     ).toBe(false);
+    expect(
+      withoutDerivedTerms
+        .filter(({ tasks }) => tasks.includes("image_generation"))
+        .some(({ price_facts }) =>
+          price_facts.some(({ conditions }) => conditions.service_tier === "batch"),
+        ),
+    ).toBe(true);
     expect(pricingItems).toContainEqual(
       expect.objectContaining({
         disposition: "unbound",
@@ -7696,9 +7967,9 @@ describe("xAI adapter", () => {
     );
   });
 
-  it("cross-checks independent official prices and model API schemas", async () => {
+  it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v19");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v20");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -7740,15 +8011,10 @@ describe("xAI adapter", () => {
           .replace("usage is calculated by cost in USD", "usage defaults to credits"),
       (item) => contractItems.push(item),
     );
-    expect(drifted).toHaveLength(11);
-    expect(contractItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          disposition: "unbound",
-          reason_code: "model_api_contract_drift",
-        }),
-      ]),
-    );
+    expect(drifted).toEqual(await xaiCatalog());
+    expect(
+      contractItems.some(({ reason_code }) => reason_code === "model_api_contract_drift"),
+    ).toBe(false);
   });
 
   it("parses every authenticated inventory without treating it as global presence", async () => {

@@ -119,9 +119,8 @@ function modelBook(
 function modelMechanisms(model: PublishedPricingModel | undefined): Mechanism[] {
   if (model?.tasks.includes("speech_to_speech")) return ["realtime"];
   if (model?.tasks.some((task) => task === "image_generation" || task === "video_generation"))
-    return model.capabilities.batch === true ? ["direct", "batch"] : ["direct"];
-  if (model?.tasks.includes("text_generation"))
-    return model.capabilities.batch === true ? ["sync", "batch"] : ["sync"];
+    return ["direct", "batch"];
+  if (model?.tasks.includes("text_generation")) return ["sync", "batch"];
   return ["sync"];
 }
 
@@ -132,14 +131,8 @@ function modelOffer(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): AtomicPricingOffer {
-  const duplicate =
-    mechanism === "batch" &&
-    model?.tasks.some((task) => task === "image_generation" || task === "video_generation") ===
-      true;
   const states = offer.states.flatMap((state) => {
-    const applicability = duplicate
-      ? state.applicability
-      : mechanismApplicability(state.applicability, mechanism);
+    const applicability = mechanismApplicability(state.applicability, mechanism);
     return applicability === undefined
       ? []
       : [
@@ -150,9 +143,7 @@ function modelOffer(
           },
         ];
   });
-  const terms = offer.terms.flatMap((term) =>
-    modelTerm(term, mechanism, duplicate, model, input, inputIndex),
-  );
+  const terms = offer.terms.flatMap((term) => modelTerm(term, mechanism, model, input, inputIndex));
   return {
     ...offer,
     offer_key: mechanism,
@@ -167,13 +158,12 @@ function modelOffer(
 function modelTerm(
   term: AtomicPricingTerm,
   mechanism: Mechanism,
-  duplicate: boolean,
   model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
-    const variants = term.variants.flatMap((variant) => rawVariant(variant, mechanism, duplicate));
+    const variants = term.variants.flatMap((variant) => rawVariant(variant, mechanism));
     return variants.length === 0 ? [] : [{ ...term, variants }];
   }
   if (term.kind !== "rate") return mechanism === "batch" ? [] : [term];
@@ -188,9 +178,7 @@ function modelTerm(
         )
       : term.meter;
   const variants = term.variants.flatMap((variant) => {
-    const applicability = duplicate
-      ? variant.applicability
-      : mechanismApplicability(variant.applicability, mechanism);
+    const applicability = mechanismApplicability(variant.applicability, mechanism);
     if (applicability === undefined) return [];
     const next = {
       ...variant,
@@ -207,9 +195,7 @@ function modelTerm(
       },
     ];
   });
-  const raw_variants = term.raw_variants.flatMap((variant) =>
-    rawVariant(variant, mechanism, duplicate),
-  );
+  const raw_variants = term.raw_variants.flatMap((variant) => rawVariant(variant, mechanism));
   return variants.length + raw_variants.length === 0
     ? []
     : [
@@ -250,7 +236,7 @@ function modelBinding(
             secondUnit,
             "request",
           ),
-          keys: ["realtime.accepted_input_audio_seconds"],
+          keys: [],
         },
         {
           signal: providerSignal(
@@ -260,7 +246,7 @@ function modelBinding(
             secondUnit,
             "outcome",
           ),
-          keys: ["realtime.emitted_output_audio_seconds"],
+          keys: [],
         },
       ],
       inputIndex,
@@ -269,16 +255,28 @@ function modelBinding(
   }
   if (meter.namespace !== "kmodels") return;
   if (meter.value === "input_text" && isStandardUnit(variant.price.per, "token")) {
-    const signal = standardSignal("uncached_input_tokens");
+    const signal = providerSignal(
+      input,
+      "uncached_input_text_tokens",
+      "Billable uncached text-input tokens",
+      tokenUnit,
+      "outcome",
+    );
     return quantityBinding(
       signal,
       aggregation,
-      uncachedTextMethods(signal, mechanism, model, input, inputIndex),
+      uncachedTextMethods(mechanism, model, input, inputIndex),
       variant,
     );
   }
   if (meter.value === "cache_read_text" && isStandardUnit(variant.price.per, "token")) {
-    const signal = standardSignal("cached_input_tokens");
+    const signal = providerSignal(
+      input,
+      "cached_input_text_tokens",
+      "Billable cached text-input tokens",
+      tokenUnit,
+      "outcome",
+    );
     return quantityBinding(
       signal,
       aggregation,
@@ -287,7 +285,13 @@ function modelBinding(
     );
   }
   if (meter.value === "output_text" && isStandardUnit(variant.price.per, "token")) {
-    const signal = standardSignal("output_tokens");
+    const signal = providerSignal(
+      input,
+      "output_text_tokens",
+      "Billable text-output tokens including reasoning",
+      tokenUnit,
+      "outcome",
+    );
     return quantityBinding(
       signal,
       aggregation,
@@ -317,7 +321,9 @@ function modelBinding(
       aggregation,
       directMethods(
         signal,
-        mechanism === "batch" ? ["batch.image.generated_images"] : ["image.generated_images"],
+        mechanism !== "batch" && hasEndpoint(model, "/v1/images/generations")
+          ? ["image.generated_images"]
+          : [],
         inputIndex,
       ),
       variant,
@@ -330,7 +336,10 @@ function modelBinding(
       aggregation,
       directMethods(
         signal,
-        mechanism === "batch" ? ["batch.video.generated_seconds"] : ["video.generated_seconds"],
+        mechanism !== "batch" &&
+          model?.api_endpoints?.some(({ path }) => path.startsWith("/v1/videos/")) === true
+          ? ["video.generated_seconds"]
+          : [],
         inputIndex,
       ),
       variant,
@@ -338,10 +347,7 @@ function modelBinding(
   }
   if (meter.value === "input_image" && isStandardUnit(variant.price.per, "image")) {
     const signal = standardSignal("processed_images");
-    const key = model?.tasks.includes("video_generation")
-      ? "video.accepted_input_images"
-      : "imagine.accepted_input_images";
-    return quantityBinding(signal, aggregation, directMethods(signal, [key], inputIndex), variant);
+    return quantityBinding(signal, aggregation, emptyMethods(), variant);
   }
   if (meter.value === "input_video" && isStandardUnit(variant.price.per, "second")) {
     const signal = providerSignal(
@@ -351,12 +357,7 @@ function modelBinding(
       variant.price.per,
       "request",
     );
-    return quantityBinding(
-      signal,
-      aggregation,
-      directMethods(signal, ["video.accepted_input_video_seconds"], inputIndex),
-      variant,
-    );
+    return quantityBinding(signal, aggregation, emptyMethods(), variant);
   }
   if (meter.value === "input_text" && isStandardUnit(variant.price.per, "request")) {
     const signal = providerSignal(
@@ -366,24 +367,18 @@ function modelBinding(
       variant.price.per,
       "request",
     );
-    return quantityBinding(
-      signal,
-      aggregation,
-      directMethods(signal, ["realtime.billable_text_input_events"], inputIndex),
-      variant,
-    );
+    return quantityBinding(signal, aggregation, emptyMethods(), variant);
   }
 }
 
 function uncachedTextMethods(
-  result: UsageSignal,
   mechanism: Mechanism,
   model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): MethodsAndFacts {
   const methods: MethodsAndFacts[] = [];
-  if (hasEndpoint(model, "/v1/chat/completions"))
+  if (hasEndpoint(model, "/v1/chat/completions") && textOnlyInput(model))
     methods.push(
       subtractionMethod(
         providerSignal(
@@ -399,8 +394,6 @@ function uncachedTextMethods(
         inputIndex,
       ),
     );
-  if (mechanism === "sync")
-    methods.push(directMethods(result, ["sdk.agent.prompt_text_tokens"], inputIndex));
   if (hasEndpoint(model, "/v1/responses") && textOnlyInput(model)) {
     const responsesPrefix = mechanism === "batch" ? "batch.responses" : "responses";
     methods.push(
@@ -446,7 +439,7 @@ function outputTextMethods(
         inputIndex,
       ),
     );
-  if (mechanism === "sync")
+  if (mechanism === "sync" && hasEndpoint(model, "/v1/responses"))
     values.push(
       sumMethod(
         [
@@ -477,13 +470,14 @@ function outputTextMethods(
 
 function cachedKeys(mechanism: Mechanism, model: PublishedPricingModel | undefined): string[] {
   const result: string[] = [];
-  if (hasEndpoint(model, "/v1/chat/completions"))
+  if (textOnlyInput(model) && hasEndpoint(model, "/v1/chat/completions"))
     result.push(...chatKeys(mechanism, "usage.cached_prompt_text_tokens"));
-  if (hasEndpoint(model, "/v1/responses"))
+  if (textOnlyInput(model) && hasEndpoint(model, "/v1/responses"))
     result.push(
       `${mechanism === "batch" ? "batch.responses" : "responses"}.usage.cached_input_tokens`,
     );
-  if (mechanism === "sync") result.push("sdk.agent.cached_prompt_text_tokens");
+  if (mechanism === "sync" && hasEndpoint(model, "/v1/responses"))
+    result.push("sdk.agent.cached_prompt_text_tokens");
   return result;
 }
 
@@ -491,7 +485,8 @@ function imageTokenKeys(mechanism: Mechanism, model: PublishedPricingModel | und
   const result: string[] = [];
   if (hasEndpoint(model, "/v1/chat/completions"))
     result.push(...chatKeys(mechanism, "usage.prompt_image_tokens"));
-  if (mechanism === "sync") result.push("sdk.agent.prompt_image_tokens");
+  if (mechanism === "sync" && hasEndpoint(model, "/v1/responses"))
+    result.push("sdk.agent.prompt_image_tokens");
   return result;
 }
 
@@ -509,7 +504,9 @@ function selectorSources(
     if (dimension.namespace !== "kmodels") continue;
     const keys = selectorKeys(dimension.value, mechanism, model);
     for (const fact of pricingInputFacts(inputIndex, keys)) {
-      const normalization = selectorNormalization(dimension, applicability, model);
+      const normalization = fact.key.endsWith(".fast_priority_alias")
+        ? tierNormalization(dimension, applicability)
+        : undefined;
       result.push({
         dimension,
         channel: fact.channel,
@@ -523,6 +520,24 @@ function selectorSources(
   return uniqueCanonical(result);
 }
 
+function tierNormalization(
+  dimension: PriceDimension,
+  applicability: PriceApplicability,
+): PriceSelectorSource["normalization"] {
+  const entries = applicability.any_of.flatMap(({ all_of }) =>
+    all_of.flatMap((condition) =>
+      condition.kind === "categorical" &&
+      canonicalJson(condition.dimension) === canonicalJson(dimension)
+        ? condition.values.flatMap((value) => [
+            { source_value: value.value, value },
+            ...(value.value === "priority" ? [{ source_value: "fast", value }] : []),
+          ])
+        : [],
+    ),
+  );
+  return { kind: "categorical_map", entries: uniqueCanonical(entries) };
+}
+
 function selectorKeys(
   dimension: string,
   mechanism: Mechanism,
@@ -530,8 +545,12 @@ function selectorKeys(
 ): string[] {
   if (dimension === "served_service_tier" && mechanism === "sync")
     return [
-      ...(hasEndpoint(model, "/v1/chat/completions") ? ["chat.served_service_tier"] : []),
-      ...(hasEndpoint(model, "/v1/responses") ? ["responses.served_service_tier"] : []),
+      ...(hasEndpoint(model, "/v1/chat/completions")
+        ? ["chat.served_service_tier", "chat.served_service_tier.fast_priority_alias"]
+        : []),
+      ...(hasEndpoint(model, "/v1/responses")
+        ? ["responses.served_service_tier", "responses.served_service_tier.fast_priority_alias"]
+        : []),
     ];
   if (dimension === "context_tokens") {
     const prefix = mechanism === "batch" ? "batch." : "";
@@ -540,42 +559,9 @@ function selectorKeys(
         ? chatKeys(mechanism, "usage.prompt_tokens")
         : []),
       ...(hasEndpoint(model, "/v1/responses") ? [`${prefix}responses.usage.input_tokens`] : []),
-      ...(mechanism === "sync" ? ["sdk.agent.prompt_tokens"] : []),
     ];
   }
-  if (dimension === "resolution")
-    return model?.tasks.includes("image_generation") === true
-      ? ["image.effective_resolution"]
-      : model?.tasks.includes("video_generation") === true
-        ? ["video.effective_resolution"]
-        : [];
-  if (dimension === "quality" && model?.tasks.includes("image_generation") === true)
-    return ["image.effective_quality"];
   return [];
-}
-
-function selectorNormalization(
-  dimension: PriceDimension,
-  applicability: PriceApplicability,
-  model: PublishedPricingModel | undefined,
-): PriceSelectorSource["normalization"] | undefined {
-  if (
-    dimension.namespace !== "kmodels" ||
-    dimension.value !== "resolution" ||
-    model?.tasks.includes("image_generation") !== true
-  )
-    return;
-  const entries = applicability.any_of.flatMap(({ all_of }) =>
-    all_of.flatMap((condition) =>
-      condition.kind === "categorical" &&
-      canonicalJson(condition.dimension) === canonicalJson(dimension)
-        ? condition.values.map((value) => ({ source_value: value.value.toLowerCase(), value }))
-        : [],
-    ),
-  );
-  return entries.length === 0
-    ? undefined
-    : { kind: "categorical_map", entries: uniqueCanonical(entries) };
 }
 
 function resourceBook(
@@ -628,7 +614,10 @@ function resourceTerm(
     ...term,
     ...(meter === term.meter ? {} : { term_key: resourceKey, meter }),
     variants: term.variants.map((variant) => {
-      const charge_binding = resourceBinding(resourceKey, offer, variant, input, inputIndex);
+      const charge_binding =
+        resourceKey === "image-generation-tool"
+          ? modelBinding(meter, variant, "direct", undefined, input, inputIndex)
+          : resourceBinding(resourceKey, offer, variant, input, inputIndex);
       return charge_binding === undefined ? variant : { ...variant, charge_binding };
     }),
   };
@@ -649,15 +638,6 @@ function resourceBinding(
       directMethods(tool.signal, tool.keys, inputIndex),
       variant,
     );
-  if (resourceKey === "image-generation-tool") {
-    const signal = standardSignal("generated_images");
-    return quantityBinding(
-      signal,
-      "request",
-      directMethods(signal, ["responses.image_generation.completed_images"], inputIndex),
-      variant,
-    );
-  }
   if (resourceKey === "text-to-speech") {
     addAtom(input, {
       kind: "aggregation",
@@ -668,11 +648,7 @@ function resourceBinding(
     return quantityBinding(
       signal,
       { namespace: "provider", provider_id: input.provider_id, value: "tts_utterance" },
-      directMethods(
-        signal,
-        ["tts.rest.input_characters", "tts.streaming.input_characters"],
-        inputIndex,
-      ),
+      emptyMethods(),
       variant,
     );
   }
@@ -683,11 +659,7 @@ function resourceBinding(
       offer.offer_key === "streaming" ? "session" : "request",
       directMethods(
         signal,
-        [
-          offer.offer_key === "streaming"
-            ? "stt.streaming.audio_seconds"
-            : "stt.rest.audio_seconds",
-        ],
+        offer.offer_key === "streaming" ? [] : ["stt.rest.audio_seconds"],
         inputIndex,
       ),
       variant,
@@ -718,11 +690,19 @@ function toolSignal(
   const values = new Map<string, readonly [string, string, string[]]>([
     [
       "x-search-posts",
-      ["fetched_x_posts", "Every X post fetched, including parent and quoted posts", []],
+      [
+        "fetched_x_posts",
+        "Every X post fetched, including parent and quoted posts",
+        ["responses.usage.x_posts_fetched"],
+      ],
     ],
     [
       "x-search-profiles",
-      ["fetched_x_profiles", "Every X user profile fetched by user search", []],
+      [
+        "fetched_x_profiles",
+        "Every X user profile fetched by user search",
+        ["responses.usage.x_users_fetched"],
+      ],
     ],
     [
       "x-search",
@@ -782,7 +762,7 @@ function mechanismApplicability(
   applicability: PriceApplicability,
   mechanism: Mechanism,
 ): PriceApplicability | undefined {
-  if (mechanism === "direct" || mechanism === "realtime") return applicability;
+  if (mechanism === "realtime") return applicability;
   const any_of = applicability.any_of.flatMap(({ all_of }) => {
     const tier = all_of.find(isServiceTier);
     const batch =
@@ -798,13 +778,8 @@ function mechanismApplicability(
   return any_of.length === 0 ? undefined : canonicalizeApplicability({ any_of });
 }
 
-function rawVariant(
-  variant: AtomicRawVariant,
-  mechanism: Mechanism,
-  duplicate: boolean,
-): AtomicRawVariant[] {
-  if (duplicate) return [variant];
-  if (variant.possible_scope === undefined) return mechanism === "sync" ? [variant] : [];
+function rawVariant(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {
+  if (variant.possible_scope === undefined) return mechanism === "batch" ? [] : [variant];
   const possible_scope = mechanismApplicability(variant.possible_scope, mechanism);
   return possible_scope === undefined ? [] : [{ ...variant, possible_scope }];
 }
@@ -843,16 +818,12 @@ function providerSignal(
 
 function hasEndpoint(model: PublishedPricingModel | undefined, path: string): boolean {
   return (
-    model !== undefined &&
-    (model.api_endpoints === undefined ||
-      model.api_endpoints.some((endpoint) => endpoint.path === path))
+    model !== undefined && model.api_endpoints?.some((endpoint) => endpoint.path === path) === true
   );
 }
 
 function chatKeys(mechanism: Mechanism, suffix: string): string[] {
-  return mechanism === "batch"
-    ? [`batch.chat.${suffix}`]
-    : [`chat.${suffix}`, `chat.stream.${suffix}`];
+  return mechanism === "batch" ? [] : [`chat.${suffix}`, `chat.stream.${suffix}`];
 }
 
 function textOnlyInput(model: PublishedPricingModel | undefined): boolean {

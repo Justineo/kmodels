@@ -326,68 +326,317 @@ Request `service_tier: "priority"`. You are only billed at the priority rate whe
 
 
 ===/developers/tools/tool-usage-details===
+#### Tools
+
 # Tool Usage Details
 
-### `server_side_tool_usage` - Successful Calls (Billable)
+This page covers the technical details of how tool calls are tracked, billed, and how to understand token usage in agentic requests.
 
-This value determines your billing. Only successful tool executions are billed.
+## Real-time Server-side Tool Calls
 
-Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, uncached
-`prompt_text_tokens`, `reasoning_tokens`, `cached_prompt_text_tokens`, and
-`prompt_image_tokens`.
+When streaming agentic requests, you can observe **every tool call decision** the model makes in real-time via the `tool_calls` attribute on the `chunk` object:
 
-`server_side_tool_usage` reports these successful billable categories:
+```pythonWithoutSDK
+for tool_call in chunk.tool_calls:
+    print(f"\nCalling tool: {tool_call.function.name} with arguments: {tool_call.function.arguments}")
+```
 
-* `SERVER_SIDE_TOOL_WEB_SEARCH`
-* `SERVER_SIDE_TOOL_X_SEARCH`
-* `SERVER_SIDE_TOOL_CODE_EXECUTION`
-* `SERVER_SIDE_TOOL_COLLECTIONS_SEARCH`
+**Note**: Only the tool call invocations are shown — **server-side tool call outputs are not returned** in the API response. The agent uses these outputs internally to formulate its final response.
+
+## Server-side Tool Calls vs Tool Usage
+
+The API provides two related but distinct metrics for server-side tool executions:
+
+### `tool_calls` - All Attempted Calls
+
+```pythonWithoutSDK
+response.tool_calls
+```
+
+Returns a list of all **attempted** tool calls made during the agentic process. Each entry contains:
+
+* `id`: Unique identifier for the tool call
+* `function.name`: The name of the specific server-side tool called
+* `function.arguments`: The parameters passed to the server-side tool
+
+This includes **every tool call attempt**, even if some fail.
+
+### `server_side_tool_usage` - Successful Calls
+
+```pythonWithoutSDK
+response.server_side_tool_usage
+```
+
+Returns a map of successfully executed tools and their invocation counts. This represents only the tool calls that returned meaningful responses and **determines your billing** for per-call tools; X Search is billed on the [item counts below](#x-search-item-counts) instead.
+
+```output
+{'SERVER_SIDE_TOOL_X_SEARCH': 3, 'SERVER_SIDE_TOOL_WEB_SEARCH': 2}
+```
+
+### X Search item counts
+
+As of September 21, 2026, X Search is billed per post and per user profile fetched rather than per call. The Responses API reports these counts as `usage.server_side_tool_usage_details.x_posts_fetched` and `x_users_fetched`. See [X Search usage counts](/developers/tools/x-search#usage-counts) for what each field includes.
+
+## Tool Call Function Names vs Usage Categories
+
+In xAI SDK chat responses, the function names in `tool_calls` represent the precise name of the tool invoked, while the entries in `server_side_tool_usage` provide a high-level categorization that aligns with the original tool passed in the `tools` array. In the Responses API, Web Search activity is represented as `web_search_call` output items instead.
+
+| Usage Category | Function Name(s) |
+|----------------|------------------|
+| `SERVER_SIDE_TOOL_WEB_SEARCH` | `web_search`, `web_search_with_snippets`, `browse_page`, `open_page`, `open_page_with_find` |
+| `SERVER_SIDE_TOOL_IMAGE_SEARCH` | `search_images` |
+| `SERVER_SIDE_TOOL_X_SEARCH` | `x_user_search`, `x_keyword_search`, `x_semantic_search`, `x_thread_fetch` |
+| `SERVER_SIDE_TOOL_CODE_EXECUTION` | `code_execution` |
+| `SERVER_SIDE_TOOL_VIEW_X_VIDEO` | `view_x_video` |
+| `SERVER_SIDE_TOOL_VIEW_IMAGE` | `view_image` |
+| `SERVER_SIDE_TOOL_COLLECTIONS_SEARCH` | `collections_search` |
+| `SERVER_SIDE_TOOL_MCP` | `{server_label}.{tool_name}` if `server_label` provided, otherwise `{tool_name}` |
+
+## When Tool Calls and Usage Differ
+
+In most cases, `tool_calls` and `server_side_tool_usage` will show the same tools. However, they can differ when:
+
+* **Failed tool executions**: The model attempts to browse a non-existent webpage, fetch a deleted X post, or encounters other execution errors
+* **Invalid parameters**: Tool calls with malformed arguments that can't be processed
+* **Network or service issues**: Temporary failures in the tool execution pipeline
+
+The agentic system handles these failures gracefully, updating its trajectory and continuing with alternative approaches when needed.
+
+**Billing Note**: Only successful tool executions (`server_side_tool_usage`) are billed. Failed attempts are not charged. X Search is billed per post and per user profile fetched rather than per call; see [X Search item counts](#x-search-item-counts).
+
+## Understanding Token Usage
+
+Agentic requests have unique token usage patterns compared to standard chat completions:
+
+### `completion_tokens`
+
+Represents **only the final text output** of the model. This is typically much smaller than you might expect, as the agent performs all its intermediate reasoning and tool orchestration internally.
+
+### `prompt_tokens`
+
+Represents the **cumulative input tokens** across all inference requests made during the agentic process. Each request includes the full conversation history up to that point, which grows as the agent progresses.
+
+While this can result in higher `prompt_tokens` counts, agentic requests benefit significantly from **prompt caching**. The majority of the prompt remains unchanged between steps, allowing for efficient caching.
+
+### `reasoning_tokens`
+
+Represents the tokens used for the model's internal reasoning process. This includes planning tool calls, analyzing results, and formulating responses, but excludes the final output tokens.
+
+### `cached_prompt_text_tokens`
+
+Indicates how many prompt tokens were served from cache rather than recomputed. Higher values indicate better cache utilization and lower costs.
+
+### `prompt_image_tokens`
+
+Represents tokens from visual content that the agent processes. These are counted separately from text tokens. If no images or videos are processed, this value will be zero.
 
 
 ===/developers/rest-api-reference/inference/chat-completions===
-# Chat
 
-Chat Completions response:
+## POST /v1/chat/completions
 
-```json
-{"object":"chat.completion","service_tier":"priority","usage":{"prompt_tokens":135,"prompt_tokens_details":{"text_tokens":125,"image_tokens":10,"cached_tokens":98},"completion_tokens":48,"completion_tokens_details":{"reasoning_tokens":12}}}
-```
+### Response Body
 
-Responses response:
+* `service_tier` ("default" | "priority" | "fast", required) — Processing tier for a request. \`Fast\` and \`Priority\` are interchangeable: the model's fast
+  deployment and its rates where configured, else higher scheduling priority at a higher price.
 
-```json
-{"object":"response","service_tier":"default","usage":{"input_tokens":125,"input_tokens_details":{"cached_tokens":98},"output_tokens":48,"output_tokens_details":{"reasoning_tokens":12}}}
-```
+* `usage` (object)
 
+  * `completion_tokens` (integer, required) — Total completion token used.
+
+  * `completion_tokens_details` (object, required) — Details of completion usage.
+
+    * `accepted_prediction_tokens` (integer, required) — The number of tokens in the prediction that appeared in the completion.
+
+    * `audio_tokens` (integer, required) — Audio input tokens generated by the model.
+
+    * `reasoning_tokens` (integer, required) — Tokens generated by the model for reasoning.
+
+    * `rejected_prediction_tokens` (integer, required) — The number of tokens in the prediction that did not appear in the completion.
+
+  * `cost_in_usd_ticks` (integer, required) — Accurate cost of this request in USD ticks, where "tick" is defined as follows:
+    TICKS\_IN\_USD\_CENT: i64 = 100\_000\_000
+    which means there is 10'000'000'000 ticks in one \*dollar\*.
+
+  * `num_sources_used` (integer, required) — Number of individual live search source used.
+
+  * `prompt_tokens` (integer, required) — Total prompt token used.
+
+  * `prompt_tokens_details` (object, required) — Details of prompt usage.
+
+    * `audio_tokens` (integer, required) — Audio prompt token used.
+
+    * `cached_tokens` (integer, required) — Token cached by xAI from previous requests and reused for this request.
+
+    * `image_tokens` (integer, required) — Image prompt token used.
+
+    * `text_tokens` (integer, required) — Total text prompt token used (cached + non-cached text tokens).
+
+  * `server_side_tool_usage_details` (object)
+
+    * `code_interpreter_calls` (integer, required) — Number of code interpreter calls.
+
+    * `document_search_calls` (integer, required) — Number of document search calls.
+
+    * `file_search_calls` (integer, required) — Number of file search calls.
+
+    * `image_generation_calls` (integer, required) — Number of image generation calls.
+
+    * `mcp_calls` (integer, required) — Number of MCP calls.
+
+    * `web_search_calls` (integer, required) — Number of web search calls.
+
+    * `x_posts_fetched` (integer, required) — Number of X posts fetched across all X search calls, including nested
+      parent/quote posts and every post of a fetched thread, without
+      de-duplication. X search is billed per fetched item.
+
+    * `x_search_calls` (integer, required) — Number of X search calls.
+
+    * `x_users_fetched` (integer, required) — Number of X user profiles fetched across all X search calls, without
+      de-duplication. X search is billed per fetched item.
+
+  * `total_tokens` (integer, required) — Total token used, the sum of prompt token and completion token amount.
 
 ===/developers/rest-api-reference/inference/responses===
-# Responses
 
-Responses response:
+## POST /v1/responses
 
-```json
-{"object":"response","service_tier":"default","usage":{"input_tokens":125,"input_tokens_details":{"cached_tokens":98},"output_tokens":48,"output_tokens_details":{"reasoning_tokens":12}}}
-```
+### Response Body
+
+* `service_tier` ("default" | "priority" | "fast", required)
+
+* `usage` (object)
+
+  * `context_details` (object)
+
+    * `input_tokens` (integer, required) — Prompt tokens in the latest context (sourced from
+      \`SamplingUsage.context\_prompt\_tokens\`).
+
+    * `output_tokens` (integer, required) — Completion + reasoning tokens in the latest context (sourced from
+      \`SamplingUsage.context\_output\_tokens\`).
+
+  * `cost_in_nano_usd` (integer | null) — Cost in nano US dollars for this request.
+
+  * `cost_in_usd_ticks` (integer | null) — Accurate cost of this request in USD ticks, where "tick" is defined as follows:
+    TICKS\_IN\_USD\_CENT: i64 = 100\_000\_000
+    which means there is 10'000'000'000 ticks in one \*dollar\*.
+
+  * `input_tokens` (integer, required) — Number of input tokens used.
+
+  * `input_tokens_details` (object, required)
+
+    * `cached_tokens` (integer, required) — Token cached by xAI from previous requests and reused for this request.
+
+  * `num_server_side_tools_used` (integer, required) — Number of server side tools used.
+
+  * `num_sources_used` (integer, required) — Number of sources used (for live search).
+
+  * `output_tokens` (integer, required) — Number of output tokens used.
+
+  * `output_tokens_details` (object, required)
+
+    * `reasoning_tokens` (integer, required) — Tokens generated by the model for reasoning.
+
+  * `server_side_tool_usage_details` (object)
+
+    * `code_interpreter_calls` (integer, required) — Number of code interpreter calls.
+
+    * `document_search_calls` (integer, required) — Number of document search calls.
+
+    * `file_search_calls` (integer, required) — Number of file search calls.
+
+    * `image_generation_calls` (integer, required) — Number of image generation calls.
+
+    * `mcp_calls` (integer, required) — Number of MCP calls.
+
+    * `web_search_calls` (integer, required) — Number of web search calls.
+
+    * `x_posts_fetched` (integer, required) — Number of X posts fetched across all X search calls, including nested
+      parent/quote posts and every post of a fetched thread, without
+      de-duplication. X search is billed per fetched item.
+
+    * `x_search_calls` (integer, required) — Number of X search calls.
+
+    * `x_users_fetched` (integer, required) — Number of X user profiles fetched across all X search calls, without
+      de-duplication. X search is billed per fetched item.
+
+  * `total_tokens` (integer, required) — Total tokens used.
 
 
 ===/developers/rest-api-reference/inference/images===
-# Images
+## POST /v1/images/generations
 
-Image generation and image edit request bodies accept `resolution` and `quality`. The effective
-values include provider defaults. Image edit accepts an `image` object or an `images` array.
+### Response Body
+* `data` (array\<object>, required) — A list of generated image objects.
 
-Response body: `data` array of completed generated image objects.
+  * `b64_json` (string | null) — A base64-encoded string representation of the generated image (without the data-URI prefix), if \`b64\_json\` is specified as \`response\_format\` in the request.
+
+  * `file_output` (object)
+
+    * `expires_at` (integer | null) — Unix timestamp (seconds) when the stored file expires and will be
+      automatically deleted. Only present when the file has an expiration.
+
+    * `file_id` (string, required) — Files API file\_id of the stored file.
+
+    * `filename` (string, required) — Filename of the stored file.
+
+    * `public_url` (string | null) — Public URL for the stored file. Only present when the request included
+      \`storage\_options.public\_url\` and creation succeeded.
+
+    * `public_url_error` (string | null) — Human-readable error when \`storage\_options.public\_url\` was set but
+      public URL creation failed. The file was stored successfully.
+
+    * `public_url_expires_at` (integer | null) — Unix timestamp (seconds) when the public URL expires. Present when
+      the public URL has an expiry, either from an explicit \`expires\_after\`
+      in the request or inherited from the file's TTL.
+
+  * `mime_type` (string | null) — The MIME type of the generated image (e.g. \`image/png\`, \`image/jpeg\`, \`image/webp\`).
+
+  * `storage_error` (string | null) — Human-readable error when \`storage\_options\` was set but the upload
+    failed. Absent on success or when storage was not requested.
+
+  * `url` (string | null) — A url to the generated image, if \`response\_format\` is not specified or with \`url\` in the request.
+
 
 
 ===/developers/rest-api-reference/inference/videos===
-# Videos
+## GET /v1/videos/\{request\_id}
 
-The request body accepts an `image`, a video input, and an effective output `resolution`.
-Video input may be supplied by URL, base64 data, or file ID.
+### Response Body
+* `status` (string, required) — Status of the video generation: "done" when the video is ready.
 
-```json
-{"status":"done","video":{"url":"https://example.test/video.mp4","duration":6},"model":"grok-imagine-video"}
-```
+* `video` (object)
+
+  * `duration` (integer, required) — Duration of the generated video in seconds.
+
+  * `file_output` (object)
+
+    * `expires_at` (integer | null) — Unix timestamp (seconds) when the stored file expires and will be
+      automatically deleted. Only present when the file has an expiration.
+
+    * `file_id` (string, required) — Files API file\_id of the stored file.
+
+    * `filename` (string, required) — Filename of the stored file.
+
+    * `public_url` (string | null) — Public URL for the stored file. Only present when the request included
+      \`storage\_options.public\_url\` and creation succeeded.
+
+    * `public_url_error` (string | null) — Human-readable error when \`storage\_options.public\_url\` was set but
+      public URL creation failed. The file was stored successfully.
+
+    * `public_url_expires_at` (integer | null) — Unix timestamp (seconds) when the public URL expires. Present when
+      the public URL has an expiry, either from an explicit \`expires\_after\`
+      in the request or inherited from the file's TTL.
+
+  * `respect_moderation` (boolean, required) — Whether the video generated by the model respects moderation rules.
+    The field will be true if the video respects moderation rules. Otherwise
+    the field will be false and the video url field will be empty.
+
+  * `storage_error` (string | null) — Human-readable error when \`storage\_options\` was set but the upload
+    failed. Absent on success or when storage was not requested.
+
+  * `url` (string | null) — A url to the generated video.
+
 
 
 ===/developers/rest-api-reference/management===
@@ -665,11 +914,11 @@ WSS wss://api.x.ai/v1/realtime
 
 
 ===/developers/rest-api-reference/inference/speech-to-text===
-# Speech to Text
+## POST /v1/stt
 
-Speech to Text - REST returns `duration`, the audio duration in seconds.
+### Response Body
+* `duration` (number, required) — Audio duration in seconds (rounded to 2 decimal places).
 
-Streaming Speech to Text ends with `transcript.done`, where duration is always present.
 
 
 ===/developers/migration/may-15-retirement===

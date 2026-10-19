@@ -44,7 +44,6 @@ export function extractXaiCommercialFacts(
     .map(({ uid }) => uid);
   const facts: SourceCommercialPricingFact[] = evidence.toolRates.map((tool) => ({
     ...service(sourceId, `service:${tool.key}`, tool.name, tool.key, [
-      ...responseRefs,
       ...(tool.supportsVoice && evidence.voiceTools ? voiceRefs : []),
     ]),
     offer_key: "execution",
@@ -63,12 +62,12 @@ export function extractXaiCommercialFacts(
           "service:image-generation-tool",
           "Responses image generation tool",
           "image-generation-tool",
-          responseRefs,
+          [],
         ),
         offer_key: "execution",
         offer_name: "Agentic image generation",
         pricing_state: "numeric",
-        price_facts: image.price_facts,
+        price_facts: image.price_facts.filter((rate) => rate.conditions.service_tier !== "batch"),
         raw_price_facts: [],
       });
   }

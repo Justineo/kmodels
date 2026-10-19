@@ -4,6 +4,7 @@ import {
   assertItemCount,
   assertCoverage,
   invalidJsonContractEvidence,
+  isContractDrift,
   recognizeItems,
   createContractFindingCollector,
   contractExtensionEvidence,
@@ -31,6 +32,17 @@ function observation(value: unknown, itemIndex: number, modelId: string): ZodCon
 }
 
 describe("source contract diagnostics", () => {
+  it("distinguishes additive field extensions from consumed-value drift", () => {
+    const additive = sourceContractEvidenceSchema.parse(
+      contractExtensionEvidence(["/future_field"], "unknown_field"),
+    );
+    const consumed = sourceContractEvidenceSchema.parse(
+      contractExtensionEvidence(["/future_field"]),
+    );
+    expect(isContractDrift(additive)).toBe(false);
+    expect(isContractDrift(consumed)).toBe(true);
+    expect(additive.diagnostics[0]?.fingerprint).not.toBe(consumed.diagnostics[0]?.fingerprint);
+  });
   it("bounds independent callback cohorts deterministically and keeps rejected evidence first", () => {
     const findings = Array.from({ length: maxContractFindings + 2 }, (_, index) => {
       const evidence = contractExtensionEvidence([`/field_${index}`]);

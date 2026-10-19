@@ -1,4 +1,5 @@
 import { finalizePricingInputs } from "./pricing-input.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
@@ -10,200 +11,149 @@ interface Contract {
   availability: SourcePricingInputFact["availability"];
   sections: readonly SectionRequirement[];
   reduction?: SourcePricingInputFact["reduction"];
-  absentValue?: SourcePricingInputFact["absent_value"];
+  response?: ResponseContract;
+}
+
+interface ResponseContract {
+  document: string;
+  operation: string;
+  fields: string[];
+  type: "integer" | "number" | "string" | "array";
 }
 
 interface SectionRequirement {
   path: string;
+  heading?: { level: number; title: string };
   markers: readonly RegExp[];
 }
 
 const chatPath = "/developers/rest-api-reference/inference/chat-completions";
 const responsesPath = "/developers/rest-api-reference/inference/responses";
 const costPath = "/developers/cost-tracking";
-const batchPath = "/developers/advanced-api-usage/batch-api";
 const toolPath = "/developers/tools/tool-usage-details";
 const imagePath = "/developers/rest-api-reference/inference/images";
 const videoPath = "/developers/rest-api-reference/inference/videos";
-const voicePath = "/developers/rest-api-reference/inference/voice";
 const speechToTextPath = "/developers/rest-api-reference/inference/speech-to-text";
-const realtimePath = "/developers/model-capabilities/audio/speech-to-speech";
+
+const chatOperation = "POST /v1/chat/completions";
+const responsesOperation = "POST /v1/responses";
+const chatUsage = [
+  ["prompt_text_tokens", "prompt_tokens_details.text_tokens"],
+  ["cached_prompt_text_tokens", "prompt_tokens_details.cached_tokens"],
+  ["prompt_image_tokens", "prompt_tokens_details.image_tokens"],
+  ["completion_tokens", "completion_tokens"],
+  ["reasoning_tokens", "completion_tokens_details.reasoning_tokens"],
+  ["prompt_tokens", "prompt_tokens"],
+] as const;
 
 const contracts: readonly Contract[] = [
-  ...chatUsageContracts("response"),
-  ...chatStreamContracts(),
-  ...responsesUsageContracts("response"),
-  providerField(
-    "sdk.agent.prompt_text_tokens",
-    "response",
-    "ChatResponse.usage.prompt_text_tokens",
-    toolPath,
-    [/\bprompt_text_tokens\b/, /\bprompt_image_tokens\b/],
+  ...chatUsage.map(([key, field]) =>
+    responseContract("chat.usage." + key, chatPath, chatOperation, "usage." + field),
   ),
-  providerField(
-    "sdk.agent.prompt_tokens",
-    "response",
-    "ChatResponse.usage.prompt_tokens",
-    toolPath,
-    [/\bprompt_tokens\b/, /\bprompt_image_tokens\b/],
+  responseContract("chat.served_service_tier", chatPath, chatOperation, "service_tier", "string"),
+  ...chatUsage.map(([key, field]): Contract => ({
+    ...responseContract("chat.stream.usage." + key, chatPath, chatOperation, "usage." + field),
+    channel: "stream_event",
+    sections: [
+      { path: chatPath, markers: [] },
+      { path: costPath, markers: [/stream_options/, /include_usage/, /final chunk/i] },
+    ],
+  })),
+  ...[
+    ["input_tokens", "input_tokens"],
+    ["cached_input_tokens", "input_tokens_details.cached_tokens"],
+    ["output_tokens", "output_tokens"],
+  ].map(([key, field]) =>
+    responseContract("responses.usage." + key, responsesPath, responsesOperation, "usage." + field),
   ),
-  providerField(
-    "sdk.agent.cached_prompt_text_tokens",
-    "response",
-    "ChatResponse.usage.cached_prompt_text_tokens",
-    toolPath,
-    [/\bcached_prompt_text_tokens\b/],
+  responseContract(
+    "responses.served_service_tier",
+    responsesPath,
+    responsesOperation,
+    "service_tier",
+    "string",
   ),
-  providerField(
-    "sdk.agent.prompt_image_tokens",
-    "response",
-    "ChatResponse.usage.prompt_image_tokens",
-    toolPath,
-    [/\bprompt_image_tokens\b/],
+  ...["x_posts_fetched", "x_users_fetched"].map((key) =>
+    responseContract(
+      "responses.usage." + key,
+      responsesPath,
+      responsesOperation,
+      "usage.server_side_tool_usage_details." + key,
+    ),
   ),
-  providerField(
-    "sdk.agent.completion_tokens",
-    "response",
-    "ChatResponse.usage.completion_tokens",
-    toolPath,
-    [/\bcompletion_tokens\b/],
-  ),
-  providerField(
-    "sdk.agent.reasoning_tokens",
-    "response",
-    "ChatResponse.usage.reasoning_tokens",
-    toolPath,
-    [/\breasoning_tokens\b/],
-  ),
-  ...toolContracts(),
-  {
-    key: "image.generated_images",
+  ...[
+    "prompt_tokens",
+    "cached_prompt_text_tokens",
+    "prompt_image_tokens",
+    "completion_tokens",
+    "reasoning_tokens",
+  ].map((key): Contract => ({
+    key: "sdk.agent." + key,
     channel: "response",
-    locator: { kind: "json_pointer", value: "/data" },
+    locator: { kind: "provider_field", value: "ChatResponse.usage." + key },
+    availability: "terminal_only",
+    sections: [
+      {
+        path: toolPath,
+        heading: { level: 3, title: "`" + key + "`" },
+        markers: [key === "completion_tokens" ? /final text output/i : /\btokens\b/i],
+      },
+    ],
+  })),
+  ...[
+    ["web_search", "SERVER_SIDE_TOOL_WEB_SEARCH"],
+    ["x_search", "SERVER_SIDE_TOOL_X_SEARCH"],
+    ["code_execution", "SERVER_SIDE_TOOL_CODE_EXECUTION"],
+    ["collections_search", "SERVER_SIDE_TOOL_COLLECTIONS_SEARCH"],
+  ].map(([key, category]): Contract => ({
+    key: "sdk.server_side_tool_usage." + key,
+    channel: "response",
+    locator: { kind: "provider_field", value: "ChatResponse.server_side_tool_usage." + category },
+    availability: "terminal_only",
+    sections: [
+      {
+        path: toolPath,
+        heading: { level: 3, title: "`server_side_tool_usage` - Successful Calls" },
+        markers: [/invocation counts/i, /determines your billing/i],
+      },
+      {
+        path: toolPath,
+        heading: { level: 2, title: "Tool Call Function Names vs Usage Categories" },
+        markers: [new RegExp("^\\| `" + category + "` \\|", "m")],
+      },
+    ],
+  })),
+  {
+    ...responseContract(
+      "image.generated_images",
+      imagePath,
+      "POST /v1/images/generations",
+      "data",
+      "array",
+    ),
     reduction: { kind: "array_length" },
     availability: "success_only",
-    sections: [{ path: imagePath, markers: [/\bdata\b[^\n]*\barray\b/i] }],
   },
-  providerField(
-    "imagine.accepted_input_images",
-    "request",
-    "ImagineRequest.accepted_input_images",
-    imagePath,
-    [/\bimages?\b/, /image edit/i],
-    { availability: "always" },
-  ),
-  providerField(
-    "image.effective_resolution",
-    "request",
-    "ImagineRequest.effective_resolution",
-    imagePath,
-    [/\bresolution\b/],
-    { availability: "always" },
-  ),
-  providerField(
-    "image.effective_quality",
-    "request",
-    "ImagineRequest.effective_quality",
-    imagePath,
-    [/\bquality\b/],
-    { availability: "always" },
-  ),
   {
-    key: "video.generated_seconds",
+    ...responseContract(
+      "video.generated_seconds",
+      videoPath,
+      "GET /v1/videos/\\{request\\_id}",
+      "video.duration",
+    ),
     channel: "result",
-    locator: { kind: "json_pointer", value: "/video/duration" },
     availability: "success_only",
-    sections: [{ path: videoPath, markers: [/"status"\s*:\s*"done"/, /"video"[\s\S]*"duration"/] }],
   },
-  providerField(
-    "video.accepted_input_images",
-    "request",
-    "VideoRequest.accepted_input_images",
-    videoPath,
-    [/\bimage\b/, /request body/i],
-    { availability: "always" },
-  ),
-  providerField(
-    "video.accepted_input_video_seconds",
-    "request",
-    "VideoRequest.accepted_input_video_seconds",
-    videoPath,
-    [/\bvideo\b/, /video input/i],
-    { availability: "always" },
-  ),
-  providerField(
-    "video.effective_resolution",
-    "request",
-    "VideoRequest.effective_output_resolution",
-    videoPath,
-    [/\bresolution\b/],
-    { availability: "always" },
-  ),
-  providerField(
-    "realtime.accepted_input_audio_seconds",
-    "request",
-    "RealtimeSession.accepted_input_audio_seconds",
-    realtimePath,
-    [/audio duration/i, /audio sent or received/i],
-    { availability: "always" },
-  ),
-  providerField(
-    "realtime.emitted_output_audio_seconds",
-    "stream_event",
-    "RealtimeSession.emitted_output_audio_seconds",
-    realtimePath,
-    [/audio duration/i, /audio sent or received/i],
-    { availability: "terminal_only" },
-  ),
-  providerField(
-    "realtime.billable_text_input_events",
-    "request",
-    "RealtimeSession.billable_conversation_item_create_events",
-    realtimePath,
-    [/conversation\.item\.create/, /function_call_output/, /input_audio/],
-    { availability: "always" },
-  ),
-  providerField(
-    "tts.rest.input_characters",
-    "request",
-    "TtsRequest.accepted_billing_characters",
-    voicePath,
-    [/text to speech/i, /\btext\b[^\n]*\bstring\b/i, /character/i],
-    { availability: "always" },
-  ),
-  providerField(
-    "tts.streaming.input_characters",
-    "request",
-    "TtsStream.accepted_text_delta_billing_characters",
-    voicePath,
-    [/text\.delta/, /text\.done/, /character/i],
-    { availability: "always" },
-  ),
-  jsonPointer(
-    "stt.rest.audio_seconds",
-    "response",
-    "/duration",
-    speechToTextPath,
-    [/speech to text/i, /duration[^\n]*audio duration/i],
-    { availability: "success_only" },
-  ),
-  jsonPointer(
-    "stt.streaming.audio_seconds",
-    "stream_event",
-    "/duration",
-    speechToTextPath,
-    [/transcript\.done/, /duration/],
-    { availability: "terminal_only" },
-  ),
-  providerField(
-    "responses.image_generation.completed_images",
-    "response",
-    "Response.output[type=image_generation_call,result].length",
-    "/developers/tools/image-generation",
-    [/image_generation_call/, /\bresult\b/],
-    { availability: "success_only" },
-  ),
-  ...batchUsageContracts(),
+  {
+    ...responseContract(
+      "stt.rest.audio_seconds",
+      speechToTextPath,
+      "POST /v1/stt",
+      "duration",
+      "number",
+    ),
+    availability: "success_only",
+  },
 ];
 
 export function extractXaiPricingInputs(
@@ -213,26 +163,48 @@ export function extractXaiPricingInputs(
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
   const sections = splitSections(llms);
+  const chat = sections.get(chatPath);
+  const chatOperationBody =
+    chat === undefined ? undefined : markdownSection(chat, 2, chatOperation);
+  const chatResponse =
+    chatOperationBody === undefined
+      ? undefined
+      : markdownSection(chatOperationBody, 3, "Response Body");
+  const fastIsPriority =
+    chatResponse !== undefined &&
+    /^\* `service_tier` \([^\n]+\)[^\n]*`Fast` and `Priority` are interchangeable/m.test(
+      markdownProse(chatResponse).replaceAll("\\`", "`"),
+    );
   const facts = contracts.flatMap((contract) => {
-    const present = contract.sections.every(({ path, markers }) => {
-      const body = sections.get(path);
-      return body !== undefined && markers.every((marker) => marker.test(body));
+    const present = contract.sections.every(({ path, heading, markers }) => {
+      const document = sections.get(path);
+      const body =
+        document === undefined || heading === undefined
+          ? document
+          : markdownSection(document, heading.level, heading.title);
+      return (
+        body !== undefined &&
+        (contract.response?.document !== path || responseField(body, contract.response)) &&
+        markers.every((marker) => marker.test(markdownProse(body)))
+      );
     });
     if (!present) {
       onFinding?.(
         contractExtensionEvidence([
-          `/documents${contract.sections.map(({ path }) => path).join("+")}/${contract.key}`,
+          "/documents" + contract.sections.map(({ path }) => path).join("+") + "/" + contract.key,
         ]),
       );
       return [];
     }
     return [
       {
-        key: contract.key,
+        key:
+          fastIsPriority && contract.key.endsWith(".served_service_tier")
+            ? contract.key + ".fast_priority_alias"
+            : contract.key,
         channel: contract.channel,
         locator: contract.locator,
         ...(contract.reduction === undefined ? {} : { reduction: contract.reduction }),
-        ...(contract.absentValue === undefined ? {} : { absent_value: contract.absentValue }),
         availability: contract.availability,
         source_ref: sourceRef,
       },
@@ -241,210 +213,94 @@ export function extractXaiPricingInputs(
   return finalizePricingInputs(facts, contracts.length, "xAI pricing inputs", onReconciliation);
 }
 
-function chatUsageContracts(channel: "response" | "result"): Contract[] {
-  const path = channel === "response" ? chatPath : batchPath;
-  const prefix = channel === "response" ? "chat" : "batch.chat";
-  const wrap = channel === "response" ? (value: string) => value : batchChatField;
-  return [
-    contract(
-      `${prefix}.usage.prompt_text_tokens`,
-      channel,
-      wrap("usage.prompt_tokens_details.text_tokens"),
-      path,
-      [/prompt_tokens_details[\s\S]*text_tokens/],
-    ),
-    contract(
-      `${prefix}.usage.cached_prompt_text_tokens`,
-      channel,
-      wrap("usage.prompt_tokens_details.cached_tokens"),
-      path,
-      [/prompt_tokens_details[\s\S]*cached_tokens/],
-    ),
-    contract(
-      `${prefix}.usage.prompt_image_tokens`,
-      channel,
-      wrap("usage.prompt_tokens_details.image_tokens"),
-      path,
-      [/prompt_tokens_details[\s\S]*image_tokens/],
-    ),
-    contract(`${prefix}.usage.completion_tokens`, channel, wrap("usage.completion_tokens"), path, [
-      /\bcompletion_tokens\b/,
-    ]),
-    contract(
-      `${prefix}.usage.reasoning_tokens`,
-      channel,
-      wrap("usage.completion_tokens_details.reasoning_tokens"),
-      path,
-      [/completion_tokens_details[\s\S]*reasoning_tokens/],
-    ),
-    contract(`${prefix}.usage.prompt_tokens`, channel, wrap("usage.prompt_tokens"), path, [
-      /\bprompt_tokens\b/,
-    ]),
-    ...(channel === "response"
-      ? [
-          jsonPointer("chat.served_service_tier", "response", "/service_tier", chatPath, [
-            /chat\.completion[\s\S]*service_tier/,
-          ]),
-        ]
-      : []),
-  ];
-}
-
-function chatStreamContracts(): Contract[] {
-  return chatUsageContracts("response")
-    .filter(({ key }) => key !== "chat.served_service_tier")
-    .map((value) => ({
-      ...value,
-      key: value.key.replace("chat.", "chat.stream."),
-      channel: "stream_event",
-      availability: "terminal_only",
-      sections: [
-        ...value.sections,
-        { path: costPath, markers: [/stream_options/, /include_usage/, /final chunk/i] },
-      ],
-    }));
-}
-
-function responsesUsageContracts(channel: "response" | "result"): Contract[] {
-  const path = channel === "response" ? responsesPath : batchPath;
-  const prefix = channel === "response" ? "responses" : "batch.responses";
-  const wrap = channel === "response" ? (value: string) => value : batchResponsesField;
-  return [
-    contract(`${prefix}.usage.input_tokens`, channel, wrap("usage.input_tokens"), path, [
-      /\binput_tokens\b/,
-    ]),
-    contract(
-      `${prefix}.usage.cached_input_tokens`,
-      channel,
-      wrap("usage.input_tokens_details.cached_tokens"),
-      path,
-      [/input_tokens_details[\s\S]*cached_tokens/],
-    ),
-    contract(`${prefix}.usage.output_tokens`, channel, wrap("usage.output_tokens"), path, [
-      /\boutput_tokens\b/,
-    ]),
-    ...(channel === "response"
-      ? [
-          jsonPointer("responses.served_service_tier", "response", "/service_tier", responsesPath, [
-            /"object"\s*:\s*"response"[\s\S]*service_tier/,
-          ]),
-        ]
-      : []),
-  ];
-}
-
-function toolContracts(): Contract[] {
-  return [
-    ["web_search", "SERVER_SIDE_TOOL_WEB_SEARCH"],
-    ["x_search", "SERVER_SIDE_TOOL_X_SEARCH"],
-    ["code_execution", "SERVER_SIDE_TOOL_CODE_EXECUTION"],
-    ["collections_search", "SERVER_SIDE_TOOL_COLLECTIONS_SEARCH"],
-  ].map(([key, category]) =>
-    providerField(
-      `sdk.server_side_tool_usage.${key}`,
-      "response",
-      `ChatResponse.server_side_tool_usage.${category}`,
-      toolPath,
-      [new RegExp(`\\b${category}\\b`), /successful calls/i],
-      { availability: "terminal_only" },
-    ),
-  );
-}
-
-function batchUsageContracts(): Contract[] {
-  return [
-    ...chatUsageContracts("result"),
-    ...responsesUsageContracts("result"),
-    providerField(
-      "batch.image.generated_images",
-      "result",
-      "BatchResult.image_response.data",
-      batchPath,
-      [/result\.image_response/, /\busage\b/, /\bmodel\b/],
-      { reduction: { kind: "array_length" }, availability: "success_only" },
-    ),
-    providerField(
-      "batch.video.generated_seconds",
-      "result",
-      "BatchResult.video_response.duration",
-      batchPath,
-      [/result\.video_response/, /\bduration\b/, /\busage\b/],
-      { availability: "success_only" },
-    ),
-  ];
-}
-
-function contract(
+function responseContract(
   key: string,
-  channel: SourcePricingInputFact["channel"],
+  document: string,
+  operation: string,
   field: string,
-  path: string,
-  markers: readonly RegExp[],
-): Contract {
-  const locator =
-    channel === "result"
-      ? ({ kind: "provider_field", value: field } as const)
-      : ({ kind: "json_pointer", value: `/${field.replaceAll(".", "/")}` } as const);
-  return { key, channel, locator, availability: "terminal_only", sections: [{ path, markers }] };
-}
-
-function jsonPointer(
-  key: string,
-  channel: SourcePricingInputFact["channel"],
-  value: string,
-  path: string,
-  markers: readonly RegExp[],
-  options: Pick<Contract, "availability"> = { availability: "terminal_only" },
+  type: ResponseContract["type"] = "integer",
 ): Contract {
   return {
     key,
-    channel,
-    locator: { kind: "json_pointer", value },
-    availability: options.availability,
-    sections: [{ path, markers }],
-  };
-}
-
-function providerField(
-  key: string,
-  channel: SourcePricingInputFact["channel"],
-  value: string,
-  path: string,
-  markers: readonly RegExp[],
-  options: Pick<Contract, "absentValue" | "availability" | "reduction"> = {
+    channel: "response",
+    locator: { kind: "json_pointer", value: "/" + field.replaceAll(".", "/") },
     availability: "terminal_only",
-  },
-): Contract {
-  return {
-    key,
-    channel,
-    locator: { kind: "provider_field", value },
-    availability: options.availability,
-    sections: [{ path, markers }],
-    ...(options.reduction === undefined ? {} : { reduction: options.reduction }),
-    ...(options.absentValue === undefined ? {} : { absentValue: options.absentValue }),
+    sections: [{ path: document, markers: [] }],
+    response: { document, operation, fields: field.split("."), type },
   };
 }
 
-function batchChatField(value: string): string {
-  return `BatchResult.response.chat_get_completion.${value}`;
+interface Field {
+  name?: string;
+  type?: string;
+  children: Field[];
 }
 
-function batchResponsesField(value: string): string {
-  return `BatchResult.response.responses_get_response.${value}`;
+function responseField(body: string, contract: ResponseContract): boolean {
+  const operation = markdownSection(body, 2, contract.operation);
+  const response =
+    operation === undefined ? undefined : markdownSection(operation, 3, "Response Body");
+  if (response === undefined) return false;
+  let fields = responseFields(response);
+  for (const [index, name] of contract.fields.entries()) {
+    const matches = fields.filter((field) => field.name === name);
+    const field = matches[0];
+    if (matches.length !== 1 || field?.type === undefined) return false;
+    const expected = index === contract.fields.length - 1 ? contract.type : "object";
+    const types =
+      field.type
+        .split(",")[0]
+        ?.split("|")
+        .map((value) => value.trim())
+        .filter((value) => value !== "null") ?? [];
+    if (
+      types.length === 0 ||
+      !types.every(
+        (type) =>
+          type === expected ||
+          (expected === "array" && /^array\\?<object>$/.test(type)) ||
+          (expected === "string" && /^"[^"\n]+"$/.test(type)),
+      )
+    )
+      return false;
+    fields = field.children;
+  }
+  return contract.fields.length > 0;
 }
 
-function splitSections(body: string): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  const matches = [...body.matchAll(/^===([^=\n]+)===\s*$/gm)];
+function responseFields(body: string): Field[] {
+  const roots: Field[] = [];
+  const parents: Array<{ indent: number; field: Field }> = [];
+  for (const line of markdownProse(body).split(/\r?\n/u)) {
+    const bullet = line.match(/^( *)\* (.+)$/u);
+    if (bullet?.[1] === undefined || bullet[2] === undefined) continue;
+    const indent = bullet[1].length;
+    while ((parents.at(-1)?.indent ?? -1) >= indent) parents.pop();
+    const parent = parents.at(-1);
+    if (parent === undefined && indent !== 0) continue;
+    const owned = parent === undefined || indent === parent.indent + 2;
+    const property = owned ? bullet[2].match(/^`([a-z_]+)` \(([^)]+)\)/u) : undefined;
+    const field: Field = {
+      ...(property?.[1] === undefined ? {} : { name: property[1] }),
+      ...(property?.[2] === undefined ? {} : { type: property[2] }),
+      children: [],
+    };
+    (parent?.field.children ?? roots).push(field);
+    parents.push({ indent, field });
+  }
+  return roots;
+}
+
+function splitSections(body: string): ReadonlyMap<string, string | undefined> {
+  const result = new Map<string, string | undefined>();
+  const matches = [...markdownProse(body).matchAll(/^===([^=\n]+)===\s*$/gm)];
   for (const [index, match] of matches.entries()) {
     const path = match[1];
     if (path === undefined || match.index === undefined)
       throw new Error("xAI accounting section marker was malformed");
     const start = match.index + match[0].length;
     const end = matches[index + 1]?.index ?? body.length;
-    if (result.has(path)) throw new Error(`xAI accounting duplicated ${path}`);
-    result.set(path, body.slice(start, end).trim());
+    result.set(path, result.has(path) ? undefined : body.slice(start, end).trim());
   }
   return result;
 }
