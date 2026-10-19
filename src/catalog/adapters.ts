@@ -51,7 +51,7 @@ import {
 } from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog, parseMistralPricing } from "./mistral.ts";
 import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
-import { sourcePricingFacts, type ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { sourcePricingFacts } from "./pricing-source.ts";
 import { parseSourceJson, SourceContractError, zodContractEvidence } from "./source-contract.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog, parseVertexPricing } from "./vertex.ts";
@@ -76,20 +76,20 @@ export {
   releaseStageFromIdentity,
 } from "./lifecycle.ts";
 
-function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult {
+function parseSourceBody(input: ParseInput): SourceParseResult {
   switch (input.source.extractor.kind) {
     case "openai-catalog":
-      return parseOpenAiCatalog(input);
+      return { models: parseOpenAiCatalog(input) };
     case "openai-model-pricing":
-      return parseOpenAiModelPricing(input);
+      return { models: parseOpenAiModelPricing(input) };
     case "openai-api":
-      return parseOpenAiApi(input);
+      return { models: parseOpenAiApi(input) };
     case "openai-changelog":
-      return parseOpenAiChangelog(input);
+      return { models: parseOpenAiChangelog(input) };
     case "openai-deprecations":
-      return parseOpenAiDeprecations(input);
+      return { models: parseOpenAiDeprecations(input) };
     case "openai-data-residency":
-      return parseOpenAiDataResidency(input);
+      return { models: parseOpenAiDataResidency(input) };
     case "openai-pricing":
       return parseOpenAiPricing(input);
     case "openai-accounting":
@@ -97,7 +97,7 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "anthropic-catalog":
       return parseAnthropicCatalog(input);
     case "anthropic-api":
-      return parseAnthropicApi(input);
+      return { models: parseAnthropicApi(input) };
     case "vercel-catalog":
       return parseVercelCatalog(input);
     case "typesafe-catalog":
@@ -113,15 +113,15 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "cerebras-api":
       return parseCerebrasApi(input);
     case "huggingface-mapping":
-      return parseHuggingFaceMapping(input);
+      return { models: parseHuggingFaceMapping(input) };
     case "huggingface-router":
       return parseHuggingFaceRouter(input);
     case "huggingface-featherless":
-      return parseHuggingFaceFeatherless(input);
+      return { models: parseHuggingFaceFeatherless(input) };
     case "huggingface-native-pricing":
-      return parseHuggingFaceNativePricing(input);
+      return { models: parseHuggingFaceNativePricing(input) };
     case "huggingface-hub":
-      return parseHuggingFaceHub(input);
+      return { models: parseHuggingFaceHub(input) };
     case "ollama-library":
       return parseOllamaLibrary(input);
     case "ollama-cloud":
@@ -137,7 +137,7 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "sagemaker-api":
       return parseSagemakerInventory(input);
     case "bedrock-api":
-      return parseBedrockApi(input);
+      return { models: parseBedrockApi(input) };
     case "databricks-catalog":
       return parseDatabricksCatalog(input);
     case "databricks-api":
@@ -157,17 +157,17 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "azure-api":
       return parseAzureApi(input);
     case "gemini-catalog":
-      return parseGeminiCatalog(input);
+      return { models: parseGeminiCatalog(input) };
     case "gemini-pricing":
       return parseGeminiPricing(input);
     case "gemini-api":
-      return parseGeminiApi(input);
+      return { models: parseGeminiApi(input) };
     case "vertex-catalog":
-      return parseVertexCatalog(input);
+      return { models: parseVertexCatalog(input) };
     case "vertex-pricing":
       return parseVertexPricing(input);
     case "vertex-api":
-      return parseVertexApi(input);
+      return { models: parseVertexApi(input) };
     case "cohere-catalog":
       return parseCohereCatalog(input);
     case "cohere-pricing":
@@ -175,15 +175,15 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "cohere-api":
       return parseCohereApi(input);
     case "mistral-catalog":
-      return parseMistralCatalog(input);
+      return { models: parseMistralCatalog(input) };
     case "mistral-pricing":
       return parseMistralPricing(input);
     case "mistral-api":
-      return parseMistralApi(input);
+      return { models: parseMistralApi(input) };
     case "llama-catalog":
-      return parseLlamaCatalog(input);
+      return { models: parseLlamaCatalog(input) };
     case "llama-api":
-      return parseLlamaApi(input);
+      return { models: parseLlamaApi(input) };
     case "xai-catalog":
       return parseXaiCatalog(input);
     case "xai-api":
@@ -203,27 +203,26 @@ function parseSourceBody(input: ParseInput): ProviderModel[] | SourceParseResult
     case "deepseek-catalog":
       return parseDeepseekCatalog(input);
     case "deepseek-updates":
-      return parseDeepseekUpdates(input);
+      return { models: parseDeepseekUpdates(input) };
     case "deepseek-api":
-      return parseDeepseekApi(input);
+      return { models: parseDeepseekApi(input) };
     case "kimi-openapi":
       return parseKimiOpenApi(input);
     case "kimi-catalog":
-      return parseKimiCatalog(input);
+      return { models: parseKimiCatalog(input) };
     case "kimi-pricing":
       return parseKimiPricing(input);
     case "kimi-releases":
-      return parseKimiReleases(input);
+      return { models: parseKimiReleases(input) };
     case "kimi-api":
-      return parseKimiApi(input);
+      return { models: parseKimiApi(input) };
   }
 }
 
 export function parseSource(input: ParseInput): SourceParseResult {
   try {
-    const parsed = parseSourceBody(input);
-    const result = Array.isArray(parsed) ? { models: parsed } : parsed;
-    return { ...result, ...sourcePricingFacts(result.models, result) };
+    const result = parseSourceBody(input);
+    return { ...result, ...sourcePricingFacts(result) };
   } catch (error) {
     if (error instanceof SourceContractError) throw error;
     let value: unknown;

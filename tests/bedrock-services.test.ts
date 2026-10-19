@@ -136,8 +136,8 @@ describe("Bedrock native request services", () => {
     const parsed = parse(await bundle());
     expect(
       parsed.models.every(
-        ({ commercial_facts, pricing_inputs }) =>
-          commercial_facts === undefined && pricing_inputs === undefined,
+        (model) =>
+          !Object.hasOwn(model, "commercial_facts") && !Object.hasOwn(model, "pricing_inputs"),
       ),
     ).toBe(true);
     expect(parsed.pricing_inputs).toHaveLength(32);

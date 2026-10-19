@@ -1554,7 +1554,7 @@ describe("DeepSeek adapters", () => {
           raw_price_facts.every(({ impact }) => impact === "informational"),
       ),
     ).toBe(true);
-    expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
     expect(contractPaths(findings)).toContain("/deepseek/fim_inventory_disagreement");
   });
 

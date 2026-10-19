@@ -261,7 +261,7 @@ describe("SageMaker price books", () => {
     const items: PricingReconciliationItem[] = [];
     const parsed = parsePricing(bundle(), items);
     const { models } = parsed;
-    expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
     const s = source("sagemaker-pricing");
     const partition = assemblePricing(parsed);
     validateAdoptedTopology(partition);

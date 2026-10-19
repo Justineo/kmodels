@@ -924,48 +924,43 @@ describe("parsed-source canonical pricing adapter", () => {
     const azureManifest = manifests.find(({ provider }) => provider.id === "azure");
     const accountingSource = azureManifest?.sources.find(({ id }) => id === "azure-accounting");
     if (accountingSource === undefined) throw new Error("Azure accounting source is missing");
-    const accounting: ParsedProviderModel = {
-      ...direct,
-      pricing_state: "unknown",
-      price_facts: [],
-      pricing_inputs: [
-        {
-          key: "chat.input_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "chat.input_tokens",
-          channel: "stream_event",
-          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "responses.input_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "batch.input_tokens",
-          channel: "result",
-          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-      ],
-    };
+    const accountingInputs: SourcePricingInputFact[] = [
+      {
+        key: "chat.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "chat.input_tokens",
+        channel: "stream_event",
+        locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "responses.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "batch.input_tokens",
+        channel: "result",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+    ];
     const router = azure("model-router", [tokenRate("0.1", {})]);
     const partition = assembleParsedProviderPricing(
       "azure",
       observedAt,
       [
         { source: pricingSource, models: [direct, router] },
-        { source: accountingSource, models: [accounting] },
+        { source: accountingSource, models: [], pricing_inputs: accountingInputs },
       ],
       [direct, router],
     );
@@ -1102,22 +1097,22 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("output_text", "16"),
         rate("output_audio", "32"),
       ],
-      pricing_inputs: [
-        input("chat.input_tokens", "/usage/prompt_tokens"),
-        input("chat.cached_input_tokens", "/usage/prompt_tokens_details/cached_tokens"),
-        input("chat.cache_write_tokens", "/usage/prompt_tokens_details/cache_write_tokens"),
-        input("chat.input_audio_tokens", "/usage/prompt_tokens_details/audio_tokens"),
-        input("chat.output_tokens", "/usage/completion_tokens"),
-        input("chat.output_audio_tokens", "/usage/completion_tokens_details/audio_tokens"),
-        input("responses.input_tokens", "/usage/input_tokens"),
-        input("responses.cached_input_tokens", "/usage/input_tokens_details/cached_tokens"),
-        input("responses.output_tokens", "/usage/output_tokens"),
-      ],
     };
+    const pricedInputs: SourcePricingInputFact[] = [
+      input("chat.input_tokens", "/usage/prompt_tokens"),
+      input("chat.cached_input_tokens", "/usage/prompt_tokens_details/cached_tokens"),
+      input("chat.cache_write_tokens", "/usage/prompt_tokens_details/cache_write_tokens"),
+      input("chat.input_audio_tokens", "/usage/prompt_tokens_details/audio_tokens"),
+      input("chat.output_tokens", "/usage/completion_tokens"),
+      input("chat.output_audio_tokens", "/usage/completion_tokens_details/audio_tokens"),
+      input("responses.input_tokens", "/usage/input_tokens"),
+      input("responses.cached_input_tokens", "/usage/input_tokens_details/cached_tokens"),
+      input("responses.output_tokens", "/usage/output_tokens"),
+    ];
     const partition = assembleParsedProviderPricing(
       "azure",
       observedAt,
-      [{ source: pricingSource, models: [priced] }],
+      [{ source: pricingSource, models: [priced], pricing_inputs: pricedInputs }],
       [priced],
     );
     const terms = partition?.books[0]?.offers[0]?.terms ?? [];
@@ -1184,15 +1179,17 @@ describe("parsed-source canonical pricing adapter", () => {
       ]),
     );
 
-    const partial = {
-      ...priced,
-      pricing_inputs: priced.pricing_inputs?.filter(({ key }) => key !== "chat.input_audio_tokens"),
-    };
     const partialPartition = assembleParsedProviderPricing(
       "azure",
       observedAt,
-      [{ source: pricingSource, models: [partial] }],
-      [partial],
+      [
+        {
+          source: pricingSource,
+          models: [priced],
+          pricing_inputs: pricedInputs.filter(({ key }) => key !== "chat.input_audio_tokens"),
+        },
+      ],
+      [priced],
     );
     const partialInput = partialPartition?.books[0]?.offers[0]?.terms.find(
       ({ term_key }) => term_key === "input_text",
@@ -1288,18 +1285,18 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("output_image", "million_tokens"),
         rate("image_generation", "image", { quality: "low", resolution: "1024x1024" }),
       ],
-      pricing_inputs: [
-        input("images.input_text_tokens", "/usage/input_tokens_details/text_tokens"),
-        input("images.input_image_tokens", "/usage/input_tokens_details/image_tokens"),
-        input("images.output_image_tokens", "/usage/output_tokens"),
-        input("images.generated_images", "/data", { kind: "array_length" }),
-        input("images.quality", "/quality"),
-        input("images.resolution", "/size"),
-        input("embeddings.input_tokens", "/usage/prompt_tokens"),
-        input("audio.transcription_seconds", "/duration"),
-        input("video.generated_seconds", "/n_seconds"),
-      ],
     };
+    const imageInputs: SourcePricingInputFact[] = [
+      input("images.input_text_tokens", "/usage/input_tokens_details/text_tokens"),
+      input("images.input_image_tokens", "/usage/input_tokens_details/image_tokens"),
+      input("images.output_image_tokens", "/usage/output_tokens"),
+      input("images.generated_images", "/data", { kind: "array_length" }),
+      input("images.quality", "/quality"),
+      input("images.resolution", "/size"),
+      input("embeddings.input_tokens", "/usage/prompt_tokens"),
+      input("audio.transcription_seconds", "/duration"),
+      input("video.generated_seconds", "/n_seconds"),
+    ];
     const transcription: ParsedProviderModel = {
       ...model(),
       provider_id: "azure",
@@ -1328,7 +1325,13 @@ describe("parsed-source canonical pricing adapter", () => {
     const partition = assembleParsedProviderPricing(
       "azure",
       observedAt,
-      [{ source: pricingSource, models: [image, transcription, embedding, video] }],
+      [
+        {
+          source: pricingSource,
+          models: [image, transcription, embedding, video],
+          pricing_inputs: imageInputs,
+        },
+      ],
       [image, transcription, embedding, video],
     );
     const offer = (uid: string) =>
@@ -1412,76 +1415,83 @@ describe("parsed-source canonical pricing adapter", () => {
     const { source: pricingSource } = pricingManifest();
     const gemini: ParsedProviderModel = {
       ...model(),
-      pricing_inputs: [
-        geminiPricingInput(
-          "generate.prompt.text",
-          "response",
-          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
-        ),
-        geminiPricingInput(
-          "generate.cache.text",
-          "response",
-          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
-        ),
-        geminiPricingInput(
-          "generate.service_tier",
-          "response",
-          "GenerateContentResponse.usageMetadata.serviceTier",
-        ),
-        geminiPricingInput(
-          "generate.prompt.text",
-          "result",
-          "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
-        ),
-        geminiPricingInput(
-          "generate.cache.text",
-          "result",
-          "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
-        ),
-        geminiPricingInput(
-          "interaction.grounding.google_search",
-          "response",
-          "Interaction.usage.grounding_tool_count[type=google_search].count",
-        ),
-      ],
       price_facts: [
         tokenRate("2", { service_tier: "standard" }),
         tokenRate("4", { service_tier: "priority" }),
         tokenRate("1", { service_tier: "batch" }),
       ],
-      commercial_facts: [
-        {
-          book_key: "service:google-search",
-          book_name: "Grounding with Google Search",
-          resource_kind: "service",
-          resource_key: "google-search",
-          model_refs: [modelRef],
-          offer_key: `grounding:${modelRef}`,
-          offer_name: "Search grounding for Test model",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "web_search",
-              price: "14",
-              currency: "USD",
-              unit: "thousand_search_units",
-              conditions: { operation: "google_search" },
-              source_ref: sourceRef,
-              derived: false,
-              raw_price: "$14",
-              raw_unit: "1,000 search queries",
-            },
-          ],
-          raw_price_facts: [],
-          source_ref: sourceRef,
-        },
-      ],
     };
+    const geminiInputs: SourcePricingInputFact[] = [
+      geminiPricingInput(
+        "generate.prompt.text",
+        "response",
+        "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
+      ),
+      geminiPricingInput(
+        "generate.cache.text",
+        "response",
+        "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
+      ),
+      geminiPricingInput(
+        "generate.service_tier",
+        "response",
+        "GenerateContentResponse.usageMetadata.serviceTier",
+      ),
+      geminiPricingInput(
+        "generate.prompt.text",
+        "result",
+        "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
+      ),
+      geminiPricingInput(
+        "generate.cache.text",
+        "result",
+        "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
+      ),
+      geminiPricingInput(
+        "interaction.grounding.google_search",
+        "response",
+        "Interaction.usage.grounding_tool_count[type=google_search].count",
+      ),
+    ];
+    const geminiCommercialFacts: SourceCommercialPricingFact[] = [
+      {
+        book_key: "service:google-search",
+        book_name: "Grounding with Google Search",
+        resource_kind: "service",
+        resource_key: "google-search",
+        model_refs: [modelRef],
+        offer_key: `grounding:${modelRef}`,
+        offer_name: "Search grounding for Test model",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "web_search",
+            price: "14",
+            currency: "USD",
+            unit: "thousand_search_units",
+            conditions: { operation: "google_search" },
+            source_ref: sourceRef,
+            derived: false,
+            raw_price: "$14",
+            raw_unit: "1,000 search queries",
+          },
+        ],
+        raw_price_facts: [],
+        source_ref: sourceRef,
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "gemini",
       observedAt,
-      [{ source: pricingSource, models: [gemini] }],
+      [
+        {
+          source: pricingSource,
+          models: [gemini],
+          pricing_inputs: geminiInputs,
+          commercial_facts: geminiCommercialFacts,
+        },
+      ],
       [gemini],
     );
     const books = partition?.books ?? [];
@@ -1598,49 +1608,49 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("output_image", "8"),
         rate("image_generation", "0.04", "image"),
       ],
-      pricing_inputs: [
-        input(
-          "generate.prompt.image",
-          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=IMAGE].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.prompt.document",
-          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=DOCUMENT].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.cache.image",
-          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=IMAGE].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.cache.document",
-          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=DOCUMENT].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.candidates.text",
-          "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=TEXT].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.candidates.image",
-          "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "generate.candidates.total",
-          "GenerateContentResponse.usageMetadata.candidatesTokenCount",
-        ),
-        input("generate.thoughts", "GenerateContentResponse.usageMetadata.thoughtsTokenCount"),
-        input(
-          "generate.output.images",
-          "GenerateContentResponse.candidates[*].content.parts[*].inlineData[mimeType=image/*]",
-          { absent_value: "zero", reduction: { kind: "array_length" } },
-        ),
-      ],
     };
+    const multimodalInputs: SourcePricingInputFact[] = [
+      input(
+        "generate.prompt.image",
+        "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=IMAGE].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.prompt.document",
+        "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=DOCUMENT].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.cache.image",
+        "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=IMAGE].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.cache.document",
+        "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=DOCUMENT].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.candidates.text",
+        "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=TEXT].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.candidates.image",
+        "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "generate.candidates.total",
+        "GenerateContentResponse.usageMetadata.candidatesTokenCount",
+      ),
+      input("generate.thoughts", "GenerateContentResponse.usageMetadata.thoughtsTokenCount"),
+      input(
+        "generate.output.images",
+        "GenerateContentResponse.candidates[*].content.parts[*].inlineData[mimeType=image/*]",
+        { absent_value: "zero", reduction: { kind: "array_length" } },
+      ),
+    ];
     const embedding: ParsedProviderModel = {
       ...model(),
       uid: "gemini/embed-test",
@@ -1649,19 +1659,19 @@ describe("parsed-source canonical pricing adapter", () => {
       tasks: ["embeddings"],
       modalities: { input: ["image", "pdf"], output: ["embedding"] },
       price_facts: [rate("input_image", "0.5")],
-      pricing_inputs: [
-        input(
-          "embedding.prompt.image",
-          "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=IMAGE].tokenCount",
-          { absent_value: "zero" },
-        ),
-        input(
-          "embedding.prompt.document",
-          "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=DOCUMENT].tokenCount",
-          { absent_value: "zero" },
-        ),
-      ],
     };
+    const embeddingInputs: SourcePricingInputFact[] = [
+      input(
+        "embedding.prompt.image",
+        "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=IMAGE].tokenCount",
+        { absent_value: "zero" },
+      ),
+      input(
+        "embedding.prompt.document",
+        "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=DOCUMENT].tokenCount",
+        { absent_value: "zero" },
+      ),
+    ];
     const video: ParsedProviderModel = {
       ...model(),
       uid: "gemini/video-test",
@@ -1670,37 +1680,43 @@ describe("parsed-source canonical pricing adapter", () => {
       tasks: ["video_generation"],
       modalities: { input: ["text", "image"], output: ["video"] },
       price_facts: [rate("video_generation", "0.4", "second", { audio: true, resolution: "720p" })],
-      pricing_inputs: [
-        {
-          ...geminiPricingInput(
-            "video.request.duration_seconds",
-            "request",
-            "GenerateVideosConfig.durationSeconds",
-          ),
-          availability: "conditional",
-        },
-        {
-          ...geminiPricingInput(
-            "video.request.resolution",
-            "request",
-            "GenerateVideosConfig.resolution",
-          ),
-          availability: "conditional",
-        },
-        {
-          ...geminiPricingInput(
-            "video.request.generate_audio",
-            "request",
-            "GenerateVideosConfig.generateAudio",
-          ),
-          availability: "conditional",
-        },
-      ],
     };
+    const videoInputs: SourcePricingInputFact[] = [
+      {
+        ...geminiPricingInput(
+          "video.request.duration_seconds",
+          "request",
+          "GenerateVideosConfig.durationSeconds",
+        ),
+        availability: "conditional",
+      },
+      {
+        ...geminiPricingInput(
+          "video.request.resolution",
+          "request",
+          "GenerateVideosConfig.resolution",
+        ),
+        availability: "conditional",
+      },
+      {
+        ...geminiPricingInput(
+          "video.request.generate_audio",
+          "request",
+          "GenerateVideosConfig.generateAudio",
+        ),
+        availability: "conditional",
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "gemini",
       observedAt,
-      [{ source: pricingSource, models: [multimodal, embedding, video] }],
+      [
+        {
+          source: pricingSource,
+          models: [multimodal, embedding, video],
+          pricing_inputs: [...multimodalInputs, ...embeddingInputs, ...videoInputs],
+        },
+      ],
       [multimodal, embedding, video],
     );
     const offer = (uid: string) =>
@@ -1860,181 +1876,181 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("input_text", "4", { service_tier: "priority" }, googleSource.id),
         rate("input_text", "1", { service_tier: "batch" }, googleSource.id),
       ],
-      pricing_inputs: [
-        input("generate.prompt.text", "response", "response.prompt.text"),
-        input("generate.cache.text", "response", "response.cache.text", {
-          absent_value: "zero",
-        }),
-        input("generate.tool_prompt.text", "response", "response.toolPrompt.text", {
-          absent_value: "zero",
-        }),
-        input("generate.service_tier", "response", "response.trafficType"),
-        input("generate.prompt.text", "result", "result.prompt.text"),
-        input("generate.cache.text", "result", "result.cache.text", {
-          absent_value: "zero",
-        }),
-        input("generate.tool_prompt.text", "result", "result.toolPrompt.text", {
-          absent_value: "zero",
-        }),
-        input("claude.input_tokens", "response", "response.usage.input_tokens"),
-        input(
-          "generate.grounding.google_image_search_queries",
-          "response",
-          "response.imageSearchQueries",
-          { reduction: { kind: "count_unique_non_empty_strings" }, absent_value: "zero" },
-        ),
-      ],
-      commercial_facts: [
-        {
-          source_ref: googleSource.id,
-          book_key: "service:google-image-search",
-          book_name: "Grounding with Google Image Search",
-          resource_kind: "service",
-          resource_key: "google-image-search",
-          model_refs: ["vertex/gemini-test"],
-          offer_key: "usage:vertex/gemini-test",
-          offer_name: "Image Search for gemini-test",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate(
-              "image_search",
-              "14",
-              { operation: "google_image_search" },
-              googleSource.id,
-              "thousand_search_units",
-            ),
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:explicit-cache-storage",
-          book_name: "Explicit context cache storage",
-          resource_kind: "service",
-          resource_key: "explicit-cache-storage",
-          model_refs: ["vertex/gemini-test"],
-          offer_key: "storage:vertex/gemini-test",
-          offer_name: "Explicit cache storage for gemini-test",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [rate("cache_storage", "1", {}, googleSource.id, "million_tokens_per_hour")],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "capacity:provisioned-throughput",
-          book_name: "Provisioned Throughput",
-          resource_kind: "capacity",
-          resource_key: "provisioned-throughput",
-          model_refs: [],
-          offer_key: "commitment",
-          offer_name: "Provisioned Throughput commitment",
-          billing_mode: "capacity",
-          pricing_state: "numeric",
-          price_facts: [
-            rate(
-              "provisioned_throughput",
-              "1200",
-              { deployment_scope: "global", billing_period: "1_week_commit" },
-              googleSource.id,
-              "unit_week",
-            ),
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:model-tuning",
-          book_name: "Model Tuning",
-          resource_kind: "service",
-          resource_key: "model-tuning",
-          model_refs: ["vertex/gemini-test"],
-          offer_key: "training:vertex/gemini-test:supervised_fine_tuning",
-          offer_name: "Supervised fine-tuning for gemini-test",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate("training_input", "10", { operation: "supervised_fine_tuning" }, googleSource.id),
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:agent:gemini-deep-research-agent",
-          book_name: "Gemini Deep Research Agent",
-          resource_kind: "service",
-          resource_key: "agent:gemini-deep-research-agent",
-          model_refs: [],
-          offer_key: "execution",
-          offer_name: "Gemini Deep Research Agent execution",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate("input_text", "2", { operation: "gemini-deep-research-agent" }, googleSource.id),
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:google-search",
-          book_name: "Grounding with Google Search",
-          resource_kind: "service",
-          resource_key: "google-search",
-          model_refs: [],
-          offer_key: "agent:gemini-deep-research-agent",
-          offer_name: "Google Search for Gemini Deep Research Agent",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate(
-              "web_search",
-              "14",
-              { operation: "google_search" },
-              googleSource.id,
-              "thousand_search_units",
-            ),
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:codemender",
-          book_name: "CodeMender",
-          resource_kind: "service",
-          resource_key: "codemender",
-          model_refs: ["vertex/gemini-test"],
-          offer_key: "codemender:vertex/gemini-test",
-          offer_name: "CodeMender with gemini-test",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [rate("input_text", "1", { operation: "codemender" }, googleSource.id)],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: googleSource.id,
-          book_key: "service:agent-search",
-          book_name: "Agent Search",
-          resource_kind: "service",
-          resource_key: "agent-search",
-          model_refs: [],
-          offer_key: "general-standard",
-          offer_name: "General Standard Edition",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate(
-              "retrieval",
-              "1.5",
-              { operation: "general_standard" },
-              googleSource.id,
-              "thousand_requests",
-            ),
-          ],
-          raw_price_facts: [],
-        },
-      ],
     };
+    const googleInputs: SourcePricingInputFact[] = [
+      input("generate.prompt.text", "response", "response.prompt.text"),
+      input("generate.cache.text", "response", "response.cache.text", {
+        absent_value: "zero",
+      }),
+      input("generate.tool_prompt.text", "response", "response.toolPrompt.text", {
+        absent_value: "zero",
+      }),
+      input("generate.service_tier", "response", "response.trafficType"),
+      input("generate.prompt.text", "result", "result.prompt.text"),
+      input("generate.cache.text", "result", "result.cache.text", {
+        absent_value: "zero",
+      }),
+      input("generate.tool_prompt.text", "result", "result.toolPrompt.text", {
+        absent_value: "zero",
+      }),
+      input("claude.input_tokens", "response", "response.usage.input_tokens"),
+      input(
+        "generate.grounding.google_image_search_queries",
+        "response",
+        "response.imageSearchQueries",
+        { reduction: { kind: "count_unique_non_empty_strings" }, absent_value: "zero" },
+      ),
+    ];
+    const googleCommercialFacts: SourceCommercialPricingFact[] = [
+      {
+        source_ref: googleSource.id,
+        book_key: "service:google-image-search",
+        book_name: "Grounding with Google Image Search",
+        resource_kind: "service",
+        resource_key: "google-image-search",
+        model_refs: ["vertex/gemini-test"],
+        offer_key: "usage:vertex/gemini-test",
+        offer_name: "Image Search for gemini-test",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate(
+            "image_search",
+            "14",
+            { operation: "google_image_search" },
+            googleSource.id,
+            "thousand_search_units",
+          ),
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:explicit-cache-storage",
+        book_name: "Explicit context cache storage",
+        resource_kind: "service",
+        resource_key: "explicit-cache-storage",
+        model_refs: ["vertex/gemini-test"],
+        offer_key: "storage:vertex/gemini-test",
+        offer_name: "Explicit cache storage for gemini-test",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [rate("cache_storage", "1", {}, googleSource.id, "million_tokens_per_hour")],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "capacity:provisioned-throughput",
+        book_name: "Provisioned Throughput",
+        resource_kind: "capacity",
+        resource_key: "provisioned-throughput",
+        model_refs: [],
+        offer_key: "commitment",
+        offer_name: "Provisioned Throughput commitment",
+        billing_mode: "capacity",
+        pricing_state: "numeric",
+        price_facts: [
+          rate(
+            "provisioned_throughput",
+            "1200",
+            { deployment_scope: "global", billing_period: "1_week_commit" },
+            googleSource.id,
+            "unit_week",
+          ),
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:model-tuning",
+        book_name: "Model Tuning",
+        resource_kind: "service",
+        resource_key: "model-tuning",
+        model_refs: ["vertex/gemini-test"],
+        offer_key: "training:vertex/gemini-test:supervised_fine_tuning",
+        offer_name: "Supervised fine-tuning for gemini-test",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate("training_input", "10", { operation: "supervised_fine_tuning" }, googleSource.id),
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:agent:gemini-deep-research-agent",
+        book_name: "Gemini Deep Research Agent",
+        resource_kind: "service",
+        resource_key: "agent:gemini-deep-research-agent",
+        model_refs: [],
+        offer_key: "execution",
+        offer_name: "Gemini Deep Research Agent execution",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate("input_text", "2", { operation: "gemini-deep-research-agent" }, googleSource.id),
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:google-search",
+        book_name: "Grounding with Google Search",
+        resource_kind: "service",
+        resource_key: "google-search",
+        model_refs: [],
+        offer_key: "agent:gemini-deep-research-agent",
+        offer_name: "Google Search for Gemini Deep Research Agent",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate(
+            "web_search",
+            "14",
+            { operation: "google_search" },
+            googleSource.id,
+            "thousand_search_units",
+          ),
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:codemender",
+        book_name: "CodeMender",
+        resource_kind: "service",
+        resource_key: "codemender",
+        model_refs: ["vertex/gemini-test"],
+        offer_key: "codemender:vertex/gemini-test",
+        offer_name: "CodeMender with gemini-test",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [rate("input_text", "1", { operation: "codemender" }, googleSource.id)],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: googleSource.id,
+        book_key: "service:agent-search",
+        book_name: "Agent Search",
+        resource_kind: "service",
+        resource_key: "agent-search",
+        model_refs: [],
+        offer_key: "general-standard",
+        offer_name: "General Standard Edition",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate(
+            "retrieval",
+            "1.5",
+            { operation: "general_standard" },
+            googleSource.id,
+            "thousand_requests",
+          ),
+        ],
+        raw_price_facts: [],
+      },
+    ];
     const partner: ParsedProviderModel = {
       ...model(),
       provider_id: "vertex",
@@ -2043,37 +2059,42 @@ describe("parsed-source canonical pricing adapter", () => {
       source_refs: [partnerSource.id],
       service_families: ["publishers/anthropic"],
       price_facts: [rate("input_text", "3", {}, partnerSource.id)],
-      commercial_facts: [
-        {
-          source_ref: partnerSource.id,
-          book_key: "service:claude-web-search",
-          book_name: "Claude Web Search",
-          resource_kind: "service",
-          resource_key: "claude-web-search",
-          model_refs: ["vertex/claude-test"],
-          offer_key: "usage:vertex/claude-test",
-          offer_name: "Claude Web Search for claude-test",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            rate(
-              "web_search",
-              "10",
-              { operation: "web_search" },
-              partnerSource.id,
-              "thousand_search_units",
-            ),
-          ],
-          raw_price_facts: [],
-        },
-      ],
     };
+    const partnerCommercialFacts: SourceCommercialPricingFact[] = [
+      {
+        source_ref: partnerSource.id,
+        book_key: "service:claude-web-search",
+        book_name: "Claude Web Search",
+        resource_kind: "service",
+        resource_key: "claude-web-search",
+        model_refs: ["vertex/claude-test"],
+        offer_key: "usage:vertex/claude-test",
+        offer_name: "Claude Web Search for claude-test",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate(
+            "web_search",
+            "10",
+            { operation: "web_search" },
+            partnerSource.id,
+            "thousand_search_units",
+          ),
+        ],
+        raw_price_facts: [],
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "vertex",
       observedAt,
       [
-        { source: googleSource, models: [google] },
-        { source: partnerSource, models: [partner] },
+        {
+          source: googleSource,
+          models: [google],
+          pricing_inputs: googleInputs,
+          commercial_facts: googleCommercialFacts,
+        },
+        { source: partnerSource, models: [partner], commercial_facts: partnerCommercialFacts },
       ],
       [google, partner],
     );
@@ -2294,7 +2315,7 @@ describe("parsed-source canonical pricing adapter", () => {
       rate("cache_read_text", "million_tokens"),
       rate("output_text", "million_tokens"),
     ]);
-    xai.pricing_inputs = [
+    const xaiInputs: SourcePricingInputFact[] = [
       input("responses.input_tokens", "response", "Response.usage.input_tokens"),
       input(
         "responses.cached_input_tokens",
@@ -2338,7 +2359,7 @@ describe("parsed-source canonical pricing adapter", () => {
     const video = vertexModel("veo-test", ["video_generation"], "publishers/google", [
       rate("video_generation", "second", { resolution: "1080p", audio: true }),
     ]);
-    image.commercial_facts = [
+    const imageCommercialFacts: SourceCommercialPricingFact[] = [
       {
         source_ref: pricingSource.id,
         book_key: "service:google-maps",
@@ -2361,7 +2382,14 @@ describe("parsed-source canonical pricing adapter", () => {
     const pricing = assembleParsedProviderPricing(
       "vertex",
       observedAt,
-      [{ source: pricingSource, models }],
+      [
+        {
+          source: pricingSource,
+          models,
+          pricing_inputs: xaiInputs,
+          commercial_facts: imageCommercialFacts,
+        },
+      ],
       models,
     );
     const modelVariant = (id: string, meter: string) => {
@@ -2499,29 +2527,29 @@ describe("parsed-source canonical pricing adapter", () => {
           operation: "responses",
         }),
       ],
-      pricing_inputs: [
-        bedrockPricingInput(
-          "runtime.converse.uncached_input_tokens",
-          "response",
-          "/usage/inputTokens",
-        ),
-        bedrockPricingInput(
-          "runtime.invocation_log.input_tokens",
-          "invocation_log",
-          "/input/inputTokenCount",
-          "reconciliation_only",
-        ),
-        bedrockPricingInput(
-          "runtime.converse.selector.service_tier",
-          "response",
-          "/serviceTier/type",
-        ),
-      ],
     };
+    const bedrockInputs: SourcePricingInputFact[] = [
+      bedrockPricingInput(
+        "runtime.converse.uncached_input_tokens",
+        "response",
+        "/usage/inputTokens",
+      ),
+      bedrockPricingInput(
+        "runtime.invocation_log.input_tokens",
+        "invocation_log",
+        "/input/inputTokenCount",
+        "reconciliation_only",
+      ),
+      bedrockPricingInput(
+        "runtime.converse.selector.service_tier",
+        "response",
+        "/serviceTier/type",
+      ),
+    ];
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
       observedAt,
-      [{ source: pricingSource, models: [bedrock] }],
+      [{ source: pricingSource, models: [bedrock], pricing_inputs: bedrockInputs }],
       [bedrock],
     );
     const term = partition?.books.find(({ scope }) => scope.kind === "models")?.offers[0]?.terms[0];
@@ -2562,36 +2590,36 @@ describe("parsed-source canonical pricing adapter", () => {
           raw_unit: "1K TPM Hour",
         },
       ],
-      pricing_inputs: [
-        bedrockPricingInput(
-          "runtime.converse.uncached_input_tokens",
-          "response",
-          "/usage/inputTokens",
-        ),
-        bedrockPricingInput(
-          "batch.manifest.input_tokens",
-          "result",
-          "manifest.json.out.inputTokenCount",
-        ),
-        bedrockPricingInput(
-          "runtime.invocation_log.input_tokens",
-          "invocation_log",
-          "/input/inputTokenCount",
-          "reconciliation_only",
-        ),
-        bedrockPricingInput(
-          "runtime.invocation_log.selector.region",
-          "invocation_log",
-          "/region",
-          "reconciliation_only",
-        ),
-        bedrockPricingInput(
-          "runtime.converse.selector.service_tier",
-          "response",
-          "/serviceTier/type",
-        ),
-      ],
     };
+    const bedrockInputs: SourcePricingInputFact[] = [
+      bedrockPricingInput(
+        "runtime.converse.uncached_input_tokens",
+        "response",
+        "/usage/inputTokens",
+      ),
+      bedrockPricingInput(
+        "batch.manifest.input_tokens",
+        "result",
+        "manifest.json.out.inputTokenCount",
+      ),
+      bedrockPricingInput(
+        "runtime.invocation_log.input_tokens",
+        "invocation_log",
+        "/input/inputTokenCount",
+        "reconciliation_only",
+      ),
+      bedrockPricingInput(
+        "runtime.invocation_log.selector.region",
+        "invocation_log",
+        "/region",
+        "reconciliation_only",
+      ),
+      bedrockPricingInput(
+        "runtime.converse.selector.service_tier",
+        "response",
+        "/serviceTier/type",
+      ),
+    ];
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
       observedAt,
@@ -2599,6 +2627,7 @@ describe("parsed-source canonical pricing adapter", () => {
         {
           source: pricingSource,
           models: [bedrock],
+          pricing_inputs: bedrockInputs,
           commercial_facts: [
             {
               source_ref: sourceRef,
@@ -2803,32 +2832,39 @@ describe("parsed-source canonical pricing adapter", () => {
       provider_id: "amazon-bedrock",
       uid: "amazon-bedrock/test-model",
       price_facts: [tokenRate("1", {})],
-      commercial_facts: [
-        commercial("guardrails", "content", "0.15", "TextUnit", {
-          operation: "ApplyGuardrail",
-          policyType: "Content",
-        }),
-        commercial("web-search", "queries", "0.01", "Queries", {
-          usagetype: "USE1-Bedrock-Websearch-Queries",
-        }),
-        commercial("prompt-routing", "requests", "0.001", "Requests", {
-          feature: "Prompt Router",
-        }),
-        commercial("agentcore-browser", "cpu", "0.0895", "vCPU-Hours", {}),
-        commercial("model-evaluation", "completed-task", "0.21", "Evaluations", {}),
-      ],
-      pricing_inputs: [
-        bedrockPricingInput(
-          "guardrails.apply.contentPolicyUnits",
-          "response",
-          "/usage/contentPolicyUnits",
-        ),
-      ],
     };
+    const bedrockCommercialFacts: SourceCommercialPricingFact[] = [
+      commercial("guardrails", "content", "0.15", "TextUnit", {
+        operation: "ApplyGuardrail",
+        policyType: "Content",
+      }),
+      commercial("web-search", "queries", "0.01", "Queries", {
+        usagetype: "USE1-Bedrock-Websearch-Queries",
+      }),
+      commercial("prompt-routing", "requests", "0.001", "Requests", {
+        feature: "Prompt Router",
+      }),
+      commercial("agentcore-browser", "cpu", "0.0895", "vCPU-Hours", {}),
+      commercial("model-evaluation", "completed-task", "0.21", "Evaluations", {}),
+    ];
+    const bedrockInputs: SourcePricingInputFact[] = [
+      bedrockPricingInput(
+        "guardrails.apply.contentPolicyUnits",
+        "response",
+        "/usage/contentPolicyUnits",
+      ),
+    ];
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
       observedAt,
-      [{ source: pricingSource, models: [bedrock] }],
+      [
+        {
+          source: pricingSource,
+          models: [bedrock],
+          pricing_inputs: bedrockInputs,
+          commercial_facts: bedrockCommercialFacts,
+        },
+      ],
       [bedrock],
     );
     const resources = (partition?.books ?? []).filter(
@@ -2947,217 +2983,214 @@ describe("parsed-source canonical pricing adapter", () => {
           derived: false,
         },
       ],
-      commercial_facts: [
-        {
-          source_ref: sourceId,
-          book_key: "service:file-search",
-          book_name: "File Search",
-          resource_kind: "service",
-          resource_key: "file-search",
-          model_refs: ["openai/gpt-test"],
-          offer_key: "usage",
-          offer_name: "File Search usage",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "file_search",
-              price: "2.5",
-              currency: "USD",
-              unit: "thousand_events",
-              conditions: {},
-              source_ref: sourceId,
-              derived: false,
-            },
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: sourceId,
-          book_key: "service:web-search",
-          book_name: "Web Search",
-          resource_kind: "service",
-          resource_key: "web-search",
-          model_refs: ["openai/gpt-test"],
-          offer_key: "current",
-          offer_name: "Web Search",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "web_search",
-              price: "10",
-              currency: "USD",
-              unit: "thousand_events",
-              conditions: { operation: "search" },
-              source_ref: sourceId,
-              derived: false,
-            },
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: sourceId,
-          book_key: "service:containers",
-          book_name: "Code execution containers",
-          resource_kind: "service",
-          resource_key: "containers",
-          model_refs: ["openai/gpt-test"],
-          offer_key: "runtime",
-          offer_name: "Code execution runtime",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "container_runtime",
-              price: "0.03",
-              currency: "USD",
-              unit: "container_session",
-              conditions: { capacity: "1 GiB" },
-              source_ref: sourceId,
-              derived: false,
-            },
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: sourceId,
-          book_key: "service:fine-tuning:gpt-test",
-          book_name: "Fine-tuning gpt-test",
-          resource_kind: "service",
-          resource_key: "fine-tuning:gpt-test",
-          model_refs: ["openai/gpt-test"],
-          offer_key: "training",
-          offer_name: "Fine-tuning training",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "training_input",
-              price: "25",
-              currency: "USD",
-              unit: "million_tokens",
-              conditions: {},
-              source_ref: sourceId,
-              derived: false,
-            },
-          ],
-          raw_price_facts: [],
-        },
-        {
-          source_ref: sourceId,
-          book_key: "service:fine-tuned-inference:gpt-test",
-          book_name: "Fine-tuned gpt-test inference",
-          resource_kind: "service",
-          resource_key: "fine-tuned-inference:gpt-test",
-          model_refs: ["openai/gpt-test"],
-          offer_key: "inference",
-          offer_name: "Fine-tuned model inference",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [
-            {
-              meter: "input_text",
-              price: "3",
-              currency: "USD",
-              unit: "million_tokens",
-              conditions: { service_tier: "standard" },
-              source_ref: sourceId,
-              derived: false,
-            },
-            {
-              meter: "input_text",
-              price: "1.5",
-              currency: "USD",
-              unit: "million_tokens",
-              conditions: { service_tier: "batch" },
-              source_ref: sourceId,
-              derived: false,
-            },
-          ],
-          raw_price_facts: [],
-        },
-      ],
     };
-    const accountingModel: ParsedProviderModel = {
-      ...parsedModel,
-      pricing_state: "unknown",
-      price_facts: [],
-      raw_price_facts: [],
-      commercial_facts: [],
-      pricing_inputs: [
-        {
-          key: "responses.usage.input_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "responses.usage.cached_input_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/input_tokens_details/cached_tokens",
+    const parsedModelCommercialFacts: SourceCommercialPricingFact[] = [
+      {
+        source_ref: sourceId,
+        book_key: "service:file-search",
+        book_name: "File Search",
+        resource_kind: "service",
+        resource_key: "file-search",
+        model_refs: ["openai/gpt-test"],
+        offer_key: "usage",
+        offer_name: "File Search usage",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "file_search",
+            price: "2.5",
+            currency: "USD",
+            unit: "thousand_events",
+            conditions: {},
+            source_ref: sourceId,
+            derived: false,
           },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "responses.usage.cache_write_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/input_tokens_details/cache_write_tokens",
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: sourceId,
+        book_key: "service:web-search",
+        book_name: "Web Search",
+        resource_kind: "service",
+        resource_key: "web-search",
+        model_refs: ["openai/gpt-test"],
+        offer_key: "current",
+        offer_name: "Web Search",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "web_search",
+            price: "10",
+            currency: "USD",
+            unit: "thousand_events",
+            conditions: { operation: "search" },
+            source_ref: sourceId,
+            derived: false,
           },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "responses.served_service_tier",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/service_tier" },
-          availability: "terminal_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "organization.completions.input_uncached_tokens",
-          channel: "account_report",
-          locator: {
-            kind: "provider_field",
-            value: "organization.usage.completions.results[*].input_uncached_tokens",
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: sourceId,
+        book_key: "service:containers",
+        book_name: "Code execution containers",
+        resource_kind: "service",
+        resource_key: "containers",
+        model_refs: ["openai/gpt-test"],
+        offer_key: "runtime",
+        offer_name: "Code execution runtime",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "container_runtime",
+            price: "0.03",
+            currency: "USD",
+            unit: "container_session",
+            conditions: { capacity: "1 GiB" },
+            source_ref: sourceId,
+            derived: false,
           },
-          availability: "reconciliation_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "organization.file_search_calls.num_requests",
-          channel: "account_report",
-          locator: {
-            kind: "provider_field",
-            value: "organization.usage.file_search_calls.results[*].num_requests",
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: sourceId,
+        book_key: "service:fine-tuning:gpt-test",
+        book_name: "Fine-tuning gpt-test",
+        resource_kind: "service",
+        resource_key: "fine-tuning:gpt-test",
+        model_refs: ["openai/gpt-test"],
+        offer_key: "training",
+        offer_name: "Fine-tuning training",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "training_input",
+            price: "25",
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: {},
+            source_ref: sourceId,
+            derived: false,
           },
-          availability: "reconciliation_only",
-          source_ref: accountingSource.id,
-        },
-        {
-          key: "organization.web_search_calls.num_requests",
-          channel: "account_report",
-          locator: {
-            kind: "provider_field",
-            value: "organization.usage.web_search_calls.results[*].num_requests",
+        ],
+        raw_price_facts: [],
+      },
+      {
+        source_ref: sourceId,
+        book_key: "service:fine-tuned-inference:gpt-test",
+        book_name: "Fine-tuned gpt-test inference",
+        resource_kind: "service",
+        resource_key: "fine-tuned-inference:gpt-test",
+        model_refs: ["openai/gpt-test"],
+        offer_key: "inference",
+        offer_name: "Fine-tuned model inference",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "input_text",
+            price: "3",
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: { service_tier: "standard" },
+            source_ref: sourceId,
+            derived: false,
           },
-          availability: "reconciliation_only",
-          source_ref: accountingSource.id,
+          {
+            meter: "input_text",
+            price: "1.5",
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: { service_tier: "batch" },
+            source_ref: sourceId,
+            derived: false,
+          },
+        ],
+        raw_price_facts: [],
+      },
+    ];
+    const accountingModelInputs: SourcePricingInputFact[] = [
+      {
+        key: "responses.usage.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "responses.usage.cached_input_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/input_tokens_details/cached_tokens",
         },
-      ],
-    };
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "responses.usage.cache_write_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/input_tokens_details/cache_write_tokens",
+        },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "responses.served_service_tier",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/service_tier" },
+        availability: "terminal_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "organization.completions.input_uncached_tokens",
+        channel: "account_report",
+        locator: {
+          kind: "provider_field",
+          value: "organization.usage.completions.results[*].input_uncached_tokens",
+        },
+        availability: "reconciliation_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "organization.file_search_calls.num_requests",
+        channel: "account_report",
+        locator: {
+          kind: "provider_field",
+          value: "organization.usage.file_search_calls.results[*].num_requests",
+        },
+        availability: "reconciliation_only",
+        source_ref: accountingSource.id,
+      },
+      {
+        key: "organization.web_search_calls.num_requests",
+        channel: "account_report",
+        locator: {
+          kind: "provider_field",
+          value: "organization.usage.web_search_calls.results[*].num_requests",
+        },
+        availability: "reconciliation_only",
+        source_ref: accountingSource.id,
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
       [
-        { source: pricingSource, models: [parsedModel] },
-        { source: accountingSource, models: [accountingModel] },
+        {
+          source: pricingSource,
+          models: [parsedModel],
+          commercial_facts: parsedModelCommercialFacts,
+        },
+        { source: accountingSource, models: [], pricing_inputs: accountingModelInputs },
       ],
       [parsedModel],
     );
@@ -3416,7 +3449,7 @@ describe("parsed-source canonical pricing adapter", () => {
       key: string,
       channel: "response" | "account_report",
       value: string,
-    ): NonNullable<ParsedProviderModel["pricing_inputs"]>[number] => ({
+    ): SourcePricingInputFact => ({
       key,
       channel,
       locator:
@@ -3426,55 +3459,50 @@ describe("parsed-source canonical pricing adapter", () => {
       availability: channel === "response" ? "terminal_only" : "reconciliation_only",
       source_ref: accountingSource.id,
     });
-    const accountingModel: ParsedProviderModel = {
-      ...pricedModels[0]!,
-      pricing_state: "unknown",
-      price_facts: [],
-      pricing_inputs: [
-        input("responses.usage.input_tokens", "response", "/usage/input_tokens"),
-        input(
-          "responses.usage.cached_input_tokens",
-          "response",
-          "/usage/input_tokens_details/cached_tokens",
-        ),
-        input("responses.usage.output_tokens", "response", "/usage/output_tokens"),
-        input("responses.served_service_tier", "response", "/service_tier"),
-        input("organization.completions.input_text_tokens", "account_report", "input_text"),
-        input(
-          "organization.completions.input_cached_text_tokens",
-          "account_report",
-          "input_cached_text",
-        ),
-        input("organization.completions.output_text_tokens", "account_report", "output_text"),
-        input("organization.completions.input_audio_tokens", "account_report", "input_audio"),
-        input(
-          "organization.completions.input_cached_audio_tokens",
-          "account_report",
-          "input_cached_audio",
-        ),
-        input("organization.completions.output_audio_tokens", "account_report", "output_audio"),
-        input("organization.completions.input_image_tokens", "account_report", "input_image"),
-        input("organization.completions.output_image_tokens", "account_report", "output_image"),
-        input("responses.image_input_text_tokens", "response", "/usage/input/text_tokens"),
-        input("responses.image_input_image_tokens", "response", "/usage/input/image_tokens"),
-        input("responses.image_output_tokens", "response", "/usage/output/image_tokens"),
-        input("responses.generated_images", "response", "/data"),
-        input("organization.images.images", "account_report", "images"),
-        input("responses.image_quality", "response", "/quality"),
-        input("responses.image_resolution", "response", "/size"),
-        input("organization.audio_speeches.characters", "account_report", "characters"),
-        input("organization.audio_transcriptions.seconds", "account_report", "seconds"),
-        input("organization.embeddings.input_tokens", "account_report", "embedding_tokens"),
-        input("responses.generated_seconds", "response", "/seconds"),
-        input("responses.video_resolution", "response", "/size"),
-      ],
-    };
+    const accountingModelInputs: SourcePricingInputFact[] = [
+      input("responses.usage.input_tokens", "response", "/usage/input_tokens"),
+      input(
+        "responses.usage.cached_input_tokens",
+        "response",
+        "/usage/input_tokens_details/cached_tokens",
+      ),
+      input("responses.usage.output_tokens", "response", "/usage/output_tokens"),
+      input("responses.served_service_tier", "response", "/service_tier"),
+      input("organization.completions.input_text_tokens", "account_report", "input_text"),
+      input(
+        "organization.completions.input_cached_text_tokens",
+        "account_report",
+        "input_cached_text",
+      ),
+      input("organization.completions.output_text_tokens", "account_report", "output_text"),
+      input("organization.completions.input_audio_tokens", "account_report", "input_audio"),
+      input(
+        "organization.completions.input_cached_audio_tokens",
+        "account_report",
+        "input_cached_audio",
+      ),
+      input("organization.completions.output_audio_tokens", "account_report", "output_audio"),
+      input("organization.completions.input_image_tokens", "account_report", "input_image"),
+      input("organization.completions.output_image_tokens", "account_report", "output_image"),
+      input("responses.image_input_text_tokens", "response", "/usage/input/text_tokens"),
+      input("responses.image_input_image_tokens", "response", "/usage/input/image_tokens"),
+      input("responses.image_output_tokens", "response", "/usage/output/image_tokens"),
+      input("responses.generated_images", "response", "/data"),
+      input("organization.images.images", "account_report", "images"),
+      input("responses.image_quality", "response", "/quality"),
+      input("responses.image_resolution", "response", "/size"),
+      input("organization.audio_speeches.characters", "account_report", "characters"),
+      input("organization.audio_transcriptions.seconds", "account_report", "seconds"),
+      input("organization.embeddings.input_tokens", "account_report", "embedding_tokens"),
+      input("responses.generated_seconds", "response", "/seconds"),
+      input("responses.video_resolution", "response", "/size"),
+    ];
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
       [
         { source: pricingSource, models: pricedModels },
-        { source: accountingSource, models: [accountingModel] },
+        { source: accountingSource, models: [], pricing_inputs: accountingModelInputs },
       ],
       pricedModels,
     );
@@ -3728,131 +3756,139 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("input_text", "1", "million_tokens", { service_tier: "batch" }),
         rate("output_text", "5", "million_tokens", { service_tier: "batch" }),
       ],
-      commercial_facts: [
-        commercial(
-          "web-search",
-          "usage",
-          "numeric",
-          [rate("web_search", "10", "thousand_events")],
-          [],
-        ),
-        commercial(
-          "web-fetch",
-          "batch",
-          "numeric",
-          [rate("web_search", "10", "thousand_events")],
-          [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
-        ),
-        commercial("web-fetch", "sync", "included"),
+    };
+    const parsedModelCommercialFacts: SourceCommercialPricingFact[] = [
+      commercial(
+        "web-search",
+        "usage",
+        "numeric",
+        [rate("web_search", "10", "thousand_events")],
+        [],
+      ),
+      commercial(
+        "web-fetch",
+        "batch",
+        "numeric",
+        [rate("web_search", "10", "thousand_events")],
+        [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
+      ),
+      commercial("web-fetch", "sync", "included"),
+      {
+        ...commercial("code-execution", "standalone", "numeric", [executionSource.rate]),
+        terms: executionSource.terms,
+      },
+      commercial("code-execution", "web-assisted", "included"),
+      commercial("managed-agents-runtime", "managed-agents", "included"),
+      commercial(
+        `advisor:${modelRef}`,
+        "sync",
+        "included",
+        [],
+        [raw("advisor-model-usage", "base_price", "target_rate_not_normalized", "iterations")],
+      ),
+      commercial(
+        "managed-agents-runtime",
+        "runtime",
+        "numeric",
+        [rate("session_runtime", "0.08", "hour")],
+        [
+          raw("runtime-signal", "informational", "unsupported_structure", "active_seconds"),
+          raw("model-usage", "informational", "unsupported_structure", "model token rates"),
+          raw(
+            "session-list-cost",
+            "informational",
+            "requires_usage_aggregation",
+            "authoritative list cost",
+          ),
+        ],
+      ),
+      commercial(
+        `priority-tier:${modelRef}`,
+        "commitment",
+        "not_published",
+        [],
+        [
+          raw("commitment", "base_price", "unknown_amount", "existing commitment"),
+          raw(
+            "closed-enrollment",
+            "informational",
+            "unsupported_structure",
+            "closed to new commitments",
+          ),
+        ],
+        "capacity",
+      ),
+      commercial(
+        "fallback-credit-token",
+        "redemption",
+        "included",
+        [],
+        [
+          raw(
+            "fallback-rate-substitution",
+            "allowance",
+            "unsupported_structure",
+            "cache writes become cache reads",
+          ),
+        ],
+        "account_resource_template",
+      ),
+      commercial(
+        "claude-platform-aws",
+        "marketplace",
+        "externally_billed",
+        [],
+        [raw("ccu", "informational", "unsupported_structure", "100 CCU = USD 1")],
+        "distribution",
+      ),
+    ];
+    const parsedModelInputs: SourcePricingInputFact[] = [
+      ...[
+        ["uncached_input_tokens", "input_tokens"],
+        ["cached_input_tokens", "cache_read_input_tokens"],
+        ["output_tokens", "output_tokens"],
+      ].flatMap(([signal, field]) => [
         {
-          ...commercial("code-execution", "standalone", "numeric", [executionSource.rate]),
-          terms: executionSource.terms,
-        },
-        commercial("code-execution", "web-assisted", "included"),
-        commercial("managed-agents-runtime", "managed-agents", "included"),
-        commercial(
-          `advisor:${modelRef}`,
-          "sync",
-          "included",
-          [],
-          [raw("advisor-model-usage", "base_price", "target_rate_not_normalized", "iterations")],
-        ),
-        commercial(
-          "managed-agents-runtime",
-          "runtime",
-          "numeric",
-          [rate("session_runtime", "0.08", "hour")],
-          [
-            raw("runtime-signal", "informational", "unsupported_structure", "active_seconds"),
-            raw("model-usage", "informational", "unsupported_structure", "model token rates"),
-            raw(
-              "session-list-cost",
-              "informational",
-              "requires_usage_aggregation",
-              "authoritative list cost",
-            ),
-          ],
-        ),
-        commercial(
-          `priority-tier:${modelRef}`,
-          "commitment",
-          "not_published",
-          [],
-          [
-            raw("commitment", "base_price", "unknown_amount", "existing commitment"),
-            raw(
-              "closed-enrollment",
-              "informational",
-              "unsupported_structure",
-              "closed to new commitments",
-            ),
-          ],
-          "capacity",
-        ),
-        commercial(
-          "fallback-credit-token",
-          "redemption",
-          "included",
-          [],
-          [
-            raw(
-              "fallback-rate-substitution",
-              "allowance",
-              "unsupported_structure",
-              "cache writes become cache reads",
-            ),
-          ],
-          "account_resource_template",
-        ),
-        commercial(
-          "claude-platform-aws",
-          "marketplace",
-          "externally_billed",
-          [],
-          [raw("ccu", "informational", "unsupported_structure", "100 CCU = USD 1")],
-          "distribution",
-        ),
-      ],
-      pricing_inputs: [
-        ...[
-          ["uncached_input_tokens", "input_tokens"],
-          ["cached_input_tokens", "cache_read_input_tokens"],
-          ["output_tokens", "output_tokens"],
-        ].flatMap(([signal, field]) => [
-          {
-            key: `messages.usage.${signal}`,
-            channel: "response" as const,
-            locator: { kind: "json_pointer" as const, value: `/usage/${field}` },
-            availability: "conditional" as const,
-            source_ref: sourceId,
-          },
-          {
-            key: `messages.usage.${signal}`,
-            channel: "response" as const,
-            locator: {
-              kind: "provider_field" as const,
-              value: `usage.iterations[*].${field} grouped by usage.iterations[*].model`,
-            },
-            availability: "conditional" as const,
-            source_ref: sourceId,
-          },
-        ]),
-        {
-          key: "messages.usage.successful_web_searches",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/server_tool_use/web_search_requests",
-          },
-          availability: "terminal_only",
+          key: `messages.usage.${signal}`,
+          channel: "response" as const,
+          locator: { kind: "json_pointer" as const, value: `/usage/${field}` },
+          availability: "conditional" as const,
           source_ref: sourceId,
         },
-      ],
-    };
+        {
+          key: `messages.usage.${signal}`,
+          channel: "response" as const,
+          locator: {
+            kind: "provider_field" as const,
+            value: `usage.iterations[*].${field} grouped by usage.iterations[*].model`,
+          },
+          availability: "conditional" as const,
+          source_ref: sourceId,
+        },
+      ]),
+      {
+        key: "messages.usage.successful_web_searches",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/server_tool_use/web_search_requests",
+        },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "anthropic",
       observedAt,
-      [{ source: pricingSource, models: [parsedModel], vocabulary: executionSource.vocabulary }],
+      [
+        {
+          source: pricingSource,
+          models: [parsedModel],
+          pricing_inputs: parsedModelInputs,
+          commercial_facts: parsedModelCommercialFacts,
+          vocabulary: executionSource.vocabulary,
+        },
+      ],
       [parsedModel],
       anthropic?.pricingCategoricalLabels,
     );
@@ -4305,129 +4341,136 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("output_text", "4", { region: "Singapore", service_tier: "batch" }),
       ],
       raw_price_facts: [],
-      pricing_inputs: [
-        {
-          key: "chat.input_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.cached_input_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/prompt_tokens_details/cached_tokens",
-          },
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.output_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.input_image_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/image_tokens" },
-          absent_value: "zero",
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.input_video_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/video_tokens" },
-          absent_value: "zero",
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.output_text_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/completion_tokens_details/text_tokens",
-          },
-          absent_value: "zero",
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.output_audio_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/completion_tokens_details/audio_tokens",
-          },
-          absent_value: "zero",
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "chat.cache_creation_input_tokens",
-          channel: "response",
-          locator: {
-            kind: "json_pointer",
-            value: "/usage/prompt_tokens_details/cache_creation/cache_creation_input_tokens",
-          },
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "batch.chat.input_tokens",
-          channel: "result",
-          locator: { kind: "json_pointer", value: "/response/body/usage/prompt_tokens" },
-          availability: "success_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "batch.chat.output_tokens",
-          channel: "result",
-          locator: { kind: "json_pointer", value: "/response/body/usage/completion_tokens" },
-          availability: "success_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "responses.web_search_count",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/x_tools/web_search/count" },
-          availability: "terminal_only",
-          source_ref: sourceId,
-        },
-        {
-          key: "request.resolved_region",
-          channel: "request",
-          locator: { kind: "provider_field", value: "HttpRequest.resolved_region" },
-          availability: "always",
-          source_ref: sourceId,
-        },
-      ],
-      commercial_facts: [
-        {
-          source_ref: sourceId,
-          book_key: "service:web-search",
-          book_name: "Model Studio built-in web search",
-          resource_kind: "service",
-          resource_key: "web-search",
-          model_refs: [modelRef],
-          offer_key: "built-in:singapore",
-          offer_name: "Built-in web search",
-          billing_mode: "usage",
-          pricing_state: "numeric",
-          price_facts: [rate("web_search", "10", { region: "Singapore" })],
-          raw_price_facts: [],
-        },
-      ],
     };
+    const parsedInputs: SourcePricingInputFact[] = [
+      {
+        key: "chat.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.cached_input_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/prompt_tokens_details/cached_tokens",
+        },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.output_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.input_image_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/image_tokens" },
+        absent_value: "zero",
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.input_video_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/video_tokens" },
+        absent_value: "zero",
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.output_text_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/completion_tokens_details/text_tokens",
+        },
+        absent_value: "zero",
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.output_audio_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/completion_tokens_details/audio_tokens",
+        },
+        absent_value: "zero",
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "chat.cache_creation_input_tokens",
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/prompt_tokens_details/cache_creation/cache_creation_input_tokens",
+        },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "batch.chat.input_tokens",
+        channel: "result",
+        locator: { kind: "json_pointer", value: "/response/body/usage/prompt_tokens" },
+        availability: "success_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "batch.chat.output_tokens",
+        channel: "result",
+        locator: { kind: "json_pointer", value: "/response/body/usage/completion_tokens" },
+        availability: "success_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "responses.web_search_count",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/x_tools/web_search/count" },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+      {
+        key: "request.resolved_region",
+        channel: "request",
+        locator: { kind: "provider_field", value: "HttpRequest.resolved_region" },
+        availability: "always",
+        source_ref: sourceId,
+      },
+    ];
+    const parsedCommercialFacts: SourceCommercialPricingFact[] = [
+      {
+        source_ref: sourceId,
+        book_key: "service:web-search",
+        book_name: "Model Studio built-in web search",
+        resource_kind: "service",
+        resource_key: "web-search",
+        model_refs: [modelRef],
+        offer_key: "built-in:singapore",
+        offer_name: "Built-in web search",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [rate("web_search", "10", { region: "Singapore" })],
+        raw_price_facts: [],
+      },
+    ];
     const partition = assembleParsedProviderPricing(
       "dashscope",
       observedAt,
-      [{ source: pricingSource, models: [parsed] }],
+      [
+        {
+          source: pricingSource,
+          models: [parsed],
+          pricing_inputs: parsedInputs,
+          commercial_facts: parsedCommercialFacts,
+        },
+      ],
       [parsed],
       provider?.pricingCategoricalLabels,
     );

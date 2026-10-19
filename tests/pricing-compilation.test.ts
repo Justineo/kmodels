@@ -26,6 +26,7 @@ import type {
   ParsedPricingModel,
   ParsedProviderModel,
   SourceCommercialPricingFact,
+  SourcePricingInputFact,
 } from "../src/catalog/pricing-source.ts";
 import {
   catalogSchema,
@@ -304,7 +305,7 @@ function xaiReplayCase(publication: "fresh" | "retained", includeAcceptedResourc
 }
 
 describe("local canonical pricing compilation", () => {
-  it("assembles and captures source-level services without a model carrier", () => {
+  it("assembles source-level services and replays persisted model-carried facts", async () => {
     const commercial: SourceCommercialPricingFact = {
       source_ref: sourceId,
       book_key: "service:search",
@@ -341,11 +342,22 @@ describe("local canonical pricing compilation", () => {
         windows: [{ from: "01:00", until: "04:00" }],
       },
     };
+    const vocabulary: ProviderAtomRegistryEntry[] = [
+      {
+        kind: "categorical_value",
+        key: "off-peak",
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        label: "Off-peak",
+        definition: "Outside the reviewed daily peak period",
+        schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+      },
+      atom,
+    ];
     const source: ParsedPricingSource = {
       source: sourceManifest,
       models: [],
       commercial_facts: [commercial],
-      vocabulary: [atom],
+      vocabulary,
     };
     const partition = assembleParsedProviderPricing(providerId, observedAt, [source], []);
     expect(partition?.books).toEqual([
@@ -356,8 +368,53 @@ describe("local canonical pricing compilation", () => {
     ]);
     expect(partition?.vocabulary.atoms).toContainEqual(atom);
     expect(capturePricingReplaySources([source], [sourceRecord()])).toEqual([
-      expect.objectContaining({ models: [], commercial_facts: [commercial], vocabulary: [atom] }),
+      expect.objectContaining({ models: [], commercial_facts: [commercial], vocabulary }),
     ]);
+    const inputs: SourcePricingInputFact[] = [
+      {
+        key: "response.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        source_ref: sourceId,
+      },
+    ];
+    const legacyModel: ParsedPricingModel = {
+      ...parsed("1"),
+      commercial_facts: [commercial],
+      pricing_inputs: inputs,
+    };
+    const legacy: PricingReplaySource = {
+      ...replaySource("1"),
+      models: [legacyModel],
+      vocabulary,
+    };
+    const captured = capturePricingReplaySources(
+      [{ ...source, models: [parsed("1")], pricing_inputs: inputs }],
+      [sourceRecord()],
+    );
+    expect(captured).toEqual(
+      capturePricingReplaySources(
+        [{ ...source, models: [legacyModel], pricing_inputs: inputs }],
+        [sourceRecord()],
+      ),
+    );
+    expect(captured?.[0]?.models[0]).not.toHaveProperty("commercial_facts");
+    expect(captured?.[0]?.models[0]).not.toHaveProperty("pricing_inputs");
+    const current = candidate("1");
+    const replay = (sources: PricingReplaySource[]) =>
+      compilePricingSnapshot(
+        current,
+        createPricingCompilationSnapshot(current, [{ provider_id: providerId, sources }]),
+        [providerManifest],
+      );
+    const oldReplay = await replay([legacy]);
+    const newReplay = await replay(captured ?? []);
+    expect(oldReplay.replayedProviders).toEqual([providerId]);
+    expect(oldReplay).toEqual(newReplay);
+    expect(oldReplay.candidate.pricing.data.books.map(({ book_key }) => book_key)).toContain(
+      "service:search",
+    );
     expect(() =>
       assembleParsedProviderPricing(
         providerId,
@@ -852,32 +909,26 @@ describe("local canonical pricing compilation", () => {
       id: accounting.id,
       field_paths: accounting.fields,
     };
-    const model: ParsedProviderModel = {
-      ...published(),
-      pricing_state: "unknown",
-      price_facts: [],
-      raw_price_facts: [],
-      pricing_inputs: [
-        {
-          key: "response.input_tokens",
-          channel: "response",
-          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
-          availability: "terminal_only",
-          source_ref: accounting.id,
-        },
-      ],
-    };
+    const inputs: SourcePricingInputFact[] = [
+      {
+        key: "response.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        source_ref: accounting.id,
+      },
+    ];
 
     const captured = capturePricingReplaySources(
-      [{ source: accounting, models: [model] }],
+      [{ source: accounting, models: [], pricing_inputs: inputs }],
       [record],
     );
 
     expect(captured?.[0]).toMatchObject({
       source_id: accounting.id,
+      models: [],
       pricing_inputs: [expect.objectContaining({ source_ref: accounting.id })],
     });
-    expect(captured?.[0]?.models[0]).not.toHaveProperty("pricing_inputs");
   });
 
   it("rejects mismatched accounting provenance during capture", () => {

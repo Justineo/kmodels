@@ -12,7 +12,10 @@ import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePricingInputFact,
+} from "../src/catalog/pricing-source.ts";
 import type { ModelTask, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 
@@ -229,27 +232,27 @@ describe("Azure adapters", () => {
             region: "eastus",
           }),
         ],
-        pricing_inputs: [
-          {
-            key: "chat.input_tokens",
-            channel: "response",
-            locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
-            availability: "terminal_only",
-            source_ref: source.id,
-          },
-          {
-            key: "chat.cached_input_tokens",
-            channel: "response",
-            locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/cached_tokens" },
-            availability: "terminal_only",
-            source_ref: source.id,
-          },
-        ],
       };
+      const pricedInputs: SourcePricingInputFact[] = [
+        {
+          key: "chat.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+          availability: "terminal_only",
+          source_ref: source.id,
+        },
+        {
+          key: "chat.cached_input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/cached_tokens" },
+          availability: "terminal_only",
+          source_ref: source.id,
+        },
+      ];
       const partition = assembleParsedProviderPricing(
         "azure",
         observedAt,
-        [{ source, models: [priced] }],
+        [{ source, models: [priced], pricing_inputs: pricedInputs }],
         [priced],
       );
       const term = partition?.books[0]?.offers[0]?.terms.find(
@@ -1335,7 +1338,7 @@ describe("Azure adapters", () => {
             ["responses-file-search-storage", "managed-compute"].includes(scope.resource_key),
         ),
       ).toBe(false);
-      expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+      expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
       const captured = capturePricingReplaySources(
         [{ source, ...parsed }],
         [
