@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { load } from "cheerio";
+import { htmlText } from "../src/catalog/html.ts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { collectProvider, pricingCompilationEntries } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
@@ -34,7 +36,15 @@ async function fixture(name: string): Promise<string> {
 }
 
 describe("DeepSeek commercial dependency isolation", () => {
-  it.each(["Chinese time", "USD time", "currency disagreement", "unbound column", "missing CNY"])(
+  it.each([
+    "Chinese time",
+    "USD time",
+    "currency disagreement",
+    "unbound column",
+    "missing CNY",
+    "service time",
+    "service guide",
+  ])(
     "retains accepted pricing/replay and compatible catalog facts after %s drift",
     async (failure) => {
       const manifest = manifests.find(({ provider }) => provider.id === "deepseek");
@@ -60,6 +70,28 @@ describe("DeepSeek commercial dependency isolation", () => {
           }),
         ),
       };
+      {
+        for (const [body, name, heading] of [
+          [bundle.index, "services-catalog", "Search & Fetch Pricing"],
+          [
+            bundle.documents.find((doc) => doc.url.includes("/zh-cn/")),
+            "services-cny",
+            "网页搜索与抓取价格",
+          ],
+        ] as const) {
+          if (body === undefined) throw new Error("Missing service pricing owner");
+          const $ = load(await fixture(name));
+          const title = $("h2").filter((_, node) => htmlText($(node).text()) === heading);
+          if (title.length !== 1) throw new Error("Missing native service heading");
+          const target = load(body.body);
+          target("article").append(title.toString() + title.nextUntil("h1,h2").toString());
+          body.body = target.html();
+        }
+        bundle.documents.push({
+          url: "https://api-docs.deepseek.com/guides/search/",
+          body: await fixture("search-billing"),
+        });
+      }
       const respond = (hash: string) =>
         vi.mocked(fetchSource).mockResolvedValue({
           body: JSON.stringify(bundle),
@@ -72,6 +104,9 @@ describe("DeepSeek commercial dependency isolation", () => {
       const prior = await collectProvider(singleSource, undefined, { sources: {} }, previousAt);
       if (prior.pricing === undefined || prior.pricingReplaySources === undefined)
         throw new Error(JSON.stringify(prior.attempt));
+      expect(
+        prior.pricing.books.filter((book) => book.scope.kind === "provider_resource"),
+      ).toHaveLength(2);
       const catalog = core(prior, previousAt);
       const pricing: PricingCatalog = {
         provider_vocabularies: [prior.pricing.vocabulary],
@@ -100,6 +135,12 @@ describe("DeepSeek commercial dependency isolation", () => {
         );
       if (failure === "missing CNY")
         bundle.documents = bundle.documents.filter((document) => document !== cny);
+      if (failure === "service time") cny.body = cny.body.replace("11 月 1 日", "11 月 2 日");
+      if (failure === "service guide") {
+        const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
+        if (guide === undefined) throw new Error("Missing service guide");
+        guide.body = guide.body.replace("non-empty", "empty");
+      }
       bundle.index.body = bundle.index.body.replace("DeepSeek-V4-Flash-0731", "Updated-Flash");
       respond("2");
       const next = await collectProvider(singleSource, catalog, { sources: {} }, currentAt);

@@ -1,0 +1,256 @@
+<!-- Native owned excerpts of https://api-docs.deepseek.com/zh-cn/quick_start/pricing/; observed 2026-10-19T13:17:34.239Z; full body SHA256 556097caba8adfeeed6455714bffd731c7f60db520fcee06a922eba5840663a3. Unrelated sibling content omitted. -->
+<main>
+  <article>
+    <nav class="theme-doc-breadcrumbs breadcrumbsContainer_gDTe" aria-label="页面路径">
+      <ul class="breadcrumbs" itemscope="" itemtype="https://schema.org/BreadcrumbList">
+        <li class="breadcrumbs__item">
+          <a aria-label="主页面" class="breadcrumbs__link" href="/zh-cn/"
+            ><svg viewBox="0 0 24 24" class="breadcrumbHomeIcon_fbmM">
+              <path
+                d="M10 19v-5h4v5c0 .55.45 1 1 1h3c.55 0 1-.45 1-1v-7h1.7c.46 0 .68-.57.33-.87L12.67 3.6c-.38-.34-.96-.34-1.34 0l-8.36 7.53c-.34.3-.13.87.33.87H5v7c0 .55.45 1 1 1h3c.55 0 1-.45 1-1z"
+                fill="currentColor"
+              ></path></svg
+          ></a>
+        </li>
+        <li
+          itemscope=""
+          itemprop="itemListElement"
+          itemtype="https://schema.org/ListItem"
+          class="breadcrumbs__item breadcrumbs__item--active"
+        >
+          <span class="breadcrumbs__link" itemprop="name">模型 &amp; 价格</span
+          ><meta itemprop="position" content="1" />
+        </li>
+      </ul>
+    </nav>
+    <div class="tocCollapsible_lKxX theme-doc-toc-mobile tocMobile_kO7c">
+      <button type="button" class="clean-btn tocCollapsibleButton_KNXb">本页目录</button>
+    </div>
+    <div class="theme-doc-markdown markdown">
+      <div class="row">
+        <div class="col col--12">
+          <h1>模型 &amp; 价格</h1>
+          <p>
+            下表所列模型价格以“百万 tokens”为单位。Token
+            是模型用来表示自然语言文本的的最小单位，可以是一个词、一个数字或一个标点符号等。我们将根据模型输入和输出的总
+            token 数进行计量计费。
+          </p>
+          <hr />
+          <h2 class="anchor anchorWithStickyNavbar_YAqC" id="模型细节">
+            模型细节<a
+              href="#模型细节"
+              class="hash-link"
+              aria-label="模型细节的直接链接"
+              title="模型细节的直接链接"
+              >​</a
+            >
+          </h2>
+          <div style="font-size: 14px">
+            <b
+              ><table style="text-align: center">
+                <tbody>
+                  <tr>
+                    <td colspan="3" style="text-align: center">模型</td>
+                    <td>deepseek-flash<sup>(1)</sup></td>
+                    <td>deepseek-v4-pro</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">BASE URL (OpenAI 格式)</td>
+                    <td colspan="2">
+                      <a href="https://api.deepseek.com" target="_blank" rel="noopener noreferrer"
+                        >https://api.deepseek.com</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">BASE URL (Anthropic 格式)</td>
+                    <td colspan="2">
+                      <a
+                        href="https://api.deepseek.com/anthropic"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >https://api.deepseek.com/anthropic</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="3" style="text-align: center">模型版本</td>
+                    <td>DeepSeek-V4.1-Flash-1017</td>
+                    <td>DeepSeek-V4-Pro-0813</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">思考模式</td>
+                    <td colspan="2">
+                      支持非思考与思考模式（默认）<br />切换方式详见<a
+                        href="/zh-cn/guides/thinking_mode"
+                        >思考模式</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">上下文长度</td>
+                    <td colspan="2">1M</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">输出长度</td>
+                    <td colspan="2">最大 384K</td>
+                  </tr>
+                  <tr>
+                    <td rowspan="7">功能</td>
+                    <td colspan="2"><a href="/zh-cn/guides/json_mode">Json Output</a></td>
+                    <td>支持</td>
+                    <td>支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2"><a href="/zh-cn/guides/tool_calls">Tool Calls</a></td>
+                    <td>支持</td>
+                    <td>支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2"><a href="/zh-cn/guides/responses_api">Responses API</a></td>
+                    <td>支持</td>
+                    <td>支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2"><a href="/zh-cn/guides/anthropic_api">Anthropic API</a></td>
+                    <td>支持</td>
+                    <td>支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2">
+                      <a href="/zh-cn/guides/chat_prefix_completion">对话前缀续写（Beta）</a>
+                    </td>
+                    <td>支持</td>
+                    <td>支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2"><a href="/zh-cn/guides/fim_completion">FIM 补全（Beta）</a></td>
+                    <td>仅非思考模式支持</td>
+                    <td>仅非思考模式支持</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2"><a href="/zh-cn/guides/vision">图像理解</a></td>
+                    <td>支持</td>
+                    <td>不支持</td>
+                  </tr>
+                  <tr>
+                    <td rowspan="6">价格<sup>(2)</sup></td>
+                    <td rowspan="2">百万tokens输入<br />（缓存命中）</td>
+                    <td>空闲时段</td>
+                    <td>0.02元</td>
+                    <td>0.15元</td>
+                  </tr>
+                  <tr>
+                    <td>高峰时段</td>
+                    <td>0.04元</td>
+                    <td>0.30元</td>
+                  </tr>
+                  <tr>
+                    <td rowspan="2">百万tokens输入<br />（缓存未命中）</td>
+                    <td>空闲时段</td>
+                    <td>1元</td>
+                    <td>4.5元</td>
+                  </tr>
+                  <tr>
+                    <td>高峰时段</td>
+                    <td>2元</td>
+                    <td>9.0元</td>
+                  </tr>
+                  <tr>
+                    <td rowspan="2">百万tokens输出</td>
+                    <td>空闲时段</td>
+                    <td>4元</td>
+                    <td>13.5元</td>
+                  </tr>
+                  <tr>
+                    <td>高峰时段</td>
+                    <td>8元</td>
+                    <td>27.0元</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3">并发限制<sup>(3)</sup></td>
+                    <td>2500</td>
+                    <td>500</td>
+                  </tr>
+                </tbody>
+              </table></b
+            >
+          </div>
+          <div style="font-size: 14px">
+            <p>
+              (1) 模型名请使用 <code>deepseek-flash</code>。旧模型名
+              <code>deepseek-v4-flash</code>、<code>deepseek-v4-flash-vision-exp</code>
+              仍可调用，但对应模型已下线，请求将由 DeepSeek-V4.1-Flash-1017 模型提供服务，并按 Flash
+              价格计费。
+            </p>
+            <p>
+              (2) 空闲时段价格为高峰时段价格的一半。北京时间周一至周五（不含中国法定节假日）9:00 -
+              12:00、14:00 - 18:00 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段。
+            </p>
+            <p>
+              (3) 更多并发限制细节，请参考<a href="/zh-cn/quick_start/rate_limit">限速与隔离</a>。
+            </p>
+          </div>
+          <hr />
+          <h2 class="anchor anchorWithStickyNavbar_YAqC" id="网页搜索与抓取价格">
+            网页搜索与抓取价格<a
+              href="#网页搜索与抓取价格"
+              class="hash-link"
+              aria-label="网页搜索与抓取价格的直接链接"
+              title="网页搜索与抓取价格的直接链接"
+              >​</a
+            >
+          </h2>
+          <p>Search 和 Fetch 是独立的 API，按请求次数计费。</p>
+          <table>
+            <thead>
+              <tr>
+                <th>API</th>
+                <th>计费单位</th>
+                <th>价格</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Search</td>
+                <td>每 1,000 次成功请求</td>
+                <td>5元</td>
+              </tr>
+              <tr>
+                <td>Fetch</td>
+                <td>每 1,000 次成功请求</td>
+                <td>5元</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            请注意，当前用户在 DeepSeek Harness/Claude Code/Codex 中使用 DeepSeek API 时，已经会通过
+            Server 端工具调用访问到 Search/Fetch 接口，这部分 Search/Fetch
+            接口调用目前未计费，并将于北京时间 2026 年 11 月 1 日 00:00 起按次收取调用费用。
+          </p>
+          <p>接口用法与完整计费规则详见<a href="/zh-cn/guides/search">网页搜索与抓取</a>。</p>
+          <hr />
+          <h2 class="anchor anchorWithStickyNavbar_YAqC" id="扣费规则">
+            扣费规则<a
+              href="#扣费规则"
+              class="hash-link"
+              aria-label="扣费规则的直接链接"
+              title="扣费规则的直接链接"
+              >​</a
+            >
+          </h2>
+          <p>
+            模型调用费用 = token 消耗量 × 模型单价；Search 和 Fetch
+            按上表中的成功请求次数计费。对应的费用将直接从充值余额或赠送余额中进行扣减。
+            当充值余额与赠送余额同时存在时，优先扣减赠送余额。
+          </p>
+          <p>
+            产品价格可能发生变动，DeepSeek
+            保留修改价格的权利。请您依据实际用量按需充值，定期查看此页面以获知最新价格信息。
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col col--12"></div>
+  </article>
+</main>

@@ -36,15 +36,29 @@ export function applyDeepseekCommercialTopology(
   const inputIndex = indexPricingInputs(pricingInputs);
   return {
     ...input,
-    books: input.books.flatMap((book) =>
-      book.scope.kind === "models"
-        ? [
-            includePricingInputSourceRefs(
-              modelBook(book, published.get(book.scope.model_refs[0] ?? ""), inputIndex),
-            ),
-          ]
-        : [],
-    ),
+    books: input.books
+      .filter(
+        (book) =>
+          book.scope.kind === "models" ||
+          (book.scope.resource_kind.namespace === "kmodels" &&
+            book.scope.resource_kind.value === "service" &&
+            ["web-search", "web-fetch"].includes(book.scope.resource_key)),
+      )
+      .map((book) =>
+        book.scope.kind === "models"
+          ? modelBook(book, published.get(book.scope.model_refs[0] ?? ""), inputIndex)
+          : book,
+      )
+      .map((book) =>
+        includePricingInputSourceRefs({
+          ...book,
+          offers: book.offers.map((offer) => ({
+            ...offer,
+            states: offer.states.map(normalizeStateValidity),
+            terms: offer.terms.map(normalizeTermValidity),
+          })),
+        }),
+      ),
   };
 }
 
@@ -61,12 +75,9 @@ function modelBook(
             ...offer,
             offer_key: "payg",
             name: "Pay-as-you-go inference",
-            states: offer.states.map(normalizeStateValidity),
             terms: offer.terms.map((term) =>
-              normalizeTermValidity(
-                bindRateTerm(term, (meter, variant) =>
-                  modelBinding(meter, variant, model, inputIndex),
-                ),
+              bindRateTerm(term, (meter, variant) =>
+                modelBinding(meter, variant, model, inputIndex),
               ),
             ),
             relations: [],
