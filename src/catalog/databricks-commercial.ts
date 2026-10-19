@@ -64,8 +64,9 @@ function modelBook(
   input: AtomicProviderPricing,
 ): AtomicPricingBook[] {
   if (book.scope.kind !== "models") return [];
+  const [modelRef] = book.scope.model_refs;
   const model =
-    book.scope.model_refs.length === 1 ? models.get(book.scope.model_refs[0]!) : undefined;
+    book.scope.model_refs.length === 1 && modelRef !== undefined ? models.get(modelRef) : undefined;
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== "usage") return [];
     const states = offer.states.flatMap((state) => {
