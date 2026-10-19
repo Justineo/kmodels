@@ -7,6 +7,8 @@ The number of billed output tokens.
 cached_tokens
 The number of prompt tokens that hit the inference cache.
 
+## Response
+
 ```json
 {
   "usage": {

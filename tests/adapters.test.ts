@@ -9,7 +9,10 @@ import {
   parseSource,
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
-import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import {
+  assembleParsedProviderPricing,
+  type ParsedPricingSource,
+} from "../src/catalog/pricing-adapter.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { extractKimiCommercialPricingInputs } from "../src/catalog/kimi-accounting.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
@@ -1229,7 +1232,7 @@ async function vertexCatalog(...args: Parameters<typeof vertexSource>): Promise<
   return (await vertexSource(...args)).models;
 }
 
-async function cohereCatalog(
+async function cohereCatalogResult(
   overrides: {
     chat?: string;
     chatStream?: string;
@@ -1248,7 +1251,7 @@ async function cohereCatalog(
   } = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (evidence: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+): Promise<{ models: ProviderModel[]; sources: ParsedPricingSource[] }> {
   const value = manifest("cohere");
   const configured = value.sources[0];
   if (
@@ -1333,7 +1336,7 @@ async function cohereCatalog(
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
+  });
   const configuredPricing = value.sources.find(({ id }) => id === "cohere-pricing");
   if (configuredPricing === undefined) throw new Error("Missing Cohere pricing source");
   const { optional: _optional, ...pricingSource } = configuredPricing;
@@ -1342,10 +1345,22 @@ async function cohereCatalog(
     source: pricingSource,
     body: overrides.pricing ?? (await fixture("cohere/pricing.html")),
     observedAt,
-    catalogModels: catalog,
+    catalogModels: catalog.models,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
-  }).models;
-  return applyGroups(catalog, [{ source: pricingSource, models: pricing }], false);
+  });
+  return {
+    models: applyGroups(catalog.models, [{ source: pricingSource, models: pricing.models }], false),
+    sources: [
+      { source, ...catalog },
+      { source: pricingSource, ...pricing },
+    ],
+  };
+}
+
+async function cohereCatalog(
+  ...args: Parameters<typeof cohereCatalogResult>
+): Promise<ProviderModel[]> {
+  return (await cohereCatalogResult(...args)).models;
 }
 
 async function llamaCatalog(
@@ -1635,6 +1650,66 @@ describe("source taxonomy", () => {
 });
 
 describe("Cohere adapters", () => {
+  it("keeps source accounting independent of model rows and preserves it in replay inputs", async () => {
+    const { models, sources } = await cohereCatalogResult();
+    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    const root = sources.find(({ source }) => source.id === "cohere-models");
+    const embedding = models.find(({ model_id }) => model_id === "embed-v4.0");
+    if (root === undefined || embedding === undefined)
+      throw new Error("Missing Cohere fixture source/model");
+    expect(root.pricing_inputs).toHaveLength(12);
+    const independent = { ...root, models: [] };
+    const { source } = root;
+    const captured = capturePricingReplaySources(
+      [independent],
+      [
+        {
+          id: source.id,
+          provider_id: "cohere",
+          url: source.url,
+          source: [source.type],
+          stability: source.stability,
+          scope: source.scope ?? "global",
+          role: source.role ?? "catalog",
+          exhaustive: false,
+          field_paths: source.fields,
+          pricing_evidence: source.pricingEvidence,
+          content_hash: "1".repeat(64),
+          extractor_version: source.extractorVersion,
+          observed_at: observedAt,
+        },
+      ],
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    expect(captured?.pricing_inputs).toEqual(root.pricing_inputs);
+    const partition = assembleParsedProviderPricing(
+      "cohere",
+      observedAt,
+      sources.map((entry) =>
+        entry.source.id === source.id
+          ? independent
+          : {
+              ...entry,
+              models: entry.models.filter(({ model_id }) => model_id === embedding.model_id),
+            },
+      ),
+      [embedding],
+    );
+    const rates = partition?.books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) =>
+        terms.filter((term) => term.kind === "rate").flatMap(({ variants }) => variants),
+      ),
+    );
+    expect(rates).toHaveLength(2);
+    expect(
+      rates?.every(({ charge_binding }) => (charge_binding?.quantity_methods?.length ?? 0) > 0),
+    ).toBe(true);
+    expect(
+      rates?.every(({ observations }) =>
+        observations.some(({ source_ref }) => source_ref === "cohere-pricing"),
+      ),
+    ).toBe(true);
+  });
   it("replays relative overview links and versioned transcription pages without losing model facts", async () => {
     const previous = await cohereCatalog();
     const current = await cohereCatalog({
@@ -1650,7 +1725,8 @@ describe("Cohere adapters", () => {
       pricings: [{ inputLabel: "Cost", inputPrice: 1.5, overridePer: "1K pages" }],
     };
     const pricing = `${await fixture("cohere/pricing.html")}<script>self.__next_f.push(${JSON.stringify([1, `6:${JSON.stringify(product)}`])})</script>`;
-    const models = await cohereCatalog({ pricing });
+    const result = await cohereCatalogResult({ pricing });
+    const { models } = result;
     const model = models.find(({ model_id }) => model_id === "parse-v5.0");
     expect(model).toMatchObject({
       tasks: ["ocr"],
@@ -1660,14 +1736,7 @@ describe("Cohere adapters", () => {
         expect.objectContaining({ meter: "input_image", price: "1.5", unit: "thousand_pages" }),
       ],
     });
-    const source = manifest("cohere").sources[0];
-    if (source === undefined) throw new Error("Missing Cohere source");
-    const partition = assembleParsedProviderPricing(
-      "cohere",
-      observedAt,
-      [{ source, models }],
-      models,
-    );
+    const partition = assembleParsedProviderPricing("cohere", observedAt, result.sources, models);
     const terms = partition?.books
       .find(
         ({ scope }) => scope.kind === "models" && scope.model_refs.includes("cohere/parse-v5.0"),
@@ -1696,21 +1765,23 @@ describe("Cohere adapters", () => {
       parse: (await fixture("cohere/parse.html")).replace("Latest model", "Example model"),
     });
     expect(drifted.some(({ model_id }) => model_id === "parse-v5.0")).toBe(false);
-    const missingCounter = await cohereCatalog({
+    const missingCounter = await cohereCatalogResult({
       pricing,
-      parseApi: (await fixture("cohere/parse-api.md")).replace(/"pages":\s*1/, '"items":1'),
+      parseApi: (await fixture("cohere/parse-api.md"))
+        .replace("`pages` (double, optional)", "`items` (double, optional)")
+        .replace(/"pages":\s*1/, '"items":1'),
     });
-    expect(missingCounter.find(({ model_id }) => model_id === "parse-v5.0")?.price_facts).toEqual(
-      model?.price_facts,
-    );
     expect(
-      missingCounter
-        .flatMap((model) => model.pricing_inputs ?? [])
+      missingCounter.models.find(({ model_id }) => model_id === "parse-v5.0")?.price_facts,
+    ).toEqual(model?.price_facts);
+    expect(
+      missingCounter.sources
+        .flatMap((source) => source.pricing_inputs ?? [])
         .some(({ key }) => key === "parse.v2.pages"),
     ).toBe(false);
   });
   it("combines callable IDs with model cards, lifecycle, releases, and native prices", async () => {
-    const models = await cohereCatalog();
+    const { models, sources } = await cohereCatalogResult();
     const commandA = models.find((model) => model.model_id === "command-a-03-2025");
     const commandAPlus = models.find((model) => model.model_id === "command-a-plus-05-2026");
     const embedding = models.find((model) => model.model_id === "embed-v4.0");
@@ -1842,7 +1913,7 @@ describe("Cohere adapters", () => {
         { meter: "output_text", price: "10", unit: "million_tokens" },
       ],
     );
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const pricingInputs = sources.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
     expect(pricingInputs).toHaveLength(12);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -1909,15 +1980,8 @@ describe("Cohere adapters", () => {
   });
 
   it("publishes only request-attributable hosted inference pricing", async () => {
-    const models = await cohereCatalog();
-    const source = manifest("cohere").sources[0];
-    if (source === undefined) throw new Error("Missing Cohere pricing source");
-    const partition = assembleParsedProviderPricing(
-      "cohere",
-      observedAt,
-      [{ source, models }],
-      models,
-    );
+    const { models, sources } = await cohereCatalogResult();
+    const partition = assembleParsedProviderPricing("cohere", observedAt, sources, models);
     expect(partition).toBeDefined();
     const books = partition?.books ?? [];
     const command = books.find(
@@ -2297,12 +2361,15 @@ describe("Cohere adapters", () => {
     );
     const reconciliation: PricingReconciliationItem[] = [];
     const findings: SourceContractEvidence[] = [];
-    const chatModels = await cohereCatalog(
+    const chatResult = await cohereCatalogResult(
       { chat },
       (item) => reconciliation.push(item),
       (finding) => findings.push(finding),
     );
-    expect(chatModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(11);
+    const chatModels = chatResult.models;
+    expect(chatResult.sources.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(
+      11,
+    );
     expect(reconciliation).toContainEqual({
       disposition: "unbound",
       reason_code: "pricing_input_contract_partial",
@@ -2322,12 +2389,10 @@ describe("Cohere adapters", () => {
         expect.objectContaining({ term_key: expect.stringContaining("accounting_binding") }),
       ]),
     );
-    const source = manifest("cohere").sources[0];
-    if (source === undefined) throw new Error("Missing Cohere pricing source");
     const chatPricing = assembleParsedProviderPricing(
       "cohere",
       observedAt,
-      [{ source, models: chatModels }],
+      chatResult.sources,
       chatModels,
     );
     const offerFor = (uid: string) =>
@@ -2365,12 +2430,12 @@ describe("Cohere adapters", () => {
       '"input_tokens": 5',
       '"metered_input_tokens": 5',
     );
-    const semanticModels = await cohereCatalog({ chat, chatStream });
+    const semanticResult = await cohereCatalogResult({ chat, chatStream });
     const semanticPricing = assembleParsedProviderPricing(
       "cohere",
       observedAt,
-      [{ source, models: semanticModels }],
-      semanticModels,
+      semanticResult.sources,
+      semanticResult.models,
     );
     const semanticInput = semanticPricing?.books
       .find(
@@ -2405,6 +2470,7 @@ describe("Cohere adapters", () => {
     expect(value.sources).toMatchObject([
       {
         url: "https://docs.cohere.com/docs/models.md",
+        extractorVersion: "cohere-catalog-v17",
         extractor: {
           kind: "cohere-catalog",
           minModels: 40,

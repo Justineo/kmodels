@@ -64,6 +64,11 @@ or another exact non-numeric price state. Absence of a separate price is unknown
   corroboration and cannot create global models, prices, or accounting contracts. Enable it with
   `COHERE_API_KEY`.
 
+Each Cohere parser returns an explicit source result. Accounting contracts belong to the model
+document source's `pricing_inputs`, independently of the presence or ordering of any model row.
+The separate public-price overlay retains its own source identity. Compilation captures the
+source-level contracts once; it does not attach them to a catalog model as a transport mechanism.
+
 The indexed Parse overview exposes its exact ID in `Latest model`, rather than the normal `Model ID`
 card. This label is accepted only on `/docs/parse` with one `parse-v...` value. Its linked, separately
 reviewed Parse API reference establishes `POST /v2/parse`. The current API accepts document images;
@@ -112,12 +117,20 @@ the standard `input_tokens` signal. Image embedding and reranking retain provide
 `billed_image_tokens` and `billed_search_units` signals because collapsing them into generic token
 or request counters would lose Cohere's billing semantics.
 
-The Embed V2 reference also publishes its response schema as an indented Markdown field list. The
-schema may inline the `meta → billed_units` subtree under Response or expose it through the named
-`ApiMeta` and `ApiMetaBilledUnits` response types; both forms are resolved only with the independent
-`POST /v2/embed` signature. A field under generic `tokens`, another parent, or the Request section
-does not establish a billed-unit locator. JSON examples need not contain every optional field; their
-omission does not override the response schema.
+An accounting reference must come from the exact reviewed official document and independently
+declare the expected HTTP method and endpoint. Counters belong to its unique Response section;
+when status branches are declared, only the successful 200 branch is admitted.
+Indented native response fields may inline billed-unit objects
+or refer to unique named definitions under Types. A field under generic `tokens`, an unrelated
+parent, a request, an error response or a code-fenced schema copy does not establish a locator.
+Streaming schema fields must belong to the exact `message-end` or `stream-end` variant.
+
+A JSON example within that owned Response section may also establish an exact path through
+nonnegative finite numeric values. A streaming example must place both the terminal discriminator and counters on
+the same event; an SSE event label must agree with its JSON payload. Text mentioning the terminal
+event elsewhere proves no mapping. Malformed or mistyped examples lose only their affected input.
+Examples need not contain every optional field: omission does not override an independently
+established native response schema, including Parse's billed-page field.
 
 The standard OpenTelemetry GenAI token attributes are not an exact alternative for Cohere. They do
 not identify Cohere's `billed_units` partition, and the current convention has no portable Cohere
