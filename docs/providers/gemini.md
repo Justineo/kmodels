@@ -127,6 +127,10 @@ rather than invented normalized provider keys:
 - document input and cache tokens are added to image tokens because Gemini prices document tokens
   at the image rate;
 - cache read uses the matching cache modality partition;
+- cached audio, image and video retain exact Gemini-owned meters and receive the same quantity
+  binding guarantees as shared meters. A namespace difference cannot drop a recognized charge.
+  The image/document cache sum and uncached-input subtraction share the same reported cache
+  quantities and definitions;
 - text output is candidate/output tokens plus thinking tokens, because the published output rate
   includes thinking; aggregate candidate tokens are a fallback only when the offer has no separate
   non-text output rate;
