@@ -4882,6 +4882,47 @@ describe("Vertex AI adapters", () => {
     expect(model?.price_facts.some(({ price }) => price === "3.24" || price === "99")).toBe(false);
   });
 
+  it.each([false, true])(
+    "does not invent a default region for an unqualified Vertex quote (regional peer=%s)",
+    async (withPeer) => {
+      const parsed = await vertexSource({
+        "pricing.html": `<main>
+      <table><tr><th>Model</th><th>Type</th><th>Price (/1M tokens)</th></tr>
+        <tr><td>Gemini Test</td><td>Input</td><td>$1.00</td></tr>
+      </table>
+      ${
+        withPeer
+          ? `<table><tr><th>Model</th><th>Type</th><th>Region</th><th>Price (/1M tokens)</th></tr>
+        <tr><td>Gemini Test</td><td>Input</td><td>us-east5</td><td>$1.00</td></tr>
+      </table>`
+          : ""
+      }
+    </main>`,
+      });
+      const model = parsed.models.find(({ model_id }) => model_id === "gemini-test");
+      expect(model?.price_facts).toHaveLength(withPeer ? 2 : 1);
+      expect(model?.price_facts.map(({ conditions }) => conditions.region)).toEqual(
+        expect.arrayContaining(withPeer ? [undefined, "us-east5"] : [undefined]),
+      );
+      const value = manifest("vertex");
+      const source = value.sources.find(({ id }) => id === "vertex-pricing");
+      if (source === undefined) throw new Error("Missing Vertex pricing source");
+      const partition = assembleParsedProviderPricing(
+        "vertex",
+        observedAt,
+        [{ source, ...parsed }],
+        parsed.models,
+      );
+      expect(partition?.books.length).toBeGreaterThan(0);
+      expect(partition?.vocabulary.atoms).not.toContainEqual(
+        expect.objectContaining({
+          key: "default",
+          dimension: { namespace: "kmodels", value: "region" },
+        }),
+      );
+    },
+  );
+
   it("keeps row tiers and pricing-tab regions disjoint", async () => {
     const pricing = `
       <main>
