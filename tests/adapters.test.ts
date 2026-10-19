@@ -1539,11 +1539,11 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
   return options.transform?.(body) ?? body;
 }
 
-async function ollamaCloud(
+async function ollamaCloudResult(
   options: OllamaCloudOptions = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (evidence: SourceContractEvidence) => void,
-): Promise<ProviderModel[]> {
+): Promise<SourceParseResult> {
   const value = manifest("ollama");
   const source = ollamaSource("ollama-cloud");
   return parseSource({
@@ -1553,7 +1553,13 @@ async function ollamaCloud(
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
-  }).models;
+  });
+}
+
+async function ollamaCloud(
+  ...args: Parameters<typeof ollamaCloudResult>
+): Promise<ProviderModel[]> {
+  return (await ollamaCloudResult(...args)).models;
 }
 
 describe("decimal normalization", () => {
@@ -14489,11 +14495,52 @@ describe("Kimi adapters", () => {
 });
 
 describe("Ollama adapters", () => {
+  it("captures independent usage contracts with no Cloud model observations", async () => {
+    const value = manifest("ollama");
+    const configured = ollamaSource("ollama-cloud");
+    if (configured.extractor.kind !== "ollama-cloud") throw new Error("Wrong Ollama source");
+    const source = { ...configured, extractor: { ...configured.extractor, minModels: 0 } };
+    const { documents } = z
+      .object({ documents: z.array(z.object({ url: z.string(), body: z.string() })) })
+      .parse(JSON.parse(await ollamaCloudBody()));
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify({ list: { models: [] }, details: [], pages: [], documents }),
+    });
+    expect(result.models).toEqual([]);
+    expect(result.pricing_inputs).toHaveLength(30);
+    expect(result.commercial_facts).toBeUndefined();
+    const captured = capturePricingReplaySources(
+      [{ source, ...result }],
+      [
+        {
+          id: source.id,
+          provider_id: "ollama",
+          url: source.url,
+          source: source.source ?? [source.type],
+          stability: source.stability,
+          scope: source.scope ?? "global",
+          exhaustive: false,
+          role: source.role ?? "catalog",
+          field_paths: source.fields,
+          pricing_evidence: source.pricingEvidence,
+          observed_at: observedAt,
+          content_hash: "1".repeat(64),
+          extractor_version: source.extractorVersion,
+        },
+      ],
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    expect(captured?.pricing_inputs).toEqual(result.pricing_inputs);
+  });
+
   it("uses the versioned Cloud rate and usage contract", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v9",
+      extractorVersion: "ollama-cloud-v10",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });
@@ -14547,7 +14594,8 @@ describe("Ollama adapters", () => {
 
   it("combines Cloud inventory with exact public request rates", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = await ollamaCloud({}, (item) => reconciliation.push(item));
+    const result = await ollamaCloudResult({}, (item) => reconciliation.push(item));
+    const { models } = result;
     expect(models).toHaveLength(5);
     expect(models.find(({ model_id }) => model_id === "gpt-oss")).toMatchObject({
       service_families: ["Ollama Cloud", "Ollama Library"],
@@ -14593,7 +14641,8 @@ describe("Ollama adapters", () => {
     expect(
       models.find(({ model_id }) => model_id === "gemini-3-flash-preview")?.retired_at,
     ).toBeUndefined();
-    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(30);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
@@ -14677,12 +14726,12 @@ describe("Ollama adapters", () => {
     const librarySource = ollamaSource("ollama-library");
     const cloudSource = ollamaSource("ollama-cloud");
     const libraryModels = await ollamaLibrary();
-    const cloudModels = await ollamaCloud();
+    const cloudResult = await ollamaCloudResult();
     const published = applyGroups(
       [],
       [
         { source: librarySource, models: libraryModels },
-        { source: cloudSource, models: cloudModels },
+        { source: cloudSource, ...cloudResult },
       ],
       true,
     );
@@ -14691,7 +14740,7 @@ describe("Ollama adapters", () => {
       observedAt,
       [
         { source: librarySource, models: libraryModels },
-        { source: cloudSource, models: cloudModels },
+        { source: cloudSource, ...cloudResult },
       ],
       published,
     );
@@ -14884,13 +14933,14 @@ describe("Ollama adapters", () => {
     });
     const reconciliation: PricingReconciliationItem[] = [];
     const value = manifest("ollama");
-    const models = parseSource({
+    const result = parseSource({
       provider: provider(value),
       source: ollamaSource("ollama-cloud"),
       body: JSON.stringify(body),
       observedAt,
       onPricingReconciliation: (item) => reconciliation.push(item),
-    }).models;
+    });
+    const { models } = result;
     const facts = models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.price_facts;
     expect(facts).toHaveLength(6);
     expect(facts).toEqual(
@@ -14915,7 +14965,7 @@ describe("Ollama adapters", () => {
     const pricing = assembleParsedProviderPricing(
       "ollama",
       observedAt,
-      [{ source: ollamaSource("ollama-cloud"), models }],
+      [{ source: ollamaSource("ollama-cloud"), ...result }],
       models,
     );
     const offer = pricing?.books
@@ -14983,21 +15033,23 @@ describe("Ollama adapters", () => {
       reason_code: "pricing_input_contract_partial",
       sample: "24/30 Ollama pricing inputs",
     });
-    const onlyOpenapi = await ollamaCloud({ documents: { "usage.md": "changed" } });
-    expect(onlyOpenapi.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toHaveLength(3);
-    expect(onlyOpenapi.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(18);
+    const onlyOpenapi = await ollamaCloudResult({ documents: { "usage.md": "changed" } });
+    expect(
+      onlyOpenapi.models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts,
+    ).toHaveLength(3);
+    expect(onlyOpenapi.pricing_inputs).toHaveLength(18);
 
     const types = (await fixture("ollama/api-types.go")).replace(
       "PromptEvalCachedCount",
       "FutureCachedCount",
     );
     const findings: SourceContractEvidence[] = [];
-    const cachedDrift = await ollamaCloud(
+    const cachedDrift = await ollamaCloudResult(
       { documents: { "api-types.go": types } },
       undefined,
       (finding) => findings.push(finding),
     );
-    expect(cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(26);
+    expect(cachedDrift.pricing_inputs).toHaveLength(26);
     expect(findings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path))).toEqual(
       expect.arrayContaining([
         "/pricing-inputs/native.chat.cached_input_tokens",
@@ -15011,31 +15063,31 @@ describe("Ollama adapters", () => {
       "CachedTokens: *r.Metrics.PromptEvalCachedCount",
       "CachedTokens: *r.Metrics.FutureCachedCount",
     );
-    const openAiDrift = await ollamaCloud({ documents: { "openai-types.go": openAiTypes } });
-    expect(openAiDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(26);
+    const openAiDrift = await ollamaCloudResult({ documents: { "openai-types.go": openAiTypes } });
+    expect(openAiDrift.pricing_inputs).toHaveLength(26);
     expect(
-      openAiDrift
-        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
-        .some(({ key }) => key === "openai.responses.cached_input_tokens"),
+      (openAiDrift.pricing_inputs ?? []).some(
+        ({ key }) => key === "openai.responses.cached_input_tokens",
+      ),
     ).toBe(true);
 
     const responseTypes = (await fixture("ollama/responses-types.go")).replace(
       '"cached_tokens": intValue(r.PromptEvalCachedCount)',
       '"future_cached_tokens": intValue(r.PromptEvalCachedCount)',
     );
-    const responseDrift = await ollamaCloud({
+    const responseDrift = await ollamaCloudResult({
       documents: { "responses-types.go": responseTypes },
     });
-    expect(responseDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(29);
+    expect(responseDrift.pricing_inputs).toHaveLength(29);
     expect(
-      responseDrift
-        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
-        .some(({ key }) => key === "openai.responses.cached_input_tokens"),
+      (responseDrift.pricing_inputs ?? []).some(
+        ({ key }) => key === "openai.responses.cached_input_tokens",
+      ),
     ).toBe(true);
     expect(
-      responseDrift
-        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
-        .some(({ key }) => key === "openai.responses.stream.cached_input_tokens"),
+      (responseDrift.pricing_inputs ?? []).some(
+        ({ key }) => key === "openai.responses.stream.cached_input_tokens",
+      ),
     ).toBe(false);
   });
 
