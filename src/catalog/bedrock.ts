@@ -1583,19 +1583,13 @@ function meter(
   if (/input.*video|video.*input/.test(text)) return "input_video";
   if (/output.*image|image.*output/.test(text)) return "output_image";
   if (/input.*image|image.*input/.test(text)) return "input_image";
-  if (/output.*audio|audio.*output/.test(text)) return "output_audio";
+  if (/output.*audio|audio.*output|speech.*output/.test(text)) return "output_audio";
   if (/input.*audio|audio.*input|speech understanding input/.test(text)) return "input_audio";
   if (/text output/.test(text)) return "output_text";
   if (/text input/.test(text)) return "input_text";
   if (/rerank/.test(text)) return "rerank_request";
-  if (/output|response/.test(text))
-    return tasks.includes("speech_synthesis") || tasks.includes("speech_to_speech")
-      ? "output_audio"
-      : "output_text";
-  if (/input|prompt/.test(text))
-    return tasks.includes("transcription") || tasks.includes("speech_to_speech")
-      ? "input_audio"
-      : "input_text";
+  if (/output|response/.test(text)) return "output_text";
+  if (/input|prompt/.test(text)) return "input_text";
   if (tasks.includes("image_generation") && /image/.test(text)) return "image_generation";
   if (tasks.includes("video_generation") && /video|second/.test(text)) return "video_generation";
 }
@@ -1720,7 +1714,7 @@ function rate(
   let normalizedUnit: SourcePriceFact["unit"] | undefined;
   let normalizedPrice = price;
   let derivation: string | undefined;
-  if (unit === "1K tokens") {
+  if (/^1k tokens$/i.test(unit)) {
     normalizedUnit = "million_tokens";
     normalizedPrice = scaleDecimal(price, 3);
     derivation = "source price per 1K tokens × 1,000";
