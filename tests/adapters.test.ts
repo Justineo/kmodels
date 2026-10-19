@@ -13560,7 +13560,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v7",
+      extractorVersion: "kimi-openapi-v8",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({
@@ -13882,11 +13882,11 @@ describe("Kimi adapters", () => {
       { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
     ]);
     const pricingInputs = result.pricing_inputs ?? [];
-    expect(pricingInputs).toHaveLength(16);
+    expect(pricingInputs).toHaveLength(21);
     expect(pricingInputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          key: "chat.input_tokens",
+          key: "chat.input_tokens.cache_write_partition",
           channel: "response",
           locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
         }),
@@ -13898,7 +13898,7 @@ describe("Kimi adapters", () => {
           },
         }),
         expect.objectContaining({
-          key: "messages.stream.uncached_input_tokens",
+          key: "messages.stream.uncached_input_tokens.excludes_cache_writes",
           channel: "stream_event",
           availability: "terminal_only",
         }),
@@ -13911,7 +13911,7 @@ describe("Kimi adapters", () => {
     expect(reconciliation).toContainEqual({
       disposition: "normalized",
       reason_code: "pricing_input_contract_bound",
-      sample: "16/16 Kimi OpenAPI pricing inputs",
+      sample: "21/21 Kimi OpenAPI pricing inputs",
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k3")?.limits.max_output_tokens).toBe(
       1_048_576,
@@ -13996,7 +13996,7 @@ describe("Kimi adapters", () => {
       expect.arrayContaining([
         expect.objectContaining({ key: "request.api_origin.china" }),
         expect.objectContaining({ key: "responses.input_tokens" }),
-        expect.objectContaining({ key: "messages.uncached_input_tokens" }),
+        expect.objectContaining({ key: "messages.uncached_input_tokens.excludes_cache_writes" }),
       ]),
     );
   });
@@ -14591,6 +14591,45 @@ describe("Kimi adapters", () => {
     });
   });
 
+  it("keeps a regional tool quantity unknown when only the other region proves its billing trigger", async () => {
+    const china = await pricingResult({
+      overrides: {
+        tools: (await fixture("kimi/tools.md")).replaceAll(
+          "tool_call.function.name = $web_search",
+          "tool_call.function.name = $unreviewed",
+        ),
+      },
+    });
+    const international = await pricingResult({ sourceId: "kimi-international-pricing" });
+    const sources = [
+      { source: source("kimi-pricing"), ...china },
+      { source: source("kimi-international-pricing"), ...international },
+    ];
+    const partition = assembleParsedProviderPricing(
+      "kimi",
+      observedAt,
+      sources,
+      applyGroups([], sources, true),
+    );
+    const book = partition?.books.find(
+      ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "web-search",
+    );
+    const offer = book?.offers.find(({ offer_key }) => offer_key === "built-in:kimi/kimi-k2.6");
+    const variants =
+      offer?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])) ?? [];
+    expect(variants).toHaveLength(2);
+    expect(
+      variants.find(
+        ({ price }) => price.denomination.kind === "fiat" && price.denomination.currency === "CNY",
+      )?.charge_binding?.quantity_methods,
+    ).toBeUndefined();
+    expect(
+      variants.find(
+        ({ price }) => price.denomination.kind === "fiat" && price.denomination.currency === "USD",
+      )?.charge_binding?.quantity_methods,
+    ).toHaveLength(1);
+  });
+
   it("publishes provider-native inference, search, Formula, and Files topology", async () => {
     const china = await pricingResult();
     const international = await pricingResult({ sourceId: "kimi-international-pricing" });
@@ -14780,7 +14819,9 @@ describe("Kimi adapters", () => {
     expect(batch?.relations).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: "exclusive_with" })]),
     );
-    expect(sync?.settlement[0]).toMatchObject({ channel: "direct", biller: "Moonshot AI" });
+    expect(books.flatMap(({ offers }) => offers.flatMap(({ settlement }) => settlement))).toEqual(
+      [],
+    );
 
     const resource = (key: string) =>
       books.find(({ scope }) => scope.kind === "provider_resource" && scope.resource_key === key);

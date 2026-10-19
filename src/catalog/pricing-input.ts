@@ -90,8 +90,9 @@ export function directQuantityMethods(
   signal: UsageSignal,
   keys: readonly string[],
   inputIndex: PricingInputIndex,
+  modelRef?: string,
 ): BoundQuantityMethods {
-  const facts = pricingInputFacts(inputIndex, keys);
+  const facts = pricingInputFacts(inputIndex, keys, modelRef);
   return facts.length === 0
     ? emptyQuantityMethods()
     : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
@@ -121,9 +122,10 @@ export function subtractQuantityMethods(
   excludedSignal: UsageSignal,
   excludedKeys: readonly string[],
   inputIndex: PricingInputIndex,
+  modelRef?: string,
 ): BoundQuantityMethods {
-  const total = pricingInputFacts(inputIndex, totalKeys);
-  const excluded = pricingInputFacts(inputIndex, excludedKeys);
+  const total = pricingInputFacts(inputIndex, totalKeys, modelRef);
+  const excluded = pricingInputFacts(inputIndex, excludedKeys, modelRef);
   return calculatedQuantityMethods(
     {
       nodes: [
