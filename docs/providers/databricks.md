@@ -63,6 +63,12 @@ workspace data, or establish public prices. Enable it with `DATABRICKS_HOST` and
 `DATABRICKS_TOKEN`. The undocumented `serving-endpoints:foundation-models` route is not a refresh
 dependency.
 
+Catalog and workspace inventory parsers return the explicit source envelope. Accounting contracts
+belong to the public source independently of its model observations, and compilation captures them
+once at source level. Filtering model observations cannot discard those contracts. Replay uses
+published catalog metadata for model identity and binding; source catalog row-count and exact
+pricing joins remain required.
+
 ## Identity and model facts
 
 - Callable identity comes only from a labeled `Endpoint name:` in the official supported-model
@@ -155,6 +161,11 @@ The API reference publishes five calculation-input contracts from the non-stream
   reasoning-token rate;
 - top-level `usage.cache_read_input_tokens` and `usage.cache_creation_input_tokens` for
   Databricks-hosted Claude endpoints.
+
+The unique Usage section owns the shared-response declaration and its Field/Type/Description
+tables. A counter requires an integer type and its reviewed description. Nested objects, request
+subsections, examples and quoted tables cannot establish a top-level usage field. Consistent
+expanded-view table copies are accepted; conflicting copies withhold only the affected field.
 
 Embedding input binds directly to `usage.prompt_tokens`. Ordinary text output binds directly to
 `usage.completion_tokens`. An input rate with no separately priced cache partition also binds
