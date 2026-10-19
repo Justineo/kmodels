@@ -3,12 +3,13 @@ import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
+import { yamlBlock } from "./yaml.ts";
 
 interface OpenAiAccountingContract {
   key: string;
   schema: string;
   path: string[];
-  type: "integer" | "number" | "string" | "array";
+  type: "integer" | "string" | "array";
   channel: SourcePricingInputFact["channel"];
   locator: SourcePricingInputFact["locator"];
   reduction?: SourcePricingInputFact["reduction"];
@@ -108,34 +109,17 @@ const openAiAccountingContracts: readonly OpenAiAccountingContract[] = [
     undefined,
     "string",
   ),
-  ...[
-    "input_tokens",
-    "input_cached_tokens",
-    "input_cache_write_tokens",
-    "input_uncached_tokens",
-    "output_tokens",
-    "input_text_tokens",
-    "output_text_tokens",
-    "input_cached_text_tokens",
-    "input_audio_tokens",
-    "input_cached_audio_tokens",
-    "output_audio_tokens",
-    "input_image_tokens",
-    "input_cached_image_tokens",
-    "output_image_tokens",
-    "service_tier",
-  ].map((field) => organizationUsage("completions", "UsageCompletionsResult", field)),
-  organizationUsage("embeddings", "UsageEmbeddingsResult", "input_tokens"),
-  organizationUsage("audio_speeches", "UsageAudioSpeechesResult", "characters"),
-  organizationUsage("audio_transcriptions", "UsageAudioTranscriptionsResult", "seconds"),
-  organizationUsage(
-    "code_interpreter_sessions",
-    "UsageCodeInterpreterSessionsResult",
-    "num_sessions",
+  ...["text", "audio", "image"].flatMap((modality) => [
+    realtimeUsage(`input_${modality}_tokens`, ["input_token_details", `${modality}_tokens`]),
+    realtimeUsage(`cached_${modality}_tokens`, [
+      "input_token_details",
+      "cached_tokens_details",
+      `${modality}_tokens`,
+    ]),
+  ]),
+  ...["text", "audio"].map((modality) =>
+    realtimeUsage(`output_${modality}_tokens`, ["output_token_details", `${modality}_tokens`]),
   ),
-  organizationUsage("file_search_calls", "UsageFileSearchCallsResult", "num_requests"),
-  organizationUsage("images", "UsageImagesResult", "images"),
-  organizationUsage("web_search_calls", "UsageWebSearchCallsResult", "num_requests"),
 ];
 
 function responseUsage(key: string, path: string[]): OpenAiAccountingContract {
@@ -174,36 +158,51 @@ function responseField(
   };
 }
 
-function organizationUsage(
-  endpoint: string,
-  schema: string,
-  field: string,
-): OpenAiAccountingContract {
+function realtimeUsage(key: string, path: string[]): OpenAiAccountingContract {
   return {
-    key: `organization.${endpoint}.${field}`,
-    schema,
-    path: [field],
-    type: field === "service_tier" ? "string" : field === "seconds" ? "number" : "integer",
-    channel: "account_report",
-    locator: {
-      kind: "provider_field",
-      value: `organization.usage.${endpoint}.results[*].${field}`,
-    },
-    availability: "reconciliation_only",
+    key: `realtime.${key}`,
+    schema: "RealtimeServerEventResponseDone",
+    path: ["response", "usage", ...path],
+    type: "integer",
+    channel: "stream_event",
+    locator: { kind: "json_pointer", value: `/response/usage/${path.join("/")}` },
+    availability: "terminal_only",
   };
+}
+
+function realtimeEvent(body: string): boolean {
+  const components = yamlBlock(body, "components", 0);
+  const schemas = components === undefined ? undefined : yamlBlock(components, "schemas", 2);
+  const event =
+    schemas === undefined ? undefined : yamlBlock(schemas, "RealtimeServerEventResponseDone", 4);
+  const properties = event === undefined ? undefined : yamlBlock(event, "properties", 6);
+  const type = properties === undefined ? undefined : yamlBlock(properties, "type", 8);
+  const values = type === undefined ? undefined : yamlBlock(type, "enum", 10);
+  const response = properties === undefined ? undefined : yamlBlock(properties, "response", 8);
+  const entries = values
+    ?.split(/\r?\n/)
+    .slice(1)
+    .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
+  return (
+    entries?.length === 1 &&
+    /^ {12}- (?:response\.done|"response\.done"|'response\.done')$/.test(entries[0] ?? "") &&
+    response !== undefined &&
+    /^ {10}\$ref: ["']#\/components\/schemas\/RealtimeResponse["']$/m.test(response)
+  );
 }
 
 export function parseOpenAiAccounting(input: ParseInput): SourceParseResult {
   const pricingInputs: SourcePricingInputFact[] = [];
   const propertyTypes = openApiYamlSchemaReader(input.body);
+  const eventTypes = propertyTypes("RealtimeServerEventResponseDone", ["type"]);
+  const hasRealtimeEvent =
+    realtimeEvent(input.body) && eventTypes.length === 1 && eventTypes[0] === "string";
   for (const contract of openAiAccountingContracts) {
-    const types = propertyTypes(contract.schema, contract.path);
-    if (
-      types.length === 0 ||
-      types.some(
-        (type) => type !== contract.type && !(contract.type === "number" && type === "integer"),
-      )
-    ) {
+    const types =
+      contract.key.startsWith("realtime.") && !hasRealtimeEvent
+        ? []
+        : propertyTypes(contract.schema, contract.path);
+    if (types.length === 0 || types.some((type) => type !== contract.type)) {
       input.onContractFinding?.(
         contractExtensionEvidence([
           `/components/schemas/${contract.schema}/properties/${contract.path.join("/properties/")}`,

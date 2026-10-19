@@ -794,7 +794,7 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "openai-accounting" },
-        extractorVersion: "openai-accounting-v2",
+        extractorVersion: "openai-accounting-v3",
         fields: ["pricing_inputs"],
         allowedHosts: ["raw.githubusercontent.com"],
         maxResponseBytes: mebibytes(16),

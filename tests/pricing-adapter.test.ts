@@ -3120,6 +3120,7 @@ describe("parsed-source canonical pricing adapter", () => {
       model_id: "gpt-test",
       uid: "openai/gpt-test",
       source_refs: [sourceId],
+      api_endpoints: [{ name: "Responses", path: "v1/responses" }],
       capabilities: { ...unknownCapabilities(), reasoning: true },
       price_facts: [
         {
@@ -3364,9 +3365,6 @@ describe("parsed-source canonical pricing adapter", () => {
             signal: { namespace: "kmodels", value: "uncached_input_tokens" },
             aggregation: "request",
             quantity_methods: expect.arrayContaining([
-              expect.objectContaining({
-                input_sources: [expect.objectContaining({ channel: "account_report" })],
-              }),
               expect.objectContaining({ calculation: expect.any(Object) }),
             ]),
           },
@@ -3406,6 +3404,9 @@ describe("parsed-source canonical pricing adapter", () => {
     });
     expect(sync?.relations).toEqual([]);
     expect(batch?.relations).toEqual([]);
+    for (const term of batch?.terms ?? [])
+      if (term.kind === "rate")
+        for (const variant of term.variants) expect(variant.selector_sources).toBeUndefined();
 
     const service = partition?.books.find(({ book_key }) => book_key === "service:file-search");
     expect(service?.scope).toEqual({
@@ -3429,11 +3430,6 @@ describe("parsed-source canonical pricing adapter", () => {
                   value: "file_search_calls",
                 },
                 aggregation: "request",
-                quantity_methods: [
-                  expect.objectContaining({
-                    input_sources: [expect.objectContaining({ channel: "account_report" })],
-                  }),
-                ],
               },
             },
           ],
@@ -3441,6 +3437,17 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
     const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    for (const book of partition?.books ?? [])
+      for (const offer of book.offers)
+        for (const term of offer.terms) {
+          if (term.kind !== "rate") continue;
+          for (const variant of term.variants)
+            expect(
+              variant.charge_binding?.quantity_methods
+                ?.flatMap((method) => method.input_sources ?? [])
+                .some((source) => source.channel === "account_report"),
+            ).not.toBe(true);
+        }
     expect(search?.offers[0]?.relations).toEqual([]);
     expect(search?.offers[0]?.terms.some(({ kind }) => kind === "contribution")).toBe(false);
     expect(search?.offers[0]?.terms[0]).toMatchObject({
@@ -3526,7 +3533,7 @@ describe("parsed-source canonical pricing adapter", () => {
     });
   });
 
-  it("binds OpenAI modality, media, character, and duration rates to exact accounting inputs", () => {
+  it("preserves OpenAI semantic quantities without borrowing organization totals", () => {
     const openAi = manifests.find(({ provider }) => provider.id === "openai");
     const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
     const accountingSource = openAi?.sources.find(({ id }) => id === "openai-accounting");
@@ -3556,6 +3563,17 @@ describe("parsed-source canonical pricing adapter", () => {
       uid: `openai/${id}`,
       tasks,
       source_refs: [pricingSource.id],
+      api_endpoints: tasks.includes("speech_to_speech")
+        ? [{ name: "Realtime", path: "v1/realtime" }]
+        : tasks.includes("image_generation")
+          ? [{ name: "Image generation", path: "v1/images/generations" }]
+          : tasks.includes("video_generation")
+            ? [{ name: "Videos", path: "v1/videos" }]
+            : tasks.includes("embeddings")
+              ? [{ name: "Embeddings", path: "v1/embeddings" }]
+              : tasks.includes("text_generation")
+                ? [{ name: "Responses", path: "v1/responses" }]
+                : [],
       price_facts: priceFacts,
     });
     const pricedModels = [
@@ -3652,6 +3670,7 @@ describe("parsed-source canonical pricing adapter", () => {
       input("organization.audio_speeches.characters", "account_report", "characters"),
       input("organization.audio_transcriptions.seconds", "account_report", "seconds"),
       input("organization.embeddings.input_tokens", "account_report", "embedding_tokens"),
+      input("responses.embedding_input_tokens", "response", "/usage/prompt_tokens"),
       input("responses.generated_seconds", "response", "/seconds"),
       input("responses.video_resolution", "response", "/size"),
     ];
@@ -3698,22 +3717,22 @@ describe("parsed-source canonical pricing adapter", () => {
         return [modelId, meter, charge?.signal.value, charge?.quantity_methods?.length];
       }),
     ).toEqual([
-      ["realtime-test", "input_text", "uncached_input_tokens", 1],
-      ["realtime-test", "cache_read_text", "cached_input_tokens", 1],
-      ["realtime-test", "output_text", "output_tokens", 1],
+      ["realtime-test", "input_text", "uncached_input_text_tokens", 1],
+      ["realtime-test", "cache_read_text", "cached_input_text_tokens", undefined],
+      ["realtime-test", "output_text", "output_text_tokens", undefined],
       ["realtime-test", "input_audio", "uncached_input_audio_tokens", 1],
-      ["realtime-test", "cache_read_audio", "cached_input_audio_tokens", 1],
-      ["realtime-test", "output_audio", "output_audio_tokens", 1],
+      ["realtime-test", "cache_read_audio", "cached_input_audio_tokens", undefined],
+      ["realtime-test", "output_audio", "output_audio_tokens", undefined],
       ["realtime-test", "input_image", "uncached_input_image_tokens", 1],
-      ["realtime-test", "output_image", "output_image_tokens", 1],
+      ["realtime-test", "output_image", "output_image_tokens", undefined],
       ["image-test", "input_text", "uncached_image_prompt_text_tokens", undefined],
       ["image-test", "cache_read_text", "cached_image_prompt_text_tokens", undefined],
       ["image-test", "input_image", "uncached_input_image_tokens", undefined],
       ["image-test", "cache_read_image", "cached_image_prompt_image_tokens", undefined],
       ["image-test", "output_image", "output_image_tokens", 1],
       ["image-test", "image_generation", "generated_images", 1],
-      ["speech-test", "output_audio", "input_characters", 1],
-      ["transcription-test", "transcription", "processed_audio_seconds", 1],
+      ["speech-test", "output_audio", "input_characters", undefined],
+      ["transcription-test", "transcription", "processed_audio_seconds", undefined],
       ["video-test", "video_generation", "generated_seconds", 1],
       ["embedding-test", "embedding", "input_tokens", 1],
     ]);
@@ -3721,8 +3740,8 @@ describe("parsed-source canonical pricing adapter", () => {
       expect(
         variant("realtime-test", meter).charge_binding?.quantity_methods?.flatMap(
           ({ input_sources }) => input_sources?.map(({ channel }) => channel) ?? [],
-        ),
-      ).toEqual(["account_report"]);
+        ) ?? [],
+      ).toEqual([]);
     expect(
       variant("image-test", "image_generation").selector_sources?.map(
         ({ dimension }) => dimension.value,
