@@ -3612,7 +3612,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "huggingface-native-pricing", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-native-pricing-v1",
+        extractorVersion: "huggingface-native-pricing-v2",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: ["pricing"],
         allowedHosts: [

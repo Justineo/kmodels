@@ -743,10 +743,7 @@ async function huggingFaceNativePricing(
         },
         {
           url: "https://cohere.com/pricing",
-          body: (await fixture("cohere/pricing.html")).replace(
-            "self.__next_f.push",
-            "self.__next_f.invalid",
-          ),
+          body: await fixture("cohere/pricing.html"),
         },
         {
           url: "https://docs.cohere.com/docs/command-a",
@@ -10381,7 +10378,7 @@ describe("Hugging Face adapter", () => {
       transport: { kind: "featherless-models", pageSize: 1000 },
     });
     expect(sources[3]).toMatchObject({
-      extractorVersion: "huggingface-native-pricing-v1",
+      extractorVersion: "huggingface-native-pricing-v2",
       optional: true,
       extractor: { kind: "huggingface-native-pricing" },
     });
