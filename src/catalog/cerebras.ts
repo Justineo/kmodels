@@ -188,6 +188,7 @@ function scaledRate(
     derived: true,
     derivation: "source price per token × 1,000,000",
     raw_price: price,
+    resolution_policy: "cerebras_public_api_over_model_card",
   };
 }
 
@@ -660,21 +661,9 @@ function catalogCard(
     /Input tokens, whether served from the cache or processed fresh, are billed at the standard input token rate/.test(
       cachePolicy,
     );
-  if (features?.has("Prompt Caching") && inputPrice !== undefined) {
-    if (cacheAccounting)
-      rates.push({
-        ...publishedRate(
-          "cache_read_text",
-          inputPrice,
-          "million_tokens",
-          input.source.id,
-          "standard input token rate",
-        ),
-        derived: true,
-        derivation: "cached input is billed at the published standard input rate",
-      });
-    else diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
-  }
+  // Equal-price cache hits are part of the prompt total, not a separate tariff.
+  if (features?.has("Prompt Caching") && !cacheAccounting)
+    diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
   const contextBlock = claim(input, "model_context_block_drift", row.id, () =>
     objectBlock(body, "contextLength"),
   );
@@ -744,8 +733,7 @@ function reconcileRates(input: Input, models: ProviderModel[]): void {
     for (const rate of model.price_facts)
       input.onPricingReconciliation?.({
         disposition: "normalized",
-        reason_code:
-          rate.meter === "cache_read_text" ? "cache_rate_normalized" : "price_normalized",
+        reason_code: "price_normalized",
         sample: `${model.model_id}:${rate.meter}`,
       });
 }

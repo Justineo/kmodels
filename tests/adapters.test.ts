@@ -9462,7 +9462,7 @@ describe("Cerebras adapter", () => {
     );
   });
 
-  it("parses model cards, scheduled lifecycle, and cached-input pricing", async () => {
+  it("parses model cards and scheduled lifecycle without splitting equal-price cache input", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await catalog({
       onPricingReconciliation: (item) => reconciliation.push(item),
@@ -9477,10 +9477,11 @@ describe("Cerebras adapter", () => {
       deprecated_at: "2026-08-17",
       limits: { context_tokens: 131000, max_output_tokens: 40000 },
     });
-    expect(gpt?.price_facts.find(({ meter }) => meter === "cache_read_text")).toMatchObject({
+    expect(gpt?.price_facts.find(({ meter }) => meter === "input_text")).toMatchObject({
       price: "0.35",
-      derived: true,
+      derived: false,
     });
+    expect(gpt?.price_facts.some(({ meter }) => meter === "cache_read_text")).toBe(false);
     expect(gpt?.release_stage).toBe("stable");
     expect(gpt?.api_endpoints).toEqual([{ name: "Chat Completions", path: "v1/chat/completions" }]);
     expect(gemma?.api_endpoints).toEqual([
@@ -9494,8 +9495,8 @@ describe("Cerebras adapter", () => {
       expect.arrayContaining([
         {
           disposition: "normalized",
-          reason_code: "cache_rate_normalized",
-          sample: "gpt-oss-120b:cache_read_text",
+          reason_code: "price_normalized",
+          sample: "gpt-oss-120b:input_text",
         },
       ]),
     );
@@ -9582,7 +9583,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v16",
+      extractorVersion: "cerebras-catalog-v17",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -9779,7 +9780,6 @@ describe("Cerebras adapter", () => {
         .find(({ model_id }) => model_id === "gpt-oss-120b")
         ?.price_facts.map(({ meter, source_ref }) => [meter, source_ref]),
     ).toEqual([
-      ["cache_read_text", "cerebras-catalog"],
       ["input_text", "cerebras-models"],
       ["output_text", "cerebras-models"],
     ]);
@@ -9818,8 +9818,7 @@ describe("Cerebras adapter", () => {
       ),
     ).toEqual(
       expect.arrayContaining([
-        ["input_text", "uncached_input_tokens"],
-        ["cache_read_text", "cached_input_tokens"],
+        ["input_text", "input_tokens"],
         ["output_text", "output_tokens"],
       ]),
     );
@@ -9830,17 +9829,6 @@ describe("Cerebras adapter", () => {
       inputTerm?.kind === "rate" ? inputTerm.variants[0]?.charge_binding : undefined;
     expect(inputBinding?.quantity_methods).toEqual([
       expect.objectContaining({
-        calculation: {
-          nodes: [
-            { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
-            {
-              op: "signal",
-              signal: { namespace: "kmodels", value: "cached_input_tokens" },
-            },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          ],
-          result: 2,
-        },
         input_sources: expect.arrayContaining([
           expect.objectContaining({
             channel: "response",
@@ -9850,7 +9838,7 @@ describe("Cerebras adapter", () => {
             channel: "stream_event",
             locator: {
               kind: "json_pointer",
-              value: "/usage/prompt_tokens_details/cached_tokens",
+              value: "/usage/prompt_tokens",
             },
             availability: "terminal_only",
           }),
@@ -9932,7 +9920,7 @@ describe("Cerebras adapter", () => {
     ).toBeUndefined();
   });
 
-  it("binds admitted cache charges independently of capability metadata", async () => {
+  it("keeps the same input charge independently of cache capability metadata", async () => {
     const result = await catalogSource();
     const models = result.models.map((model) => ({
       ...model,
@@ -9953,8 +9941,8 @@ describe("Cerebras adapter", () => {
         .map((term) => [term.meter.value, term.variants[0]?.charge_binding?.signal.value]),
     ).toEqual(
       expect.arrayContaining([
-        ["input_text", "uncached_input_tokens"],
-        ["cache_read_text", "cached_input_tokens"],
+        ["input_text", "input_tokens"],
+        ["output_text", "output_tokens"],
       ]),
     );
   });

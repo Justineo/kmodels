@@ -1,19 +1,16 @@
 import { compareCanonicalValues } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
-  AtomicPricingTerm,
   AtomicProviderPricing,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { bindRateTerm, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
 import {
-  subtractQuantityMethods,
   directQuantityMethods as directMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
   pricingInputObservation,
-  type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
 import type { ChargeBinding, PriceMeter, UsageSignal } from "./pricing-schema.ts";
@@ -49,18 +46,13 @@ function modelBook(
     ...book,
     offers: book.offers.map((offer) => {
       if (offer.offer_key !== "usage") return offer;
-      const cacheSplit = offer.terms.some(
-        (term) =>
-          term.kind === "rate" &&
-          term.meter.namespace === "kmodels" &&
-          term.meter.value === "cache_read_text" &&
-          term.variants.some(({ price }) => isStandardUnit(price.per, "token")),
-      );
       return {
         ...offer,
         offer_key: "payg",
         name: "Pay-as-you-go inference",
-        terms: offer.terms.map((term) => bindTerm(term, model, inputIndex, cacheSplit)),
+        terms: offer.terms.map((term) =>
+          bindRateTerm(term, (meter, variant) => binding(meter, variant, model, inputIndex)),
+        ),
         relations: [],
         settlement: [],
       };
@@ -68,39 +60,22 @@ function modelBook(
   };
 }
 
-function bindTerm(
-  term: AtomicPricingTerm,
-  model: PublishedPricingModel | undefined,
-  inputIndex: PricingInputIndex,
-  cacheSplit: boolean,
-): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) =>
-    binding(meter, variant, model, inputIndex, cacheSplit),
-  );
-}
-
 function binding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
   model: PublishedPricingModel | undefined,
   inputIndex: PricingInputIndex,
-  cacheSplit: boolean,
 ): ChargeBinding | undefined {
   if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
   const signal =
-    meter.value === "cache_read_text"
-      ? standardSignal("cached_input_tokens")
-      : meter.value === "input_text"
-        ? standardSignal(cacheSplit ? "uncached_input_tokens" : "input_tokens")
-        : meter.value === "output_text"
-          ? standardSignal("output_tokens")
-          : undefined;
+    meter.value === "input_text"
+      ? standardSignal("input_tokens")
+      : meter.value === "output_text"
+        ? standardSignal("output_tokens")
+        : undefined;
   if (signal === undefined) return;
   const protocols = endpointProtocols(model);
-  const mapped =
-    signal.value === "uncached_input_tokens"
-      ? uncachedInputMethods(protocols, inputIndex)
-      : directMethods(signal, protocolKeys(protocols, signal.value), inputIndex);
+  const mapped = directMethods(signal, protocolKeys(protocols, signal.value), inputIndex);
   return {
     signal,
     aggregation: "request",
@@ -123,30 +98,14 @@ function endpointProtocols(
 }
 
 function protocolKeys(protocols: ReadonlySet<"chat" | "completions">, signal: string): string[] {
-  return [...protocols].flatMap((protocol) => usageKeys(protocol, signal));
-}
-
-function usageKeys(protocol: "chat" | "completions", signal: string): string[] {
-  return [`${protocol}.${signal}`, `${protocol}.stream.${signal}`];
-}
-
-function uncachedInputMethods(
-  protocols: ReadonlySet<"chat" | "completions">,
-  inputIndex: PricingInputIndex,
-): MethodsAndFacts {
-  const totalSignal = standardSignal("input_tokens");
-  const cachedSignal = standardSignal("cached_input_tokens");
-  return subtractQuantityMethods(
-    totalSignal,
-    protocolKeys(protocols, totalSignal.value),
-    cachedSignal,
-    protocolKeys(protocols, cachedSignal.value),
-    inputIndex,
-  );
+  return [...protocols].flatMap((protocol) => [
+    `${protocol}.${signal}`,
+    `${protocol}.stream.${signal}`,
+  ]);
 }
 
 function standardSignal(
-  value: "cached_input_tokens" | "input_tokens" | "output_tokens" | "uncached_input_tokens",
+  value: "input_tokens" | "output_tokens",
 ): Extract<UsageSignal, { namespace: "kmodels" }> {
   return { namespace: "kmodels", value };
 }
