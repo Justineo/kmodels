@@ -12,6 +12,7 @@ import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { createCalculator, type Quantity } from "../src/pricing/index.ts";
 import { canonicalJson } from "../src/catalog/canonical-json.ts";
+import { requiredUsageSignals } from "../src/catalog/pricing-calculation.ts";
 
 const observedAt = "2026-10-19T07:12:03.562Z";
 function configuration() {
@@ -25,12 +26,14 @@ const provider = { ...value.provider, source_ids: value.sources.map(({ id }) => 
 const catalogModels = [
   ["claude-haiku-5-5", "Claude Haiku 5.5"],
   ["claude-sonnet-5-5", "Sonnet 5.5"],
+  ["gemini-4-argon", "Gemini 4 Argon"],
+  ["gemini-4-argon-cyber-permissive", "Gemini 4 Argon Cyber Permissive"],
 ].map(([id, name]) => {
   if (id === undefined || name === undefined) throw new Error("Missing fixture identity");
   return {
     ...baseModel({ providerId: "vertex", id, name, sourceId: source.id, observedAt }),
     tasks: ["text_generation"] satisfies ModelTask[],
-    service_families: ["publishers/anthropic"],
+    service_families: [id.startsWith("claude-") ? "publishers/anthropic" : "publishers/google"],
   };
 });
 
@@ -40,13 +43,13 @@ async function nativePricing() {
     "utf8",
   );
 }
-function parse(body: string) {
+function parse(body: string, documents: { url: string; body: string }[] = []) {
   const findings: PricingReconciliationItem[] = [];
   const parsed = parseSource({
     provider,
     source,
     observedAt,
-    body: JSON.stringify({ index: { url: source.url, body }, documents: [] }),
+    body: JSON.stringify({ index: { url: source.url, body }, documents }),
     catalogModels,
     onPricingReconciliation: (finding) => findings.push(finding),
   });
@@ -61,7 +64,7 @@ function haiku(parsed: ReturnType<typeof parse>) {
   return model;
 }
 
-function calculatorFor(parsed: ReturnType<typeof parse>) {
+function calculatorFor(parsed: ReturnType<typeof parse>, modelId = "claude-haiku-5-5") {
   const partition = assembleParsedProviderPricing(
     "vertex",
     observedAt,
@@ -106,10 +109,12 @@ function calculatorFor(parsed: ReturnType<typeof parse>) {
       core,
     ),
   );
+  const model = parsed.models.find(({ model_id }) => model_id === modelId);
+  if (model === undefined) throw new Error("Missing exported model");
   const offer = exported.providers[0]?.books
-    .find(({ scope }) => scope.model_refs.includes(haiku(parsed).uid))
+    .find(({ scope }) => scope.model_refs.includes(model.uid))
     ?.offers.find(({ offer_key }) => offer_key === "sync");
-  if (offer === undefined) throw new Error("Missing exported Haiku offer");
+  if (offer === undefined) throw new Error("Missing exported model offer");
   return { calculator: createCalculator(exported), offer };
 }
 
@@ -543,5 +548,346 @@ describe("Vertex native tariff scopes", () => {
     ).toBe(true);
     if (label === "Standard" || label === "Standard Model")
       expect(model.price_facts[0]?.conditions.service_tier).toBe("standard");
+  });
+});
+
+describe("Vertex account-credit price evidence", () => {
+  const fixture = () =>
+    readFile(new URL("./fixtures/vertex/credits-pricing.html", import.meta.url), "utf8");
+  const withDiscovery = async () =>
+    parse(await fixture(), [
+      {
+        url: "https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1",
+        body: await readFile(new URL("./fixtures/vertex/discovery.json", import.meta.url), "utf8"),
+      },
+    ]);
+  const argon = (parsed: ReturnType<typeof parse>) => {
+    const model = parsed.models.find(({ model_id }) => model_id === "gemini-4-argon");
+    if (model === undefined) throw new Error("Missing Argon");
+    return model;
+  };
+  function calculateModel(
+    parsed: ReturnType<typeof parse>,
+    modelId = "gemini-4-argon",
+    evaluatedAt = observedAt,
+    usage: Readonly<Record<string, string>> = { reported_prompt_text_tokens: "1000000" },
+  ) {
+    const { calculator, offer } = calculatorFor(parsed, modelId);
+    const quantities = new Map<string, Quantity>();
+    for (const term of offer.terms) {
+      if (term.kind !== "rate") continue;
+      for (const { charge_binding } of term.variants) {
+        if (charge_binding === undefined) continue;
+        for (const signal of requiredUsageSignals(charge_binding))
+          quantities.set(canonicalJson(signal), {
+            signal,
+            value: {
+              numerator: usage[signal.value] ?? "0",
+              denominator: "1",
+            },
+          });
+      }
+    }
+    return calculator.calculate({
+      evaluatedAt,
+      components: [
+        {
+          id: "argon",
+          offerRef: offer.id,
+          quantities: [...quantities.values()],
+          selectors: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "deployment_scope" },
+              value: { namespace: "provider", provider_id: "vertex", value: "global" },
+            },
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "served_service_tier" },
+              value: { namespace: "provider", provider_id: "vertex", value: "standard" },
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  it.each([false, true])(
+    "does not turn credit-adjusted prices into request rates (article=%s)",
+    async (article) => {
+      const native = await fixture();
+      const result = parse(article ? `<div class="devsite-article-body">${native}</div>` : native);
+      const model = argon(result);
+      expect(model.price_facts.length).toBeGreaterThan(0);
+      expect(
+        model.price_facts.every(({ conditions }) => conditions.effective_from === "2026-12-01"),
+      ).toBe(true);
+      expect(model.price_facts.some(({ price }) => price === "2" || price === "10")).toBe(false);
+      expect(model.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          impact: "base_price",
+          raw: expect.objectContaining({
+            amount: "2",
+            denomination: "USD",
+            meter: "input_text",
+            fragment: expect.stringContaining("50% credits back on net spend"),
+          }),
+          conditions: expect.objectContaining({
+            effective_until: "2026-11-30",
+            deployment_scope: "global",
+          }),
+        }),
+      );
+      expect(result.findings).toContainEqual(
+        expect.objectContaining({
+          disposition: "raw",
+          reason_code: "account_credit_effective_price",
+        }),
+      );
+      expect(model.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          raw: expect.objectContaining({
+            amount: "10",
+            meter: "output_text",
+            fragment: expect.stringContaining("Gemini 4 Argon* through November 30, 2026"),
+          }),
+        }),
+      );
+      const cyber = result.models.find(
+        ({ model_id }) => model_id === "gemini-4-argon-cyber-permissive",
+      );
+      expect(cyber?.raw_price_facts).toEqual([]);
+      expect(cyber?.price_facts).toContainEqual(
+        expect.objectContaining({ price: "4", meter: "input_text" }),
+      );
+      expect(
+        cyber?.price_facts.every(
+          ({ conditions }) =>
+            conditions.effective_from === undefined && conditions.promotion === undefined,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each(["missing", "unreadable", "duplicate", "quoted"])(
+    "keeps an unresolved owned model footnote raw (%s)",
+    async (change) => {
+      const body = await fixture();
+      const note = body.match(/<p>\s*\* Promotional pricing[^<]+<\/p>/)?.[0];
+      if (note === undefined) throw new Error("Missing credit note");
+      const result = parse(
+        body.replace(
+          note,
+          change === "missing"
+            ? ""
+            : change === "unreadable"
+              ? note.replace("50% credits back", "a changing benefit")
+              : change === "quoted"
+                ? `<blockquote>${note}</blockquote>`
+                : note + note.replace("50%", "25%"),
+        ),
+      );
+      expect(argon(result).price_facts.some(({ price }) => price === "2")).toBe(false);
+      expect(result.findings).toContainEqual(
+        expect.objectContaining({
+          disposition: "unresolved",
+          reason_code: "pricing_model_scope_unresolved",
+        }),
+      );
+      expect(
+        argon(result).price_facts.some(
+          ({ price, conditions }) => price === "4" && conditions.effective_from === "2026-12-01",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("does not borrow an unrelated widget's credit note", async () => {
+    const body = await fixture();
+    const note = body.match(/<p>\s*\* Promotional pricing[^<]+<\/p>/)?.[0];
+    if (note === undefined) throw new Error("Missing credit note");
+    const result = parse(
+      body
+        .replace(note, "")
+        .replace(
+          "<span>",
+          `<div><table><tr><th>Unrelated</th></tr><tr><td>Not a price</td></tr></table>${note}</div><span>`,
+        ),
+    );
+    expect(result.findings).not.toContainEqual(
+      expect.objectContaining({ reason_code: "account_credit_effective_price" }),
+    );
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ reason_code: "pricing_model_scope_unresolved" }),
+    );
+  });
+
+  it("keeps the same credit boundary in labeled cells", () => {
+    const result = parse(
+      "<main><table><tr><th>Model</th><th>Price (/1M tokens)</th></tr><tr><td>Gemini 4 Argon* through November 30, 2026</td><td>Input: $2 Output: $10</td></tr></table><p>* Promotional pricing provided through 50% credits back on net spend on select models within a given period.</p></main>",
+    );
+    expect(argon(result).price_facts).toEqual([]);
+    expect(argon(result).raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        raw: expect.objectContaining({ amount: "2", meter: "input_text" }),
+      }),
+    );
+  });
+
+  it("reports an unknown member of a mixed price label while retaining the known model's own quote", async () => {
+    const result = parse(
+      (await fixture()).replace(
+        "<p>Gemini 4 Argon Cyber Permissive</p>",
+        "<p>Gemini Future Unknown</p>",
+      ),
+    );
+    expect(argon(result).price_facts).toContainEqual(
+      expect.objectContaining({
+        price: "4",
+        conditions: expect.objectContaining({ effective_from: "2026-12-01" }),
+      }),
+    );
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        reason_code: "pricing_model_unbound",
+        sample: "Gemini Future Unknown",
+      }),
+    );
+  });
+
+  it("reports contradictory model eligibility instead of treating it as an understood credit", async () => {
+    const result = parse(
+      (await fixture()).replace(
+        "does not apply to Gemini 4 Argon Cyber\n          Permissive",
+        "does not apply to Gemini 4 Argon",
+      ),
+    );
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ reason_code: "pricing_model_scope_unresolved" }),
+    );
+    expect(argon(result).price_facts.some(({ price }) => price === "2")).toBe(false);
+  });
+
+  it.each(["known-credit", "missing-contract"])(
+    "separates intentional credit exclusion from repairable source drift (%s)",
+    async (kind) => {
+      const body = await fixture();
+      const result = parse(
+        kind === "known-credit" ? body : body.replace(/<p>\s*\* Promotional pricing[^<]+<\/p>/, ""),
+      );
+      const candidates = catalogRepairCandidates({
+        schema_version: 2,
+        generated_at: observedAt,
+        providers: [
+          {
+            provider_id: "vertex",
+            signals: [],
+            attempt: {
+              outcome: "accepted",
+              sources: [
+                {
+                  source_id: source.id,
+                  outcome: "unchanged",
+                  content_changed: false,
+                  pricing_reconciliation: sourcePricingReconciliation(
+                    result.models,
+                    result.findings,
+                    true,
+                  ),
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(
+        candidates.some(({ message }) => message.includes("pricing_model_scope_unresolved")),
+      ).toBe(kind === "missing-contract");
+    },
+  );
+
+  it("keeps credit-adjusted current prices non-executable in the portable calculator", async () => {
+    const result = calculateModel(parse(await fixture()));
+    expect(result.status).toBe("unknown");
+    expect(result.totals).toBeUndefined();
+  });
+  it("does not execute an imprecise published date as a tariff transition", async () => {
+    const result = calculateModel(
+      parse(await fixture()),
+      "gemini-4-argon",
+      "2026-12-02T00:00:00.000Z",
+    );
+    expect(result.status).toBe("unknown");
+    expect(result.unresolved).toContainEqual(
+      expect.objectContaining({ code: "unresolved_validity" }),
+    );
+    expect(result.totals).toBeUndefined();
+  });
+
+  it("calculates the independently unmarked Cyber tariff without charging output again as cache reads", async () => {
+    const parsed = await withDiscovery();
+    const cyber = parsed.models.find(
+      ({ model_id }) => model_id === "gemini-4-argon-cyber-permissive",
+    );
+    expect(
+      cyber?.price_facts
+        .filter(({ meter }) => meter.startsWith("cache_read_"))
+        .every(({ price }) => price === "0.2" || price === "0.22"),
+    ).toBe(true);
+    const result = calculateModel(parsed, "gemini-4-argon-cyber-permissive");
+    expect(result.status).toBe("calculated");
+    expect(result).toMatchObject({
+      status: "calculated",
+      totals: [
+        {
+          denomination: { kind: "fiat", currency: "USD" },
+          amount: { numerator: "4", denominator: "1" },
+        },
+      ],
+    });
+  });
+
+  it.each(["audio", "image", "video"])(
+    "binds native cached %s prices through the portable calculator",
+    async (modality) => {
+      const result = calculateModel(
+        await withDiscovery(),
+        "gemini-4-argon-cyber-permissive",
+        observedAt,
+        {
+          [`reported_prompt_${modality}_tokens`]: "1000000",
+          [`reported_cached_${modality}_tokens`]: "1000000",
+          ...(modality === "image" ? {} : { [`cached_input_${modality}_tokens`]: "1000000" }),
+        },
+      );
+      expect(result).toMatchObject({
+        status: "calculated",
+        totals: [
+          {
+            denomination: { kind: "fiat", currency: "USD" },
+            amount: { numerator: "1", denominator: "5" },
+          },
+        ],
+      });
+    },
+  );
+
+  it("charges duplicated output observations only once", async () => {
+    const result = calculateModel(
+      await withDiscovery(),
+      "gemini-4-argon-cyber-permissive",
+      observedAt,
+      { candidate_output_text_tokens: "1000000", candidate_output_tokens: "1000000" },
+    );
+    expect(result).toMatchObject({
+      status: "calculated",
+      totals: [
+        {
+          denomination: { kind: "fiat", currency: "USD" },
+          amount: { numerator: "20", denominator: "1" },
+        },
+      ],
+    });
+    expect(result.charges.filter(({ amount }) => amount.numerator !== "0")).toHaveLength(1);
   });
 });

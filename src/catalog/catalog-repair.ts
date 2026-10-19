@@ -89,6 +89,7 @@ const repairableReconciliationReasons = new Set([
   "pricing_policy_unavailable",
   "pricing_context_scope_unresolved",
   "pricing_location_scope_unresolved",
+  "pricing_model_scope_unresolved",
   "served_tier_contract_unavailable",
   "endpoint_reference_drift",
   "endpoint_model_list_drift",

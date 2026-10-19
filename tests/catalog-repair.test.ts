@@ -394,6 +394,7 @@ describe("catalog repair candidate selection", () => {
       "pricing_policy_unavailable",
       "pricing_context_scope_unresolved",
       "pricing_location_scope_unresolved",
+      "pricing_model_scope_unresolved",
       "served_tier_contract_unavailable",
       "model_card_price_scope_unresolved",
       "model_card_price_cell_unreadable",

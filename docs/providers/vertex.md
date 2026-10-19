@@ -80,6 +80,25 @@ replacement.
   independent applicability dimensions.
   A dated ordinary price remains unqualified by promotion unless its own source establishes
   eligibility. A promotional quote cannot add `promotion=false` to a sibling price or date.
+- A model label's footnote belongs to that model's quote, including subsequent blank continuation
+  rows. The public Gemini credit-back promotions describe an account benefit rather than an
+  independently published gross request tariff. Their displayed amounts remain bounded raw evidence
+  with their original unit, meter, validity and owned credit note; no doubling, future-price
+  substitution or automatic discount turns them into executable request rates. Understood account
+  credit evidence is an intentional raw result, without a missing-contract repair trigger. A missing,
+  duplicated, unreadable or contradictory referenced model note produces an owned model-scope
+  diagnostic and enters repair investigation even on unchanged bytes.
+- A comma-separated Gemini model cell resolves each named model independently. A date annotation
+  belongs only to its own item, so an undated Cyber model does not inherit another model's future
+  start date or credit eligibility. Unknown members are reported without discarding readable members.
+  Published date-only labels remain imprecise validity, not inferred UTC transition instants.
+- An output row under the cached-input price column still prices output tokens. It cannot create
+  a cache-read charge. Identical output observations converge to one canonical price; inconsistent
+  output amounts remain conflicting evidence rather than being added together.
+- Cached audio, image and video prices retain their provider-owned meters. Google's token binding
+  admits those exact native cache meters and uses the corresponding response quantities; it does
+  not require every recognized meter to belong to the shared vocabulary. Image and document cache
+  tokens use the same reported quantities for both cached billing and uncached-input subtraction.
 - Each numeric context header owns its bound, using safe whole-token counts. A missing opposite
   quote cannot create a complementary range. A referenced footnote must be readable and agree with
   that header; only its own endpoint panel or adjacent table notes can establish the contract.
