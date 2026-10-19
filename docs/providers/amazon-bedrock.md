@@ -232,6 +232,11 @@ The collector preserves exact AWS decimal amounts and normalizes only reviewed u
 - Guardrail text/image units by policy and API;
 - prompt-router and Bedrock Web Search requests.
 
+Token modality belongs to the price row, independently of the model's tasks. Unqualified Input
+and Output token rows remain generic, including on transcription and speech-capable models.
+Explicit Text and Speech/Audio components remain distinct. The native `1k tokens` and `1K tokens`
+units both denote one thousand tokens; their original unit spelling and decimal remain evidence.
+
 Services, acquisition contracts and provider vocabulary return independently of model rows. Native
 Price List service dimensions establish canonical rate terms at the parser boundary, including
 exact provider units, policy/API usage signals and region. Guardrail inputs must belong to the same
@@ -301,6 +306,16 @@ TTL-filtered input mappings require the corresponding Converse response or strea
 as TokenUsage and CacheDetail. A priced TTL other than the independently verified `5m` and `1h`
 contracts retains a distinct semantic signal with no fabricated locator; an aggregate cache-write
 counter cannot stand in for that TTL's quantity.
+
+Audio-token and input-video-duration rates retain distinct billable quantity signals, including
+Batch job quantities. A missing model-specific usage contract cannot remove their semantic binding
+or make an aggregate token counter stand in for that component.
+When text and media are independently priced in overlapping currency, applicability, validity and
+execution mechanism, text charges require their own billable partition. Converse, invocation-log
+and Batch aggregate counters cannot supply that text-only quantity. Disjoint modality quotes do
+not affect its acquisition. Cache-dependent invocation-log eligibility uses the same tariff scopes,
+rather than another Region, currency or Batch offer's cache policy. Rates survive these acquisition
+gaps; consumers can supply exact billable partitions themselves.
 
 CUR is not a request-level input. AWS states that CUR aggregates by usage type over an hour or day
 and carries no request identifier. A billing service may join invocation logs to CUR at

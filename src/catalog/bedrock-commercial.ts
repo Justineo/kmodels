@@ -7,7 +7,12 @@ import type {
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { compareCanonicalValues } from "./canonical-value.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import {
+  applicabilitiesOverlap,
+  canonicalizeApplicability,
+  unconditionalApplicability,
+} from "./pricing-canonical.ts";
+import { publishedValiditiesOverlap } from "./pricing-time.ts";
 import {
   addAtom,
   isStandardUnit,
@@ -110,14 +115,8 @@ function partitionOffer(
           },
         ];
   });
-  const hasCacheRates = offer.terms.some(
-    (term) =>
-      term.kind === "rate" &&
-      term.meter.namespace === "kmodels" &&
-      ["cache_read_text", "cache_write_text"].includes(term.meter.value),
-  );
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, input, inputIndex, supportsConverse, hasCacheRates),
+    partitionTerm(term, mechanism, input, inputIndex, supportsConverse, offer.terms),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -136,7 +135,7 @@ function partitionTerm(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
   supportsConverse: boolean,
-  hasCacheRates: boolean,
+  terms: readonly AtomicPricingTerm[],
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => {
@@ -165,7 +164,7 @@ function partitionTerm(
       input,
       inputIndex,
       supportsConverse,
-      hasCacheRates,
+      overlappingRateMeters(terms, variant, mechanism),
     );
     const selector_sources = modelSelectorSources(
       applicability,
@@ -235,22 +234,45 @@ function modelChargeBinding(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
   supportsConverse: boolean,
-  hasCacheRates: boolean,
+  rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
   const unit = variant.price.per;
   if (isStandardUnit(unit, "token")) {
-    const token = tokenBindingSpec(meter, variant.applicability, mechanism, hasCacheRates, input);
-    if (token === undefined) return;
-    const runtime = permitsRuntimeUsage(variant.applicability);
-    const facts = tokenInputFacts(
-      token.keys,
-      mechanism,
-      inputIndex,
-      supportsConverse && runtime,
-      token.includeInvocationLog && runtime,
+    const direction =
+      meter.value === "input_text" || meter.value === "embedding"
+        ? "input"
+        : meter.value === "output_text"
+          ? "output"
+          : undefined;
+    const partitioned =
+      direction !== undefined &&
+      rateMeters.some(
+        (candidate) =>
+          candidate.namespace === "kmodels" &&
+          ["audio", "image", "video"].some(
+            (modality) => candidate.value === `${direction}_${modality}`,
+          ),
+      );
+    const hasCacheRates = rateMeters.some(
+      (candidate) =>
+        candidate.namespace === "kmodels" &&
+        ["cache_read_text", "cache_write_text"].includes(candidate.value),
     );
-    return directBinding(token.signal, token.aggregation, facts, observation);
+    const token = partitioned
+      ? undefined
+      : tokenBindingSpec(meter, variant.applicability, mechanism, hasCacheRates, input);
+    if (token !== undefined) {
+      const runtime = permitsRuntimeUsage(variant.applicability);
+      const facts = tokenInputFacts(
+        token.keys,
+        mechanism,
+        inputIndex,
+        supportsConverse && runtime,
+        token.includeInvocationLog && runtime,
+      );
+      return directBinding(token.signal, token.aggregation, facts, observation);
+    }
   }
 
   const factor = unit.factors.length === 1 ? unit.factors[0] : undefined;
@@ -258,11 +280,30 @@ function modelChargeBinding(
   const value = factor.unit.value;
   const signal = semanticModelSignal(meter, value, unit, input);
   if (signal === undefined) return;
-  return {
-    signal,
-    aggregation: mechanism === "batch" ? "job" : "attempt",
-    observations: [rawEvidence(observation)],
-  };
+  return directBinding(signal, mechanism === "batch" ? "job" : "attempt", [], observation);
+}
+
+function overlappingRateMeters(
+  terms: readonly AtomicPricingTerm[],
+  variant: AtomicRateVariant,
+  mechanism: Mechanism,
+): PriceMeter[] {
+  const applicability = mechanismApplicability(variant.applicability, mechanism);
+  if (applicability === undefined) return [];
+  return terms.flatMap((term) =>
+    term.kind === "rate" &&
+    term.variants.some((candidate) => {
+      const scope = mechanismApplicability(candidate.applicability, mechanism);
+      return (
+        scope !== undefined &&
+        canonicalJson(candidate.price.denomination) === canonicalJson(variant.price.denomination) &&
+        applicabilitiesOverlap(scope, applicability) &&
+        publishedValiditiesOverlap(candidate.validity, variant.validity)
+      );
+    })
+      ? [term.meter]
+      : [],
+  );
 }
 
 interface TokenBindingSpec {
@@ -387,7 +428,17 @@ function semanticModelSignal(
     ["output_audio", "output_video", "video_generation"].includes(meter.value)
   )
     return standardSignal("generated_seconds");
-  if (!["search_unit", "video"].includes(unitValue)) return;
+  if (
+    !["search_unit", "video"].includes(unitValue) &&
+    !(unitValue === "second" && meter.value === "input_video") &&
+    !(
+      unitValue === "token" &&
+      ["input_text", "output_text", "embedding", "input_audio", "output_audio"].includes(
+        meter.value,
+      )
+    )
+  )
+    return;
   const key = `runtime_${meter.value}_${unitValue}`;
   addUsageSignal(
     input,
