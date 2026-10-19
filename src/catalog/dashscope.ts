@@ -20,14 +20,16 @@ import { modelIdSchema } from "./identity.ts";
 import { uniqueCanonicalValues } from "./canonical-value.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
+import { markdownProse } from "./markdown.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
+import { parsedPriceFact, sourcePriceFactKey } from "./pricing-source.ts";
 import {
   assertCoverage,
   assertItemCount,
@@ -437,10 +439,6 @@ function mergeState(
   return incoming;
 }
 
-function rateKey(rate: SourcePriceFact): string {
-  return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
-}
-
 const statusRank: Record<ProviderModel["status"], number> = {
   unknown: 0,
   retired: 1,
@@ -467,8 +465,16 @@ function merge(
   right: ProviderModel,
   onConflict?: (field: string) => void,
 ): ProviderModel {
-  const pricing = new Map(left.price_facts.map((item) => [rateKey(item), item]));
-  for (const item of right.price_facts) pricing.set(rateKey(item), item);
+  const pricing = uniqueCanonicalValues(
+    [...left.price_facts, ...right.price_facts].map(parsedPriceFact),
+  );
+  const amounts = new Map<string, string>();
+  for (const rate of pricing) {
+    const key = sourcePriceFactKey(rate),
+      previous = amounts.get(key);
+    if (previous !== undefined && !decimalsEqual(previous, rate.price)) onConflict?.("price_facts");
+    else amounts.set(key, rate.price);
+  }
   const endpoints = new Map(
     [...(left.api_endpoints ?? []), ...(right.api_endpoints ?? [])].map((item) => [
       apiEndpointKey(item),
@@ -586,10 +592,10 @@ function merge(
     pricing_state: mergedPricingState(
       left.pricing_state,
       right.pricing_state,
-      pricing.size > 0,
+      pricing.length > 0,
       onConflict,
     ),
-    price_facts: [...pricing.values()],
+    price_facts: pricing,
     raw_price_facts: uniqueCanonicalValues([...left.raw_price_facts, ...right.raw_price_facts]),
     availability: availability.size === 0 ? undefined : [...availability.values()],
   };
@@ -1105,7 +1111,9 @@ function meter(
   }
   if (tasks.includes("image_generation") && direction === "input" && /input/i.test(header))
     return "input_image";
-  if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
+  if (rateUnit === "image")
+    return direction === "input" && /input/i.test(header) ? "input_image" : "image_generation";
+  if (tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
   if (/voice clone/.test(evidence)) return "speech_generation";
   if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
@@ -1159,7 +1167,14 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
   const range = tier
     ?.replace(/,/g, "")
     .match(/(?:(\d+(?:\.\d+)?[KM]?)<)?Token≤(\d+(?:\.\d+)?[KM]?)/i);
-  const mode = value(table, row, /^Mode(?:$| \/)/i);
+  const mode = value(table, row, /^(?:Mode|Output video mode)(?:$| \/)/i);
+  const videoType = value(table, row, /^Output video type$/i);
+  const audio =
+    videoType !== undefined && /^Audio video(?: audio=true)?$/i.test(videoType)
+      ? true
+      : videoType !== undefined && /^Silent video(?: audio=false)?$/i.test(videoType)
+        ? false
+        : undefined;
   const exclusiveMinimum = tokenCount(range?.[1]);
   const subheading = header.split(" / ").at(-1);
   const operation = mode ?? (/thinking mode/i.test(subheading ?? "") ? subheading : undefined);
@@ -1174,6 +1189,7 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
       ? {}
       : { operation: text(operation).toLowerCase().replace(/\W+/g, "_") }),
     ...(resolution === undefined ? {} : { resolution }),
+    ...(audio === undefined ? {} : { audio }),
     ...(subheading === undefined || !/^(?:Text|Audio|Image|Video|Image\/video)/i.test(subheading)
       ? {}
       : { modality: text(subheading).toLowerCase() }),
@@ -1428,7 +1444,7 @@ function rowPrices(
   return { rates: result, raw: unresolved };
 }
 
-function priceOperations(id: string, headings: string[]): ModelTask[] {
+function priceOperations(id: string, headings: string[], headers: string[]): ModelTask[] {
   const evidence = `${id} ${headings.join(" ")}`.toLowerCase();
   const section = headings.find((heading) => dashscopeRegion(heading) === undefined);
   const result: ModelTask[] = [];
@@ -1436,7 +1452,11 @@ function priceOperations(id: string, headings: string[]): ModelTask[] {
   if (/rerank/.test(evidence)) result.push("reranking");
   if (/image generation|image processing|text-to-image|image translation/.test(evidence))
     result.push("image_generation");
-  if (/video generation|video processing/.test(evidence)) result.push("video_generation");
+  if (
+    /video generation|video processing/.test(evidence) ||
+    headers.some((header) => /^Output video (?:type|mode|resolution)$/i.test(header))
+  )
+    result.push("video_generation");
   if (/music generation/.test(evidence)) result.push("audio_generation");
   if (/speech synthesis|tts|cosyvoice|voice (?:clone|design|enrollment)/.test(evidence))
     result.push("speech_synthesis");
@@ -1571,7 +1591,7 @@ function commercialEvidence(input: ParseInput, bundle: LinkedBundle): Commercial
 }
 
 const webSearchScopes = new Set(["International", "Global", "Chinese mainland"]);
-const webSearchMarkdownScopes = new Set(["Singapore", "China (Beijing)"]);
+const webSearchMarkdownScopes = new Set(["Singapore", "China (Beijing)", "Global"]);
 
 function markdownSectionTitle(line: string): string | undefined {
   const markup =
@@ -1582,7 +1602,7 @@ function markdownSectionTitle(line: string): string | undefined {
 function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
   const normalized = documentText(body);
   const result = new Set(
-    [...normalized.matchAll(/\bqwen[a-z0-9._-]*[.-][a-z0-9._-]+\b/g)]
+    [...normalized.matchAll(/\b[a-z0-9][a-z0-9._/-]*[a-z0-9]\b/g)]
       .map((match) => match[0])
       .filter((id) => knownIds.has(id)),
   );
@@ -1604,7 +1624,9 @@ function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
 }
 
 function webSearchPrice(body: string, scope: string): string | undefined {
-  const normalized = documentText(body);
+  const billing = toolBillingBody(body);
+  if (billing === undefined) return;
+  const normalized = documentText(billing);
   const label =
     scope === "International"
       ? "international deployment scope"
@@ -1619,6 +1641,136 @@ function webSearchPrice(body: string, scope: string): string | undefined {
   );
   const amount = normalized.match(pattern)?.[1];
   return amount === undefined ? undefined : decimal(amount);
+}
+
+function toolBillingBody(body: string): string | undefined {
+  if (markdownDocument(body)) {
+    const lines = markdownProse(body).split(/\r?\n/);
+    const starts = lines.flatMap((line, index) =>
+      markdownSectionTitle(line) === "Billing" ? [index] : [],
+    );
+    if (starts.length === 0) return body;
+    const start = starts[0];
+    if (starts.length !== 1 || start === undefined) return;
+    const depth = lines[start]?.match(/^#+/)?.[0].length ?? 2;
+    const end = lines.findIndex(
+      (line, index) =>
+        index > start && /^#{1,6}\s/.test(line) && (line.match(/^#+/)?.[0].length ?? 7) <= depth,
+    );
+    return lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
+  }
+  const $ = load(body),
+    headings = $("h1,h2,h3").filter((_, node) => text($(node).text()) === "Billing");
+  if (headings.length === 0) return body;
+  if (headings.length !== 1) return;
+  return headings
+    .first()
+    .nextUntil("h1,h2,h3")
+    .toArray()
+    .map((node) => $.html(node))
+    .join("\n");
+}
+
+function namedToolRegions(input: ParseInput, raw: string): string[] {
+  return unique(
+    raw.split(/,\s*|\s+and\s+/).flatMap((label) => {
+      const candidate = text(label.replace(/^and\s+/i, "")),
+        region = dashscopeRegion(candidate);
+      if (region !== undefined) return [region];
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "web_search_scope_unsupported",
+        sample: candidate,
+      });
+      return [];
+    }),
+  );
+}
+
+function webSearchPolicyQuotes(
+  input: ParseInput,
+  body: string,
+): Array<{ operation: string; price: string; regions: string[] }> | undefined {
+  const billing = toolBillingBody(body);
+  if (billing === undefined) return [];
+  if (!/\bagent(?:\\?_max)?\s+policy/i.test(documentText(billing))) return;
+  const result: Array<{ operation: string; price: string; regions: string[] }> = [];
+  let operation: string | undefined,
+    webUnit = false;
+  for (const line of markdownProse(billing).split(/\r?\n/)) {
+    const value = documentText(line.replaceAll("**", ""))
+      .replace(/\\_/g, "_")
+      .replace(/^\s*-\s*/, "");
+    const policy = value.match(/^(agent(?:_max)?) policy(?: \(Limited-time offer\))?:$/i)?.[1];
+    if (policy !== undefined) {
+      operation = policy.toLowerCase();
+      webUnit = false;
+      continue;
+    }
+    if (/policy\s*(?:\(|:|$)/i.test(value)) {
+      operation = undefined;
+      webUnit = false;
+      continue;
+    }
+    if (operation === undefined) continue;
+    if (/^(?:The )?Fee per (?:1,000|1000) calls/i.test(value)) {
+      webUnit = !/extractor/i.test(value);
+      continue;
+    }
+    if (!webUnit) continue;
+    const quote = value.match(/^For the (.+?) regions?:\s*\\?\$([0-9][0-9,]*(?:\.[0-9]+)?)\.?$/i);
+    const price = quote?.[2] === undefined ? undefined : decimal(quote[2]);
+    if (quote?.[1] === undefined || price === undefined) continue;
+    const regions = namedToolRegions(input, quote[1]);
+    if (regions.length > 0) result.push({ operation, price, regions });
+  }
+  if (result.length === 0)
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "web_search_policy_unavailable",
+    });
+  return result;
+}
+
+function regionalWebSearchRates(
+  input: ParseInput,
+  body: string,
+  models: Map<string, ProviderModel>,
+  sections: ReadonlyMap<string, string[]>,
+): DashscopeToolRate[] | undefined {
+  const quotes = webSearchPolicyQuotes(input, body);
+  if (quotes === undefined) return;
+  return [...sections].flatMap(([scope, lines]) => {
+    const section = lines.join("\n"),
+      ids = mentionedModelIds(section, new Set(models.keys()));
+    const global = documentText(section).match(/supported in the (.+?) regions\b/i)?.[1];
+    const regions =
+      scope === "Global" ? (global === undefined ? [] : namedToolRegions(input, global)) : [scope];
+    if (regions.length === 0)
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "web_search_model_scope_drift",
+        sample: scope,
+      });
+    return quotes.flatMap((quote) =>
+      quote.regions
+        .filter((region) => regions.includes(region))
+        .flatMap((region) =>
+          [...ids].map((modelId) => ({
+            modelId,
+            scope,
+            rate: publishedRate(
+              "web_search",
+              quote.price,
+              "thousand_events",
+              input.source.id,
+              `USD per 1,000 ${quote.operation} web-search calls`,
+              { region, operation: quote.operation },
+            ),
+          })),
+        ),
+    );
+  });
 }
 
 function webSearchRate(
@@ -1676,7 +1828,7 @@ function webSearchRates(
 ): DashscopeToolRate[] {
   if (body === undefined) return [];
   if (markdownDocument(body)) {
-    const lines = body.split(/\r?\n/);
+    const lines = markdownProse(body).split(/\r?\n/);
     const supported = lines.findIndex((line) => markdownSectionTitle(line) === "Supported models");
     const end = lines.findIndex(
       (line, index) => index > supported && markdownSectionTitle(line) === "Quick start",
@@ -1699,14 +1851,16 @@ function webSearchRates(
         sections.get(scope)?.push(line);
       }
     }
-    for (const scope of webSearchMarkdownScopes)
+    for (const scope of ["Singapore", "China (Beijing)"])
       if (!sections.has(scope))
         input.onPricingReconciliation?.({
           disposition: "unbound",
           reason_code: "web_search_model_scope_drift",
           sample: scope,
         });
-    return [...webSearchMarkdownScopes].flatMap((scope) =>
+    const regional = regionalWebSearchRates(input, body, models, sections);
+    if (regional !== undefined) return regional;
+    return [...sections.keys()].flatMap((scope) =>
       webSearchRate(input, body, scope, models, (sections.get(scope) ?? []).join("\n")),
     );
   }
@@ -1750,7 +1904,8 @@ function imageSearchRates(
   operation: "image_search" | "web_search_image",
 ): DashscopeToolRate[] {
   if (body === undefined) return [];
-  const normalized = documentText(body);
+  const billing = toolBillingBody(body);
+  const normalized = billing === undefined ? "" : documentText(billing);
   const ids = mentionedModelIds(body, new Set(models.keys()));
   if (ids.size === 0) {
     input.onPricingReconciliation?.({
@@ -1767,7 +1922,11 @@ function imageSearchRates(
     ],
   ] as const;
   return scopes.flatMap(([scope, pattern]) => {
-    const amount = normalized.match(pattern)?.[1];
+    const reverse =
+      scope === "Singapore"
+        ? /\$([0-9][0-9,]*(?:\.[0-9]+)?)\s+for deployments in the Singapore region/i
+        : /\$([0-9][0-9,]*(?:\.[0-9]+)?)\s+for deployments in North China 2 \(Beijing\)/i;
+    const amount = normalized.match(pattern)?.[1] ?? normalized.match(reverse)?.[1];
     const price = amount === undefined ? undefined : decimal(amount);
     if (price === undefined) {
       input.onPricingReconciliation?.({
@@ -1786,7 +1945,6 @@ function imageSearchRates(
         `USD per 1,000 ${operation.replaceAll("_", "-")} calls`,
         {
           region: scope,
-          deployment_scope: scope === "Singapore" ? "International" : "Chinese mainland",
           operation,
         },
       );
@@ -1803,16 +1961,19 @@ function imageSearchRates(
 function cacheModels(input: ParseInput, body: string | undefined): Map<string, Set<string>> {
   if (body === undefined) return new Map();
   if (markdownDocument(body)) {
-    const lines = body.split(/\r?\n/);
+    const lines = markdownProse(body).split(/\r?\n/);
     const result = new Map<string, Set<string>>();
     for (const mode of ["Explicit cache", "Implicit cache"] as const) {
-      const start = lines.findIndex(
-        (line) => text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === mode,
-      );
-      const supported = lines.findIndex(
+      const start = lines.findIndex((line) => markdownSectionTitle(line) === mode);
+      const next = lines.findIndex(
         (line, index) =>
           index > start &&
-          text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Supported models",
+          ["Explicit cache", "Implicit cache"].includes(markdownSectionTitle(line) ?? ""),
+      );
+      const end = next < 0 ? lines.length : next;
+      const supported = lines.findIndex(
+        (line, index) =>
+          index > start && index < end && markdownSectionTitle(line) === "Supported models",
       );
       if (start < 0 || supported < 0) {
         input.onPricingReconciliation?.({
@@ -1823,29 +1984,69 @@ function cacheModels(input: ParseInput, body: string | undefined): Map<string, S
         continue;
       }
       let region: string | undefined;
+      let deployment: string | undefined;
+      let scopeKnown = true;
       let observedRegions = 0;
-      for (const line of lines.slice(supported + 1)) {
-        const heading = line.match(/^(#{2,3})\s+(.+?)\s*$/);
-        if (heading?.[2] !== undefined) {
-          const candidate = dashscopeRegion(text(heading[2].replaceAll("**", "")));
+      for (const line of lines.slice(supported + 1, end)) {
+        if (/^\s*<\/Tab>\s*$/.test(line)) {
+          region = undefined;
+          deployment = undefined;
+          scopeKnown = true;
+          continue;
+        }
+        const heading = markdownSectionTitle(line);
+        if (heading !== undefined) {
+          const candidate = dashscopeRegion(heading);
           if (candidate !== undefined) {
             region = candidate;
+            deployment = undefined;
+            scopeKnown = true;
             observedRegions += 1;
             continue;
           }
-          if (observedRegions > 0) break;
+          if (/^#{1,3}\s+/.test(line)) break;
           region = undefined;
           continue;
         }
         if (region === undefined) continue;
-        const suffix = text(line.replace(/^\s*[-*]\s*/, ""))
-          .split(":")
-          .at(-1);
+        const content = text(
+          load(markdownInlineText(line.replace(/^\s*[-*>]\s*/, "")).replaceAll("**", ""))
+            .root()
+            .text(),
+        );
+        const scopeLabel = (
+          content.match(/^(.+?) scope:$/i)?.[1] ??
+          content.match(
+            /^The following models are available in the (.+?) deployment scope\.$/i,
+          )?.[1]
+        )?.replace(/\s+service deployment$/i, "");
+        const scope = scopeLabel === "China (Hong Kong)" ? "Hong Kong (China)" : scopeLabel;
+        if (scope !== undefined) {
+          scopeKnown = [
+            "Global",
+            "International",
+            "Chinese mainland",
+            "EU",
+            "Japan",
+            "US",
+            "Hong Kong (China)",
+          ].includes(scope);
+          deployment = scopeKnown ? scope : undefined;
+          if (!scopeKnown)
+            input.onPricingReconciliation?.({
+              disposition: "unbound",
+              reason_code: "cache_model_scope_drift",
+              sample: `${mode}:${region}:${scope}`,
+            });
+          continue;
+        }
+        if (!scopeKnown) continue;
+        const suffix = content.split(":").at(-1);
         if (suffix === undefined) continue;
         for (const candidate of suffix.split(",")) {
           const id = exactId(candidate);
           if (id === undefined) continue;
-          const key = `${mode}\0${region}`;
+          const key = cacheScopeKey(mode, region, deployment);
           const values = result.get(key) ?? new Set<string>();
           values.add(id);
           result.set(key, values);
@@ -1882,7 +2083,7 @@ function cacheModels(input: ParseInput, body: string | undefined): Map<string, S
             for (const candidate of suffix.split(",")) {
               const id = exactId(candidate);
               if (id === undefined) continue;
-              const key = `${mode}\0${region}`;
+              const key = cacheScopeKey(mode, region);
               const values = result.get(key) ?? new Set<string>();
               values.add(id);
               result.set(key, values);
@@ -1893,15 +2094,34 @@ function cacheModels(input: ParseInput, body: string | undefined): Map<string, S
   return result;
 }
 
-function cacheExceptions(body: string | undefined, percentage: 10 | 20): Set<string> {
-  if (body === undefined) return new Set();
-  const ids = new Set<string>();
+function cacheScopeKey(mode: string, region: string, deployment = ""): string {
+  return `${mode}\0${region}\0${deployment}`;
+}
+
+function cacheApplies(
+  cache: ReadonlyMap<string, ReadonlySet<string>>,
+  mode: string,
+  id: string,
+  rate: SourcePriceFact,
+): boolean {
+  const { region, deployment_scope } = rate.conditions;
+  return (
+    region !== undefined &&
+    (cache.get(cacheScopeKey(mode, region))?.has(id) === true ||
+      cache.get(cacheScopeKey(mode, region, deployment_scope))?.has(id) === true)
+  );
+}
+
+function cacheExceptions(
+  body: string | undefined,
+  percentage: 10 | 20,
+  knownIds: Set<string>,
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  if (body === undefined) return ids;
   for (const fragment of documentText(body).split(/[!?]|\.(?=\s|$)|\n+/)) {
     if (!new RegExp(`not\\s+${percentage}%`, "i").test(fragment)) continue;
-    for (const match of fragment.matchAll(/\b(?:deepseek|qwen)[a-z0-9._-]*\b/gi)) {
-      const id = exactId(match[0]);
-      if (id !== undefined) ids.add(id);
-    }
+    for (const id of mentionedModelIds(fragment, knownIds)) ids.set(id, fragment.slice(0, 4096));
   }
   return ids;
 }
@@ -1910,7 +2130,7 @@ function cacheRate(
   input: SourcePriceFact,
   meterName: "cache_read_text" | "cache_write_text",
   factor: string,
-  operation: string,
+  cacheMode: "explicit" | "implicit",
   ttl?: number,
 ): SourcePriceFact {
   return {
@@ -1919,12 +2139,91 @@ function cacheRate(
     price: multiplyDecimal(input.price, factor),
     conditions: {
       ...input.conditions,
-      operation,
+      cache_mode: cacheMode,
       ...(ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
     },
     derived: true,
     derivation: `source input price × ${factor}`,
   };
+}
+
+function publishedCacheRead(
+  model: ProviderModel,
+  input: SourcePriceFact,
+  mode: "explicit" | "implicit",
+): boolean {
+  const scope = {
+    ...input.conditions,
+    cache_mode: mode,
+    ...(mode === "explicit" ? { cache_ttl_seconds: 300 } : {}),
+  };
+  return model.price_facts.some(
+    (rate) =>
+      rate.meter === "cache_read_text" &&
+      !rate.derived &&
+      rate.unit === input.unit &&
+      rate.currency === input.currency &&
+      Object.entries(rate.conditions).every(([key, value]) => {
+        if (value === undefined) return true;
+        const expected: unknown = Reflect.get(scope, key);
+        if (key === "context_min_tokens")
+          return typeof expected === "number" && typeof value === "number" && expected >= value;
+        if (key === "context_max_tokens")
+          return typeof expected === "number" && typeof value === "number" && expected <= value;
+        return expected === value;
+      }),
+  );
+}
+
+function unknownCacheRead(
+  model: ProviderModel,
+  input: SourcePriceFact,
+  mode: "explicit" | "implicit",
+  fragment: string,
+): void {
+  model.raw_price_facts.push({
+    term_key: "unpublished_cache_read",
+    impact: "base_price",
+    reason: "unknown_amount",
+    conditions: {
+      ...input.conditions,
+      cache_mode: mode,
+      ...(mode === "explicit" ? { cache_ttl_seconds: 300 } : {}),
+    },
+    source_ref: input.source_ref,
+    raw: {
+      fragment,
+      meter: "cache_read_text",
+      unit: input.raw_unit ?? input.unit,
+      denomination: input.currency,
+    },
+  });
+}
+
+function billingItemQuotes(
+  input: ParseInput,
+  table: Table,
+  row: Cell[],
+  billingItem: string,
+): SourceRawPricingFact[] {
+  return table.headers.flatMap((header, index) => {
+    const cell = row[index];
+    if (!/price/i.test(header) || cell === undefined) return [];
+    return priceSegments(cell, header).map((segment) => ({
+      term_key: "unparsed_billing_item",
+      impact: "base_price" as const,
+      reason: "unsupported_structure" as const,
+      conditions: { ...priceConditions(table, row, header), operation: billingItem },
+      source_ref: input.source.id,
+      raw: {
+        label: billingItem,
+        fragment: `${billingItem}; ${cell.text}`.slice(0, 4096),
+        amount: segment.price,
+        denomination: "USD",
+        unit: `${header}; ${cell.text}`,
+      },
+    }));
+  });
 }
 
 export function parseDashscopePricing(input: ParseInput): SourceParseResult {
@@ -1973,13 +2272,13 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
       const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
       const customQuote = row.some((cell) => /contact (?:sales|us)/i.test(cell.text));
       for (const id of rowIds) {
-        const tasks = priceOperations(id, table.headings);
+        const tasks = priceOperations(id, table.headings, table.headers);
         // A new operation column cannot disappear into an unconditional model rate.
         const billingItem = value(table, row, /^Billing item$/i);
         const parsed =
           billingItem === undefined
             ? rowPrices(input, table, row, tasks, id)
-            : { rates: [], raw: [] };
+            : { rates: [], raw: billingItemQuotes(input, table, row, billingItem) };
         const parsedRates = parsed.rates;
         if (billingItem !== undefined)
           input.onPricingReconciliation?.({
@@ -2078,13 +2377,14 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     ),
   ];
   for (const [key, idsForRegion] of cache) {
-    const [mode = "", region = ""] = key.split("\0");
+    const [mode = "", region = "", deployment = ""] = key.split("\0");
     for (const id of idsForRegion) {
       const current = models.get(id);
       const hasBaseRate = current?.price_facts.some(
         (item) =>
           item.meter === "input_text" &&
           item.conditions.region === region &&
+          (deployment === "" || item.conditions.deployment_scope === deployment) &&
           item.conditions.promotion !== true &&
           item.conditions.service_tier === undefined,
       );
@@ -2122,8 +2422,8 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
       );
     }
   }
-  const explicitExceptions = cacheExceptions(evidence.cacheBody, 10);
-  const implicitExceptions = cacheExceptions(evidence.cacheBody, 20);
+  const explicitExceptions = cacheExceptions(evidence.cacheBody, 10, new Set(models.keys()));
+  const implicitExceptions = cacheExceptions(evidence.cacheBody, 20, new Set(models.keys()));
   for (const [id, model] of models) {
     if (!evidence.cacheRates) continue;
     const baseRates = model.price_facts.filter(
@@ -2136,15 +2436,19 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     for (const item of baseRates) {
       const region = item.conditions.region;
       if (region === undefined) continue;
-      if (cache.get(`Explicit cache\0${region}`)?.has(id)) {
-        const rates = [cacheRate(item, "cache_write_text", "1.25", "explicit_cache", 300)];
-        if (explicitExceptions.has(id))
-          input.onPricingReconciliation?.({
-            disposition: "unbound",
-            reason_code: "explicit_cache_price_not_public",
-            sample: `${id}:${region}`,
-          });
-        else rates.push(cacheRate(item, "cache_read_text", "0.1", "explicit_cache", 300));
+      if (cacheApplies(cache, "Explicit cache", id, item)) {
+        const rates = [cacheRate(item, "cache_write_text", "1.25", "explicit", 300)];
+        const exception = explicitExceptions.get(id);
+        if (!publishedCacheRead(model, item, "explicit")) {
+          if (exception !== undefined) {
+            unknownCacheRead(model, item, "explicit", exception);
+            input.onPricingReconciliation?.({
+              disposition: "raw",
+              reason_code: "explicit_cache_price_not_public",
+              sample: `${id}:${region}`,
+            });
+          } else rates.push(cacheRate(item, "cache_read_text", "0.1", "explicit", 300));
+        }
         derived.push(...rates);
         for (const rate of rates)
           input.onPricingReconciliation?.({
@@ -2153,16 +2457,19 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
             sample: `${id}:${rate.meter}:${region}`,
           });
       }
-      if (cache.get(`Implicit cache\0${region}`)?.has(id)) {
-        if (implicitExceptions.has(id)) {
+      if (cacheApplies(cache, "Implicit cache", id, item)) {
+        if (publishedCacheRead(model, item, "implicit")) continue;
+        const exception = implicitExceptions.get(id);
+        if (exception !== undefined) {
+          unknownCacheRead(model, item, "implicit", exception);
           input.onPricingReconciliation?.({
-            disposition: "unbound",
+            disposition: "raw",
             reason_code: "implicit_cache_price_not_public",
             sample: `${id}:${region}`,
           });
           continue;
         }
-        const rate = cacheRate(item, "cache_read_text", "0.2", "implicit_cache");
+        const rate = cacheRate(item, "cache_read_text", "0.2", "implicit");
         derived.push(rate);
         input.onPricingReconciliation?.({
           disposition: "normalized",

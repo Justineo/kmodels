@@ -4529,11 +4529,11 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("speech_generation", "1", { region: "Singapore" }),
         rate("cache_write_text", "2.5", {
           region: "Singapore",
-          operation: "explicit_cache",
+          cache_mode: "explicit",
         }),
         rate("cache_read_text", "0.2", {
           region: "Singapore",
-          operation: "explicit_cache",
+          cache_mode: "explicit",
         }),
         rate("input_text", "1", { region: "Singapore", service_tier: "batch" }),
         rate("output_text", "4", { region: "Singapore", service_tier: "batch" }),
@@ -4824,16 +4824,6 @@ describe("parsed-source canonical pricing adapter", () => {
               charge_binding: {
                 signal: { namespace: "kmodels", value: "successful_web_searches" },
                 aggregation: "request",
-                quantity_methods: [
-                  {
-                    input_sources: [
-                      {
-                        channel: "response",
-                        locator: { kind: "json_pointer", value: "/usage/x_tools/web_search/count" },
-                      },
-                    ],
-                  },
-                ],
               },
             },
           ],
@@ -4841,5 +4831,10 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
       settlement: [],
     });
+    expect(
+      search?.offers[0]?.terms.flatMap((term) =>
+        term.kind === "rate" ? term.variants.map((v) => v.charge_binding?.quantity_methods) : [],
+      ),
+    ).toEqual([undefined]);
   });
 });

@@ -1,4 +1,6 @@
 import { finalizePricingInputs } from "./pricing-input.ts";
+import { parseTree, type Node as JsonNode, type ParseError } from "jsonc-parser";
+import { markdownProse } from "./markdown.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
@@ -14,7 +16,6 @@ interface Contract {
   markers: readonly RegExp[];
   channel: SourcePricingInputFact["channel"];
   locator: SourcePricingInputFact["locator"];
-  absentValue?: "zero";
   availability: SourcePricingInputFact["availability"];
 }
 
@@ -31,7 +32,6 @@ const musicPath = "/help/en/model-studio/fun-music-api";
 const asrPath = "/help/en/model-studio/non-realtime-speech-recognition-user-guide";
 const asrEventsPath = "/help/en/model-studio/fun-asr-server-events";
 const baseUrlPath = "/help/en/model-studio/base-url";
-const webSearchPath = "/help/en/model-studio/web-search";
 const imageSearchPath = "/help/en/model-studio/image-search";
 const textToImageSearchPath = "/help/en/model-studio/web-search-image";
 
@@ -39,13 +39,13 @@ const contracts: readonly Contract[] = [
   ...chatUsage("prompt_tokens", "input_tokens"),
   ...chatUsage("completion_tokens", "output_tokens"),
   ...chatUsage("prompt_tokens_details.cached_tokens", "cached_input_tokens"),
-  ...chatUsageZero("prompt_tokens_details.text_tokens", "input_text_tokens"),
-  ...chatUsageZero("prompt_tokens_details.image_tokens", "input_image_tokens"),
-  ...chatUsageZero("prompt_tokens_details.video_tokens", "input_video_tokens"),
-  ...chatUsageZero("prompt_tokens_details.audio_tokens", "input_audio_tokens"),
-  ...chatUsageZero("completion_tokens_details.text_tokens", "output_text_tokens"),
-  ...chatUsageZero("completion_tokens_details.reasoning_tokens", "reasoning_tokens"),
-  ...chatUsageZero("completion_tokens_details.audio_tokens", "output_audio_tokens"),
+  ...chatUsage("prompt_tokens_details.text_tokens", "input_text_tokens"),
+  ...chatUsage("prompt_tokens_details.image_tokens", "input_image_tokens"),
+  ...chatUsage("prompt_tokens_details.video_tokens", "input_video_tokens"),
+  ...chatUsage("prompt_tokens_details.audio_tokens", "input_audio_tokens"),
+  ...chatUsage("completion_tokens_details.text_tokens", "output_text_tokens"),
+  ...chatUsage("completion_tokens_details.reasoning_tokens", "reasoning_tokens"),
+  ...chatUsage("completion_tokens_details.audio_tokens", "output_audio_tokens"),
   contract(
     "chat.cache_creation_input_tokens",
     cachePath,
@@ -63,15 +63,15 @@ const contracts: readonly Contract[] = [
   ),
   ...nativeUsage("input_tokens", "input_tokens"),
   ...nativeUsage("output_tokens", "output_tokens"),
-  ...nativeUsageZero("input_tokens_details.text_tokens", "input_text_tokens"),
-  ...nativeUsageZero("input_tokens_details.image_tokens", "input_image_tokens"),
-  ...nativeUsageZero("image_tokens", "input_image_tokens"),
-  ...nativeUsageZero("input_tokens_details.video_tokens", "input_video_tokens"),
-  ...nativeUsageZero("video_tokens", "input_video_tokens"),
-  ...nativeUsageZero("audio_tokens", "input_audio_tokens"),
-  ...nativeUsageZero("output_tokens_details.text_tokens", "output_text_tokens"),
-  ...nativeUsageZero("output_tokens_details.reasoning_tokens", "reasoning_tokens"),
-  ...nativeUsageZero("output_tokens_details.audio_tokens", "output_audio_tokens"),
+  ...nativeUsage("input_tokens_details.text_tokens", "input_text_tokens"),
+  ...nativeUsage("input_tokens_details.image_tokens", "input_image_tokens"),
+  ...nativeUsage("image_tokens", "input_image_tokens"),
+  ...nativeUsage("input_tokens_details.video_tokens", "input_video_tokens"),
+  ...nativeUsage("video_tokens", "input_video_tokens"),
+  ...nativeUsage("audio_tokens", "input_audio_tokens"),
+  ...nativeUsage("output_tokens_details.text_tokens", "output_text_tokens"),
+  ...nativeUsage("output_tokens_details.reasoning_tokens", "reasoning_tokens"),
+  ...nativeUsage("output_tokens_details.audio_tokens", "output_audio_tokens"),
   ...nativeUsage("prompt_tokens_details.cached_tokens", "cached_input_tokens"),
   ...nativeUsage("cached_tokens", "cached_input_tokens"),
   contract(
@@ -108,18 +108,11 @@ const contracts: readonly Contract[] = [
   ),
   ...responsesDetailedUsage("input_tokens", "input_tokens"),
   ...responsesDetailedUsage("output_tokens", "output_tokens"),
-  ...responsesDetailedUsageZero("input_tokens_details.text_tokens", "input_text_tokens"),
-  ...responsesDetailedUsageZero("input_tokens_details.image_tokens", "input_image_tokens"),
-  ...responsesDetailedUsageZero("image_tokens", "input_image_tokens"),
-  ...responsesDetailedUsageZero("output_tokens_details.text_tokens", "output_text_tokens"),
-  ...responsesDetailedUsageZero("output_tokens_details.reasoning_tokens", "reasoning_tokens"),
-  contract(
-    "responses.stream.web_search_count",
-    responsesPath,
-    "stream_event",
-    "/response/usage/x_tools/web_search/count",
-    [/x_tools\.web_search\.count/, /response\.completed/],
-  ),
+  ...responsesDetailedUsage("input_tokens_details.text_tokens", "input_text_tokens"),
+  ...responsesDetailedUsage("input_tokens_details.image_tokens", "input_image_tokens"),
+  ...responsesDetailedUsage("image_tokens", "input_image_tokens"),
+  ...responsesDetailedUsage("output_tokens_details.text_tokens", "output_text_tokens"),
+  ...responsesDetailedUsage("output_tokens_details.reasoning_tokens", "reasoning_tokens"),
   contract(
     "responses.stream.image_search_count",
     imageSearchPath,
@@ -194,16 +187,6 @@ const contracts: readonly Contract[] = [
   request("native.enable_thinking", nativePath, "/parameters/enable_thinking", [/enable_thinking/]),
   request("native.prompt_extend", videoPath, "/parameters/prompt_extend", [/prompt_extend/]),
   request("batch.enable_thinking", batchPath, "/body/enable_thinking", [/enable_thinking/]),
-  contract("native.web_search_count", webSearchPath, "response", "/usage/plugins/search/count", [
-    /usage\.plugins\.search\.count/,
-  ]),
-  contract(
-    "responses.web_search_count",
-    webSearchPath,
-    "response",
-    "/usage/x_tools/web_search/count",
-    [/x_tools\.web_search\.count/],
-  ),
   contract(
     "responses.image_search_count",
     imageSearchPath,
@@ -220,7 +203,10 @@ export function extractDashscopePricingInputs(
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
   const bodies = new Map(
-    documents.map(({ url, body }) => [normalizePath(new URL(url).pathname), body]),
+    documents.map(({ url, body }) => [
+      normalizePath(new URL(url).pathname),
+      accountingEvidence(body),
+    ]),
   );
   const facts = contracts.flatMap((item) => {
     const body = bodies.get(item.document);
@@ -233,7 +219,6 @@ export function extractDashscopePricingInputs(
         key: item.key,
         channel: item.channel,
         locator: item.locator,
-        ...(item.absentValue === undefined ? {} : { absent_value: item.absentValue }),
         availability: item.availability,
         source_ref: sourceRef,
       },
@@ -252,13 +237,9 @@ function chatUsage(field: string, key: string): Contract[] {
     contract(`chat.${key}`, chatPath, "response", `/usage/${pointer(field)}`, [marker(field)]),
     contract(`chat.stream.${key}`, chatPath, "stream_event", `/usage/${pointer(field)}`, [
       marker(field),
-      /stream_options\.include_usage/,
+      /stream_options\.include_usage|stream_options\s*[:=]\s*\{\s*["']include_usage["']/,
     ]),
   ];
-}
-
-function chatUsageZero(field: string, key: string): Contract[] {
-  return chatUsage(field, key).map((item) => ({ ...item, absentValue: "zero" }));
 }
 
 function nativeUsage(field: string, key: string): Contract[] {
@@ -269,10 +250,6 @@ function nativeUsage(field: string, key: string): Contract[] {
       /streaming and non-streaming\s+responses use the same usage fields/i,
     ]),
   ];
-}
-
-function nativeUsageZero(field: string, key: string): Contract[] {
-  return nativeUsage(field, key).map((item) => ({ ...item, absentValue: "zero" }));
 }
 
 function responsesUsage(field: string, key: string): Contract[] {
@@ -327,10 +304,6 @@ function responsesDetailedUsage(field: string, key: string): Contract[] {
   ];
 }
 
-function responsesDetailedUsageZero(field: string, key: string): Contract[] {
-  return responsesDetailedUsage(field, key).map((item) => ({ ...item, absentValue: "zero" }));
-}
-
 function batchUsage(field: string, key: string): Contract[] {
   return [
     contract(`batch.${key}`, batchPath, "result", `/response/body/usage/${pointer(field)}`, [
@@ -375,4 +348,67 @@ function marker(field: string): RegExp {
 
 function normalizePath(path: string): string {
   return path.replace(/\.md$/, "").replace(/\/$/, "");
+}
+
+function jsonProperty(node: JsonNode | undefined, name: string): JsonNode | undefined {
+  if (node?.type !== "object") return;
+  const matches =
+    node.children?.filter((child) => {
+      const key: unknown = child.children?.[0]?.value;
+      return child.type === "property" && key === name;
+    }) ?? [];
+  return matches.length === 1 ? matches[0]?.children?.[1] : undefined;
+}
+
+function sampleRoot(sample: string): JsonNode | undefined {
+  const errors: ParseError[] = [];
+  try {
+    const root = parseTree(sample, errors, { allowTrailingComma: true });
+    return errors.length === 0 && root?.type === "object" ? root : undefined;
+  } catch {
+    return;
+  }
+}
+
+function accountingEvidence(body: string): string {
+  const fields = new Set<string>();
+  for (const match of body.matchAll(
+    /^[ \t]*```(?:json|jsonc)\b[^\n]*\n([\s\S]*?)^[ \t]*```\s*$/gm,
+  )) {
+    const sample = match[1];
+    if (sample === undefined) continue;
+    const root = sampleRoot(sample);
+    const roots =
+      root === undefined ? sample.split(/\r?\n/).flatMap((line) => sampleRoot(line) ?? []) : [root];
+    for (const item of roots) {
+      const usage =
+        jsonProperty(item, "usage") ?? jsonProperty(jsonProperty(item, "response"), "usage");
+      if (usage === undefined) continue;
+      const pending = [{ node: usage, path: ["usage"] }];
+      for (let entry = pending.pop(); entry !== undefined; entry = pending.pop()) {
+        if (entry.path.length > 8) continue;
+        if (entry.node.type === "array") {
+          for (const node of entry.node.children ?? []) {
+            const billingType: unknown = jsonProperty(node, "x_billing_type")?.value;
+            if (entry.path.join(".") !== "usage.x_details" || billingType === "response_api")
+              pending.push({ node, path: entry.path });
+          }
+          continue;
+        }
+        if (entry.node.type !== "object") continue;
+        for (const child of entry.node.children ?? []) {
+          const key: unknown = child.children?.[0]?.value;
+          if (typeof key !== "string" || key.length > 128) continue;
+          const node = jsonProperty(entry.node, key);
+          if (node === undefined) continue;
+          const path = [...entry.path, key],
+            value: unknown = node.value;
+          if (node.type === "object" || node.type === "array") pending.push({ node, path });
+          else if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
+            fields.add(path.join("."));
+        }
+      }
+    }
+  }
+  return [body, markdownProse(body).replace(/\\_/g, "_"), ...fields].join("\n");
 }

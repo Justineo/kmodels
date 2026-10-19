@@ -41,9 +41,13 @@ import type {
   UsageQuantityMethod,
   UsageSignal,
 } from "./pricing-schema.ts";
-import type { SourcePricingInputFact } from "./pricing-source.ts";
+import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-source.ts";
 
 type Mechanism = "sync" | "batch";
+type PublishedModel = Pick<
+  ParsedProviderModel,
+  "uid" | "tasks" | "api_endpoints" | "delivery_modes" | "delivery_mode_evidence" | "capabilities"
+>;
 type TokenPart =
   | "input_text"
   | "input_image"
@@ -111,34 +115,75 @@ const tokenPartKeys = new Map<TokenPart, readonly string[]>([
 
 export function applyDashscopeCommercialTopology(
   input: AtomicProviderPricing,
+  publishedModels: readonly PublishedModel[],
   pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   const inputIndex = indexPricingInputs(pricingInputs);
+  const models = new Map(publishedModels.map((model) => [model.uid, model]));
   return {
     ...input,
-    books: input.books.map((book) =>
-      includePricingInputSourceRefs(
-        book.scope.kind === "models"
-          ? splitModelBook(book, input, inputIndex)
-          : bindResourceBook(book, input, inputIndex),
-      ),
-    ),
+    books: input.books.map((book) => {
+      if (book.scope.kind !== "models")
+        return includePricingInputSourceRefs(bindResourceBook(book, input, inputIndex));
+      const [modelRef] = book.scope.model_refs;
+      const model =
+        book.scope.model_refs.length === 1 && modelRef !== undefined
+          ? models.get(modelRef)
+          : undefined;
+      return includePricingInputSourceRefs(
+        splitModelBook(
+          book,
+          input,
+          modelInputs(model, inputIndex),
+          model?.capabilities.prompt_cache === true,
+        ),
+      );
+    }),
   };
+}
+
+function modelInputs(
+  model: PublishedModel | undefined,
+  inputIndex: PricingInputIndex,
+): PricingInputIndex {
+  const paths = model?.api_endpoints?.map((e) => e.path) ?? [];
+  const realtime =
+    model?.delivery_modes?.includes("realtime") === true ||
+    paths.some((path) => path.startsWith("/api-ws/"));
+  const ordinary =
+    paths.some((path) => /^\/(?:api\/v1|compatible-mode\/v1|apps\/anthropic)\//.test(path)) ||
+    (model?.delivery_mode_evidence ?? []).some((e) =>
+      /\b(?:HTTP|REST|Chat Completions|Responses)\b/i.test(e.raw_value),
+    );
+  if (!realtime || ordinary) return inputIndex;
+  const streamingAsr =
+    paths.includes("/api-ws/v1/inference") && model?.tasks.includes("transcription") === true;
+  return indexPricingInputs(
+    [...inputIndex.values()]
+      .flat()
+      .filter(
+        (f) =>
+          f.key === "request.resolved_region" || (streamingAsr && f.key.startsWith("asr.stream.")),
+      ),
+  );
 }
 
 function splitModelBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  cacheSupported: boolean,
 ): AtomicPricingBook {
-  const hasCache = book.offers.some((offer) =>
-    offer.terms.some(
-      (term) =>
-        term.kind === "rate" &&
-        term.meter.namespace === "kmodels" &&
-        (term.meter.value === "cache_read_text" || term.meter.value === "cache_write_text"),
-    ),
-  );
+  const hasCache =
+    cacheSupported ||
+    book.offers.some((offer) =>
+      offer.terms.some(
+        (term) =>
+          term.kind === "rate" &&
+          term.meter.namespace === "kmodels" &&
+          (term.meter.value === "cache_read_text" || term.meter.value === "cache_write_text"),
+      ),
+    );
   return {
     ...book,
     offers: book.offers.flatMap((offer) => {
@@ -199,10 +244,11 @@ function partitionTerm(
   }
   if (term.kind !== "rate") return mechanism === "sync" ? [term] : [];
   const variants = term.variants.flatMap((variant) => {
+    const { charge_binding: _binding, selector_sources: _selectors, ...quote } = variant;
     const applicability = mechanismApplicability(variant.applicability, mechanism);
     if (applicability === undefined) return [];
     const next = {
-      ...variant,
+      ...quote,
       applicability,
       observation: withApplicability(variant.observation, applicability),
     };
@@ -673,6 +719,7 @@ function bindResourceBook(
         return {
           ...term,
           variants: term.variants.map((variant) => {
+            const { charge_binding: _binding, selector_sources: _selectors, ...quote } = variant;
             const charge_binding = resourceBinding(
               resourceKey,
               term.meter,
@@ -682,7 +729,7 @@ function bindResourceBook(
             );
             const selector_sources = selectorSources(variant.applicability, "sync", inputIndex);
             return {
-              ...variant,
+              ...quote,
               ...(charge_binding === undefined ? {} : { charge_binding }),
               ...(selector_sources.length === 0 ? {} : { selector_sources }),
             };
@@ -706,20 +753,7 @@ function resourceBinding(
   if (meter.namespace !== "kmodels") return;
   if (resourceKey === "web-search" && meter.value === "web_search") {
     const signal = standardSignal("successful_web_searches");
-    return quantityBinding(
-      signal,
-      "request",
-      directMethods(
-        signal,
-        [
-          "native.web_search_count",
-          "responses.web_search_count",
-          "responses.stream.web_search_count",
-        ],
-        inputIndex,
-      ),
-      variant,
-    );
+    return quantityBinding(signal, "request", emptyMethods(), variant);
   }
   if (meter.value !== "image_search") return;
   const search =
