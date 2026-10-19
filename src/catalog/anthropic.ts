@@ -963,19 +963,31 @@ function validateRequestAccounting(
   return { dataResidencyGeneration, pricingInputs };
 }
 
-function effective(value: string): SourcePriceFact["conditions"] | undefined {
+function rowScope(value: string): SourcePriceFact["conditions"] | undefined {
+  let context: SourcePriceFact["conditions"] = {};
+  const prompt = value.match(/ \(for prompts (up to|over) ([^()]+) tokens\)/);
+  if (prompt !== null) {
+    const raw = prompt[2] ?? "";
+    if (!/^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(raw)) return;
+    const count = Number(raw.replaceAll(",", ""));
+    if (!Number.isSafeInteger(count) || (prompt[1] === "over" && count === Number.MAX_SAFE_INTEGER))
+      return;
+    context =
+      prompt[1] === "up to" ? { context_max_tokens: count } : { context_min_tokens: count + 1 };
+    value = value.replace(prompt[0], "");
+  }
   if (/[()]/.test(value.replace(/ \((?:limited availability|legacy)\)/g, ""))) return;
   const clauses = [
     ...value.matchAll(/\b(through|starting)\b\s+(.+?)(?=\s+(?:through|starting)\b|$)/g),
   ];
-  if (clauses.length === 0) return {};
+  if (clauses.length === 0) return context;
   if (clauses.length !== 1) return;
   const clause = clauses[0];
   const parsed = date(clause?.[2] ?? "");
   if (parsed === undefined) return;
   return clause?.[1] === "through"
-    ? { effective_until: parsed, promotion: true }
-    : { effective_from: parsed };
+    ? { ...context, effective_until: parsed, promotion: true }
+    : { ...context, effective_from: parsed };
 }
 
 interface CacheMultipliers {
@@ -1197,7 +1209,7 @@ function pricing(
     for (const values of [...table.rows, ...table.irregular]) {
       const nativeLabel = values[0] ?? "";
       const names = kind === "fast" ? nativeLabel.split(" / ").filter(Boolean) : [nativeLabel];
-      const scope = effective(nativeLabel);
+      const scope = rowScope(nativeLabel);
       const conditions = {
         ...scope,
         ...(kind === "batch"
