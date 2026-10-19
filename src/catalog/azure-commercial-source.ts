@@ -241,7 +241,7 @@ function addRawFact(facts: Map<string, MutableFact>, row: PriceRow, input: Input
     offer_key: "usage",
     offer_name: row.row,
     billing_mode: "usage",
-    pricing_state: "not_published",
+    pricing_state: "unknown",
     price_facts: [],
     raw_price_facts: [],
   };

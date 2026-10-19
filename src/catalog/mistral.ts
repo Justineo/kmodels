@@ -812,10 +812,9 @@ function sourceModel(
           ? "numeric"
           : draft.pricing.valid &&
               draft.pricing.unsupported === 0 &&
-              draft.pricing.prices.length === 0
-            ? draft.pricing.free
-              ? "free"
-              : "not_published"
+              draft.pricing.prices.length === 0 &&
+              draft.pricing.free
+            ? "free"
             : "unknown",
     price_facts: rates,
   } satisfies ProviderModel;
@@ -935,11 +934,6 @@ function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
     });
     if (draft.pricing.free)
       reconcile?.({ disposition: "explicit_non_numeric", reason_code: "free" });
-    else if (draft.pricing.prices.length === 0 && draft.pricing.unsupported === 0)
-      reconcile?.({
-        disposition: "explicit_non_numeric",
-        reason_code: "price_not_published",
-      });
   }
 }
 

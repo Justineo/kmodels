@@ -2,6 +2,10 @@
 
 Status: current
 
+Catalog and capability evidence cannot establish a commercial state. Gemma model cards leave
+pricing unknown; only the independently reviewed pricing table can establish free-tier rates or
+paid-tier restrictions. An unreadable or absent declaration cannot imply `not_published`.
+
 ## Boundary
 
 The Gemini catalog covers first-party public model identities and direct invocation rates that an

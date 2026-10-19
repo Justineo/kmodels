@@ -149,7 +149,7 @@ reviewed sentences. Source line wrapping must not remove a known price; unrecogn
 wording still remains local. Public tool pages also contain structured `webSearchCallCost` base
 amounts, but the inspected records omit Deep effort and excess-result/export pricing. The model
 API and SDK do not provide a complete alternative search tariff. The guide therefore remains the
-amount authority for the full search schedule; see the [source investigation](../pricing-research.md).
+amount authority for the full search schedule.
 
 ## Search services
 

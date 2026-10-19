@@ -1267,13 +1267,13 @@ describe("Mistral adapters", () => {
     });
   });
 
-  it("distinguishes an unpublished current price from missing pricing evidence", async () => {
+  it("keeps an empty current price definition unknown without a non-publication claim", async () => {
     const medium = withoutMistralPrices(await fixture("mistral/mistral-medium-3-5-26-04.ts"));
     const pricing = withoutMistralPublicMedium(await fixture("mistral/pricing.html"));
     const model = (await mistralCatalog({ medium, pricing })).find(
       ({ model_id }) => model_id === "mistral-medium-3-5",
     );
-    expect(model).toMatchObject({ pricing_state: "not_published", price_facts: [] });
+    expect(model).toMatchObject({ pricing_state: "unknown", price_facts: [] });
   });
 
   it("fills a repository price gap from the exact first-party public price card", async () => {

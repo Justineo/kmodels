@@ -14,11 +14,8 @@ This index points to the repository's current decisions. Detailed documents are 
 
 ## Domain topics
 
-- [Pricing research](docs/pricing-research.md): DBU conversion, Grok Priority, OCR billing, and
-  source evidence for session, geography, search, and grounding rules.
-
-- [Price-book completeness assessment](docs/pricing-raw-audit.md): 2026-09-30 coverage of all 20
-  providers, first-party source rechecks, implemented parser repairs, and remaining evidence gaps.
+- [Pricing coverage and evidence](docs/pricing-coverage.md): rate, binding, acquisition and operation
+  completeness; generated coverage resources, unknowns and evidence-preserving repair.
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.
@@ -34,7 +31,6 @@ This index points to the repository's current decisions. Detailed documents are 
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
 - [Portable pricing calculator](docs/pricing-calculator.md): caller-owned calculation exports, pure ESM package, exact evaluation, and language-neutral conformance.
-- [Request-charge audit](docs/pricing-audit.md): dated mechanism coverage and gaps for the 18 providers assessed on 2026-09-05.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
   inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;

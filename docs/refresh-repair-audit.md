@@ -42,6 +42,11 @@ Known missing accounting, endpoint, identity, currency, owned tariff/API scope, 
 contracts can require investigation while publication succeeds. An unknown meter or unbound product alone is not proof
 of an implementation defect.
 
+This includes a previously consumed card input/output amount, public API price field or cache
+billing policy becoming unreadable. The native reconciliation reason and bounded sample survive
+even when accepted source bytes and a retained commercial partition are unchanged. Generic usage
+envelopes and unused SDK/promotion types are not monitored as pricing contracts.
+
 A public source or dependency with two consecutive HTTP 404/410 failures enters relocation review.
 Native status is authoritative; prose matching exists only for older reports without that field.
 A source move requires an independent first-party index or link and verified replacement content.

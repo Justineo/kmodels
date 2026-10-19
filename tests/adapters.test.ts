@@ -3755,6 +3755,21 @@ describe("Gemini adapters", () => {
     );
   });
 
+  it("keeps Gemma capability evidence independent from an unreadable pricing declaration", async () => {
+    const pricing = (await fixture("gemini/pricing.html")).replaceAll(
+      "Free of charge",
+      "Unavailable",
+    );
+    const models = await geminiCatalog({ "pricing.html": pricing });
+    const gemma = models.filter(({ model_id }) => /^gemma-4-.+-it$/.test(model_id));
+    expect(gemma).toHaveLength(2);
+    expect(
+      gemma.every(
+        ({ pricing_state, price_facts }) => pricing_state === "unknown" && price_facts.length === 0,
+      ),
+    ).toBe(true);
+  });
+
   it("keeps music generation distinct and embedding dimensions structured", async () => {
     const models = await geminiCatalog();
     const music = models.find((item) => item.model_id === "lyria-test");

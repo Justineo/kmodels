@@ -87,7 +87,8 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 Repository pricing reconciliation counts only successfully mapped rates as normalized. Unsupported
 custom row shapes and unsupported denominators receive separate diagnostics while recognized
 sibling rates survive. An unreadable published rate is `unknown`, not a claim that no price was
-published. Only a valid, explicitly empty current price definition establishes `not_published`.
+published. A valid empty price definition also remains unknown; an explicit `free` declaration can
+establish free usage independently. An empty array cannot establish non-publication.
 
 The current
 [pricing component](<https://github.com/mistralai/platform-docs-public/blob/main/src/app/%5Blocale%5D/(docs)/inference/pricing/_components/pricing-table.tsx>)

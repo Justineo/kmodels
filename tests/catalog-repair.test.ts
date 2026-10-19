@@ -219,6 +219,17 @@ it.each([
     reason: "public_price_label_unsupported",
     sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
   },
+  ...[
+    "model_card_input_price_drift",
+    "model_card_output_price_drift",
+    "cache_pricing_policy_drift",
+    "public_price_claim_drift",
+  ].map((reason) => ({
+    provider_id: "cerebras",
+    source_id: reason === "public_price_claim_drift" ? "cerebras-models" : "cerebras-catalog",
+    reason,
+    sample: "gpt-oss-120b: consumed pricing claim unavailable",
+  })),
 ])(
   "exposes $reason for independent repair even when source bytes and fallback are unchanged",
   ({ provider_id, source_id, reason, sample }) => {

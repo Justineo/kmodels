@@ -175,7 +175,10 @@ and matching target units normalize. Unknown or conflicting allowances retain bo
 Unequal native prices survive extraction so canonical conflict resolution can withhold the affected
 rate. Grounding billing-rule notes remain informational evidence.
 
-See the [pricing research](../pricing-research.md) for the unresolved DeepSeek-OCR billing contract.
+DeepSeek-OCR's parenthetical page amounts do not establish whether they are alternative tariffs,
+illustrations or fixed token quantities. Preserve known token rates and both bounded page notes;
+do not add page and token charges or derive a billing conversion from their price ratio. Only a
+Google-owned contract for those alternatives can resolve that raw evidence.
 
 ## Calculation inputs
 

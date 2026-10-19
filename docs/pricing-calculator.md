@@ -42,7 +42,7 @@ records are projected into `sources`, without changing calculation schema `1.0`.
 
 Consumers may combine whole providers only from the same source pair. They must preserve all potentially applicable terms; rate/offer filtering can turn a partial cost into a falsely complete one. No export is bundled into npm. Price refreshes within schema `1.0` are independent of npm releases. Unknown versions fail explicitly.
 
-Coverage distinguishes normalized price availability, semantic charge bindings, complete acquisition alternatives, selectors without acquisition, unsupported raw reasons, and nonnumeric states. An operation array with no values means the term does not publish an operation predicate; it does not mean every operation is supported. Counts are diagnostic facts, not a claim that all request components can be calculated. The [18-provider audit](pricing-audit.md) records the reviewed mechanisms and outstanding evidence limits.
+Coverage distinguishes normalized price availability, semantic charge bindings, complete acquisition alternatives, selectors without acquisition, unsupported raw reasons, and nonnumeric states. An operation array with no values means the term does not publish an operation predicate; it does not mean every operation is supported. Counts are diagnostic facts, not a claim that all request components can be calculated. [Pricing coverage](pricing-coverage.md) defines the evidence levels and their limits; provider guides own exact current mechanisms.
 
 ## Shared arithmetic and release checks
 

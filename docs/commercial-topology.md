@@ -15,8 +15,8 @@ a request lifecycle, store a usage ledger, or reconcile an invoice.
 
 The [portable calculator](pricing-calculator.md) implements the stateless public handoff. It owns
 no price retrieval or usage lifecycle; applications initialize it with a complete versioned provider
-export and replace instances when data changes. The [provider audit](pricing-audit.md) records
-mechanism-level coverage and explicit evidence gaps.
+export and replace instances when data changes. [Pricing coverage](pricing-coverage.md) defines
+completeness and explicit evidence gaps; provider guides own exact mechanisms.
 
 The handoff to a calculator is explicit. For each applicable rate variant, Kmodels publishes:
 
