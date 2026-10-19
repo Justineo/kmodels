@@ -108,8 +108,9 @@ Current exact acquisition paths are:
 
 Accounting facts are endpoint-gated. A Chat locator is not attached to a model that only documents
 Responses, and image, audio, or video locators are attached only to a matching model task. When
-Azure publishes separately priced cache or audio input, uncached text is calculated within one API
-family as `total input - cached input - cache write - audio input`, floored at zero. Separately
+Azure publishes separately priced cache or audio input without independent cache-modality rates,
+uncached text is calculated within one API family as
+`total input - cached input - cache write - audio input`, floored at zero. Separately
 priced text output is similarly `total output - audio output`. Each API family retains its known
 calculation and only its independently verified input locators, even when that mapping is partial.
 Chat and Responses remain separate acquisition methods; missing signals must be supplied by the
@@ -125,6 +126,14 @@ published validity. A cache rate in one region cannot make another region subtra
 If a related component covers only part of a broader input-rate scope, automatic acquisition is
 withheld and the caller supplies the billable quantity; the known rate and semantic signal remain.
 Token equations are not inferred from a related rate with a different billing unit.
+
+Provider-owned audio, image and video cache meters participate in those same scope checks.
+When a tariff separately prices cached modalities, aggregate cached/write counts cannot supply
+the text-cache charge, and aggregate audio/image input cannot supply the uncached modality charge.
+The total-input equation is also withheld: aggregate cached and audio counts may overlap.
+The known prices and semantic charge bindings survive; callers supply independent billable
+partitions until an owned contract establishes exact acquisition. A disjoint region, currency or
+validity remains independent, while partial overlap or incompatible units withhold acquisition.
 
 The current Azure contracts do not establish an exact response selector for priority versus
 standard deployment pricing, a request/result field for region or deployment scope, a filtered
