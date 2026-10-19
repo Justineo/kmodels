@@ -89,6 +89,11 @@ with independently published native labels to correct a misclassified quantity, 
 its amount, unit, validity and commercial scope. Semantic bindings may be repaired without adding
 acquisition contracts that were absent from that price transaction. Old interpreted inputs remain
 available for audit and cannot bypass the current-extractor replay gate.
+Acquisition repairs can withdraw a field mapping without changing the quoted rate, price freshness
+or an independently established quantity equation. Preserve surviving mappings and known equations;
+do not replace missing acquisition with a zero quantity or a raw price. If a direct alternative is
+withdrawn and a calculation remains, callers supply its declared input signals through the published
+requirements contract. Retaining that equation does not create an implicit override of its result.
 When a parsed applicability bound is proven to be an unsupported implementation assumption,
 withdraw the affected executable observations into `unknown_applicability` raw variants. Preserve
 their exact quote, unit, locator and validity, retain independently proven selectors as possible
