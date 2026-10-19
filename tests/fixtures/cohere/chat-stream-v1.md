@@ -2,6 +2,8 @@
 
 POST https://api.cohere.com/v1/chat
 
+## Response
+
 ```json
 {
   "event_type": "stream-end",

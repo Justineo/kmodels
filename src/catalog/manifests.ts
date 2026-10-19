@@ -2643,7 +2643,7 @@ export const manifests = [
           minModels: 40,
           maxModels: 70,
         },
-        extractorVersion: "cohere-catalog-v16",
+        extractorVersion: "cohere-catalog-v17",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",

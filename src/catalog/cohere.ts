@@ -20,6 +20,7 @@ import {
 } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import type { SourceManifest } from "./manifests.ts";
+import type { SourceParseResult } from "./source-parse.ts";
 import { classifyModelTasks } from "./task.ts";
 
 interface Input {
@@ -1607,7 +1608,7 @@ function indexedModelDocuments(
   return [...paths].flatMap((pathname) => byPath.get(pathname) ?? []);
 }
 
-export function parseCohereCatalog(input: Input): ProviderModel[] {
+export function parseCohereCatalog(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "cohere-catalog")
     throw new Error("Invalid Cohere catalog extractor");
   const configuration = input.source.extractor;
@@ -1649,22 +1650,19 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     configuration.minModels,
     configuration.maxModels,
   );
-  const result = [...models.values()].sort((left, right) =>
-    left.model_id.localeCompare(right.model_id),
-  );
   const pricingInputs = extractCoherePricingInputs(
     bundle.documents,
     input.source.id,
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  const carrier = result[0];
-  if (carrier !== undefined && pricingInputs.length > 0)
-    result[0] = { ...carrier, pricing_inputs: pricingInputs };
-  return result;
+  return {
+    models: [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id)),
+    ...(pricingInputs.length === 0 ? {} : { pricing_inputs: pricingInputs }),
+  };
 }
 
-export function parseCoherePricing(input: Input): ProviderModel[] {
+export function parseCoherePricing(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "cohere-pricing")
     throw new Error("Invalid Cohere pricing extractor");
   if (input.catalogModels === undefined) throw new Error("Cohere pricing requires the catalog");
@@ -1694,15 +1692,17 @@ export function parseCoherePricing(input: Input): ProviderModel[] {
     input.source.extractor.maxProducts,
   );
   finalizeRetiredPricing(models);
-  return [...models.values()]
-    .filter(
-      ({ price_facts, raw_price_facts, pricing_state }) =>
-        price_facts.length > 0 || raw_price_facts.length > 0 || pricing_state !== "unknown",
-    )
-    .sort((left, right) => left.model_id.localeCompare(right.model_id));
+  return {
+    models: [...models.values()]
+      .filter(
+        ({ price_facts, raw_price_facts, pricing_state }) =>
+          price_facts.length > 0 || raw_price_facts.length > 0 || pricing_state !== "unknown",
+      )
+      .sort((left, right) => left.model_id.localeCompare(right.model_id)),
+  };
 }
 
-export function parseCohereApi(input: Input): ProviderModel[] {
+export function parseCohereApi(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "cohere-api") throw new Error("Invalid Cohere API extractor");
   const value = apiSchema.parse(JSON.parse(input.body));
   if (value.next_page_token !== undefined)
@@ -1751,5 +1751,5 @@ export function parseCohereApi(input: Input): ProviderModel[] {
   });
   if (unknownEndpoints.size > 0)
     input.onContractFinding?.(contractExtensionEvidence(["/models/*/endpoints/*"]));
-  return models;
+  return { models };
 }

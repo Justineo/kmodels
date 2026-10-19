@@ -4,6 +4,8 @@ POST https://api.cohere.com/v2/rerank
 
 The number of billed search units.
 
+## Response
+
 ```json
 { "meta": { "billed_units": { "search_units": 1 } } }
 ```

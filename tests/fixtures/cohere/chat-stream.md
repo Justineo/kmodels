@@ -2,6 +2,8 @@
 
 POST https://api.cohere.com/v2/chat
 
+## Response
+
 ```text
 event: message-end
 data: {
