@@ -80,3 +80,14 @@ it("recovers the documented default-region boundary across Markdown line wrappin
     }),
   ]);
 });
+
+it("keeps the resolved-region field without guessing a response default from request omission", async () => {
+  const path = "/docs/ai-gateway/security-and-compliance/regional-inference.md";
+  const body = (await fixture("region-usage-wrapped")).replace(
+    /When\s+you don't pin a region,[\s\S]+?doesn't pin a region\./,
+    "",
+  );
+  const facts = extractVercelPricingInputs(new Map([[path, body]]), "vercel-models");
+  expect(facts).toEqual([expect.objectContaining({ key: "gateway.served_region" })]);
+  expect(facts[0]?.selector_absent_value).toBeUndefined();
+});

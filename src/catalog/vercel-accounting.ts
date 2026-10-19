@@ -11,6 +11,7 @@ interface Contract {
   locator: SourcePricingInputFact["locator"];
   reduction?: SourcePricingInputFact["reduction"];
   selectorAbsentValue?: string;
+  selectorAbsentMarkers?: readonly RegExp[];
   availability: SourcePricingInputFact["availability"];
 }
 
@@ -61,12 +62,7 @@ const contracts: readonly Contract[] = [
   {
     key: "gateway.served_region",
     document: regionPath,
-    markers: [
-      /confirm the resolved region from the response/i,
-      /inferenceEndpoint/,
-      /geoRegion/,
-      /Leave it unset(?:[ \t]+|[ \t]*\r?\n[ \t]*)\(the `global` default\)/i,
-    ],
+    markers: [/confirm the resolved region from the response/i, /inferenceEndpoint/, /geoRegion/],
     channel: "response",
     locator: {
       kind: "provider_field",
@@ -74,6 +70,9 @@ const contracts: readonly Contract[] = [
         "providerMetadata.gateway.routing.modelAttempts[successful].providerAttempts[successful].inferenceEndpoint.geoRegion",
     },
     selectorAbsentValue: "default",
+    selectorAbsentMarkers: [
+      /When you don['’]t pin a region,\s*`inferenceEndpoint` is `null`, matching the `global`\s+default/i,
+    ],
     availability: "terminal_only",
   },
   {
@@ -138,15 +137,29 @@ export function extractVercelPricingInputs(
       onFinding?.(contractExtensionEvidence([`/documents${contract.document}/${contract.key}`]));
       return [];
     }
+    const hasSelectorDefault =
+      contract.selectorAbsentValue !== undefined &&
+      (contract.selectorAbsentMarkers === undefined ||
+        body
+          .split(/\r?\n\s*\r?\n/)
+          .some((paragraph) =>
+            contract.selectorAbsentMarkers?.every((marker) =>
+              marker.test(paragraph.replace(/\s+/g, " ")),
+            ),
+          ));
+    if (contract.selectorAbsentValue !== undefined && !hasSelectorDefault)
+      onFinding?.(
+        contractExtensionEvidence([
+          `/documents${contract.document}/${contract.key}/selector_default`,
+        ]),
+      );
     return [
       {
         key: contract.key,
         channel: contract.channel,
         locator: contract.locator,
         ...(contract.reduction === undefined ? {} : { reduction: contract.reduction }),
-        ...(contract.selectorAbsentValue === undefined
-          ? {}
-          : { selector_absent_value: contract.selectorAbsentValue }),
+        ...(!hasSelectorDefault ? {} : { selector_absent_value: contract.selectorAbsentValue }),
         availability: contract.availability,
         source_ref: sourceRef,
       },

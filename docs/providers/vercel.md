@@ -69,6 +69,12 @@ or invalid pricing partition still fails closed.
 Endpoint metadata may publish a quantization label such as `fp8` or `null`; that label is not part of
 the catalog identity or pricing contract, but either reviewed value must preserve the endpoint's
 route and rates.
+Unconsumed reasoning representation and privacy metadata do not validate or select prices; a new
+`interleaved` object cannot discard an otherwise valid model. An endpoint's nonzero search amount
+with an unreviewed denominator stays raw in its native-search service book, preserving the verified
+token rates in the inference book. A missing or unfamiliar companion field is local; a contradictory
+model/route identity or duplicate route owner raises a structured constraint failure so a refresh
+cannot silently replace the accepted partition with misbound or incomplete route prices.
 
 The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
 returned array is the completed-image quantity. Older examples that expose the same result as
@@ -106,6 +112,8 @@ conflict instead of being silently relabeled.
 Video duration rows with an omitted resolution or quality beside explicitly qualified siblings
 use the source's `default` selector value, as image rows do. They are not wildcard prices over all
 resolutions or qualities, and `default` does not infer a particular physical resolution.
+Boolean audio and voice-control conditions require their own published values; a missing flag does
+not become false because a sibling is true. Unresolved overlaps use the shared conflict fallback.
 Video model pages may publish a flat `$N/video` output rate instead of a duration rate; retain its
 provider-published `video` unit rather than treating it as seconds.
 `capabilities.pricing.image_input_cost_per_image_usd` and
@@ -119,8 +127,19 @@ retain quality, resolution, and video-input conditions; image rows retain qualit
 native web-search rows retain context tier. A missing or disagreeing detail registry leaves only the
 affected term raw.
 An otherwise valid model page may publish no usable pricing at all, including when the catalog and
-its endpoint expose only empty or zero-valued meters. That absence remains `not_published`; it does
+its endpoint expose only empty or placeholder meters. That absence remains `unknown`; it does
 not reject the complete catalog, become a free rate, or borrow a tariff from a sibling model.
+An explicit numeric zero remains a numeric quote. A `varies_by_provider` catalog entry has no
+unqualified executable rate: use the verified endpoint's exact route prices, including any route
+whose own price is zero. A missing endpoint cannot turn the catalog's minimum or zero into a
+route-independent fee. Equal-scope contradictory amounts survive extraction for canonical conflict
+resolution; parsing order never chooses the winning quote.
+
+An unreviewed `peak_pricing` schedule retains each affected amount, original unit, scope and policy
+parameters as raw `unknown_applicability`. Weekdays, holiday calendars and billed-period semantics
+must be established before those quotes become executable. A policy on one endpoint does not
+modify other fixed-price routes. Kmodels does not substitute request time or another provider's
+schedule. Raw-only service charges likewise carry no invented `not_published` state.
 The reviewed image-detail registry may put the price object directly under the model slug or
 inside its `model` property. Both literal structures are parsed without executing JavaScript;
 the wrapper cannot create a fictitious model named `model`.
@@ -135,7 +154,9 @@ amount authority for the full search schedule; see the [source investigation](..
 ## Search services
 
 Provider-native web and Maps prices live in shared service books whose model references define
-compatibility. The generic search books publish:
+compatibility. Independently callable generic search tools are provider resources without a model
+compatibility assertion. They appear in provider pricing and cannot make an unpriced model look
+priced or add unrelated search services to every model detail. Their books publish:
 
 - Perplexity: `$5 / 1,000` successful requests;
 - Exa: `$7 / 1,000` successful requests plus `$1 / 1,000` requested results above ten;
@@ -151,26 +172,26 @@ requested rows and each result card's `content.export_pricing`.
 
 ## Published pricing inputs
 
-Vercel's fixed first-party guides currently establish 25 acquisition facts. Multiple facts with one
+Vercel's fixed first-party guides establish field-local acquisition contracts. Multiple facts with one
 key are alternative AI SDK and Chat Completions request locations, not quantities to sum.
 
-| Price-book need          | First-party input                                                 | Calculation or interpretation                                 |
-| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| Input/output and context | Generation `native_tokens_prompt`, `native_tokens_completion`     | Direct only when one priced modality owns that side           |
-| Reasoning visibility     | Generation `native_tokens_reasoning`                              | Published as an available input; no separate rate is invented |
-| Cache read/write         | Generation `native_tokens_cached`, `native_tokens_cache_creation` | Direct partitions when the members are present                |
-| Native web search        | Generation `billable_web_search_calls`                            | Successful billable calls per generation attempt              |
-| Route provider           | Generation `provider_name`                                        | Selects `route_provider`                                      |
-| Fast mode                | `providerMetadata.gateway.routing.speed`                          | `fast` only when served fast; omission selects `standard`     |
-| Service tier             | `providerMetadata.gateway.serviceTier`                            | Served Flex/Priority; omission selects `standard`             |
-| Region                   | Successful route metadata `inferenceEndpoint.geoRegion`           | Resolved region; an absent endpoint selects global/default    |
-| Image count              | AI SDK image result `images` length                               | Completed generated images                                    |
-| Video duration           | Request `duration` and successful result `videos` length          | Requested seconds multiplied by completed videos, per job     |
-| Transcription duration   | Result `durationInSeconds`                                        | Input audio seconds on success                                |
-| Rerank request           | Presence of result `ranking`                                      | One successful rerank request                                 |
-| Generic search calls     | `gatewayToolCalls` count for each gateway search tool             | Successful calls for that specific service                    |
-| Exa/Parallel excess      | `numResults` / `maxResults`, including snake-case Chat fields     | Zero-floor subtraction of the included ten                    |
-| Tako effort              | `effort` in AI SDK or Chat tool configuration                     | Selects Instant, Fast, or Deep request rate                   |
+| Price-book need          | First-party input                                                 | Calculation or interpretation                                      |
+| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Input/output and context | Generation `native_tokens_prompt`, `native_tokens_completion`     | Direct only when one priced modality owns that side                |
+| Reasoning visibility     | Generation `native_tokens_reasoning`                              | Published as an available input; no separate rate is invented      |
+| Cache read/write         | Generation `native_tokens_cached`, `native_tokens_cache_creation` | Direct partitions when the members are present                     |
+| Native web search        | Generation `billable_web_search_calls`                            | Successful billable calls per generation attempt                   |
+| Route provider           | Generation `provider_name`                                        | Selects `route_provider`                                           |
+| Fast mode                | `providerMetadata.gateway.routing.speed`                          | `fast` only when served fast; omission selects `standard`          |
+| Service tier             | `providerMetadata.gateway.serviceTier`                            | Served Flex/Priority; omission selects `standard`                  |
+| Region                   | Successful route metadata `inferenceEndpoint.geoRegion`           | Resolved region; a documented null endpoint selects global/default |
+| Image count              | AI SDK image result `images` length                               | Completed generated images                                         |
+| Video duration           | Request `duration` and successful result `videos` length          | Requested seconds multiplied by completed videos, per job          |
+| Transcription duration   | Result `durationInSeconds`                                        | Input audio seconds on success                                     |
+| Rerank request           | Presence of result `ranking`                                      | One successful rerank request                                      |
+| Generic search calls     | `gatewayToolCalls` count for each gateway search tool             | Successful calls for that specific service                         |
+| Exa/Parallel excess      | `numResults` / `maxResults`, including snake-case Chat fields     | Zero-floor subtraction of the included ten                         |
+| Tako effort              | `effort` in AI SDK or Chat tool configuration                     | Selects Instant, Fast, or Deep request rate                        |
 
 All generation-record fields are `conditional`: the authenticated lookup is asynchronous and the
 runtime must retry a temporary “not found.” Terminal response selectors and successful result fields
@@ -182,6 +203,10 @@ without joining unrelated paragraphs. Service-tier evidence recognizes both the 
 omission wording and the explicit statement that AI Gateway omits the field when the provider
 reports the standard tier. This omission default assumes the caller receives complete gateway
 metadata; a client that drops that metadata needs request logs instead of guessing the served tier.
+Region's absence default additionally requires the owned response statement that `inferenceEndpoint`
+is null when no region is pinned. Request omission alone does not establish response-field semantics.
+Losing that default statement removes only the default, while a still-documented resolved-region
+field remains available.
 
 The optional maintenance [semantic contract audit](../semantic-audit.md) independently checks the
 meaning of emitted search counts, speed, tier and region mappings against complete original public
