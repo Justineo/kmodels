@@ -164,6 +164,28 @@ export const sagemakerSpecSchema = z.object({
   listing_id: z.string().regex(/^prodview-[a-z0-9]+$/),
 });
 
+interface SpecMetadata {
+  spec_key: string;
+  search_keywords?: string[] | undefined;
+  deprecated?: boolean | undefined;
+}
+
+export function assertSagemakerSpecMetadata(
+  previous: SpecMetadata | undefined,
+  current: SpecMetadata,
+): void {
+  const key = (header: SpecMetadata) =>
+    JSON.stringify([
+      header.spec_key,
+      header.deprecated,
+      header.search_keywords === undefined
+        ? undefined
+        : [...new Set(header.search_keywords)].sort(),
+    ]);
+  if (previous !== undefined && key(previous) !== key(current))
+    throw new Error("SageMaker manifest has conflicting metadata for one model/version");
+}
+
 export function sagemakerPricingSpecs(
   body: string,
   rows: readonly SageMakerRow[],
@@ -181,6 +203,7 @@ export function sagemakerPricingSpecs(
       throw new Error("SageMaker SDK spec path changed identity");
     const versions =
       byModel.get(header.model_id) ?? new Map<string, z.infer<typeof manifestHeaderSchema>>();
+    assertSagemakerSpecMetadata(versions.get(header.version), header);
     versions.set(header.version, header);
     byModel.set(header.model_id, versions);
   }

@@ -128,7 +128,10 @@ Spec discovery mirrors the SDK's
 PEP 440 comparison when every version is valid, otherwise lexical maximum. Package versions are
 not uniformly SemVer. This selection discovers the current package metadata and listing link;
 it does not publish a globally preferred model release version. Deployment facts remain package-scoped.
-Duplicate exact manifest records are deduplicated, paths must match their exact model/version,
+Duplicate exact manifest records produce one selected spec. Conflicting recognized metadata for
+the same model/version fails the source before version selection or admission, so record order
+cannot choose between incompatible deprecation, task, or spec-path claims. Additive unknown fields
+and keyword order do not create conflicts. Paths must match their exact model/version,
 and fetched specs must repeat both identities. URL components are encoded; provenance uses a
 version hash rather than copying arbitrary package labels into dependency keys.
 
