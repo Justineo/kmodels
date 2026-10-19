@@ -2,29 +2,18 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
+import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { extractOllamaPricingInputs } from "./ollama-accounting.ts";
 import { publishedRate } from "./pricing.ts";
-import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   assertItemCount,
   contractExtensionEvidence,
-  type SourceContractEvidence,
   type ZodContractObservation,
   zodContractEvidence,
 } from "./source-contract.ts";
 import { classifyModelTasks } from "./task.ts";
-import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
-
-interface ParseInput {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onContractFinding?: (evidence: SourceContractEvidence) => void;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
+import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
 const badgeSchema = z.enum(["audio", "cloud", "embedding", "thinking", "tools", "vision"]);
 const capabilitySchema = z.enum([
@@ -279,13 +268,13 @@ function libraryModel(input: ParseInput, item: LibraryItem): ProviderModel {
   };
 }
 
-export function parseOllamaLibrary(input: ParseInput): ProviderModel[] {
+export function parseOllamaLibrary(input: ParseInput): SourceParseResult {
   if (input.source.extractor.kind !== "ollama-library")
     throw new Error("Invalid Ollama library extractor");
   const items = libraryItems(input.body, input);
   const { minModels, maxModels } = input.source.extractor;
   assertItemCount("Ollama library models", items.length, minModels, maxModels);
-  return items.map((item) => libraryModel(input, item));
+  return { models: items.map((item) => libraryModel(input, item)) };
 }
 
 function validDateTime(value: unknown): string | undefined {
@@ -632,7 +621,7 @@ function retirementResponse(id: string, raw: unknown): Retirement | undefined {
   return match?.[1] === id && match[2] !== undefined ? { date: match[2] } : undefined;
 }
 
-export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
+export function parseOllamaCloud(input: ParseInput): SourceParseResult {
   if (input.source.extractor.kind !== "ollama-cloud")
     throw new Error("Invalid Ollama cloud extractor");
   const bundle = bundleSchema.parse(JSON.parse(input.body));
@@ -707,8 +696,6 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
       ? {}
       : { onReconciliation: input.onPricingReconciliation }),
   });
-  const carrier = result[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const id of pricing.keys())
     if (!ids.has(id))
       input.onPricingReconciliation?.({
@@ -730,5 +717,5 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
             sample: model.model_id,
           },
     );
-  return result;
+  return { models: result, pricing_inputs: pricingInputs };
 }

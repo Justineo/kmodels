@@ -19,6 +19,11 @@ and an exact request/result trigger. The existence of an API alone does not crea
 
 ## First-party source graph
 
+Library and Cloud parsers return the explicit source envelope. Cloud usage contracts belong to the
+source independently of model observations, so empty or filtered model results cannot discard
+them from compilation input. The independent inventory bounds and exact Cloud identity joins
+still apply. Replaying source facts does not turn a Library identity into a priced Cloud offer.
+
 - The [Ollama Library](https://ollama.com/library) supplies curated family identities,
   descriptions, capability badges, and update dates. It is non-exhaustive and does not claim a
   public Ollama invocation price.
