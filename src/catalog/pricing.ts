@@ -4,6 +4,13 @@ import type {
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 
+export function wholeTokenCount(value: string): number | undefined {
+  const match = value.match(/^(0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(K)?$/);
+  if (match?.[1] === undefined) return;
+  const result = Number(match[1].replaceAll(",", "")) * (match[2] === "K" ? 1000 : 1);
+  return Number.isSafeInteger(result) ? result : undefined;
+}
+
 export function scaleDecimal(value: string, places: number): string {
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
   const [whole = "", fraction = ""] = value.split(".");

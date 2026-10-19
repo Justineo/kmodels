@@ -80,9 +80,17 @@ pricing-page partition.
   states preserve bounded raw quotes while readable sibling cells survive.
   Omitted overlay facts retain their previous observation;
   the dedicated pricing page remains the primary amount source.
-  Explicit `Cache writes` cells take precedence over deriving the same card rate from its
+  One owned Pricing region supplies cells and modifier paragraphs; competing regions stay raw.
+  Quoted, code, and unrelated sections cannot supply executable modifiers. The exact full-request
+  long-context rule establishes both the base upper bound and the derived lower bound. Counts
+  require safe whole tokens and proper grouping; ambiguous bounds stay raw, while a known bound
+  with an unreadable multiplier preserves the base band and the unresolved long rule.
+  Explicit `Cache writes` cells take precedence over deriving the same scoped rate from its
   multiplier note. The reviewed long-context wording `input and cache rates` applies to both
-  cache reads and writes. `Live session duration` / `Per minute` is a session-runtime rate,
+  cache reads and writes. A flat explicit write quote remains flat when the long rule does not
+  qualify writes; missing writes derive from the already scoped input rates. Unreadable owned
+  modifiers retain raw evidence and report a contract diagnostic eligible for repair investigation.
+  `Live session duration` / `Per minute` is a session-runtime rate,
   separate from backend model and tool charges. Minimal fixtures reproduce these public
   [Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) and
   [Live](https://developers.openai.com/api/docs/models/gpt-live-1) card labels observed on 2026-10-04.
@@ -103,6 +111,12 @@ A new price-only identity requires a reviewed price-bearing table with a normali
 quote, or an explicit free schedule.
 An unreviewed table or a row containing only missing amounts cannot create an identity or make an
 otherwise empty pricing response pass admission. Valid sibling rows remain independent.
+
+The pricing page's Short and Long context columns mean at most 272,000 and more than 272,000
+input tokens respectively. The native HTML tooltips establish this definition; the Markdown
+rendering retains the column names but omits those tooltips. Each column carries its own bound
+even when every quote in the opposite column is absent. Neither a peer quote nor the model's
+maximum context window establishes a tariff boundary.
 
 Alias prices are derived only while the pricing page declares exact, unique target IDs. The current
 [Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak) says `latest` resolution

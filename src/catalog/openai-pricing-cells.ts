@@ -139,10 +139,6 @@ export function openAiModelPriceCells(
   if (table.section === "GPT-Live sessions" && headers === "Model|Price per minute")
     return [make("Price per minute", "session_runtime", "minute", {})];
   if (headers.startsWith("Model|Short context input|")) {
-    const long = table.headers.some(
-      (header) => header.startsWith("Long context") && !missing(cell(header)),
-    );
-    const short = (row[0] ?? "").includes("(<272K context length)");
     return table.headers.slice(1).map((header) => {
       const match = header.match(
         /^(?:(Short|Long) context )?(input|cached input|cache writes|output)$/,
@@ -158,7 +154,7 @@ export function openAiModelPriceCells(
                 ? "output_text"
                 : undefined;
       const context =
-        match?.[1] === undefined || (!long && !short)
+        match?.[1] === undefined
           ? {}
           : match[1] === "Short"
             ? { context_max_tokens: 272000 }

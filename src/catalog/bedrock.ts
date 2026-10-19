@@ -8,7 +8,13 @@ import { modelIdSchema } from "./identity.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { decimalsEqual, multiplyDecimal, rawPricingFact, scaleDecimal } from "./pricing.ts";
+import {
+  decimalsEqual,
+  multiplyDecimal,
+  rawPricingFact,
+  scaleDecimal,
+  wholeTokenCount,
+} from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel as ProviderModel,
@@ -321,13 +327,6 @@ function section(body: string, heading: string): string | undefined {
   return end < 0 ? content : content.slice(0, end);
 }
 
-function contextTokenCount(value: string): number | undefined {
-  const match = value.match(/^(0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(K)?$/);
-  if (match?.[1] === undefined) return;
-  const result = Number(match[1].replaceAll(",", "")) * (match[2] === "K" ? 1000 : 1);
-  return Number.isSafeInteger(result) ? result : undefined;
-}
-
 function cardProse(body: string): string {
   return markdownProse(body)
     .split("\n")
@@ -343,7 +342,7 @@ function modelContextPricing(body: string): ContextPricing {
   const prose = cardProse(content);
   const bound = (patterns: RegExp[]): number | undefined => {
     const matches = patterns.flatMap((pattern) => [...prose.matchAll(pattern)]);
-    const values = matches.map((match) => contextTokenCount(match[1] ?? ""));
+    const values = matches.map((match) => wholeTokenCount(match[1] ?? ""));
     if (values.some((value) => value === undefined)) return;
     const unique = new Set(values);
     return unique.size === 1 ? unique.values().next().value : undefined;
@@ -956,7 +955,7 @@ function openAiModelCardPricing(
     const count = match[3]?.match(
       long ? /^more than ([^\s]+) input tokens$/ : /^([^\s]+) input tokens or fewer$/,
     )?.[1];
-    const threshold = count === undefined ? undefined : contextTokenCount(count);
+    const threshold = count === undefined ? undefined : wholeTokenCount(count);
     const knownContext = threshold !== undefined && (!long || threshold < Number.MAX_SAFE_INTEGER);
     const context = !knownContext
       ? {}

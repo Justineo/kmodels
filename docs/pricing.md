@@ -843,6 +843,10 @@ Anthropic speed is established by its ordinary or Fast source matrix before asse
 speed cannot be filled from another variant, and Batch does not acquire an inapplicable speed
 selector from a synchronous quote.
 
+Context bounds belong to the source's own table, column, or conditional tariff rule. Shared assembly
+never complements a missing upper or lower bound from another quote. Explicitly bounded source
+bands remain disjoint; unqualified unequal quotes that overlap remain conflicting raw evidence.
+
 The pure applicability interpreter lives in `pricing-applicability.ts`. Website
 projection and the portable calculator use that same implementation, including
 partial OR clauses, interval selectors and exact decimal bounds. The calculator

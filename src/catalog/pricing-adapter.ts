@@ -845,37 +845,6 @@ function normalizedSourceFacts(
   rates: readonly SourcePriceFact[],
 ): Array<{ sourceRate: SourcePriceFact; normalizedRate: SourcePriceFact }> {
   const normalized = rates.map((rate) => sourcePriceFactSchema.parse(rate));
-  const contextGroups = groupRates(normalized, (rate) => {
-    const conditions = { ...rate.conditions };
-    delete conditions.context_min_tokens;
-    delete conditions.context_max_tokens;
-    return canonicalJson([rate.meter, rate.currency, rate.unit, conditions]);
-  });
-  for (const group of contextGroups.values()) {
-    const minimums = new Set(
-      group.flatMap(({ conditions }) =>
-        conditions.context_min_tokens === undefined ? [] : [conditions.context_min_tokens],
-      ),
-    );
-    const maximums = new Set(
-      group.flatMap(({ conditions }) =>
-        conditions.context_max_tokens === undefined ? [] : [conditions.context_max_tokens],
-      ),
-    );
-    const open = group.filter(
-      ({ conditions }) =>
-        conditions.context_min_tokens === undefined && conditions.context_max_tokens === undefined,
-    );
-    if (minimums.size === 1 && maximums.size === 0) {
-      const minimum = [...minimums][0]!;
-      if (Number.isSafeInteger(minimum) && minimum > 0)
-        for (const rate of open) rate.conditions.context_max_tokens = minimum - 1;
-    } else if (maximums.size === 1 && minimums.size === 0) {
-      const maximum = [...maximums][0]!;
-      if (Number.isSafeInteger(maximum) && maximum < Number.MAX_SAFE_INTEGER)
-        for (const rate of open) rate.conditions.context_min_tokens = maximum + 1;
-    }
-  }
 
   completeReviewedDefault(normalized, "service_tier", "standard");
   if (providerId === "amazon-bedrock") completeReviewedDefault(normalized, "speed", "standard");

@@ -4,7 +4,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 export { parseOpenAiAccounting } from "./openai-accounting.ts";
-import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, rawPricingFact } from "./pricing.ts";
+import { applyOpenAiCardRules } from "./openai-card-rules.ts";
 import { openAiContainerMinimum } from "./openai-container-pricing.ts";
 import { openAiSearchContent } from "./openai-search-content.ts";
 import type { ProviderAtomRegistryEntry, RawPriceObservation } from "./pricing-schema.ts";
@@ -53,14 +54,23 @@ function normalizedText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function sectionContent($: LoadedDocument, label: string): Selection {
-  const heading = $("main div")
+function pricingOwners($: LoadedDocument): Selection {
+  const headings = $("main div")
     .filter(
       (_index, element) =>
-        $(element).children().length === 0 && normalizedText($(element).text()) === label,
+        $(element).children().length === 0 &&
+        normalizedText($(element).text()) === "Pricing" &&
+        $(element).parents("aside,blockquote,pre,code,script,style,template").length === 0,
     )
-    .first();
-  return heading.parent().children().eq(1);
+    .parent();
+  const owners = headings.toArray();
+  return headings.filter(
+    (_index, element) =>
+      !$(element)
+        .parents()
+        .toArray()
+        .some((parent) => owners.includes(parent)),
+  );
 }
 
 const openAiEndpointDefinitions = new Map<string, { name: string; tasks: ModelTask[] }>([
@@ -229,12 +239,40 @@ function openAiCardTier(
   return primary === (toggle === "true") ? "batch" : "standard";
 }
 
-function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]) {
+function openAiPricing(
+  $: LoadedDocument,
+  sourceId: string,
+  tasks: ModelTask[],
+): ReturnType<typeof applyOpenAiCardRules> {
   const claims: OpenAiPricingClaim[] = [];
-  const content = sectionContent($, "Pricing");
-  if (content.length === 0) return { rates: [], raw: [], items: [] };
-  const rates: SourcePriceFact[] = [];
-  const items: PricingReconciliationItem[] = [];
+  const owners = pricingOwners($);
+  if (owners.length === 0) return { rates: [], raw: [], items: [] };
+  if (owners.length !== 1)
+    return {
+      rates: [],
+      raw: [
+        rawPricingFact(sourceId, "model-card-pricing", "base_price", "unknown_applicability", {
+          fragment: normalizedText(owners.text()).slice(0, 4096) || "Pricing",
+        }),
+      ],
+      items: [
+        {
+          disposition: "unresolved",
+          reason_code: "model_card_price_scope_unresolved",
+          sample: "Multiple Pricing owners",
+        },
+      ],
+    };
+  const content = owners.children().eq(1);
+  const owned = (selector: string) =>
+    content
+      .find(selector)
+      .filter(
+        (_index, element) =>
+          !$(element)
+            .parentsUntil(content)
+            .is("aside,blockquote,pre,code,script,style,template,section"),
+      );
   const groups = new Set([
     "Text tokens",
     "Audio tokens",
@@ -246,8 +284,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]) 
     "Realtime audio duration",
     "Live session duration",
   ]);
-  content
-    .find("div")
+  owned("div")
     .filter(
       (_index, element) =>
         $(element).children().length === 0 && normalizedText($(element).text()).startsWith("Per "),
@@ -313,8 +350,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]) 
       });
     });
 
-  content
-    .find("div")
+  owned("div")
     .filter(
       (_index, element) =>
         normalizedText($(element).children().first().text()) === "Pricing" &&
@@ -361,103 +397,17 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]) 
         ),
       );
     });
-  rates.push(...claims.flatMap(({ rate }) => (rate === undefined ? [] : [rate])));
-  const raw = claims.flatMap(({ raw }) => (raw === undefined ? [] : [raw]));
-  items.push(...claims.map(({ item }) => item));
+  const notes = owned("p")
+    .map((_index, element) => normalizedText($(element).text()))
+    .toArray();
+  const result = applyOpenAiCardRules(claims, notes, sourceId);
   if (claims.length === 0)
-    items.push({
+    result.items.unshift({
       disposition: "unsupported",
       reason_code: "unreviewed_model_card_pricing",
       sample: normalizedText(content.text()).slice(0, 256) || "Pricing",
     });
-
-  const pageText = normalizedText($("main").text());
-  const longContext = pageText.match(
-    /prompts with (?:>|more than )([\d,]+)(K)? input tokens are priced at ([\d.]+)x input(?: and cache rates)? and ([\d.]+)x output/i,
-  );
-  if (
-    longContext?.[1] !== undefined &&
-    longContext[3] !== undefined &&
-    longContext[4] !== undefined
-  ) {
-    const threshold =
-      Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
-    const includesCacheWrites = /input and cache rates/i.test(longContext[0]);
-    const additions = rates.flatMap((rate): SourcePriceFact[] => {
-      const multiplier =
-        rate.meter === "input_text" ||
-        rate.meter === "cache_read_text" ||
-        (rate.meter === "cache_write_text" && includesCacheWrites)
-          ? longContext[3]
-          : rate.meter === "output_text"
-            ? longContext[4]
-            : undefined;
-      if (multiplier === undefined || rate.conditions.context_min_tokens !== undefined) return [];
-      return [
-        {
-          ...rate,
-          price: multiplyDecimal(rate.price, multiplier),
-          conditions: { ...rate.conditions, context_min_tokens: threshold + 1 },
-          derived: true,
-          derivation: `${multiplier} × published ${rate.meter} rate above ${threshold} input tokens`,
-          raw_price: undefined,
-          raw_unit: "published long-context multiplier",
-        },
-      ];
-    });
-    rates.push(...additions);
-    items.push({
-      disposition: additions.length > 0 ? "normalized" : "raw",
-      reason_code:
-        additions.length > 0 ? "long_context_multiplier_bound" : "long_context_multiplier_unbound",
-      sample: longContext[0].slice(0, 256),
-    });
-    if (additions.length === 0)
-      raw.push(commercialRaw("long-context-multiplier", "base_price", longContext[0], sourceId));
-  }
-
-  const cacheWrite = pageText.match(/Cache writes are billed at ([\d.]+)x the uncached input/);
-  if (cacheWrite?.[1] !== undefined) {
-    const multiplier = cacheWrite[1];
-    const before = rates.length;
-    rates.push(
-      ...rates.flatMap((rate): SourcePriceFact[] => {
-        if (rate.meter !== "input_text") return [];
-        const hasCacheWrite = rates.some(
-          (existing) =>
-            existing.meter === "cache_write_text" &&
-            existing.conditions.service_tier === rate.conditions.service_tier &&
-            existing.conditions.context_min_tokens === rate.conditions.context_min_tokens,
-        );
-        if (hasCacheWrite) return [];
-        return [
-          {
-            ...rate,
-            meter: "cache_write_text",
-            price: multiplyDecimal(rate.price, multiplier),
-            derived: true,
-            derivation: `${multiplier} × published uncached input rate`,
-            raw_price: undefined,
-            raw_unit: "published cache-write multiplier",
-          },
-        ];
-      }),
-    );
-    const cacheWriteBound = rates.some(({ meter }) => meter === "cache_write_text");
-    items.push({
-      disposition: rates.length > before ? "normalized" : cacheWriteBound ? "excluded" : "raw",
-      reason_code:
-        rates.length > before
-          ? "cache_write_multiplier_bound"
-          : cacheWriteBound
-            ? "cache_write_multiplier_not_applied"
-            : "cache_write_multiplier_unbound",
-      sample: cacheWrite[0].slice(0, 256),
-    });
-    if (!cacheWriteBound)
-      raw.push(commercialRaw("cache-write-multiplier", "base_price", cacheWrite[0], sourceId));
-  }
-  return { rates, raw, items };
+  return result;
 }
 
 const openAiPricingSections = new Set([
