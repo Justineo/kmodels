@@ -37,6 +37,12 @@ reconstruct public list cost.
 
 ## First-party sources and resilience
 
+The parser returns model observations, independent search-service prices and acquisition contracts
+in one explicit source envelope. Model selection and model-row ordering do not own service or
+accounting storage. Compilation captures those source facts once and can replay service-only
+results without a synthetic catalog model. The exhaustive model-list count guard remains required
+for production collection; model and route joins retain their existing evidence.
+
 The model list is the exhaustive inventory and primary model-level price source. The documented
 per-model endpoint API enriches exact route identity and route-specific rates. A public model page
 is fetched only when the model-list price object is empty. Compound hover prices are read from the
