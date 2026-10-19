@@ -45,7 +45,7 @@ import type { SourcePricingInputFact } from "./pricing-source.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type Mechanism = "sync" | "batch";
-type PublishedModel = Pick<ProviderModel, "tasks" | "uid">;
+type PublishedModel = Pick<ProviderModel, "tasks" | "uid" | "api_endpoints">;
 
 const servedTier = { namespace: "kmodels", value: "served_service_tier" } as const;
 
@@ -58,10 +58,13 @@ export function applyGeminiCommercialTopology(
   const modelByRef = new Map(models.map((model) => [model.uid, model]));
   const modelOffers = new Map<string, string>();
   const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return bindGroundingBook(book, input, inputIndex);
+    if (book.scope.kind !== "models") return bindGroundingBook(book, input, inputIndex, modelByRef);
+    const [modelRef] = book.scope.model_refs;
     const model =
-      book.scope.model_refs.length === 1 ? modelByRef.get(book.scope.model_refs[0]!) : undefined;
-    const migrated = splitModelBook(book, model, input, inputIndex);
+      book.scope.model_refs.length === 1 && modelRef !== undefined
+        ? modelByRef.get(modelRef)
+        : undefined;
+    const migrated = splitModelBook(book, model, input, modelInputs(model, inputIndex));
     if (migrated.offers.some(({ offer_key }) => offer_key === "sync")) {
       const ref = pricingOfferId(pricingBookId(input.provider_id, book.book_key), "sync");
       for (const modelRef of book.scope.model_refs) modelOffers.set(modelRef, ref);
@@ -70,6 +73,26 @@ export function applyGeminiCommercialTopology(
   });
   for (const book of books) bindGroundingRelations(book, modelOffers);
   return { ...input, books };
+}
+
+function modelInputs(
+  model: PublishedModel | undefined,
+  inputIndex: PricingInputIndex,
+): PricingInputIndex {
+  const paths = model?.api_endpoints?.map(({ path }) => path) ?? [];
+  const live =
+    model?.tasks.includes("speech_to_speech") === true ||
+    paths.some((path) => path.endsWith(".BidiGenerateContent"));
+  const generate =
+    !live || paths.some((path) => /:(?:generateContent|streamGenerateContent)$/.test(path));
+  const interactions = paths.includes("/v1beta/interactions");
+  return indexPricingInputs(
+    [...inputIndex.values()].flat().filter(({ key }) => {
+      if (key.startsWith("generate.")) return generate;
+      if (key.startsWith("interaction.")) return interactions;
+      return true;
+    }),
+  );
 }
 
 function splitModelBook(
@@ -601,6 +624,7 @@ function bindGroundingBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  models: ReadonlyMap<string, PublishedModel>,
 ): AtomicPricingBook {
   if (
     book.scope.kind !== "provider_resource" ||
@@ -611,21 +635,28 @@ function bindGroundingBook(
   return {
     ...book,
     resource_edges: [],
-    offers: book.offers.map((offer) => ({
-      ...offer,
-      enrollment: [],
-      settlement: [],
-      terms: offer.terms.map((term) => {
-        if (term.kind !== "rate") return term;
-        return {
-          ...term,
-          variants: term.variants.map((variant) => ({
-            ...variant,
-            charge_binding: groundingBinding(resourceKey, variant, input, inputIndex),
-          })),
-        };
-      }),
-    })),
+    offers: book.offers.map((offer) => {
+      const modelRef = groundingModelRef(offer.offer_key);
+      const scopedInputs = modelInputs(
+        modelRef === undefined ? undefined : models.get(modelRef),
+        inputIndex,
+      );
+      return {
+        ...offer,
+        enrollment: [],
+        settlement: [],
+        terms: offer.terms.map((term) => {
+          if (term.kind !== "rate") return term;
+          return {
+            ...term,
+            variants: term.variants.map((variant) => ({
+              ...variant,
+              charge_binding: groundingBinding(resourceKey, variant, input, scopedInputs),
+            })),
+          };
+        }),
+      };
+    }),
   };
 }
 
@@ -764,9 +795,7 @@ function bindGroundingRelations(
   )
     return;
   for (const offer of book.offers) {
-    const modelRef = offer.offer_key.startsWith("grounding:")
-      ? offer.offer_key.slice("grounding:".length)
-      : undefined;
+    const modelRef = groundingModelRef(offer.offer_key);
     const target = modelRef === undefined ? undefined : modelOffers.get(modelRef);
     if (target !== undefined)
       offer.relations.push(
@@ -778,4 +807,8 @@ function bindGroundingRelations(
         ),
       );
   }
+}
+
+function groundingModelRef(offerKey: string): string | undefined {
+  return offerKey.startsWith("grounding:") ? offerKey.slice("grounding:".length) : undefined;
 }

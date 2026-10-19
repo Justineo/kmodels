@@ -123,6 +123,14 @@ rejecting unrelated provider pricing or inventing a free state.
 Bindings reference independently collected first-party request, response, stream, and result fields
 rather than invented normalized provider keys:
 
+Bindings are restricted to the selected model's protocol support. Interactions locators require its
+exact documented `/v1beta/interactions` endpoint. A Live model cannot acquire GenerateContent usage
+or grounding counters unless a separate GenerateContent endpoint is positively established. Live
+uses a distinct BidiGenerateContent envelope and `responseTokensDetails`, rather than the
+GenerateContent `candidatesTokensDetails` field. Its billing quantities remain caller-owned until
+the Live counter semantics and turn/session reduction have their own reviewed acquisition contract.
+The rates and known normalized quantity relationships remain available when those mappings are absent.
+
 - uncached input by modality is prompt/input modality tokens minus the matching cached partition;
 - document input and cache tokens are added to image tokens because Gemini prices document tokens
   at the image rate;
