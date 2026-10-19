@@ -1,7 +1,6 @@
 import { uniqueCanonicalValues as unique } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
-  AtomicPricingTerm,
   AtomicProviderPricing,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
@@ -15,9 +14,8 @@ import {
 import {
   includePricingInputSourceRefs,
   indexPricingInputs,
-  pricingInputFacts,
+  directQuantityMethods,
   pricingInputObservation,
-  usageInputSources,
   type PricingInputIndex,
 } from "./pricing-input.ts";
 import type { ChargeBinding, PriceMeter, UsageSignal } from "./pricing-schema.ts";
@@ -61,7 +59,11 @@ function modelBook(
               offer_key: "hosted-inference",
               name: "Hosted inference",
               enrollment: [],
-              terms: offer.terms.map((term) => bindTerm(term, model, input, inputIndex)),
+              terms: offer.terms.map((term) =>
+                bindRateTerm(term, (meter, variant) =>
+                  binding(meter, variant, model, input, inputIndex),
+                ),
+              ),
               relations: [],
               settlement: [],
             },
@@ -69,15 +71,6 @@ function modelBook(
         : [],
     ),
   };
-}
-
-function bindTerm(
-  term: AtomicPricingTerm,
-  model: PublishedPricingModel | undefined,
-  input: AtomicProviderPricing,
-  inputIndex: PricingInputIndex,
-): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) => binding(meter, variant, model, input, inputIndex));
 }
 
 function binding(
@@ -89,13 +82,11 @@ function binding(
 ): ChargeBinding | undefined {
   const spec = signalSpec(meter, variant, model, input);
   if (spec === undefined) return;
-  const facts = pricingInputFacts(inputIndex, spec.keys);
+  const { methods, facts } = directQuantityMethods(spec.signal, spec.keys, inputIndex);
   return {
     signal: spec.signal,
     aggregation: "request",
-    ...(facts.length === 0
-      ? {}
-      : { quantity_methods: [{ input_sources: usageInputSources(spec.signal, facts) }] }),
+    ...(methods.length === 0 ? {} : { quantity_methods: methods }),
     observations: unique([rawEvidence(variant.observation), ...facts.map(pricingInputObservation)]),
   };
 }

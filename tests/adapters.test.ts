@@ -1667,6 +1667,48 @@ describe("source taxonomy", () => {
 });
 
 describe("Cohere adapters", () => {
+  it("keeps authoritative central quotes numeric when an exact model card disagrees", async () => {
+    const product = {
+      modelName: "Command A",
+      per: "1M tokens",
+      pricings: [{ inputLabel: "Input", inputPrice: 3, outputLabel: "Output", outputPrice: 12 }],
+    };
+    const pricing = `${await fixture("cohere/pricing.html")}<script>self.__next_f.push(${JSON.stringify([1, `6:${JSON.stringify(product)}`])})</script>`;
+    const result = await cohereCatalogResult({ pricing });
+    const partition = assembleParsedProviderPricing(
+      "cohere",
+      observedAt,
+      result.sources,
+      result.models,
+    );
+    const offer = partition?.books.find(({ scope }) =>
+      scope.model_refs.includes("cohere/command-a-03-2025"),
+    )?.offers[0];
+    if (offer === undefined) throw new Error("Missing Command A offer");
+    for (const [meter, numerator, denominator, oldAmount] of [
+      ["input_text", "3", "1000000", "2.5"],
+      ["output_text", "3", "250000", "10"],
+    ] as const) {
+      const term = offer.terms.find((term) => term.kind === "rate" && term.meter.value === meter);
+      if (term?.kind !== "rate") throw new Error(`Missing ${meter}`);
+      expect(term.variants).toHaveLength(1);
+      expect(term.variants[0]?.price.value).toEqual({ numerator, denominator });
+      expect(term.raw_variants).toEqual([
+        expect.objectContaining({
+          impact: "informational",
+          reason: "superseded_value",
+          resolution_policy: "cohere_public_price_page_over_model_card",
+          observations: [
+            expect.objectContaining({
+              source_ref: "cohere-models",
+              raw: expect.objectContaining({ amount: oldAmount }),
+            }),
+          ],
+        }),
+      ]);
+    }
+  });
+
   it("keeps source accounting independent of model rows and preserves it in replay inputs", async () => {
     const { models, sources } = await cohereCatalogResult();
     expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);

@@ -1698,6 +1698,13 @@ export function parseCoherePricing(input: Input): SourceParseResult {
         ({ price_facts, raw_price_facts, pricing_state }) =>
           price_facts.length > 0 || raw_price_facts.length > 0 || pricing_state !== "unknown",
       )
+      .map((model) => ({
+        ...model,
+        price_facts: model.price_facts.map((rate) => ({
+          ...rate,
+          resolution_policy: "cohere_public_price_page_over_model_card",
+        })),
+      }))
       .sort((left, right) => left.model_id.localeCompare(right.model_id)),
   };
 }

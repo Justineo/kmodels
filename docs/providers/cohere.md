@@ -79,7 +79,11 @@ correction. That correction requires agreement between card title and path, one 
 official release note, and a separate path-matching card for the incorrect ID. Price matching uses
 one exact model ID, one documented alias, or one unique normalized product label; it never uses
 family inheritance or fuzzy matching. Model-card rates use catalog evidence; central price-book
-rows use the stronger price-book evidence class.
+rows use the stronger price-book evidence class. Central numeric quotes carry that precedence
+through canonical assembly: a conflicting card quote is retained as informational superseded
+evidence only when the central quote covers its exact applicability and validity. Missing central
+components keep the independent card amount; ambiguous or contradictory central products cannot
+override card evidence.
 
 ## Pricing mapping
 
@@ -151,6 +155,8 @@ The current exact gaps are:
 - Generate V1 has no reviewed billed-unit acquisition contract in this price book;
 - Embed Jobs are not attached to online Embed rates without an explicit same-price rule, even
   though their job metadata exposes accounting-looking fields;
+- an embedding product's single `Cost` row supplies its ordinary input-token quote. Without an
+  explicit image-token quote or a documented equivalence rule, image-token pricing remains unknown;
 - Cohere Transcribe is published as model-specific free access where documented, while Model Vault
   instance pricing remains outside request-rate scope; and
 - account reports and invoice reconciliation are runtime or billing-system inputs, not data that
