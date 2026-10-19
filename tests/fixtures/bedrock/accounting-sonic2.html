@@ -1,0 +1,52 @@
+<!-- Reviewed native excerpt of https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-output-events.html; observed 2026-10-19T09:26:16.920Z; full body SHA256 c0a197dce2cf036cde1bd79f5863db923d28f6b7dc0b526c373bfc4917a01665. Unrelated sections omitted. -->
+<main>
+  <h1 class="topictitle" id="sonic-output-events">
+    Handling output events with the bidirectional API
+  </h1>
+  <h2 id="sonic-usage-tracking">Usage Tracking</h2>
+  <p>
+    Throughout the response handling, <code class="code">usageEvent</code> events are sent to track
+    token consumption. These events contain detailed metrics on input tokens and output tokens (both
+    speech and text), and their cumulative totals. Each
+    <code class="code">usageEvent</code> maintains the same <code class="code">sessionId</code>,
+    <code class="code">promptName</code>, and <code class="code">completionId</code> as other events
+    in the conversation flow. The details section provides both incremental changes (delta) and
+    running totals of token usage, enabling precise monitoring of the usage during the conversation.
+  </p>
+  <h2 id="sonic-completion">Completion</h2>
+  <h2 id="sonic-output-event-flow">Output Event Flow</h2>
+  <pre
+    class="programlisting"
+  ><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli (json)--><code class="json ">"event": <span>{</span>
+    "usageEvent": <span>{</span>
+        "completionId": "string", // unique identifier for completion
+        "details": <span>{</span>
+            "delta": <span>{</span> // incremental changes since last event
+                "input": <span>{</span>
+                    "speechTokens": number, // input speech tokens
+                    "textTokens": number // input text tokens
+                },
+                "output": <span>{</span>
+                    "speechTokens": number, // speech tokens generated
+                    "textTokens": number // text tokens generated
+                }
+            },
+            "total": <span>{</span> // cumulative counts
+                "input": <span>{</span>
+                    "speechTokens": number, // total speech tokens processed
+                    "textTokens": number // total text tokens processed
+                },
+                "output": <span>{</span>
+                    "speechTokens": number, // total speech tokens generated
+                    "textTokens": number // total text tokens generated
+                }
+            }
+        },
+        "promptName": "string", // same unique identifier from promptStart event
+        "sessionId": "string", // unique identifier
+        "totalInputTokens": number, // cumulative input tokens
+        "totalOutputTokens": number, // cumulative output tokens
+        "totalTokens": number // total tokens in the session
+    }
+}</code></pre>
+</main>

@@ -59,8 +59,16 @@ export function indexPricingInputs(inputs: readonly SourcePricingInputFact[]): P
 export function pricingInputFacts(
   inputIndex: PricingInputIndex,
   keys: readonly string[],
+  modelRef?: string,
 ): SourcePricingInputFact[] {
-  return keys.flatMap((key) => inputIndex.get(key) ?? []).sort(compareCanonicalValues);
+  return keys
+    .flatMap((key) => inputIndex.get(key) ?? [])
+    .filter(
+      (fact) =>
+        fact.model_refs === undefined ||
+        (modelRef !== undefined && fact.model_refs.includes(modelRef)),
+    )
+    .sort(compareCanonicalValues);
 }
 
 export function usageInputSources(

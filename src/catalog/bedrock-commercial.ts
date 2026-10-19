@@ -6,7 +6,8 @@ import type {
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
-import { compareCanonicalValues } from "./canonical-value.ts";
+import { compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
+import { bedrockModelQuantity } from "./bedrock-commercial-source.ts";
 import {
   applicabilitiesOverlap,
   canonicalizeApplicability,
@@ -22,6 +23,7 @@ import {
 } from "./pricing-commercial-assembly.ts";
 import {
   indexPricingInputs,
+  calculatedQuantityMethods,
   pricingInputFacts,
   pricingInputObservation,
   uniquePricingInputFacts,
@@ -44,6 +46,10 @@ import type { ProviderModel } from "./schema.ts";
 
 type Mechanism = "on-demand" | "batch";
 type PublishedModel = Pick<ProviderModel, "api_endpoints" | "uid">;
+interface ModelUsage {
+  supportsConverse: boolean;
+  bidirectionalModelRefs: readonly string[];
+}
 
 const tokenUnit = standardUnit("token");
 const invocationResources = new Set(["guardrails", "prompt-routing", "reranking", "web-search"]);
@@ -59,10 +65,22 @@ export function applyBedrockCommercialTopology(
 
   for (const book of input.books) {
     if (book.scope.kind === "models") {
-      const supportsConverse = book.scope.model_refs.some((modelRef) =>
-        modelByRef.get(modelRef)?.api_endpoints?.some(({ name }) => name === "Converse"),
-      );
-      const split = splitModelBook(book, input, inputIndex, supportsConverse);
+      const published = book.scope.model_refs.map((ref) => modelByRef.get(ref));
+      const usage: ModelUsage = {
+        supportsConverse: published.every((model) =>
+          model?.api_endpoints?.some(({ name }) => name === "Converse"),
+        ),
+        bidirectionalModelRefs: published.every((model) =>
+          model?.api_endpoints?.some(
+            ({ name, path }) =>
+              name === "InvokeModelWithBidirectionalStream" &&
+              path === "model/{modelId}/invoke-with-bidirectional-stream",
+          ),
+        )
+          ? book.scope.model_refs
+          : [],
+      };
+      const split = splitModelBook(book, input, inputIndex, usage);
       if (split.offers.length > 0) books.push(split);
       continue;
     }
@@ -81,14 +99,14 @@ function splitModelBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  supportsConverse: boolean,
+  usage: ModelUsage,
 ): AtomicPricingBook {
   const offers: AtomicPricingOffer[] = [];
 
   for (const offer of book.offers) {
     if (offer.offer_key !== "usage") continue;
-    const onDemand = partitionOffer(offer, "on-demand", input, inputIndex, supportsConverse);
-    const batch = partitionOffer(offer, "batch", input, inputIndex, supportsConverse);
+    const onDemand = partitionOffer(offer, "on-demand", input, inputIndex, usage);
+    const batch = partitionOffer(offer, "batch", input, inputIndex, usage);
     if (onDemand !== undefined) offers.push(onDemand);
     if (batch !== undefined) offers.push(batch);
   }
@@ -101,7 +119,7 @@ function partitionOffer(
   mechanism: Mechanism,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  supportsConverse: boolean,
+  usage: ModelUsage,
 ): AtomicPricingOffer | undefined {
   const states = offer.states.flatMap((state) => {
     const applicability = mechanismApplicability(state.applicability, mechanism);
@@ -116,7 +134,7 @@ function partitionOffer(
         ];
   });
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, input, inputIndex, supportsConverse, offer.terms),
+    partitionTerm(term, mechanism, input, inputIndex, usage, offer.terms),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -134,7 +152,7 @@ function partitionTerm(
   mechanism: Mechanism,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  supportsConverse: boolean,
+  usage: ModelUsage,
   terms: readonly AtomicPricingTerm[],
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
@@ -163,21 +181,26 @@ function partitionTerm(
       observation,
       input,
       inputIndex,
-      supportsConverse,
+      usage,
       overlappingRateMeters(terms, variant, mechanism),
     );
-    const selector_sources = modelSelectorSources(
-      applicability,
-      mechanism,
-      inputIndex,
-      supportsConverse,
-    );
+    const selector_sources = modelSelectorSources(applicability, mechanism, inputIndex, usage);
     return [
       {
         ...variant,
         applicability,
         observation,
-        ...(charge_binding === undefined ? {} : { charge_binding }),
+        ...(charge_binding === undefined
+          ? {}
+          : {
+              charge_binding: {
+                ...charge_binding,
+                observations: uniqueCanonicalValues([
+                  ...charge_binding.observations,
+                  ...(variant.charge_binding?.observations ?? []),
+                ]),
+              },
+            }),
         ...(selector_sources.length === 0 ? {} : { selector_sources }),
       },
     ];
@@ -233,12 +256,25 @@ function modelChargeBinding(
   observation: NormalizedPriceObservation,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
-  supportsConverse: boolean,
+  usage: ModelUsage,
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
   const unit = variant.price.per;
   if (isStandardUnit(unit, "token")) {
+    const sonic =
+      mechanism === "on-demand"
+        ? sonicBinding(
+            meter,
+            variant,
+            observation,
+            usage.bidirectionalModelRefs,
+            rateMeters,
+            input,
+            inputIndex,
+          )
+        : undefined;
+    if (sonic !== undefined) return sonic;
     const direction =
       meter.value === "input_text" || meter.value === "embedding"
         ? "input"
@@ -259,18 +295,20 @@ function modelChargeBinding(
         candidate.namespace === "kmodels" &&
         ["cache_read_text", "cache_write_text"].includes(candidate.value),
     );
-    const token = partitioned
+    const token = hasExplicitTextQuantity(meter, variant)
       ? undefined
       : tokenBindingSpec(meter, variant.applicability, mechanism, hasCacheRates, input);
     if (token !== undefined) {
       const runtime = permitsRuntimeUsage(variant.applicability);
-      const facts = tokenInputFacts(
-        token.keys,
-        mechanism,
-        inputIndex,
-        supportsConverse && runtime,
-        token.includeInvocationLog && runtime,
-      );
+      const facts = partitioned
+        ? []
+        : tokenInputFacts(
+            token.keys,
+            mechanism,
+            inputIndex,
+            usage.supportsConverse && runtime,
+            token.includeInvocationLog && runtime,
+          );
       return directBinding(token.signal, token.aggregation, facts, observation);
     }
   }
@@ -281,6 +319,129 @@ function modelChargeBinding(
   const signal = semanticModelSignal(meter, value, unit, input);
   if (signal === undefined) return;
   return directBinding(signal, mechanism === "batch" ? "job" : "attempt", [], observation);
+}
+
+function hasExplicitTextQuantity(meter: PriceMeter, variant: AtomicRateVariant): boolean {
+  const signal = variant.charge_binding?.signal;
+  return (
+    ["input_text", "output_text"].includes(meter.value) &&
+    signal?.namespace === "provider" &&
+    signal.provider_id === "amazon-bedrock" &&
+    signal.value === `runtime_${meter.value}_token`
+  );
+}
+
+function sonicRuntimeScope(applicability: PriceApplicability): boolean {
+  return applicability.any_of.every(
+    ({ all_of }) =>
+      !all_of.some(
+        ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "operation",
+      ) &&
+      all_of.some(
+        (condition) =>
+          condition.kind === "categorical" &&
+          condition.dimension.namespace === "kmodels" &&
+          condition.dimension.value === "endpoint" &&
+          condition.values.length === 1 &&
+          condition.values[0]?.namespace === "provider" &&
+          condition.values[0].provider_id === "amazon-bedrock" &&
+          condition.values[0].value === "bedrock-runtime",
+      ),
+  );
+}
+
+function sonicBinding(
+  meter: PriceMeter,
+  variant: AtomicRateVariant,
+  observation: NormalizedPriceObservation,
+  modelRefs: readonly string[],
+  rateMeters: readonly PriceMeter[],
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+): ChargeBinding | undefined {
+  const meters = ["input_text", "input_audio", "output_text", "output_audio"];
+  if (
+    !meters.includes(meter.value) ||
+    modelRefs.length === 0 ||
+    !sonicRuntimeScope(variant.applicability)
+  )
+    return;
+  const keys = meters.map((value) => `runtime.sonic.${value}_delta_tokens`);
+  const byModel = modelRefs.map((ref) =>
+    pricingInputFacts(inputIndex, keys, ref).filter(({ model_refs }) => model_refs !== undefined),
+  );
+  if (byModel.some((facts) => facts.length === 0)) return;
+  const factsFor = (value: string) => {
+    const key = `runtime.sonic.${value}_delta_tokens`;
+    return byModel.every((facts) => facts.some((fact) => fact.key === key))
+      ? uniquePricingInputFacts(
+          byModel.flatMap((facts) => facts.filter((fact) => fact.key === key)),
+        )
+      : [];
+  };
+  const generic =
+    (meter.value === "input_text" || meter.value === "output_text") &&
+    !hasExplicitTextQuantity(meter, variant);
+  const missingPartition =
+    meter.value.startsWith("input_") &&
+    rateMeters.some((candidate) => /^(?:cache_read|cache_write)_/.test(candidate.value));
+  const signal = generic
+    ? standardSignal(
+        meter.value === "input_text"
+          ? missingPartition
+            ? "uncached_input_tokens"
+            : "input_tokens"
+          : "output_tokens",
+      )
+    : semanticModelSignal(meter, "token", variant.price.per, input);
+  if (signal === undefined) return;
+  addAtom(input, {
+    kind: "aggregation",
+    key: "sonic_usage_event",
+    definition:
+      "One Amazon Nova Sonic usageEvent, charging its incremental delta counters once; session, prompt and completion identifiers correlate events but do not reset or deduplicate them",
+  });
+  const binding = directBinding(
+    signal,
+    { namespace: "provider", provider_id: input.provider_id, value: "sonic_usage_event" },
+    missingPartition ? [] : factsFor(meter.value),
+    observation,
+  );
+  if (generic && !missingPartition) {
+    const direction = meter.value === "input_text" ? "input" : "output";
+    const parts = ["text", "audio"].map((modality) => {
+      const quantityKey = `sonic_reported_${direction}_${modality}_delta_tokens`;
+      addUsageSignal(
+        input,
+        quantityKey,
+        `Amazon Nova Sonic reported ${direction} ${modality} tokens in one usageEvent delta`,
+        tokenUnit,
+        "outcome",
+      );
+      return {
+        signal: providerSignal(input, quantityKey),
+        facts: factsFor(`${direction}_${modality}`),
+      };
+    });
+    const method = calculatedQuantityMethods(
+      {
+        nodes: [
+          ...parts.map(({ signal }) => ({ op: "signal" as const, signal })),
+          { op: "sum", inputs: [0, 1] },
+        ],
+        result: 2,
+      },
+      parts,
+    );
+    binding.quantity_methods = method.methods;
+  }
+  return {
+    ...binding,
+    observations: uniqueCanonicalValues([
+      ...binding.observations,
+      ...uniquePricingInputFacts(byModel.flat()).map(pricingInputObservation),
+    ]),
+  };
 }
 
 function overlappingRateMeters(
@@ -439,25 +600,21 @@ function semanticModelSignal(
     )
   )
     return;
-  const key = `runtime_${meter.value}_${unitValue}`;
-  addUsageSignal(
-    input,
-    key,
-    `Amazon Bedrock ${meter.value.replaceAll("_", " ")} quantity measured in ${unitValue}`,
-    unit,
-    meter.value.startsWith("input_") || meter.value === "embedding" ? "request" : "outcome",
-  );
-  return providerSignal(input, key);
+  const quantity = bedrockModelQuantity(meter.value, unitValue, unit);
+  addAtom(input, quantity.atom);
+  return quantity.signal;
 }
 
 function modelSelectorSources(
   applicability: PriceApplicability,
   mechanism: Mechanism,
   inputIndex: PricingInputIndex,
-  supportsConverse: boolean,
+  usage: ModelUsage,
 ): PriceSelectorSource[] {
   const result: PriceSelectorSource[] = [];
-  const runtime = permitsRuntimeUsage(applicability);
+  const runtime =
+    permitsRuntimeUsage(applicability) &&
+    (usage.bidirectionalModelRefs.length === 0 || usage.supportsConverse);
   for (const dimension of applicabilityDimensions(applicability)) {
     if (dimension.namespace !== "kmodels") continue;
     if (dimension.value === "region" && mechanism === "on-demand" && runtime) {
@@ -468,7 +625,7 @@ function modelSelectorSources(
     if (
       mechanism !== "on-demand" ||
       !runtime ||
-      !supportsConverse ||
+      !usage.supportsConverse ||
       !["service_tier", "speed"].includes(dimension.value)
     )
       continue;

@@ -571,7 +571,14 @@ unit-checked quantity graph. Arbitrary paths, predicates, scripts, and provider-
 languages are not accepted.
 
 Provider adapters add mappings only from independently collected first-party
-pricing-input facts. A missing or drifted accounting field therefore removes only
+pricing-input facts. A fact may limit its contract to exact `model_refs`; an unqualified lookup
+cannot consume such a fact, and a book spanning models requires proof for every covered model.
+This scope lives in compilation inputs and is resolved before publishing the book's acquisition
+method; it adds no caller-selected model predicate to the calculation wire.
+An adapter may preserve an explicitly quoted modality through the source's typed charge binding.
+Other quoted prices may expose an unsafe aggregate acquisition path, but cannot redefine that
+source-owned quantity as a different modality.
+A missing or drifted accounting field therefore removes only
 that acquisition path; it does not create an informational raw price, erase the
 rate, or suppress another valid path. A method without `input_sources` means the
 calculation is known but the downstream calculator must supply its inputs. A

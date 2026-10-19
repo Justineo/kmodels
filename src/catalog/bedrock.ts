@@ -3,7 +3,11 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
-import { bedrockGroundingFact, bedrockServiceTerm } from "./bedrock-commercial-source.ts";
+import {
+  bedrockGroundingFact,
+  bedrockServiceTerm,
+  bedrockModelQuantity,
+} from "./bedrock-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { stableJson } from "./io.ts";
@@ -1708,6 +1712,8 @@ function rate(
   sourceId: string,
   endpoint: BedrockModelEndpoint | undefined,
   context: SourcePriceFact["conditions"],
+  vocabulary: ProviderAtomRegistryEntry[],
+  locator: NonNullable<SourcePriceFact["source_locator"]>,
 ): SourcePriceFact | undefined {
   const text = pricingText(attributes, description);
   const priceText = `${attributes.inferenceType ?? ""} ${description}`.toLowerCase();
@@ -1766,12 +1772,47 @@ function rate(
         : undefined);
   if (finalMeter === undefined) return undefined;
   const rateConditions = conditions(attributes, text, priceText, endpoint, finalMeter);
+  const explicitText =
+    (finalMeter === "input_text" || finalMeter === "output_text") &&
+    /\btext[ _-]+(?:input|output)\b|\b(?:input|output)[ _-]+text\b/.test(priceText);
+  const quantity =
+    explicitText && ["token", "thousand_tokens", "million_tokens"].includes(normalizedUnit)
+      ? bedrockModelQuantity(finalMeter, "token", {
+          factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+        })
+      : undefined;
+  if (
+    quantity !== undefined &&
+    !vocabulary.some((atom) => atom.kind === "usage_signal" && atom.key === quantity.atom.key)
+  )
+    vocabulary.push(quantity.atom);
   return {
     meter: finalMeter,
     price: normalizedPrice,
     currency: "USD",
     unit: normalizedUnit,
     conditions: { ...rateConditions, ...context },
+    ...(quantity === undefined
+      ? {}
+      : {
+          charge_binding: {
+            signal: quantity.signal,
+            aggregation:
+              rateConditions.service_tier === "batch" ? ("job" as const) : ("attempt" as const),
+            observations: [
+              {
+                source_ref: sourceId,
+                locator,
+                raw: {
+                  label: attributes.inferenceType ?? description,
+                  fragment: description,
+                  amount: price,
+                  unit,
+                },
+              },
+            ],
+          },
+        }),
     source_ref: sourceId,
     derived: derivation !== undefined,
     ...(derivation === undefined ? {} : { derivation }),
@@ -2595,6 +2636,10 @@ function parsePrices(
           card.contextPricing,
           pricingText(attributes, dimension.description),
         );
+        const locator = {
+          kind: "sku" as const,
+          value: `${list.offerCode}:${sku}:${dimension.rateCode ?? dimension.description}`,
+        };
         const parsed =
           context === undefined
             ? undefined
@@ -2608,6 +2653,8 @@ function parsePrices(
                 sourceId,
                 target.endpoint,
                 context,
+                vocabulary,
+                locator,
               );
         if (parsed === undefined) {
           unsupported.add(`${label}: ${dimension.unit}`);
@@ -2661,10 +2708,7 @@ function parsePrices(
           const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
           addRate(rates, {
             ...parsed,
-            source_locator: {
-              kind: "sku",
-              value: `${list.offerCode}:${sku}:${dimension.rateCode ?? dimension.description}`,
-            },
+            source_locator: locator,
           });
           byId.set(id, rates);
         }

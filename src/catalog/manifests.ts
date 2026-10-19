@@ -36,6 +36,7 @@ export type Extractor =
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
   | { kind: "bedrock-catalog" }
+  | { kind: "bedrock-accounting" }
   | { kind: "bedrock-api" }
   | { kind: "sagemaker-catalog" }
   | { kind: "sagemaker-sdk" }
@@ -1148,7 +1149,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v36",
+        extractorVersion: "bedrock-catalog-v37",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1340,6 +1341,57 @@ export const manifests = [
               "bedrock-invoke-guardrail-checks",
               "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use-invoke-guardrail-checks-using.html",
               1,
+              "html",
+              true,
+              true,
+            ],
+          ]),
+        },
+      },
+      {
+        id: "bedrock-accounting",
+        url: "https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-output-events.html",
+        type: "website",
+        access: "public",
+        format: "mixed",
+        stability: "documented",
+        extractor: { kind: "bedrock-accounting" },
+        extractorVersion: "bedrock-accounting-v1",
+        fields: ["pricing_inputs"],
+        allowedHosts: ["docs.aws.amazon.com"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: false,
+        role: "supplement",
+        optional: true,
+        linkedDocuments: {
+          path: /$^/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 3,
+          optionalDocuments: true,
+          maxDocumentBytes: mebibytes(2),
+          documents: optionalFixedDocuments([
+            [
+              "bedrock-sonic-events",
+              "https://docs.aws.amazon.com/nova/latest/userguide/output-events.html",
+              1,
+              "html",
+              true,
+              true,
+            ],
+            [
+              "bedrock-bidirectional",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithBidirectionalStream.html",
+              2,
+              "html",
+              true,
+              true,
+            ],
+            [
+              "bedrock-sonic-models",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html",
+              2,
               "html",
               true,
               true,

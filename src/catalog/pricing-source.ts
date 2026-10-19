@@ -239,6 +239,11 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
 
 export const sourcePricingInputFactSchema = z.strictObject({
   key: z.string().min(1),
+  model_refs: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((values) => new Set(values).size === values.length, "Model scopes must be unique")
+    .optional(),
   channel: usageInputSourceSchema.shape.channel,
   locator: usageInputLocatorSchema,
   reduction: usageInputReductionSchema.optional(),
