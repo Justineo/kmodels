@@ -124,6 +124,10 @@ Each exact model has two offers when supported:
 - `sync`: ordinary Messages inference;
 - `batch`: Message Batches.
 
+Unqualified public model prices remain unqualified by service tier. A separate Batch quote cannot
+manufacture Standard applicability on synchronous prices. Private Priority capacity commitments
+remain outside this public-list partition.
+
 Fast speed, inference geography, and dated validity are shared rate dimensions. Exact five-minute
 and one-hour cache-write rates become separate logical terms with TTL-specific quantity signals,
 because one request may contain both TTLs. A global TTL selector must not select only one charge.

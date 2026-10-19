@@ -211,6 +211,38 @@ async function anthropicContextPricing(transform?: (body: string) => string) {
 }
 
 describe("Anthropic adapters", () => {
+  it.each([false, true])(
+    "keeps public synchronous scope independent of Batch peer quotes (%s)",
+    async (withBatch) => {
+      const pricing = await fixture("anthropic/pricing.md");
+      const parsed = await anthropicSource({
+        overrides: {
+          "/docs/en/about-claude/pricing.md": withBatch
+            ? pricing
+            : pricing.replace(/\| Claude Fable 5[^\n]*\$5 \/ MTok[^\n]*\n/, ""),
+        },
+      });
+      const partition = validatedPricing(parsed);
+      const book = partition.books.find(
+        (value) => value.book_key === "model:anthropic/claude-fable-5",
+      );
+      const sync = book?.offers.find((offer) => offer.offer_key === "sync");
+      const variants = sync?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
+      expect(variants?.length).toBeGreaterThan(0);
+      expect(
+        variants?.every((variant) =>
+          variant.applicability.any_of.every((clause) =>
+            clause.all_of.every(
+              (condition) =>
+                !["service_tier", "served_service_tier"].includes(condition.dimension.value),
+            ),
+          ),
+        ),
+      ).toBe(true);
+      const batch = book?.offers.find((offer) => offer.offer_key === "batch");
+      expect(batch !== undefined).toBe(withBatch);
+    },
+  );
   it("establishes global base pricing before assembly", async () => {
     const parsed = await anthropicSource();
     const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");

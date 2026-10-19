@@ -745,7 +745,7 @@ function conditions(
   const grounding = geminiGroundingOperation(row);
   if (grounding !== undefined) result.operation = grounding;
   const normalizedTier = tier.toLowerCase();
-  if (normalizedTier !== "" && normalizedTier !== "standard") result.service_tier = normalizedTier;
+  if (normalizedTier !== "") result.service_tier = normalizedTier;
   if (/prompts?\s*(?:<=|≤)\s*200k/i.test(descriptor)) result.context_max_tokens = 200_000;
   if (/prompts?\s*>\s*200k/i.test(descriptor)) result.context_min_tokens = 200_001;
   const resolution = descriptor.match(/\b(0\.5K|1K|2K|4K|720p|1080p)\b/i)?.[1];
@@ -1083,7 +1083,7 @@ function applyPricing(
         .get();
       if (headers.join("|") === "|Model|Tools") return;
       const header = headers[2];
-      const tier = text($(table).closest("section").children("h3").first().text()) || "standard";
+      const tier = text($(table).closest("section").children("h3").first().text());
       if (headers[1] !== "Free Tier" || header === undefined || !header.startsWith("Paid Tier")) {
         $(table)
           .find("tbody tr")

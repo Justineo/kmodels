@@ -67,6 +67,8 @@ Each model book has up to two offers:
 - `batch` — asynchronous Batch inference. Successful result items carry their own model usage.
 
 Sync and Batch are already alternative offers and therefore need no `exclusive_with` relations.
+The processing heading owns each table's tier, including Standard, independently of peer tables.
+A table without a processing heading stays unqualified; shared assembly cannot invent Standard.
 Search and Maps are shared provider-service books. Each exact compatible model has an offer with a
 `compatible_with` relation to its online inference offer; the relation expresses composition, not
 entitlement or settlement.

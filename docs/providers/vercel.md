@@ -91,6 +91,11 @@ Fast mode uses the `speed` dimension. Named Flex or Priority prices use
 Regional prices use `region`. This separation prevents a Fast rate from being misrepresented as a
 service tier and permits speed, tier, route, and region to coexist on one rate.
 
+The model-list and endpoint default language-token price fields own `service_tier=standard` at
+extraction. Fast, route and regional variants retain that scope; named service-tier fields own
+their explicitly published tier. A missing Flex/Priority peer cannot change a default quote's
+meaning. Non-language media components and independent service prices do not acquire that selector.
+
 A `-fast` model with the published `fast` tag and an independently listed, fast-capable base model
 uses the fast list price. Some fast-slug endpoint documents repeat the base model's standard
 prices. They describe the documented standard-speed fallback only when their token and regional

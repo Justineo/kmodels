@@ -185,6 +185,13 @@ the strict lower bound must not overlap the preceding tier, including at zero.
 Published Batch rows are moved to the Batch offer and lose the source-native `service_tier=batch`
 condition because the offer identity already carries that distinction.
 
+A single explicit `List price` with a reviewed integer percentage reduction establishes
+`promotion=false` for the list quote and `promotion=true` for the reduced quote. Native night and
+daytime labels use `billing_period`, never a fabricated service tier. The caller supplies the
+provider's billed period; request creation time is not asserted to be billing time. Unreadable,
+ambiguous or unanchored reductions retain their exact quote, amount, unit and known scope as raw
+applicability evidence, with a policy diagnostic. Readable sibling cells remain numeric.
+
 The cache guide contributes only exact model/region eligibility and its published multipliers:
 explicit writes are 125% of ordinary input, explicit reads 10%, and implicit reads 20%. A cache
 rate is derived only when its exact base input rate exists. Published exceptions suppress only the

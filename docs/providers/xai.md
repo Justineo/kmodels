@@ -97,6 +97,10 @@ refresh mechanically while preserving their exact applicability.
   models and token types; supported but undiscounted media models keep standard rates.
 - Priority is a synchronous rate condition selected from the realized response
   `service_tier`, not a separate capacity product.
+- Base text price fields explicitly own xAI's native `default` tier before assembly, including
+  their context bands and independent of a Priority quote. The provider contract equates `default`
+  with Standard processing. Commercial topology partitions Batch and projects the served-tier
+  dimension; it cannot add a missing default predicate or an unobserved vocabulary value.
 - Image and video books use direct and, when supported, Batch offers. Output resolution,
   quality, and duration select rate variants; input media components remain additive.
 - Speech to Speech is a model-bound realtime offer. xAI publishes one audio-duration

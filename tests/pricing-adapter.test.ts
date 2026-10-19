@@ -673,12 +673,7 @@ describe("parsed-source canonical pricing adapter", () => {
             ? [[condition.dimension.value, condition.values[0]?.value]]
             : [],
         );
-    expect(dimensions(syncTerm, "0")).toEqual(
-      expect.arrayContaining([
-        ["account_eligibility", "free_tier"],
-        ["served_service_tier", "standard"],
-      ]),
-    );
+    expect(dimensions(syncTerm, "0")).toEqual([["account_eligibility", "free_tier"]]);
     expect(dimensions(batchTerm, "0.5")).toEqual([["account_eligibility", "paid_tier"]]);
   });
 
@@ -724,7 +719,7 @@ describe("parsed-source canonical pricing adapter", () => {
     });
   });
 
-  it("makes reviewed defaults and context tiers independently selectable", () => {
+  it("keeps source context bands independently selectable from Batch", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
@@ -759,11 +754,6 @@ describe("parsed-source canonical pricing adapter", () => {
         expect.objectContaining({
           kind: "decimal_range",
           upper: { value: "200000", inclusive: true },
-        }),
-        expect.objectContaining({
-          kind: "categorical",
-          dimension: { namespace: "kmodels", value: "served_service_tier" },
-          values: [{ namespace: "provider", provider_id: providerId, value: "standard" }],
         }),
       ]),
     );
@@ -922,7 +912,7 @@ describe("parsed-source canonical pricing adapter", () => {
     for (const amount of ["1", "2"]) {
       const parsedModel = model();
       parsedModel.price_facts = [
-        tokenRate("1", {}),
+        tokenRate("1", { service_tier: "standard" }),
         tokenRate(amount, { service_tier: "priority" }),
       ];
       const partition = assembleParsedProviderPricing(
@@ -954,6 +944,35 @@ describe("parsed-source canonical pricing adapter", () => {
     }
     expect(scopes[0]).toEqual(scopes[1]);
   });
+
+  it.each(["1", "2"])(
+    "does not invent a Standard scope from an explicit Priority peer (%s)",
+    (amount) => {
+      const { source } = pricingManifest();
+      const parsed = model();
+      parsed.price_facts = [tokenRate("1", {}), tokenRate(amount, { service_tier: "priority" })];
+      const partition = assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [{ source, models: [parsed] }],
+        [parsed],
+      );
+      const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")
+        ?.terms[0];
+      if (term?.kind !== "rate") throw new Error("Missing input term");
+      expect(partition?.vocabulary.atoms).not.toContainEqual(
+        expect.objectContaining({ key: "standard" }),
+      );
+      if (amount === "1") expect(term.raw_variants).toEqual([]);
+      else {
+        expect(term.variants).toEqual([]);
+        expect(term.raw_variants).toHaveLength(2);
+        expect(term.raw_variants.every((variant) => variant.reason === "conflicting_values")).toBe(
+          true,
+        );
+      }
+    },
+  );
 
   it("separates Foundry synchronous, Batch, and router request rates", () => {
     const { source: pricingSource } = pricingManifest();
@@ -3024,10 +3043,40 @@ describe("parsed-source canonical pricing adapter", () => {
       inference_geo: "global",
     });
     expect(conditions("sync", "2")).toEqual({
-      service_tier: "standard",
       speed: "fast",
       inference_geo: "global",
     });
+  });
+
+  it("does not assign xAI's default tier to an unqualified source quote", () => {
+    const manifest = manifests.find((item) => item.provider.id === "xai");
+    const source = manifest?.sources.find((item) => item.id === "xai-models");
+    if (source === undefined) throw new Error("Missing xAI source");
+    const parsed: ParsedProviderModel = {
+      ...model(),
+      provider_id: "xai",
+      uid: "xai/test-model",
+      api_endpoints: [{ name: "Chat Completions", path: "v1/chat/completions" }],
+      price_facts: [tokenRate("1", {}), tokenRate("2", { service_tier: "priority" })].map(
+        (rate) => ({ ...rate, source_ref: source.id }),
+      ),
+    };
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source, models: [parsed] }],
+      [parsed],
+    );
+    const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Missing xAI input term");
+    expect(term.variants).toEqual([]);
+    expect(term.raw_variants).toHaveLength(2);
+    expect(term.raw_variants.every((variant) => variant.reason === "conflicting_values")).toBe(
+      true,
+    );
+    expect(partition?.vocabulary.atoms).not.toContainEqual(
+      expect.objectContaining({ key: "default" }),
+    );
   });
 
   it("publishes OpenAI Batch and separately billed services as distinct offers", () => {
