@@ -878,8 +878,7 @@ function normalizedSourceFacts(
   }
 
   completeReviewedDefault(normalized, "service_tier", "standard");
-  if (providerId === "anthropic" || providerId === "amazon-bedrock")
-    completeReviewedDefault(normalized, "speed", "standard");
+  if (providerId === "amazon-bedrock") completeReviewedDefault(normalized, "speed", "standard");
   if (providerId === "anthropic") {
     completeReviewedDefault(normalized, "inference_geo", "global");
   }

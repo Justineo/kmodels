@@ -61,7 +61,6 @@ export function anthropicPriceRow(
       impact: "base_price",
       reason,
       conditions: {
-        ...(kind === "base" ? { speed: "standard" } : {}),
         ...conditions,
         ...(column?.ttl === undefined ? {} : { cache_ttl_seconds: column.ttl }),
       },

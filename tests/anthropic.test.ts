@@ -188,6 +188,62 @@ async function anthropicCatalog(
 }
 
 describe("Anthropic adapters", () => {
+  it.each([false, true])(
+    "establishes ordinary speed from the native price matrix independently of Fast rows (%s)",
+    async (omitFastRows) => {
+      const pricing = await fixture("anthropic/pricing.md");
+      const withoutFast = pricing.replace(
+        /\| Model\s+\| Input\s+\| Output\s+\|\n\|[^\n]+\n\|[^\n]+\n/,
+        "",
+      );
+      if (withoutFast === pricing) throw new Error("Missing Fast price fixture");
+      const source = await anthropicSource({
+        overrides: {
+          "/docs/en/about-claude/pricing.md": omitFastRows ? withoutFast : pricing,
+        },
+      });
+      const ordinary = source.models.find(
+        ({ model_id }) => model_id === "claude-fable-5",
+      )?.price_facts;
+      expect(ordinary?.length).toBeGreaterThan(0);
+      expect(
+        ordinary?.every(({ conditions }) =>
+          conditions.service_tier === "batch"
+            ? conditions.speed === undefined
+            : conditions.speed === "standard",
+        ),
+      ).toBe(true);
+      const opus = source.models.find(({ model_id }) => model_id === "claude-opus-4-8");
+      expect(opus?.price_facts.filter(({ conditions }) => conditions.speed === "fast").length).toBe(
+        omitFastRows ? 0 : 10,
+      );
+      const rates = source.models.flatMap(({ price_facts }) => price_facts);
+      expect(
+        rates.every(
+          ({ conditions }) => conditions.service_tier === "batch" || conditions.speed !== undefined,
+        ),
+      ).toBe(true);
+      const partition = validatedPricing(source);
+      const batchInput = partition.books
+        .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
+        ?.offers.find(({ offer_key }) => offer_key === "batch")
+        ?.terms.find(({ term_key }) => term_key === "input_text");
+      if (batchInput?.kind !== "rate") throw new Error("Missing Batch input rate");
+      expect(
+        batchInput.variants.some(
+          ({ applicability }) =>
+            evaluateApplicability(applicability, [
+              {
+                dimension: { namespace: "kmodels", value: "inference_geo" },
+                kind: "categorical",
+                value: { namespace: "provider", provider_id: "anthropic", value: "global" },
+              },
+            ]).state === "true",
+        ),
+      ).toBe(true);
+    },
+  );
+
   it("extracts execution minimums and allowances as typed source facts", async () => {
     const parsed = await anthropicSource();
     const standalone = parsed.commercial_facts?.find(
@@ -425,7 +481,13 @@ describe("Anthropic adapters", () => {
     });
     expect(
       models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts,
-    ).toContainEqual(expect.objectContaining({ meter: "input_text", price: "10", conditions: {} }));
+    ).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "10",
+        conditions: { speed: "standard" },
+      }),
+    );
     expect(
       models.find(({ model_id }) => model_id === "claude-fable-5-20260701")?.price_facts,
     ).toEqual([]);
@@ -675,7 +737,11 @@ describe("Anthropic adapters", () => {
     expect(
       models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts,
     ).toContainEqual(
-      expect.objectContaining({ meter: "output_text", price: "50", conditions: {} }),
+      expect.objectContaining({
+        meter: "output_text",
+        price: "50",
+        conditions: { speed: "standard" },
+      }),
     );
   });
 
@@ -997,7 +1063,7 @@ describe("Anthropic adapters", () => {
     expect(
       fable?.price_facts.filter(
         ({ conditions }) =>
-          conditions.speed === undefined &&
+          conditions.speed === "standard" &&
           conditions.service_tier === undefined &&
           conditions.inference_geo === undefined,
       ),
@@ -1082,7 +1148,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_write_text",
         price: "12.50",
-        conditions: { cache_ttl_seconds: 300 },
+        conditions: { cache_ttl_seconds: 300, speed: "standard" },
       }),
     );
   });
@@ -1099,7 +1165,13 @@ describe("Anthropic adapters", () => {
     validatedPricing(modelsSource);
     expect(
       models.find(({ model_id }) => model_id === "claude-opus-4-8")?.price_facts,
-    ).toContainEqual(expect.objectContaining({ meter: "input_text", price: "5", conditions: {} }));
+    ).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "5",
+        conditions: { speed: "standard" },
+      }),
+    );
   });
 
   it("keeps a readable Batch input and raw output without deriving rates from an unreadable multiplier", async () => {
@@ -1198,7 +1270,13 @@ describe("Anthropic adapters", () => {
     validatedPricing(modelsSource);
     expect(
       models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts,
-    ).toContainEqual(expect.objectContaining({ meter: "input_text", price: "10", conditions: {} }));
+    ).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "10",
+        conditions: { speed: "standard" },
+      }),
+    );
   });
 
   it("keeps an unreviewed context qualifier raw instead of turning it into an ordinary rate", async () => {
