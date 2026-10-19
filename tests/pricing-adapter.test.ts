@@ -852,6 +852,8 @@ describe("parsed-source canonical pricing adapter", () => {
     ["amazon-bedrock", true, "speed", "standard", "optimized"],
     ["azure", false, "context_tier", "short_context", "long_context"],
     ["azure", true, "context_tier", "short_context", "long_context"],
+    ["vertex", false, "region", "us-west1", "us-east5"],
+    ["vertex", true, "region", "us-west1", "us-east5"],
   ] as const)(
     "requires source-owned %s scopes (explicit=%s, dimension=%s)",
     (provider, explicit, dimension, base, alternative) => {

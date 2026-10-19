@@ -68,6 +68,8 @@ replacement.
   Priority, or Flex. Batch is a separate offer and uses successful result-item accounting.
 - Global and non-global values use `deployment_scope`; exact locations use `region`. A request
   location can select an exact region, but it does not infer the wildcard meaning of non-global.
+  A quote without a region stays unqualified. A separately priced location cannot establish a
+  synthetic default region for another quote, including a globally routed or differently dated row.
 - Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
   independent applicability dimensions.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only

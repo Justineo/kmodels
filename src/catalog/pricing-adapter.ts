@@ -846,7 +846,6 @@ function normalizedSourceFacts(
 ): Array<{ sourceRate: SourcePriceFact; normalizedRate: SourcePriceFact }> {
   const normalized = rates.map((rate) => sourcePriceFactSchema.parse(rate));
 
-  if (providerId === "vertex") completeReviewedDefault(normalized, "region", "default");
   if (providerId === "databricks" || providerId === "vertex")
     completeReviewedDefault(normalized, "promotion", false);
 
