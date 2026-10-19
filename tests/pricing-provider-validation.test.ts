@@ -16,6 +16,29 @@ import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validat
 import { generatedData } from "./generated-data-context.ts";
 
 describe("provider pricing validation", () => {
+  it("does not publish a synthetic Cerebras Batch state as native pricing evidence", async () => {
+    const { pricing } = await generatedData();
+    for (const book of pricing.data.books) {
+      if (
+        book.provider_id !== "cerebras" ||
+        book.scope.kind !== "provider_resource" ||
+        book.scope.resource_key !== "batch"
+      )
+        continue;
+      for (const offer of book.offers)
+        for (const state of offer.states) {
+          if (state.state !== "not_published") continue;
+          expect(
+            state.observations.some(
+              ({ locator, raw }) =>
+                raw.fragment !== undefined ||
+                locator.kind !== "provider_key" ||
+                locator.value !== "pricing:model-state",
+            ),
+          ).toBe(true);
+        }
+    }
+  });
   it("keeps accepted Bedrock Guardrail prices at their native machine-unit amounts", async () => {
     const { pricing } = await generatedData();
     let checked = 0;

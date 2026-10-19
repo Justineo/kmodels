@@ -371,6 +371,8 @@ Status: implemented
   Cohere's model-document source likewise returns its billed-unit mappings independently of model
   rows; catalog, pricing-overlay and account-inventory results share the explicit source envelope.
   The price overlay retains its own identity when combined with catalog and accounting evidence.
+  Cerebras likewise returns independent usage contracts; a Batch result contract does not imply a
+  published Batch price state. API field evidence is separate from cache-price policy evidence.
   Anthropic also returns services, acquisition inputs and reviewed vocabulary at source level,
   including typed Code Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
   fixed-search contributions and container calculations; service-only input needs no model carrier.

@@ -8875,7 +8875,7 @@ describe("Cerebras adapter", () => {
     overrides?: Readonly<Record<string, string>>;
   }
 
-  async function catalog(options: CerebrasCatalogOptions = {}): Promise<ProviderModel[]> {
+  async function catalogSource(options: CerebrasCatalogOptions = {}): Promise<SourceParseResult> {
     const value = manifest("cerebras");
     const configured = source("cerebras-catalog");
     const companions = [
@@ -8914,7 +8914,11 @@ describe("Cerebras adapter", () => {
       ...(options.onPricingReconciliation === undefined
         ? {}
         : { onPricingReconciliation: options.onPricingReconciliation }),
-    }).models;
+    });
+  }
+
+  async function catalog(options: CerebrasCatalogOptions = {}): Promise<ProviderModel[]> {
+    return (await catalogSource(options)).models;
   }
 
   async function lifecycle(
@@ -9086,10 +9090,6 @@ describe("Cerebras adapter", () => {
           reason_code: "cache_rate_normalized",
           sample: "gpt-oss-120b:cache_read_text",
         },
-        {
-          disposition: "explicit_non_numeric",
-          reason_code: "batch_rate_not_published",
-        },
       ]),
     );
   });
@@ -9158,28 +9158,35 @@ describe("Cerebras adapter", () => {
       pricing_state: "unknown",
       price_facts: [],
     });
-    const onlyCards = await catalog({
+    const onlyCards = await catalogSource({
       omit: ["cache", "chat-completions", "completions", "batch", "sdk-readme"],
     });
-    expect(onlyCards).toHaveLength(3);
+    expect(onlyCards.models).toHaveLength(3);
     expect(
-      onlyCards.every(({ price_facts }) =>
+      onlyCards.models.every(({ price_facts }) =>
         ["input_text", "output_text"].every((meter) =>
           price_facts.some((rate) => rate.meter === meter),
         ),
       ),
     ).toBe(true);
-    expect(onlyCards.flatMap(({ raw_price_facts }) => raw_price_facts)).toEqual([]);
-    expect(onlyCards.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
+    expect(onlyCards.models.flatMap(({ raw_price_facts }) => raw_price_facts)).toEqual([]);
+    expect(onlyCards.pricing_inputs ?? []).toEqual([]);
   });
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v15",
+      extractorVersion: "cerebras-catalog-v16",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
-    const models = await catalog();
-    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    const result = await catalogSource();
+    const inputs = result.pricing_inputs ?? [];
+    expect(
+      result.models.every(
+        ({ pricing_inputs, commercial_facts }) =>
+          pricing_inputs === undefined && commercial_facts === undefined,
+      ),
+    ).toBe(true);
+    expect(result.commercial_facts).toBeUndefined();
     expect(inputs).toHaveLength(14);
     expect(inputs.map(({ key }) => key).sort()).toEqual([
       "batch.result.input_tokens",
@@ -9225,18 +9232,15 @@ describe("Cerebras adapter", () => {
       return reconciliation;
     }
 
-    const chat = (await fixture("cerebras/chat-completions.md")).replace(
-      "operationId: createChatCompletion",
-      "operationId: renamedChatCompletion",
-    );
-    await expectDrift({ "chat-completions": chat }, "chat_operation_contract_drift");
+    const chat = (await fixture("cerebras/chat-completions.md")).replace("    post:", "    get:");
+    await expectDrift({ "chat-completions": chat }, "pricing_input_contract_partial");
     const completions = (await fixture("cerebras/completions.md")).replace(
       "v1/completions",
       "v1/renamed",
     );
-    await expectDrift({ completions }, "completions_operation_contract_drift");
+    await expectDrift({ completions }, "pricing_input_contract_partial");
     const get = (await fixture("cerebras/completions.md")).replace("curl -X POST", "curl -X GET");
-    await expectDrift({ completions: get }, "completions_operation_contract_drift");
+    await expectDrift({ completions: get }, "pricing_input_contract_partial");
     const gpt = (await fixture("cerebras/gpt.md")).replace('"Chat Completions"', '"Responses"');
     const endpointReconciliation: PricingReconciliationItem[] = [];
     const endpointModels = await catalog({
@@ -9272,7 +9276,7 @@ describe("Cerebras adapter", () => {
       "billed at the standard input token rate",
       "billing is unspecified",
     );
-    await expectDrift({ cache }, "pricing_input_contract_partial");
+    await expectDrift({ cache }, "cache_pricing_policy_drift");
     const sdkReadme = (await fixture("cerebras/sdk-readme.md")).replace(
       "final chunk",
       "an unspecified event",
@@ -9282,7 +9286,7 @@ describe("Cerebras adapter", () => {
       "You're only charged for\nrequests that completed.",
       "Billing depends on status.",
     );
-    await expectDrift({ batch }, "batch_accounting_contract_drift");
+    expect((await catalogSource({ overrides: { batch } })).pricing_inputs).toHaveLength(14);
   });
 
   it("resolves linked replacement models but ignores parameter deprecations", async () => {
@@ -9379,21 +9383,18 @@ describe("Cerebras adapter", () => {
     ).toMatchObject({ price: "0.99", source_ref: "cerebras-models" });
   });
 
-  it("publishes only request-cost inference rates and the unpublished Batch state", async () => {
+  it("publishes request-cost inference rates without inventing a Batch price state", async () => {
     const value = manifest("cerebras");
-    const models = await catalog();
+    const result = await catalogSource();
+    const { models } = result;
     const pricing = assembleParsedProviderPricing(
       "cerebras",
       observedAt,
-      [{ source: source("cerebras-catalog"), models }],
+      [{ source: source("cerebras-catalog"), ...result }],
       models,
       value.pricingCategoricalLabels,
     );
     if (pricing === undefined) throw new Error("Missing Cerebras pricing");
-    const resource = (key: string) =>
-      pricing.books.find(
-        ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === key,
-      );
     const gpt = models.find(({ model_id }) => model_id === "gpt-oss-120b");
     if (gpt === undefined) throw new Error("Missing Cerebras GPT OSS model");
     const payg = pricing.books
@@ -9450,23 +9451,11 @@ describe("Cerebras adapter", () => {
       }),
     ]);
 
-    const batch = resource("batch");
-    expect(batch?.scope).toMatchObject({ kind: "provider_resource", model_refs: [] });
-    expect(batch?.offers).toEqual([
-      expect.objectContaining({
-        offer_key: "execution",
-        enrollment: [],
-        relations: [],
-        settlement: [],
-        states: [expect.objectContaining({ state: "not_published" })],
-        terms: [],
-      }),
-    ]);
     expect(
       pricing.books
         .filter(({ scope }) => scope.kind === "provider_resource")
         .map(({ scope }) => (scope.kind === "provider_resource" ? scope.resource_key : "")),
-    ).toEqual(["batch"]);
+    ).toEqual([]);
     expect(
       pricing.books
         .flatMap(({ offers }) => offers)
@@ -9475,6 +9464,92 @@ describe("Cerebras adapter", () => {
     expect(
       pricing.books.flatMap(({ offers }) => offers).flatMap(({ terms }) => terms),
     ).not.toContainEqual(expect.objectContaining({ kind: "allowance" }));
+  });
+
+  it("keeps base input quantities intact when no separate cache price is admitted", async () => {
+    const result = await catalogSource({ omit: ["cache"] });
+    expect(result.pricing_inputs).toHaveLength(14);
+    const gpt = result.models.find(({ model_id }) => model_id === "gpt-oss-120b");
+    expect(gpt?.capabilities.prompt_cache).toBe(true);
+    expect(gpt?.price_facts.some(({ meter }) => meter === "cache_read_text")).toBe(false);
+    const pricing = assembleParsedProviderPricing(
+      "cerebras",
+      observedAt,
+      [{ source: source("cerebras-catalog"), ...result }],
+      result.models,
+    );
+    const input = pricing?.books
+      .find(({ scope }) => scope.model_refs.includes("cerebras/gpt-oss-120b"))
+      ?.offers[0]?.terms.find((term) => term.kind === "rate" && term.meter.value === "input_text");
+    expect(input?.kind === "rate" ? input.variants[0]?.charge_binding?.signal : undefined).toEqual({
+      namespace: "kmodels",
+      value: "input_tokens",
+    });
+  });
+
+  it("preserves independent accounting inputs without manufacturing a service or model row", async () => {
+    const result = await catalogSource();
+    const configured = source("cerebras-catalog");
+    const independent = { ...result, models: [] };
+    const captured = capturePricingReplaySources(
+      [{ source: configured, ...independent }],
+      [
+        {
+          id: configured.id,
+          provider_id: "cerebras",
+          url: configured.url,
+          source: [configured.type],
+          stability: configured.stability,
+          scope: configured.scope ?? "global",
+          role: configured.role ?? "catalog",
+          exhaustive: configured.exhaustive ?? false,
+          field_paths: configured.fields,
+          pricing_evidence: configured.pricingEvidence,
+          content_hash: "1".repeat(64),
+          extractor_version: configured.extractorVersion,
+          observed_at: observedAt,
+        },
+      ],
+    )?.[0];
+    expect(captured?.models).toEqual([]);
+    expect(captured?.pricing_inputs).toEqual(result.pricing_inputs);
+    expect(captured?.pricing_inputs).toHaveLength(14);
+    expect(captured?.commercial_facts).toBeUndefined();
+    expect(
+      assembleParsedProviderPricing(
+        "cerebras",
+        observedAt,
+        [{ source: configured, ...independent }],
+        [],
+      ),
+    ).toBeUndefined();
+  });
+
+  it("binds admitted cache charges independently of capability metadata", async () => {
+    const result = await catalogSource();
+    const models = result.models.map((model) => ({
+      ...model,
+      capabilities: { ...model.capabilities, prompt_cache: false as const },
+    }));
+    const pricing = assembleParsedProviderPricing(
+      "cerebras",
+      observedAt,
+      [{ source: source("cerebras-catalog"), ...result }],
+      models,
+    );
+    const terms = pricing?.books.find(({ scope }) =>
+      scope.model_refs.includes("cerebras/gpt-oss-120b"),
+    )?.offers[0]?.terms;
+    expect(
+      terms
+        ?.filter((term) => term.kind === "rate")
+        .map((term) => [term.meter.value, term.variants[0]?.charge_binding?.signal.value]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["input_text", "uncached_input_tokens"],
+        ["cache_read_text", "cached_input_tokens"],
+      ]),
+    );
   });
 
   it("signals additive authenticated inventory fields", async () => {

@@ -14,7 +14,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["amazon-sagemaker", ["resource", "binding"]],
   ["anthropic", ["resource", "binding", "allowance"]],
   ["azure", ["resource", "binding"]],
-  ["cerebras", ["resource", "binding"]],
+  ["cerebras", ["binding"]],
   ["cohere", ["binding"]],
   ["dashscope", ["resource", "binding"]],
   ["databricks", ["binding"]],

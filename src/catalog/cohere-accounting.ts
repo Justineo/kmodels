@@ -1,4 +1,5 @@
 import { finalizePricingInputs } from "./pricing-input.ts";
+import { markdownProse as prose, markdownSection as section } from "./markdown.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
@@ -252,38 +253,4 @@ function atPath(value: unknown, path: string[]): unknown {
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function section(body: string, depth: number, name: string): string | undefined {
-  const headings = [...prose(body).matchAll(/^(#{1,6}) ([^\r\n]+?)[ \t]*\r?$/gm)];
-  const matches = headings.filter((heading) => heading[1]?.length === depth && heading[2] === name);
-  const heading = matches[0];
-  if (matches.length !== 1 || heading === undefined) return;
-  const start = heading.index + heading[0].length;
-  const end = headings.find(
-    (other) => other.index > heading.index && (other[1]?.length ?? 0) <= depth,
-  )?.index;
-  return body.slice(start, end);
-}
-
-/** Preserve offsets so fenced headings cannot change the ownership of native Markdown fields. */
-function prose(body: string): string {
-  let fence: string | undefined;
-  return body
-    .split("\n")
-    .map((line) => {
-      const marker = line.match(/^ *(`{3,}|~{3,})(.*)$/u);
-      const fenced = fence !== undefined;
-      if (marker?.[1] !== undefined) {
-        if (fence === undefined) fence = marker[1];
-        else if (
-          marker[1][0] === fence[0] &&
-          marker[1].length >= fence.length &&
-          marker[2]?.trim() === ""
-        )
-          fence = undefined;
-      }
-      return fenced || marker !== null ? " ".repeat(line.length) : line;
-    })
-    .join("\n");
 }

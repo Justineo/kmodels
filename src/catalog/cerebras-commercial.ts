@@ -35,7 +35,7 @@ export function applyCerebrasCommercialTopology(
             modelBook(book, published.get(book.scope.model_refs[0] ?? ""), inputIndex),
           ),
         ];
-      return book.scope.resource_key === "batch" ? [cleanBook(book)] : [];
+      return [];
     }),
   };
 }
@@ -47,30 +47,24 @@ function modelBook(
 ): AtomicPricingBook {
   return {
     ...book,
-    offers: book.offers.map((offer) =>
-      offer.offer_key === "usage"
-        ? {
-            ...offer,
-            offer_key: "payg",
-            name: "Pay-as-you-go inference",
-            terms: offer.terms.map((term) => bindTerm(term, model, inputIndex)),
-            relations: [],
-            settlement: [],
-          }
-        : offer,
-    ),
-  };
-}
-
-function cleanBook(book: AtomicPricingBook): AtomicPricingBook {
-  return {
-    ...book,
-    offers: book.offers.map((offer) => ({
-      ...offer,
-      enrollment: [],
-      relations: [],
-      settlement: [],
-    })),
+    offers: book.offers.map((offer) => {
+      if (offer.offer_key !== "usage") return offer;
+      const cacheSplit = offer.terms.some(
+        (term) =>
+          term.kind === "rate" &&
+          term.meter.namespace === "kmodels" &&
+          term.meter.value === "cache_read_text" &&
+          term.variants.some(({ price }) => isStandardUnit(price.per, "token")),
+      );
+      return {
+        ...offer,
+        offer_key: "payg",
+        name: "Pay-as-you-go inference",
+        terms: offer.terms.map((term) => bindTerm(term, model, inputIndex, cacheSplit)),
+        relations: [],
+        settlement: [],
+      };
+    }),
   };
 }
 
@@ -78,8 +72,11 @@ function bindTerm(
   term: AtomicPricingTerm,
   model: PublishedPricingModel | undefined,
   inputIndex: PricingInputIndex,
+  cacheSplit: boolean,
 ): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) => binding(meter, variant, model, inputIndex));
+  return bindRateTerm(term, (meter, variant) =>
+    binding(meter, variant, model, inputIndex, cacheSplit),
+  );
 }
 
 function binding(
@@ -87,16 +84,14 @@ function binding(
   variant: AtomicRateVariant,
   model: PublishedPricingModel | undefined,
   inputIndex: PricingInputIndex,
+  cacheSplit: boolean,
 ): ChargeBinding | undefined {
   if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
-  const hasCache = model?.capabilities.prompt_cache === true;
   const signal =
     meter.value === "cache_read_text"
-      ? hasCache
-        ? standardSignal("cached_input_tokens")
-        : undefined
+      ? standardSignal("cached_input_tokens")
       : meter.value === "input_text"
-        ? standardSignal(hasCache ? "uncached_input_tokens" : "input_tokens")
+        ? standardSignal(cacheSplit ? "uncached_input_tokens" : "input_tokens")
         : meter.value === "output_text"
           ? standardSignal("output_tokens")
           : undefined;
