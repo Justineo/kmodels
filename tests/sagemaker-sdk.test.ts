@@ -119,7 +119,7 @@ describe("SageMaker SDK catalog", () => {
         source,
         body,
         observedAt: "2026-09-21T00:00:00Z",
-      }).find((model) => model.model_id === id);
+      }).models.find((model) => model.model_id === id);
       expect(model).toMatchObject({
         tasks: [expected],
         raw_type: label,
@@ -129,7 +129,9 @@ describe("SageMaker SDK catalog", () => {
         JSON.stringify({ ...spec, model_id: id }),
         header(id, "1.0", { search_keywords: [label] }),
       );
-      const [sdkModel] = parseSagemakerSdk({
+      const {
+        models: [sdkModel],
+      } = parseSagemakerSdk({
         provider,
         source,
         body: JSON.stringify([sdk]),
@@ -243,7 +245,9 @@ describe("SageMaker SDK catalog", () => {
 
   it("round-trips detail-only metadata and renders package limits distinctly from model limits", async () => {
     const body = JSON.stringify([projectSagemakerSpec(JSON.stringify(spec), header("new-video"))]);
-    const [parsed] = parseSagemakerSdk({
+    const {
+      models: [parsed],
+    } = parseSagemakerSdk({
       provider,
       source,
       body,

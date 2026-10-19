@@ -1,15 +1,9 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import type { SourceManifest } from "./manifests.ts";
-import {
-  attachCommercialFacts,
-  commercialResource,
-  publishedRate,
-  rawPricingFact,
-} from "./pricing.ts";
+import { commercialResource, publishedRate, rawPricingFact } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourceCommercialPricingFact } from "./pricing-source.ts";
-import type { Provider } from "./schema.ts";
+import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import {
   parseSagemakerCatalog,
   sagemakerRows,
@@ -118,20 +112,13 @@ export function normalizeSagemakerMarketplace(body: string, id: string): string 
   return JSON.stringify({ listing_id: id, terms: queries[0]?.state.data.summary.terms ?? [] });
 }
 
-interface Input {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
-}
-
-export function parseSagemakerPricing(input: Input) {
+export function parseSagemakerPricing(input: Input): SourceParseResult {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
-  const models = parseSagemakerCatalog({ ...input, body: bundle.catalog });
+  const { models } = parseSagemakerCatalog({ ...input, body: bundle.catalog });
+  const rows = sagemakerRows(bundle.catalog);
   if (bundle.openManifest !== undefined) {
     const seen = new Set(models.map((model) => model.model_id));
-    for (const header of sagemakerOpenSpecs(bundle.openManifest, sagemakerRows(bundle.catalog))) {
+    for (const header of sagemakerOpenSpecs(bundle.openManifest, rows)) {
       if (seen.has(header.model_id)) continue;
       models.push(
         baseModel({
@@ -144,17 +131,9 @@ export function parseSagemakerPricing(input: Input) {
       );
     }
   }
-  const admitted = new Set(
-    sagemakerRows(bundle.catalog)
-      .filter((row) => row.proprietary)
-      .map((row) => row.id),
-  );
+  const admitted = new Set(rows.filter((row) => row.proprietary).map((row) => row.id));
   if (bundle.proprietaryManifest !== undefined) {
-    for (const header of sagemakerPricingSpecs(
-      bundle.proprietaryManifest,
-      sagemakerRows(bundle.catalog),
-      true,
-    )) {
+    for (const header of sagemakerPricingSpecs(bundle.proprietaryManifest, rows, true)) {
       if (admitted.has(header.model_id)) continue;
       admitted.add(header.model_id);
       models.push(
@@ -200,8 +179,7 @@ export function parseSagemakerPricing(input: Input) {
   }
   if (seenListings.size !== refs.size)
     throw new Error("SageMaker Marketplace price bundle was incomplete");
-  attachCommercialFacts(models, facts);
-  return models;
+  return { models, commercial_facts: facts };
 }
 
 function record(

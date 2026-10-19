@@ -1,5 +1,4 @@
 import type {
-  ParsedProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
   SourceRawPricingFact,
@@ -110,16 +109,4 @@ export function rawPricingFact(
     raw: typeof raw === "string" ? { fragment: raw } : raw,
     ...(resolution_policy === undefined ? {} : { resolution_policy }),
   };
-}
-
-export function attachCommercialFacts(
-  models: readonly ParsedProviderModel[],
-  facts: SourceCommercialPricingFact[],
-): void {
-  const carrier = models.reduce<ParsedProviderModel | undefined>(
-    (current, model) => (current === undefined || model.uid < current.uid ? model : current),
-    undefined,
-  );
-  if (carrier !== undefined && facts.length > 0)
-    carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
 }

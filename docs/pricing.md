@@ -108,6 +108,11 @@ units, quantities and Nova Grounding ownership likewise come from native source 
 source rate terms retain their exact provider units/meters, scoped numeric states and binding
 provenance. Unknown raw service evidence is never converted back into executable prices. These
 internal representations add no second public pricing resource.
+Native locators remain unchanged. Generated fallback locators serialize object keys in stable
+order, and conditions projected from source objects into evidence arrays use stable dimension
+order. Source object insertion order or schema parsing must not change evidence identity or make
+otherwise identical compilation and replay results differ. Native raw fragments and supplied
+condition arrays remain source evidence.
 If retaining prices also requires rolling back the provider's catalog core, collection keeps the
 previous compilation input with that core, or omits the replay entry when no prior input exists.
 Rejected fresh input must not be rebound to the rolled-back source records.

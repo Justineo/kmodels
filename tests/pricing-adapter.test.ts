@@ -397,6 +397,55 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(Object.hasOwn(parsed.conditions, "endpoint")).toBe(false);
   });
 
+  it.each(["rate", "raw", "state"] as const)(
+    "keeps %s source evidence independent of condition key insertion order",
+    (kind) => {
+      const { source } = pricingManifest();
+      const assemble = (conditions: SourcePriceFact["conditions"]) => {
+        const parsed = model();
+        parsed.pricing_state = "unknown";
+        parsed.price_facts = kind === "rate" ? [tokenRate("2", conditions)] : [];
+        parsed.raw_price_facts =
+          kind === "raw"
+            ? [
+                {
+                  term_key: "future-rate",
+                  impact: "base_price",
+                  reason: "unsupported_structure",
+                  conditions,
+                  source_ref: sourceRef,
+                  raw: { amount: "2", unit: "future unit" },
+                },
+              ]
+            : [];
+        if (kind === "state")
+          parsed.state_facts = [
+            {
+              state: "not_published",
+              conditions,
+              source_ref: sourceRef,
+              raw: { fragment: "Price not published for this scope" },
+            },
+          ];
+        return assembleParsedProviderPricing(
+          providerId,
+          observedAt,
+          [{ source, models: [parsed] }],
+          [parsed],
+        );
+      };
+      const expected = assemble({
+        region: "us-central1",
+        operation: "generate",
+        service_tier: "standard",
+      });
+      expect(expected?.books).toHaveLength(1);
+      expect(
+        assemble({ service_tier: "standard", operation: "generate", region: "us-central1" }),
+      ).toEqual(expected);
+    },
+  );
+
   it("attaches reviewed labels only to observed categorical values", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();

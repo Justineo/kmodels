@@ -3,8 +3,8 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import { baseModel } from "./model.ts";
-import { modalitySchema, type Provider } from "./schema.ts";
-import type { SourceManifest } from "./manifests.ts";
+import { modalitySchema } from "./schema.ts";
+import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import { packageVersion, sagemakerTasks, type SageMakerRow } from "./sagemaker.ts";
 
 const headerSchema = z.object({
@@ -228,50 +228,47 @@ export function projectSagemakerSpec(
   });
 }
 
-export function parseSagemakerSdk(input: {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-}) {
+export function parseSagemakerSdk(input: SourceParseInput): SourceParseResult {
   const rows = z.array(sagemakerSdkModelSchema).min(1).max(3000).parse(JSON.parse(input.body));
   const seen = new Set<string>();
-  return rows.map((row) => {
-    if (seen.has(row.id)) throw new Error("SageMaker metadata repeated an identity");
-    seen.add(row.id);
-    const model = baseModel({
-      providerId: input.provider.id,
-      id: row.id,
-      name: row.id,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    model.model_card = row.model_card;
-    model.deployment = row.deployment;
-    model.modalities = { input: row.input, output: row.output };
-    model.capabilities.fine_tuning = row.fine_tuning ?? "unknown";
-    model.tasks = [...new Set(row.tasks.flatMap((task) => sagemakerTasks(row.id, task)))];
-    model.task_evidence = row.tasks.flatMap((label) =>
-      sagemakerTasks(row.id, label).map((task) => ({
-        task,
-        source_ref: input.source.id,
-        namespace: "sagemaker.sdk.search_keywords",
-        raw_value: label,
-        kind: "provider_task" as const,
-      })),
-    );
-    if (row.tasks.includes("Text") && row.tasks.includes("Generation")) {
-      if (!model.tasks.includes("text_generation")) model.tasks.push("text_generation");
-      model.task_evidence.push({
-        task: "text_generation",
-        source_ref: input.source.id,
-        namespace: "sagemaker.sdk.search_keywords",
-        raw_value: JSON.stringify(["Text", "Generation"]),
-        kind: "provider_type",
+  return {
+    models: rows.map((row) => {
+      if (seen.has(row.id)) throw new Error("SageMaker metadata repeated an identity");
+      seen.add(row.id);
+      const model = baseModel({
+        providerId: input.provider.id,
+        id: row.id,
+        name: row.id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
       });
-    }
-    if (row.tasks.includes("Reasoning")) model.capabilities.reasoning = true;
-    model.service_families = ["SageMaker JumpStart"];
-    return model;
-  });
+      model.model_card = row.model_card;
+      model.deployment = row.deployment;
+      model.modalities = { input: row.input, output: row.output };
+      model.capabilities.fine_tuning = row.fine_tuning ?? "unknown";
+      model.tasks = [...new Set(row.tasks.flatMap((task) => sagemakerTasks(row.id, task)))];
+      model.task_evidence = row.tasks.flatMap((label) =>
+        sagemakerTasks(row.id, label).map((task) => ({
+          task,
+          source_ref: input.source.id,
+          namespace: "sagemaker.sdk.search_keywords",
+          raw_value: label,
+          kind: "provider_task" as const,
+        })),
+      );
+      if (row.tasks.includes("Text") && row.tasks.includes("Generation")) {
+        if (!model.tasks.includes("text_generation")) model.tasks.push("text_generation");
+        model.task_evidence.push({
+          task: "text_generation",
+          source_ref: input.source.id,
+          namespace: "sagemaker.sdk.search_keywords",
+          raw_value: JSON.stringify(["Text", "Generation"]),
+          kind: "provider_type",
+        });
+      }
+      if (row.tasks.includes("Reasoning")) model.capabilities.reasoning = true;
+      model.service_families = ["SageMaker JumpStart"];
+      return model;
+    }),
+  };
 }

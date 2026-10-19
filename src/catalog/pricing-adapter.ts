@@ -13,6 +13,7 @@ import {
   type ProviderPricingPartition,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
+import { stableCompactJson } from "./io.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import { pricingAtomIdentity } from "./pricing-commercial-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
@@ -680,7 +681,7 @@ function addRaw(
       source_ref: sourceRef,
       locator: {
         kind: "provider_key",
-        value: JSON.stringify([
+        value: stableCompactJson([
           uid,
           fact.term_key,
           fact.impact,
@@ -731,7 +732,7 @@ function addStateFact(
       sourceRef,
       fact.source_locator ?? {
         kind: "provider_key",
-        value: JSON.stringify([uid, fact.state, fact.conditions]),
+        value: stableCompactJson([uid, fact.state, fact.conditions]),
       },
       fact.raw,
       applicability,
@@ -1653,6 +1654,7 @@ function rawFact(rate: SourcePriceFact): RawPriceFact {
       ([key, value]) =>
         value !== undefined && key !== "effective_from" && key !== "effective_until",
     )
+    .sort(([left], [right]) => left.localeCompare(right))
     .map(([dimension, value]) => ({ dimension, value: String(value) }));
   return {
     amount: rate.raw_price ?? rate.price,
@@ -1679,7 +1681,7 @@ function rateLocator(uid: string, rate: SourcePriceFact): PriceSourceLocator {
   if (rate.source_locator !== undefined) return rate.source_locator;
   return {
     kind: "provider_key",
-    value: JSON.stringify([
+    value: stableCompactJson([
       uid,
       rate.meter,
       rate.conditions,

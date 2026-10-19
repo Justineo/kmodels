@@ -3,10 +3,9 @@ import { compare, valid } from "@renovatebot/pep440";
 import { z } from "zod";
 import { htmlTables, htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
-import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import type { ParsedProviderModel } from "./pricing-source.ts";
-import type { ModelTask, Provider } from "./schema.ts";
+import type { ModelTask } from "./schema.ts";
+import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import { assertItemCount } from "./source-contract.ts";
 
 export const sagemakerCatalogUrl =
@@ -116,38 +115,35 @@ export function sagemakerTasks(id: string, label: string): ModelTask[] {
     : [...(sagemakerTaskMap.get(label.toLowerCase()) ?? [])];
 }
 
-export function parseSagemakerCatalog(input: {
-  provider: Provider;
-  source: SourceManifest;
-  body: string;
-  observedAt: string;
-}): ParsedProviderModel[] {
-  return sagemakerRows(input.body).map((row) => {
-    const model = baseModel({
-      providerId: input.provider.id,
-      id: row.id,
-      name: row.name,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    model.raw_type = row.task;
-    const correction = reviewedTaskCorrections.get(row.id);
-    const corrected = correction?.raw === row.task;
-    model.tasks = sagemakerTasks(row.id, row.task);
-    model.task_evidence = model.tasks.map((task) => ({
-      task,
-      source_ref: input.source.id,
-      namespace: corrected ? "sagemaker.jumpstart.task.reviewed" : "sagemaker.jumpstart.task",
-      raw_value: row.task,
-      kind: "provider_task",
-    }));
-    model.capabilities.fine_tuning = row.fineTuning;
-    if (row.task === "Reasoning") model.capabilities.reasoning = true;
-    model.service_families = ["SageMaker JumpStart"];
-    // The source explicitly lists currently available models, but neither GA nor account access.
-    model.status = "active";
-    return model;
-  });
+export function parseSagemakerCatalog(input: SourceParseInput): SourceParseResult {
+  return {
+    models: sagemakerRows(input.body).map((row) => {
+      const model = baseModel({
+        providerId: input.provider.id,
+        id: row.id,
+        name: row.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      });
+      model.raw_type = row.task;
+      const correction = reviewedTaskCorrections.get(row.id);
+      const corrected = correction?.raw === row.task;
+      model.tasks = sagemakerTasks(row.id, row.task);
+      model.task_evidence = model.tasks.map((task) => ({
+        task,
+        source_ref: input.source.id,
+        namespace: corrected ? "sagemaker.jumpstart.task.reviewed" : "sagemaker.jumpstart.task",
+        raw_value: row.task,
+        kind: "provider_task",
+      }));
+      model.capabilities.fine_tuning = row.fineTuning;
+      if (row.task === "Reasoning") model.capabilities.reasoning = true;
+      model.service_families = ["SageMaker JumpStart"];
+      // The source explicitly lists currently available models, but neither GA nor account access.
+      model.status = "active";
+      return model;
+    }),
+  };
 }
 
 export const packageVersion = z
