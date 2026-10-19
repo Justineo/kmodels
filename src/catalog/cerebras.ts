@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { extractCerebrasPricingInputs } from "./cerebras-accounting.ts";
-import { attachCerebrasBatch } from "./cerebras-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
@@ -15,6 +14,7 @@ import {
   type ZodContractObservation,
 } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
+import type { SourceParseResult } from "./source-parse.ts";
 
 interface Input {
   provider: Provider;
@@ -199,7 +199,7 @@ function architectureInputs(value: string): Modality[] {
   return parsed.flatMap((result) => (result.success ? [result.data] : []));
 }
 
-export function parseCerebrasPublic(input: Input): ProviderModel[] {
+export function parseCerebrasPublic(input: Input): SourceParseResult {
   const value: unknown = JSON.parse(input.body);
   const bundle = publicBundleSchema.parse(
     typeof value === "object" && value !== null && "index" in value ? value : JSON.stringify(value),
@@ -219,7 +219,7 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
     items.map((item) => publicModel(input, item)),
   );
   reconcileRates(input, result);
-  return result;
+  return { models: result };
 }
 
 type PublicItem = z.infer<typeof publicItemSchema>;
@@ -739,40 +739,6 @@ function document(input: Input, bundle: Bundle, suffix: string): string | undefi
   return item.body;
 }
 
-function hasClaims(
-  input: Input,
-  bundle: Bundle,
-  suffix: string,
-  claims: readonly RegExp[],
-  reasonCode: string,
-): boolean {
-  const body = document(input, bundle, suffix);
-  if (body === undefined) return false;
-  const normalized = body.replace(/\\([_$*])/g, "$1").replace(/\s+/g, " ");
-  const missing = claims.filter((pattern) => !pattern.test(body) && !pattern.test(normalized));
-  if (missing.length === 0) return true;
-  diagnostic(input, "unbound", reasonCode, suffix);
-  return false;
-}
-
-function hasBatchOffer(input: Input, bundle: Bundle): boolean {
-  const batch = hasClaims(
-    input,
-    bundle,
-    "/capabilities/batch.md",
-    [
-      /Private Preview/,
-      /available endpoint is currently `\/v1\/chat\/completions`/,
-      /only charged for requests that completed/i,
-      /prompt_tokens/,
-      /completion_tokens/,
-    ],
-    "batch_accounting_contract_drift",
-  );
-  if (batch) diagnostic(input, "explicit_non_numeric", "batch_rate_not_published");
-  return batch;
-}
-
 function reconcileRates(input: Input, models: ProviderModel[]): void {
   for (const model of models)
     for (const rate of model.price_facts)
@@ -784,30 +750,8 @@ function reconcileRates(input: Input, models: ProviderModel[]): void {
       });
 }
 
-function validateApiContracts(input: Input, bundle: Bundle): void {
-  hasClaims(
-    input,
-    bundle,
-    "/api-reference/chat-completions.md",
-    [
-      /^# Chat Completions$/m,
-      /^\s*\/v1\/chat\/completions:\s*$/m,
-      /operationId: createChatCompletion/,
-    ],
-    "chat_operation_contract_drift",
-  );
-  hasClaims(
-    input,
-    bundle,
-    "/api-reference/completions.md",
-    [/^# Completions$/m, /curl -X POST https:\/\/api\.cerebras\.ai\/v1\/completions/],
-    "completions_operation_contract_drift",
-  );
-}
-
-export function parseCerebrasCatalog(input: Input): ProviderModel[] {
+export function parseCerebrasCatalog(input: Input): SourceParseResult {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
-  validateApiContracts(input, bundle);
   const rows = catalogRows(input, bundle.index.body);
   const cardPaths = new Set(rows.map(({ path }) => path));
   const nonCardModelPaths = new Set(["/models/choose-a-model"]);
@@ -831,7 +775,6 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   const models = rows.map((row) =>
     catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled),
   );
-  const batch = hasBatchOffer(input, bundle);
   const pricingInputs = extractCerebrasPricingInputs({
     documents: bundle.documents,
     sourceRef: input.source.id,
@@ -840,12 +783,12 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
       ? {}
       : { onReconciliation: input.onPricingReconciliation }),
   });
-  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
-  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
-  if (batch) attachCerebrasBatch(result, input.source.id);
-  return result;
+  return {
+    models: result,
+    ...(pricingInputs.length === 0 ? {} : { pricing_inputs: pricingInputs }),
+  };
 }
 
 interface Update {
@@ -969,7 +912,7 @@ function replacements(
   return unique;
 }
 
-export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
+export function parseCerebrasLifecycle(input: Input): SourceParseResult {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
   const references = modelReferences(
     input,
@@ -1002,7 +945,7 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
       diagnostic(input, "unbound", "replacement_model_unknown", replacement);
       return false;
     });
-  return bounded(input, "cerebras-lifecycle", models);
+  return { models: bounded(input, "cerebras-lifecycle", models) };
 }
 
 function releaseIds(input: Input, body: string): string[] {
@@ -1013,7 +956,7 @@ function releaseIds(input: Input, body: string): string[] {
   return [...new Set(ids)];
 }
 
-export function parseCerebrasReleases(input: Input): ProviderModel[] {
+export function parseCerebrasReleases(input: Input): SourceParseResult {
   const dates = new Map<string, string>();
   for (const update of updates(input.body))
     for (const id of releaseIds(input, update.body)) {
@@ -1031,10 +974,10 @@ export function parseCerebrasReleases(input: Input): ProviderModel[] {
     tasks: ["text_generation"],
     release_date: date,
   }));
-  return bounded(input, "cerebras-releases", models);
+  return { models: bounded(input, "cerebras-releases", models) };
 }
 
-export function parseCerebrasApi(input: Input): ProviderModel[] {
+export function parseCerebrasApi(input: Input): SourceParseResult {
   const list = inventorySchema.parse(JSON.parse(input.body));
   const items = recognizeItems({
     label: "Cerebras API model",
@@ -1054,5 +997,5 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
     }),
     tasks: ["text_generation"],
   }));
-  return bounded(input, "cerebras-api", models);
+  return { models: bounded(input, "cerebras-api", models) };
 }

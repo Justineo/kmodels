@@ -3,28 +3,42 @@
 ## OpenAPI
 
 ```yaml POST /v1/chat/completions
+openapi: 3.1.0
 paths:
   /v1/chat/completions:
     post:
       operationId: createChatCompletion
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+              examples:
+                Streaming:
+                  value:
+                    object: chat.completion.chunk
+                    usage:
+                      prompt_tokens: 82
+                      completion_tokens: 26
+components:
+  schemas:
+    ChatCompletionResponse:
+      type: object
+      properties:
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+            prompt_tokens_details:
+              type: object
+              properties:
+                cached_tokens:
+                  type: integer
 ```
-
-Streaming response:
-
-```yaml
-object: chat.completion.chunk
-service_tier_used: default
-usage:
-  prompt_tokens: 82
-  completion_tokens: 26
-  total_tokens: 108
-  image_tokens: 0
-  prompt_tokens_details:
-    cached_tokens: 64
-  completion_tokens_details:
-    reasoning_tokens: 10
-    rejected_prediction_tokens: 2
-```
-
-The non-streaming response uses the same `usage.prompt_tokens`,
-`usage.prompt_tokens_details.cached_tokens`, and `usage.completion_tokens` fields.

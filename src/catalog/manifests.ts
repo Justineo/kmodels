@@ -3933,7 +3933,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v15",
+        extractorVersion: "cerebras-catalog-v16",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
