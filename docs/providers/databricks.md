@@ -107,6 +107,8 @@ pricing joins remain required.
   dates and subsequent list prices remain separate variants. Input/cache and output increases are
   applied separately with exact decimal arithmetic.
 - Short/long context rows retain the provider's named tier when the page gives no numeric threshold.
+  The legacy combined layout's numeric split is admitted only where the same model has an explicit
+  `Long (>200k tokens)` row; a named tier alone cannot establish that threshold.
   Text/image/audio rows use distinct meters and quantities. Cache-write alternatives use the
   provider-owned `cache_retention` selector (`default` or `1h`); an unspecified default never implies
   five minutes. These selectors and subset quantities may be caller-supplied.
@@ -149,6 +151,10 @@ pricing joins remain required.
   ambiguous matches are never guessed.
 - Same-scope conflicting numeric observations are retained for canonical conflict resolution. They
   do not erase valid sibling meters.
+
+Overlapping Databricks DBU and delegated Google USD quotes are not proof of two additive charges or
+of a selectable billing currency. When the source does not establish their precedence or disjoint
+scope, shared conflict resolution preserves the quotes as `conflicting_values` raw evidence.
 
 ## Canonical projection
 
