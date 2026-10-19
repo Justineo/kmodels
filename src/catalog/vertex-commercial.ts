@@ -276,8 +276,14 @@ function modelBinding(
       variant,
     );
   }
-  if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
-  if (family === "google")
+  if (!isStandardUnit(variant.price.per, "token")) return;
+  if (family === "google") {
+    if (
+      meter.namespace === "provider" &&
+      (meter.provider_id !== input.provider_id ||
+        !/^cache_read_(?:audio|image|video)$/.test(meter.value))
+    )
+      return;
     return googleTokenBinding(
       meter,
       variant,
@@ -288,6 +294,8 @@ function modelBinding(
       rateMeters,
       aggregation,
     );
+  }
+  if (meter.namespace !== "kmodels") return;
   if (family === "anthropic")
     return directTokenBinding(
       meter,
@@ -319,7 +327,7 @@ function modelBinding(
 }
 
 function googleTokenBinding(
-  meter: Extract<PriceMeter, { namespace: "kmodels" }>,
+  meter: PriceMeter,
   variant: AtomicRateVariant,
   mechanism: Mechanism,
   model: PublishedModel | undefined,
@@ -516,6 +524,19 @@ function directMethods(
     : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
 }
 
+function reportedCachedSignal(
+  input: AtomicProviderPricing,
+  modality: string,
+  unit: UnitExpression,
+): UsageSignal {
+  return providerSignal(
+    input,
+    `reported_cached_${modality}_tokens`,
+    `Agent Platform reported cached ${modality} prompt tokens`,
+    unit,
+  );
+}
+
 function uncachedInputMethods(
   modality: string,
   mechanism: Mechanism,
@@ -531,12 +552,7 @@ function uncachedInputMethods(
       `Agent Platform reported ${value} prompt tokens including cached content`,
       unit,
     ),
-    cached: providerSignal(
-      input,
-      `reported_cached_${value}_tokens`,
-      `Agent Platform reported cached ${value} prompt tokens`,
-      unit,
-    ),
+    cached: reportedCachedSignal(input, value, unit),
     tool: providerSignal(
       input,
       `reported_tool_prompt_${value}_tokens`,
@@ -615,18 +631,8 @@ function cachedInputMethods(
 ): MethodsAndFacts {
   if (modality !== "image")
     return directMethods(result, [`generate.cache.${modality}`], mechanism, inputIndex);
-  const image = providerSignal(
-    input,
-    "reported_cached_image_tokens",
-    "Agent Platform reported cached image tokens",
-    unit,
-  );
-  const document = providerSignal(
-    input,
-    "reported_cached_document_tokens",
-    "Agent Platform reported cached document tokens",
-    unit,
-  );
+  const image = reportedCachedSignal(input, "image", unit);
+  const document = reportedCachedSignal(input, "document", unit);
   return calculationMethod(
     {
       nodes: [

@@ -58,6 +58,13 @@ interface PricingTableContext {
   notes: string[];
 }
 type PricingTableContexts = ReadonlyMap<NonNullable<Selection[0]>, PricingTableContext>;
+type PriceQuoteIssue = "context" | "location" | "model" | "account_credit";
+interface ModelPriceQuote {
+  model: ProviderModel;
+  label: string;
+  conditions: SourcePriceFact["conditions"];
+  issue: PriceQuoteIssue | undefined;
+}
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 type LinkedDocument = { url: string; body: string };
 type Reconcile = Input["onPricingReconciliation"];
@@ -1042,11 +1049,11 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
 
 function priceName(value: string): string {
   return value
+    .replace(/\((?:Promotional Price|Standard Price|Deprecated)[^)]*\)/gi, " ")
     .replace(
-      /\s*\*?\s*(?:through|beginning|starting)\s+[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4}\s*$/i,
+      /\s*\(?\*?\s*(?:through|beginning|starting)\s+[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4}\s*\)?\s*$/i,
       " ",
     )
-    .replace(/\((?:Promotional Price|Standard Price|Deprecated)[^)]*\)/gi, " ")
     .replace(/\bon Google Cloud\b/gi, " ")
     .replace(
       /\bGemini (\d+(?:\.\d+)?) Flash with Gemini Live API native audio\b/gi,
@@ -1193,7 +1200,7 @@ function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][]
   );
   const observed = modalities.length > 0 ? modalities : ["text"];
   return observed.map((modality) => {
-    if (cached) {
+    if (cached && !output) {
       if (modality === "audio") return "cache_read_audio";
       if (modality === "image") return "cache_read_image";
       if (modality === "video") return "cache_read_video";
@@ -1280,15 +1287,15 @@ function addPriceQuote(
   model: ProviderModel,
   rate: SourcePriceFact,
   fragment: string,
-  missingScope: "context" | "location" | undefined,
+  issue: PriceQuoteIssue | undefined,
   context: PricingTableContext,
   reconcile?: Reconcile,
 ): void {
-  if (missingScope === undefined) return addRate(model, rate, reconcile);
+  if (issue === undefined) return addRate(model, rate, reconcile);
   model.raw_price_facts.push({
     term_key: "unparsed_base_rate",
     impact: "base_price",
-    reason: "unknown_applicability",
+    reason: issue === "account_credit" ? "unsupported_structure" : "unknown_applicability",
     source_ref: rate.source_ref,
     conditions: rate.conditions,
     raw: {
@@ -1300,8 +1307,11 @@ function addPriceQuote(
     },
   });
   reconcile?.({
-    disposition: "unresolved",
-    reason_code: `pricing_${missingScope}_scope_unresolved`,
+    disposition: issue === "account_credit" ? "raw" : "unresolved",
+    reason_code:
+      issue === "account_credit"
+        ? "account_credit_effective_price"
+        : `pricing_${issue}_scope_unresolved`,
     sample: `${model.model_id}: ${rate.meter}: ${rate.raw_unit ?? rate.unit}`.slice(0, 256),
   });
 }
@@ -1442,6 +1452,48 @@ function pricingValidity(label: string): SourcePriceFact["conditions"] {
   };
 }
 
+function modelQuoteIssue(label: string, notes: readonly string[]): PriceQuoteIssue | undefined {
+  const markers = unique([...label.matchAll(/\*+/g)].map(([marker]) => marker));
+  if (markers.length === 0) return;
+  if (markers.length !== 1) return "model";
+  const owned = notes.filter((note) => note.match(/^\*+/)?.[0] === markers[0]);
+  if (owned.length !== 1) return "model";
+  const credit = owned[0]?.match(
+    /^\* Promotional pricing provided through (\d+(?:\.\d+)?)% credits back on net spend on (?:select models|the same model) within a given period\.(?: Promotional pricing does not apply to ([^.]+)\.)?$/i,
+  );
+  if (credit?.[1] === undefined || Number(credit[1]) <= 0 || Number(credit[1]) > 100)
+    return "model";
+  if (credit[2] !== undefined && priceName(credit[2]) === priceName(label)) return "model";
+  return "account_credit";
+}
+
+function modelPriceQuotes(
+  models: Map<string, Evidence>,
+  label: string,
+  context: PricingTableContext,
+  reconcile?: Reconcile,
+): ModelPriceQuote[] {
+  const labels = label.split(/,\s*(?=Gemini\b)/i);
+  return labels.flatMap((label) => {
+    if (label.trim() === "") return [];
+    const targets = priceTargets(models, label);
+    if (targets.length === 0)
+      reconcile?.({
+        disposition: "unbound",
+        reason_code: "pricing_model_unbound",
+        sample: label.trim().slice(0, 256),
+      });
+    const conditions = pricingValidity(label);
+    const issue = modelQuoteIssue(label, context.notes);
+    return targets.map((model) => ({
+      model,
+      label: label.trim(),
+      conditions,
+      issue,
+    }));
+  });
+}
+
 function excludedPricingTable(table: Selection, headers: string[]): boolean {
   const section = text(table.prevAll("h2,h3,h4").first().text());
   return (
@@ -1500,9 +1552,8 @@ function tokenTables(
     const regionIndex = headers.findIndex((header) => /^Region$/i.test(header));
     const requestTypeIndex = headers.findIndex((header) => /^Request Type$/i.test(header));
     const tableContext = tableContexts.get(tableElement) ?? pricingTableContext($, table);
-    let current: ProviderModel[] = [];
+    let current: ModelPriceQuote[] = [];
     let descriptor = "";
-    let validity: SourcePriceFact["conditions"] = {};
     table
       .find("tr")
       .slice(1)
@@ -1510,34 +1561,18 @@ function tokenTables(
         const cells = $(row).find("th,td");
         if (cells.length === 1) {
           const label = cellText(cells.eq(0));
-          current = priceTargets(models, label);
-          validity = current.length === 0 ? {} : pricingValidity(label);
-          if (label !== "" && current.length === 0)
-            reconcile?.({
-              disposition: "unbound",
-              reason_code: "pricing_model_unbound",
-              sample: label.slice(0, 256),
-            });
+          current = modelPriceQuotes(models, label, tableContext, reconcile);
           return;
         }
         const modelCell = column(cells, headers.length, modelIndex);
         const modelLabel = modelCell === undefined ? "" : cellText(modelCell);
-        const direct = omniTokenHeader
-          ? modelLabel.split(",").flatMap((label) => priceTargets(models, label.trim()))
-          : priceTargets(models, modelLabel);
+        const direct = modelPriceQuotes(models, modelLabel, tableContext, reconcile);
         if (direct.length > 0) {
           current = direct;
           descriptor = "";
-          validity = pricingValidity(modelLabel);
         } else if (modelLabel !== "") {
           current = [];
           descriptor = "";
-          validity = {};
-          reconcile?.({
-            disposition: "unbound",
-            reason_code: "pricing_model_unbound",
-            sample: modelLabel.slice(0, 256),
-          });
         }
         if (current.length === 0) return;
         const offset = headers.length - cells.length;
@@ -1549,7 +1584,6 @@ function tokenTables(
         ) {
           current = [];
           descriptor = "";
-          validity = {};
           reconcile?.({
             disposition: "unbound",
             reason_code: "pricing_model_unbound",
@@ -1583,7 +1617,7 @@ function tokenTables(
             ? [{ price: "0" }]
             : money(alternative < 0 ? raw : raw.slice(0, alternative));
           if (prices.length === 0 && /^(?:N\/?A|Not available)$/i.test(raw))
-            for (const target of current)
+            for (const { model: target } of current)
               for (const rateMeter of rateMeters)
                 reconcile?.({
                   disposition: "explicit_non_numeric",
@@ -1601,7 +1635,7 @@ function tokenTables(
                   tableContext.processingTier,
                 )
               : [item.serviceTier])
-              for (const target of current)
+              for (const { model: target, label, conditions: validity, issue } of current)
                 for (const rateMeter of rateMeters) {
                   const conditions = {
                     ...scope?.conditions,
@@ -1628,18 +1662,14 @@ function tokenTables(
                         ...(item.scope === undefined ? {} : { deployment_scope: item.scope }),
                       },
                     ),
-                    raw,
-                    scope === undefined
-                      ? "location"
-                      : context === undefined
-                        ? "context"
-                        : undefined,
+                    `${label}; ${raw}`,
+                    scope === undefined ? "location" : context === undefined ? "context" : issue,
                     tableContext,
                     reconcile,
                   );
                 }
           if (alternative >= 0)
-            for (const target of current)
+            for (const { model: target, label, conditions: validity } of current)
               for (const rateMeter of rateMeters)
                 if (
                   !pageAlternativeVerified(
@@ -1651,7 +1681,7 @@ function tokenTables(
                   rawRate(
                     target,
                     sourceId,
-                    `${modelLabel || target.name}; ${header}`,
+                    `${label}; ${header}`,
                     raw,
                     {
                       ...scope?.conditions,
@@ -1862,10 +1892,9 @@ function labeledTables(
       .slice(1)
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
-        const modelLabel = text(cells.eq(0).text());
-        const targets = priceTargets(models, modelLabel);
+        const modelLabel = cellText(cells.eq(0));
+        const targets = modelPriceQuotes(models, modelLabel, tableContext, reconcile);
         if (targets.length === 0) return;
-        const validity = pricingValidity(modelLabel);
         cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1] ?? "";
           const context = contextTokenBounds(header, tableContext.notes);
@@ -1895,7 +1924,7 @@ function labeledTables(
                 : lower.includes("output")
                   ? "output_text"
                   : "input_text";
-            for (const model of targets) {
+            for (const { model, conditions: validity, issue } of targets) {
               addPriceQuote(
                 model,
                 publishedRate(
@@ -1916,17 +1945,13 @@ function labeledTables(
                     ...validity,
                   },
                 ),
-                fragment,
-                scope === undefined ? "location" : context === undefined ? "context" : undefined,
+                `${modelLabel}; ${fragment}`,
+                scope === undefined ? "location" : context === undefined ? "context" : issue,
                 tableContext,
                 reconcile,
               );
             }
           }
-          const conditions = {
-            ...scope?.conditions,
-            ...context,
-          };
           const cacheDuplicate =
             matches.some(({ label }) => /^Cache Write$/i.test(label)) &&
             /\b(?:5m|1h) Cache Write:/i.test(fragment);
@@ -1934,7 +1959,8 @@ function labeledTables(
             [...counts.values()].some((count) => count > 1) ||
             (cacheDuplicate && !verifiedDefaultCacheDuplicate(matches));
           const dollarCount = (fragment.match(/\$/g) ?? []).length;
-          for (const model of targets) {
+          for (const { model, conditions: validity } of targets) {
+            const conditions = { ...scope?.conditions, ...context, ...validity };
             const pageTokenRelation = evidence.pageTokenEquivalences.get(model.model_id);
             const pageAlternativesVerified =
               pageTokenRelation !== undefined && exactPageAlternatives(fragment, pageTokenRelation);

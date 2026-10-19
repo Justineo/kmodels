@@ -4192,14 +4192,19 @@ describe("Vertex AI adapters", () => {
     expect(facts("gemini-3.8-flash")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          price: "0.75",
-          conditions: expect.objectContaining({ effective_until: "2026-12-31" }),
-        }),
-        expect.objectContaining({
           price: "1.50",
           conditions: expect.objectContaining({ effective_from: "2027-01-01" }),
         }),
       ]),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "gemini-3.8-flash")?.raw_price_facts,
+    ).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown_applicability",
+        raw: expect.objectContaining({ amount: "0.75", meter: "input_text" }),
+        conditions: expect.objectContaining({ effective_until: "2026-12-31" }),
+      }),
     );
     expect(
       facts("deepseek-v3.1-maas").map(({ meter, price, unit, conditions }) => [
@@ -4314,7 +4319,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v13",
+      extractorVersion: "vertex-pricing-v14",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
