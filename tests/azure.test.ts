@@ -1058,6 +1058,67 @@ describe("Azure adapters", () => {
     });
   });
 
+  it.each([false, true])(
+    "does not invent a context class for an unqualified native SKU (long peer=%s)",
+    (withLong) => {
+      const value = manifest("azure");
+      const source = azureRetailSource(1, 1, 1);
+      const price = {
+        currencyCode: "USD",
+        retailPrice: 2.5,
+        armRegionName: "eastus2",
+        meterId: "ordinary-input",
+        meterName: "5.6 terra Inp Std Gl 1M Tokens",
+        productName: "Azure OpenAI GPT5",
+        skuName: "5.6 terra Inp Std Gl",
+        serviceName: "Foundry Models",
+        unitOfMeasure: "1M",
+        type: "Consumption",
+      };
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        body: JSON.stringify({
+          prices: [
+            price,
+            ...(withLong
+              ? [
+                  {
+                    ...price,
+                    meterId: "long-input",
+                    skuName: "5.6 terra LongCo Inp Std Gl",
+                    meterName: "5.6 terra LongCo Inp Std Gl 1M Tokens",
+                  },
+                ]
+              : []),
+          ],
+        }),
+        catalogModels: [azurePricingModel("gpt-5.6-terra", "2026-07-09")],
+      }).models;
+      expect(models[0]?.price_facts).toHaveLength(withLong ? 2 : 1);
+      expect(
+        models[0]?.price_facts.map(({ price, conditions }) => ({
+          price,
+          context: conditions.context_tier,
+        })),
+      ).toEqual([
+        { price: "2.5", context: undefined },
+        ...(withLong ? [{ price: "2.5", context: "long_context" }] : []),
+      ]);
+      const partition = assembleParsedProviderPricing(
+        "azure",
+        observedAt,
+        [{ source, models }],
+        models,
+      );
+      expect(partition?.books.length).toBeGreaterThan(0);
+      expect(partition?.vocabulary.atoms).not.toContainEqual(
+        expect.objectContaining({ key: "standard" }),
+      );
+    },
+  );
+
   it("extracts current public retail rates without Azure credentials", async () => {
     const value = manifest("azure");
     const source = azureRetailSource(3, 5, 0.8);

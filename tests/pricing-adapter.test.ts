@@ -806,12 +806,6 @@ describe("parsed-source canonical pricing adapter", () => {
   it("applies provider defaults only where official alternatives establish them", () => {
     const { source: pricingSource } = pricingManifest();
     const scenarios = [
-      {
-        provider: "azure",
-        key: "context_tier",
-        explicit: "long_context",
-        expected: "standard",
-      },
       { provider: "databricks", key: "promotion", explicit: true, expected: false },
       { provider: "vertex", key: "promotion", explicit: true, expected: false },
     ] as const;
@@ -856,6 +850,8 @@ describe("parsed-source canonical pricing adapter", () => {
     ["anthropic", true, "inference_geo", "global", "us"],
     ["amazon-bedrock", false, "speed", "standard", "optimized"],
     ["amazon-bedrock", true, "speed", "standard", "optimized"],
+    ["azure", false, "context_tier", "short_context", "long_context"],
+    ["azure", true, "context_tier", "short_context", "long_context"],
   ] as const)(
     "requires source-owned %s scopes (explicit=%s, dimension=%s)",
     (provider, explicit, dimension, base, alternative) => {
