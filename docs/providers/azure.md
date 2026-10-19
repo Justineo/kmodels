@@ -147,6 +147,12 @@ region, deployment scope, served service tier, context tier, modality, operation
 resolution, cache TTL, and validity when first-party evidence supplies them. Equal prices are not
 expanded into a synthetic Cartesian product.
 
+Explicit ShortCo/short-context and LongCo/long-context labels establish their respective native
+context classes. A quote without such a declaration stays unqualified; another long-context price
+cannot create a Standard or short-context selector on it. Unequal overlapping quotes retain their
+original evidence as bounded conflicts. A model's context window or a direct provider's threshold
+does not supply an Azure tariff bound.
+
 Normalized meters include input/output/cache token classes, embeddings, rerank searches, image,
 audio, video, pages, requests, and duration units used directly by inference. A numeric rate remains
 useful without a charge binding; a missing signal is local to that term.
