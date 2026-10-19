@@ -36,7 +36,8 @@ provider that operates and bills that route.
 - Authenticated `GET /v1/models`, enabled by `LLAMA_API_KEY`, is a non-creating account
   inventory. It can enrich matching catalog rows but cannot create a public model or
   retire one absent from the account. Unknown root or item fields are accepted with a
-  contract signal; malformed rows are skipped independently.
+  contract signal. Identity and the model object kind are required; malformed unused creation or
+  owner metadata cannot erase a valid identity. Invalid identities are skipped independently.
 
 ## Hosted pricing
 
@@ -46,32 +47,28 @@ The reviewed public SDK proves two exact Chat identities—
 `Llama-Guard-4-12B`. Each resolves to an existing registry row and receives its exact
 Meta route.
 
-Meta publishes no current numeric Llama API price book. These three hosted identities
-therefore have a model-scoped `not_published` usage offer with no placeholder rate.
-Other registry artifacts remain `unknown` and produce no price book. Never project a
-hosted example, route, or price state to siblings.
+The reviewed sources establish these hosted routes without a public numeric rate or an explicit
+non-publication claim. Pricing therefore remains `unknown` for hosted identities and other registry
+artifacts, and produces no price book. A route's existence cannot establish `not_published`, free
+usage or any other commercial state. Never project a hosted example or route to siblings.
+The registry/SDK source is catalog evidence rather than a pricing source. Meta has no canonical
+commercial partition or calculator-provider export until an admitted commercial source exists;
+the complete catalog still exposes every model with unknown pricing.
 
-The April 29, 2025 LlamaCon announcement describes a dated limited free preview. It is
-excluded as historical promotion evidence because it has no current validity period.
-It cannot make current calls free. Partner-backed Cerebras or Groq routes mentioned in
-the announcement are also excluded; their current rates belong to those providers.
+Dated limited-preview announcements cannot establish current free usage. Partner-operated
+routes have their prices under the provider that operates and bills them.
 
 The Chat response and stream expose open `{metric, value, unit}` entries, but the
 first-party SDK does not enumerate stable metric names, define their aggregation or
-terminal semantics, or relate them to a billed quantity. Kmodels audits that generic
-envelope as evidence for deliberate non-binding, but publishes no `pricing_inputs`:
+terminal semantics, or relate them to a billed quantity. These generic types establish no `pricing_inputs`:
 a runtime-selected metric name is not a stable acquisition contract for input,
 output, cached, or reasoning tokens. The Moderations response publishes no usage
 quantity at all. Request fields such as `max_completion_tokens` are controls rather
 than observed billable quantities and are not accounting evidence.
 
-This is an intentional price-book boundary, not an attempt to own the runtime request
-lifecycle. A consumer remains responsible for observing requests and results and for
-supplying quantities. If Meta publishes stable metric names, units, and response or
-stream semantics, the adapter can add field-local `pricing_inputs` and describe any
-required calculation even before a numeric rate exists; a later rate can bind those
-contracts. Until then it must not publish a dynamic provider-field placeholder or
-infer OpenAI-compatible token semantics. Caller-defined function tools, streaming,
+The consumer owns request/result observation and measured quantities. Kmodels publishes neither
+dynamic provider-field placeholders nor assumed OpenAI-compatible token semantics.
+Caller-defined function tools, streaming,
 structured output, and image input are capabilities, not separate charges without
 official rate evidence.
 
@@ -80,14 +77,15 @@ official rate evidence.
 - Registry identity, family, descriptor uniqueness, count bounds, context rules, and
   required release evidence remain source-level invariants because partial acceptance
   would make the exhaustive catalog misleading.
-- Hosted identities, routes, examples, the generic SDK metric envelope, and the
-  historical preview check are fact-local. Drift emits diagnostics and suppresses
-  only the claim that can no longer be proven.
+- Hosted identities, routes and examples are fact-local. Drift emits diagnostics and suppresses
+  only the dependent claim. Actual authenticated inventory responses are validated at their own
+  boundary; unused SDK wrapper types, generic metrics and historical preview pages are not fetched
+  or audited as catalog or pricing dependencies.
 - Optional hosted-document omissions retain the last verified affected facts and mark
   the source partial; independently observed registry facts continue to advance.
-- Exact hosted rows are `not_published` only while a reviewed route remains proven.
-  If hosted evidence disappears, retain the last verified pricing snapshot rather
-  than converting every artifact to unknown or rejecting the provider.
+- Hosted route proofs require the reviewed HTTPS `api.llama.com` origin without a custom port.
+  Another SDK origin suppresses the dependent routes while independently verified registry facts
+  survive. Generic metrics and unknown prices are deliberate source limits, not failed rate parsing.
 - Refresh is deterministic and uses only first-party repository, SDK, release-page,
   and optional authenticated API inputs. No comparator catalog, inference, or LLM is
   needed.

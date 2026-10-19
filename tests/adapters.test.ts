@@ -1399,23 +1399,6 @@ async function llamaCatalog(
     [raw("llama-api-python", "examples/tool_call.py"), "tool_call.py"],
     [raw("llama-api-python", "examples/structured.py"), "structured.py"],
     [raw("llama-api-python", "src/llama_api_client/_client.py"), "client.py"],
-    [raw("llama-api-python", "src/llama_api_client/resources/models.py"), "models.py"],
-    [raw("llama-api-python", "src/llama_api_client/types/llama_model.py"), "llama_model.py"],
-    [
-      raw("llama-api-python", "src/llama_api_client/types/model_list_response.py"),
-      "model_list_response.py",
-    ],
-    [
-      raw("llama-api-python", "src/llama_api_client/types/create_chat_completion_response.py"),
-      "chat_response.py",
-    ],
-    [
-      raw(
-        "llama-api-python",
-        "src/llama_api_client/types/create_chat_completion_response_stream_chunk.py",
-      ),
-      "chat_stream_response.py",
-    ],
     [
       raw("llama-api-python", "src/llama_api_client/resources/chat/completions.py"),
       "completions.py",
@@ -1431,7 +1414,6 @@ async function llamaCatalog(
       "https://ai.meta.com/blog/ai-defenders-program-llama-protection-tools/",
       "meta-protections.html",
     ],
-    ["https://ai.meta.com/blog/llamacon-llama-news/", "llamacon.html"],
   ];
   const body = JSON.stringify({
     index: {
@@ -2576,6 +2558,20 @@ describe("Cohere adapters", () => {
 });
 
 describe("Meta Llama adapters", () => {
+  it.each(["unreviewed.test", "api.llama.com:444", "api.llama.com.unreviewed.test"])(
+    "withholds hosted routes from an unreviewed SDK API origin: %s",
+    async (host) => {
+      const items: PricingReconciliationItem[] = [];
+      const client = (await fixture("llama/client.py")).replace("api.llama.com", host);
+      const models = await llamaCatalog({ "client.py": client }, (item) => items.push(item));
+      expect(models).toHaveLength(12);
+      expect(models.every((model) => model.api_endpoints === undefined)).toBe(true);
+      expect(items).toContainEqual(
+        expect.objectContaining({ reason_code: "hosted_api_base_drift" }),
+      );
+    },
+  );
+
   it("parses exact CLI descriptors, artifact variants, tasks, dates, and API aliases", async () => {
     const models = await llamaCatalog();
     const quantized = models.find(
@@ -2657,14 +2653,14 @@ describe("Meta Llama adapters", () => {
           tool_call: true,
         },
         api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
-        pricing_state: "not_published",
+        pricing_state: "unknown",
       },
       hostedLlama33: [
         {
           aliases: ["meta-llama/Llama-3.3-70B-Instruct", "Llama-3.3-70B-Instruct"],
           api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
           streaming: true,
-          pricing_state: "not_published",
+          pricing_state: "unknown",
         },
       ],
       safety: [
@@ -2702,7 +2698,7 @@ describe("Meta Llama adapters", () => {
           context: 8_192,
           release_date: "2025-04-29",
           api_endpoints: [{ name: "Moderations", path: "/v1/moderations" }],
-          pricing_state: "not_published",
+          pricing_state: "unknown",
         },
         {
           model_id: "Llama-Prompt-Guard-2-22M",
@@ -2853,7 +2849,7 @@ describe("Meta Llama adapters", () => {
     ).rejects.toThrow("omitted reviewed model evidence");
   });
 
-  it("limits pricing to exact hosted calls without treating a dated preview as current", async () => {
+  it("keeps hosted routes independent from unobserved pricing", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await llamaCatalog({}, (item) => items.push(item));
     expect(
@@ -2869,8 +2865,8 @@ describe("Meta Llama adapters", () => {
     ).toEqual({
       normalized: 0,
       raw: 0,
-      explicit_non_numeric: 3,
-      excluded: 1,
+      explicit_non_numeric: 0,
+      excluded: 0,
       ambiguous: 0,
       unsupported: 0,
       unbound: 0,
@@ -2883,19 +2879,15 @@ describe("Meta Llama adapters", () => {
           pricing: model.pricing_state,
         })),
     ).toEqual([
-      { id: "Llama3.3-70B-Instruct", pricing: "not_published" },
-      { id: "Llama-4-Maverick-17B-128E-Instruct:fp8", pricing: "not_published" },
-      { id: "Llama-Guard-4-12B", pricing: "not_published" },
+      { id: "Llama3.3-70B-Instruct", pricing: "unknown" },
+      { id: "Llama-4-Maverick-17B-128E-Instruct:fp8", pricing: "unknown" },
+      { id: "Llama-Guard-4-12B", pricing: "unknown" },
     ]);
     expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
     expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
-    expect(items).toContainEqual({
-      disposition: "excluded",
-      reason_code: "historical_limited_free_preview",
-    });
   });
 
-  it("assembles only hosted invocation books without a tool surcharge", async () => {
+  it("does not manufacture commercial states from hosted-route availability", async () => {
     const value = manifest("llama");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Llama source");
@@ -2906,154 +2898,9 @@ describe("Meta Llama adapters", () => {
       [{ source, models }],
       models,
     );
-    expect(pricing?.model_dispositions).toEqual([]);
-    expect(pricing?.books).toHaveLength(3);
-    expect(
-      pricing?.books.every(({ offers }) => offers.every(({ terms }) => terms.length === 0)),
-    ).toBe(true);
-    expect(
-      pricing?.books.map(({ scope, offers }) => ({
-        scope,
-        states: offers.flatMap(({ states }) => states.map(({ state }) => state)),
-        enrollment: offers.flatMap(({ enrollment }) => enrollment),
-        settlement: offers.flatMap(({ settlement }) => settlement),
-        relations: offers.flatMap(({ relations }) => relations),
-      })),
-    ).toEqual(
-      expect.arrayContaining(
-        models
-          .filter(({ pricing_state }) => pricing_state === "not_published")
-          .map(({ uid }) => ({
-            scope: { kind: "models", model_refs: [uid] },
-            states: ["not_published"],
-            enrollment: [],
-            settlement: [],
-            relations: [],
-          })),
-      ),
-    );
-    expect(
-      pricing?.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.filter((term) => term.kind === "rate").map(({ meter }) => meter.value),
-        ),
-      ),
-    ).not.toContain("tool_call");
-  });
-
-  it("audits generic metric envelopes without inventing pricing inputs", async () => {
-    const response = (await fixture("llama/chat_response.py")).replace(
-      "metrics: Optional[List[Metric]]",
-      "measurements: Optional[List[Metric]]",
-    );
-    const responseItems: PricingReconciliationItem[] = [];
-    const responseModels = await llamaCatalog({ "chat_response.py": response }, (item) =>
-      responseItems.push(item),
-    );
-    expect(responseModels).toHaveLength(12);
-    expect(responseModels.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
-    expect(responseItems).toContainEqual(
-      expect.objectContaining({
-        reason_code: "chat_metrics_contract_drift",
-        sample: "response metrics",
-      }),
-    );
-
-    const stream = (await fixture("llama/chat_stream_response.py")).replace(
-      'Literal["start", "complete", "progress", "metrics"]',
-      'Literal["start", "complete", "progress", "usage"]',
-    );
-    const streamItems: PricingReconciliationItem[] = [];
-    const streamModels = await llamaCatalog({ "chat_stream_response.py": stream }, (item) =>
-      streamItems.push(item),
-    );
-    expect(streamModels).toHaveLength(12);
-    expect(streamModels.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
-    expect(streamItems).toContainEqual(
-      expect.objectContaining({
-        reason_code: "stream_metrics_contract_drift",
-        sample: "stream metrics",
-      }),
-    );
-
-    expect(
-      [...responseModels, ...streamModels]
-        .filter(({ api_endpoints }) => api_endpoints !== undefined)
-        .every(({ pricing_state }) => pricing_state === "not_published"),
-    ).toBe(true);
-  });
-
-  it("isolates historical-preview drift", async () => {
-    const launch = (await fixture("llama/llamacon.html")).replace(
-      "limited free preview",
-      "limited preview",
-    );
-    const launchItems: PricingReconciliationItem[] = [];
-    await expect(
-      llamaCatalog({ "llamacon.html": launch }, (item) => launchItems.push(item)),
-    ).resolves.toHaveLength(12);
-    expect(launchItems).toContainEqual(
-      expect.objectContaining({ reason_code: "launch_terms_drift" }),
-    );
-  });
-
-  it("isolates generated model-list contract drift from the artifact catalog", async () => {
-    const resource = await fixture("llama/models.py");
-    await expect(
-      llamaCatalog({
-        "models.py": resource.replace(
-          "extra_headers: Headers | None = None,\n        extra_query: Query | None = None,\n        extra_body: Body | None = None,",
-          "extra_body: Body | None = None,\n        extra_query: Query | None = None,\n        extra_headers: Headers | None = None,",
-        ),
-        "llama_model.py": (await fixture("llama/llama_model.py")).replace(
-          'Literal["model"]',
-          "Literal['model']",
-        ),
-      }),
-    ).resolves.toHaveLength(12);
-    const paginationItems: PricingReconciliationItem[] = [];
-    await expect(
-      llamaCatalog(
-        {
-          "models.py": resource.replace(
-            "extra_headers: Headers | None = None,",
-            "after: str | None = None,\n        extra_headers: Headers | None = None,",
-          ),
-        },
-        (item) => paginationItems.push(item),
-      ),
-    ).resolves.toHaveLength(12);
-    expect(paginationItems).toContainEqual(
-      expect.objectContaining({ reason_code: "model_inventory_contract_drift" }),
-    );
-
-    const model = await fixture("llama/llama_model.py");
-    const modelItems: PricingReconciliationItem[] = [];
-    await expect(
-      llamaCatalog(
-        {
-          "llama_model.py": model.replace("owned_by: str", "updated: int\n\n    owned_by: str"),
-        },
-        (item) => modelItems.push(item),
-      ),
-    ).resolves.toHaveLength(12);
-    expect(modelItems).toContainEqual(
-      expect.objectContaining({ reason_code: "model_inventory_contract_drift" }),
-    );
-
-    const list = await fixture("llama/model_list_response.py");
-    const listItems: PricingReconciliationItem[] = [];
-    await expect(
-      llamaCatalog(
-        {
-          "model_list_response.py": list.replace("List[LlamaModel]", "CursorPage[LlamaModel]"),
-        },
-        (item) => listItems.push(item),
-      ),
-    ).resolves.toHaveLength(12);
-    expect(listItems).toContainEqual(
-      expect.objectContaining({ reason_code: "model_inventory_contract_drift" }),
-    );
+    expect(pricing).toBeUndefined();
+    expect(models.filter((model) => model.api_endpoints !== undefined)).toHaveLength(3);
+    expect(models.every((model) => model.pricing_state === "unknown")).toBe(true);
   });
 
   it("best-effort parses the authenticated model inventory and signals extensions", async () => {
@@ -3099,9 +2946,22 @@ describe("Meta Llama adapters", () => {
       disposition: "accept_with_signal",
       diagnostics: [expect.objectContaining({ path: "/updated" })],
     });
+    const unusedMetadata: SourceContractEvidence[] = [];
+    expect(
+      parseApi(
+        body
+          .replace('"created": 1743811200', '"created": "bad"')
+          .replace('"owned_by": "meta"', '"owned_by": null'),
+        unusedMetadata,
+      ),
+    ).toEqual(models);
+    expect(unusedMetadata).toEqual([]);
     const invalidFindings: SourceContractEvidence[] = [];
     expect(
-      parseApi(body.replace('"created": 1743811200', '"created": "bad"'), invalidFindings),
+      parseApi(
+        body.replace('"id": "Llama-4-Maverick-17B-128E-Instruct-FP8"', '"id": 123'),
+        invalidFindings,
+      ),
     ).toEqual([]);
     expect(invalidFindings[0]).toMatchObject({ disposition: "accept_with_signal" });
   });
@@ -3111,7 +2971,7 @@ describe("Meta Llama adapters", () => {
     expect(sources).toMatchObject([
       {
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v8",
+        extractorVersion: "llama-catalog-v9",
         type: "repository",
         source: ["repository", "website"],
         exhaustive: true,
@@ -3130,23 +2990,6 @@ describe("Meta Llama adapters", () => {
               claimLocal: true,
             }),
             expect.objectContaining({ id: "llama-api-client", optional: true, claimLocal: true }),
-            expect.objectContaining({ id: "llama-api-models", optional: true, claimLocal: true }),
-            expect.objectContaining({ id: "llama-api-model", optional: true, claimLocal: true }),
-            expect.objectContaining({
-              id: "llama-api-model-list-response",
-              optional: true,
-              claimLocal: true,
-            }),
-            expect.objectContaining({
-              id: "llama-api-chat-response",
-              optional: true,
-              claimLocal: true,
-            }),
-            expect.objectContaining({
-              id: "llama-api-chat-stream-response",
-              optional: true,
-              claimLocal: true,
-            }),
             expect.objectContaining({
               id: "llama-api-chat-completions",
               optional: true,
@@ -3161,7 +3004,6 @@ describe("Meta Llama adapters", () => {
             expect.objectContaining({ id: "llama-3-1-release" }),
             expect.objectContaining({ id: "llama-3-2-release" }),
             expect.objectContaining({ id: "llama-protections-release" }),
-            expect.objectContaining({ id: "llama-api-launch", optional: true, claimLocal: true }),
           ]),
         },
       },
@@ -3173,9 +3015,20 @@ describe("Meta Llama adapters", () => {
       },
     ]);
     expect(sources[0]?.fields).not.toContain("pricing_inputs");
-    expect(sources[0]?.linkedDocuments?.documents?.map(({ id }) => id)).not.toEqual(
-      expect.arrayContaining(["llama-api-chat-params", "llama-api-moderation-response"]),
-    );
+    expect(sources[0]?.fields).not.toContain("pricing");
+    expect(sources[0]?.pricingEvidence).toBeUndefined();
+    const documentIds = sources[0]?.linkedDocuments?.documents?.map(({ id }) => id);
+    for (const id of [
+      "llama-api-chat-params",
+      "llama-api-moderation-response",
+      "llama-api-models",
+      "llama-api-model",
+      "llama-api-model-list-response",
+      "llama-api-chat-response",
+      "llama-api-chat-stream-response",
+      "llama-api-launch",
+    ])
+      expect(documentIds).not.toContain(id);
   });
 });
 
