@@ -69,13 +69,6 @@ export function applyXaiCommercialTopology(
   publishedModels: readonly PublishedPricingModel[],
   pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
-  addAtom(input, {
-    kind: "categorical_value",
-    key: "default",
-    dimension: { namespace: "kmodels", value: "served_service_tier" },
-    definition: "xAI response was served at the default processing tier",
-    label: "Default",
-  });
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
   const inputIndex = indexPricingInputs(pricingInputs);
   const books = input.books.flatMap((book) => {
@@ -798,11 +791,7 @@ function mechanismApplicability(
     return [
       {
         all_of:
-          mechanism === "batch"
-            ? all_of.filter((item) => item !== tier)
-            : tier === undefined
-              ? [...all_of, defaultServedTier()]
-              : all_of.map(servedTier),
+          mechanism === "batch" ? all_of.filter((item) => item !== tier) : all_of.map(servedTier),
       },
     ];
   });
@@ -824,14 +813,6 @@ function servedTier(condition: PriceCondition): PriceCondition {
   return isServiceTier(condition)
     ? { ...condition, dimension: { namespace: "kmodels", value: "served_service_tier" } }
     : condition;
-}
-
-function defaultServedTier(): PriceCondition {
-  return {
-    kind: "categorical",
-    dimension: { namespace: "kmodels", value: "served_service_tier" },
-    values: [{ namespace: "provider", provider_id: "xai", value: "default" }],
-  };
 }
 
 function isServiceTier(

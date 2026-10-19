@@ -604,6 +604,7 @@ function endpointRates(
     Object.values(item.pricing.regional ?? {}).some(({ fast }) => fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
     route_provider: endpoint.provider_name,
+    service_tier: item.type === "language" ? "standard" : undefined,
     region: hasRegionalPricing ? "default" : undefined,
     speed: hasFast ? "standard" : undefined,
   };
@@ -682,7 +683,7 @@ function endpointRates(
       inputMeter,
       outputMeter,
       {
-        route_provider: endpoint.provider_name,
+        ...baseConditions,
         region: region.provider_region ?? region.geo_region,
         deployment_scope: region.scope,
         speed: hasFast ? "standard" : undefined,
@@ -967,6 +968,7 @@ function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFac
   const hasFast =
     value.fast !== undefined || regional.some(([, prices]) => prices.fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
+    service_tier: item.type === "language" ? "standard" : undefined,
     region: regional.length === 0 ? undefined : "default",
     speed: fastSlug ? "fast" : hasFast ? "standard" : undefined,
   };
@@ -980,16 +982,18 @@ function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFac
 
   if (value.fast !== undefined)
     addUsageRates(rates, value.fast, sourceId, inputMeter, outputMeter, {
-      region: regional.length === 0 ? undefined : "default",
+      ...baseConditions,
       speed: "fast",
     });
   for (const [region, prices] of regional) {
     addUsageRates(rates, prices, sourceId, inputMeter, outputMeter, {
+      ...baseConditions,
       region,
       speed: fastSlug ? "fast" : hasFast ? "standard" : undefined,
     });
     if (prices.fast !== undefined)
       addUsageRates(rates, prices.fast, sourceId, inputMeter, outputMeter, {
+        ...baseConditions,
         region,
         speed: "fast",
       });

@@ -438,10 +438,12 @@ function textRates(
     raw: string,
     amount: string | undefined,
     conditions: SourcePriceFact["conditions"],
-  ): SourcePriceFact =>
-    amount === undefined
-      ? exactRate(meter, raw, 4, "million_tokens", sourceId, "USD cents / 100M tokens", conditions)
-      : publishedRate(meter, amount, "million_tokens", sourceId, "USD / 1M tokens", conditions);
+  ): SourcePriceFact => {
+    const scope = { ...conditions, service_tier: "default" };
+    return amount === undefined
+      ? exactRate(meter, raw, 4, "million_tokens", sourceId, "USD cents / 100M tokens", scope)
+      : publishedRate(meter, amount, "million_tokens", sourceId, "USD / 1M tokens", scope);
+  };
   const rates = [
     rate("input_text", value.promptTextTokenPrice, shortRow?.input, standard),
     rate("input_image", value.promptImageTokenPrice, undefined, standard),

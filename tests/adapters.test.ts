@@ -3280,6 +3280,23 @@ describe("HTTP transport boundary", () => {
 });
 
 describe("Gemini adapters", () => {
+  it.each([false, true])(
+    "retains exactly the service-tier scope declared by its table heading (%s)",
+    async (withHeading) => {
+      const html = await fixture("gemini/pricing.html");
+      const parsed = await geminiSource({
+        "pricing.html": withHeading ? html : html.replace("<h3>Standard</h3>", ""),
+      });
+      const model = parsed.models.find((model) => model.model_id === "gemini-test-preview");
+      const rates = model?.price_facts.filter((rate) => rate.meter === "input_text");
+      expect(rates?.length).toBeGreaterThan(0);
+      expect(
+        rates?.every(
+          (rate) => rate.conditions.service_tier === (withHeading ? "standard" : undefined),
+        ),
+      ).toBe(true);
+    },
+  );
   it("accepts the operation-name heading while still validating the Interactions route", async () => {
     const body = (await fixture("gemini/interactions-api.html")).replace(
       "<h2>Creating an interaction</h2>",
@@ -3456,13 +3473,14 @@ describe("Gemini adapters", () => {
       expect.arrayContaining([
         {
           price: "0",
-          conditions: { account_eligibility: "free_tier" },
+          conditions: { account_eligibility: "free_tier", service_tier: "standard" },
         },
         {
           price: "0.75",
           conditions: {
             account_eligibility: "paid_tier",
             effective_until: "2026-12-31",
+            service_tier: "standard",
           },
         },
         {
@@ -3470,6 +3488,7 @@ describe("Gemini adapters", () => {
           conditions: {
             account_eligibility: "paid_tier",
             effective_from: "2027-01-01",
+            service_tier: "standard",
           },
         },
       ]),
@@ -3497,12 +3516,20 @@ describe("Gemini adapters", () => {
       {
         price: "18.00",
         unit: "million_tokens",
-        conditions: { account_eligibility: "paid_tier", effective_from: "2027-01-01" },
+        conditions: {
+          account_eligibility: "paid_tier",
+          effective_from: "2027-01-01",
+          service_tier: "standard",
+        },
       },
       {
         price: "9.00",
         unit: "million_tokens",
-        conditions: { account_eligibility: "paid_tier", effective_until: "2026-12-31" },
+        conditions: {
+          account_eligibility: "paid_tier",
+          effective_until: "2026-12-31",
+          service_tier: "standard",
+        },
       },
     ]);
     expect(model?.raw_price_facts).toEqual([]);
@@ -6566,6 +6593,33 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it.each([false, true])(
+    "owns the native default text tier independently of Priority price claims (%s)",
+    async (withPriority) => {
+      const result = await xaiCatalogResult(
+        "xai/models.txt",
+        (body) => body,
+        (body) =>
+          withPriority
+            ? body
+            : body.replaceAll("## Priority Processing Pricing", "## Unreviewed processing policy"),
+      );
+      const rates = result.models
+        .filter((model) =>
+          model.api_endpoints?.some(
+            (endpoint) =>
+              endpoint.path === "/v1/chat/completions" || endpoint.path === "/v1/responses",
+          ),
+        )
+        .flatMap((model) => model.price_facts.filter((rate) => rate.unit === "million_tokens"));
+      expect(rates.length).toBeGreaterThan(0);
+      expect(
+        rates.every((rate) =>
+          ["default", "batch", "priority"].includes(rate.conditions.service_tier ?? ""),
+        ),
+      ).toBe(true);
+    },
+  );
   it("captures independent services and accounting without a model carrier", async () => {
     const result = await xaiCatalogResult(
       "xai/models.txt",
@@ -6740,7 +6794,7 @@ describe("xAI adapter", () => {
       ?.price_facts.filter(
         (rate) =>
           rate.meter === "input_text" &&
-          rate.conditions.service_tier === undefined &&
+          rate.conditions.service_tier === "default" &&
           rate.conditions.context_min_tokens === undefined,
       );
     expect(prices).toEqual(
@@ -7316,7 +7370,7 @@ describe("xAI adapter", () => {
         ({ meter, conditions }) =>
           meter === "input_text" &&
           conditions.region === "us-east-1" &&
-          conditions.service_tier === undefined &&
+          conditions.service_tier === "default" &&
           conditions.context_max_tokens === 199_999,
       ),
     ).toMatchObject({ price: "2", unit: "million_tokens" });
@@ -7504,12 +7558,12 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v18");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v19");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
     expect(value.sources[0]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
-    expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v2");
+    expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v3");
     const priceItems: PricingReconciliationItem[] = [];
     const changedPrice = await xaiCatalog(
       "xai/models.txt",
@@ -7528,7 +7582,7 @@ describe("xAI adapter", () => {
           ({ meter, conditions }) =>
             meter === "input_text" &&
             conditions.context_max_tokens === 199_999 &&
-            conditions.service_tier === undefined,
+            conditions.service_tier === "default",
         ),
     ).toMatchObject({ price: "2.1" });
     expect(priceItems).toContainEqual({
@@ -7621,6 +7675,39 @@ describe("xAI adapter", () => {
 });
 
 describe("Vercel adapter", () => {
+  it.each([false, true])(
+    "owns the default language-token tier before assembly (%s)",
+    async (withPeers) => {
+      const model = (
+        await vercelCatalog("vercel/pricing.json", (body) => {
+          if (withPeers) return body;
+          const value = z
+            .object({
+              data: z.array(
+                z
+                  .object({
+                    id: z.string(),
+                    pricing: z.record(z.string(), z.unknown()),
+                  })
+                  .passthrough(),
+              ),
+            })
+            .passthrough()
+            .parse(JSON.parse(body));
+          for (const model of value.data)
+            if (model.id === "acme/text-1") delete model.pricing.service_tiers;
+          return JSON.stringify(value);
+        })
+      ).find((model) => model.model_id === "acme/text-1");
+      const rates = model?.price_facts.filter(
+        (rate) =>
+          rate.meter === "input_text" &&
+          !["flex", "priority"].includes(rate.conditions.service_tier ?? ""),
+      );
+      expect(rates?.length).toBeGreaterThan(0);
+      expect(rates?.every((rate) => rate.conditions.service_tier === "standard")).toBe(true);
+    },
+  );
   it("captures independent search prices and inputs without model rows", () => {
     const value = manifest("vercel");
     const configured = value.sources[0];
@@ -8592,11 +8679,14 @@ describe("Vercel adapter", () => {
         .filter(({ meter }) => meter === "input_text")
         .map(({ price, conditions }) => ({ price, conditions })),
     ).toEqual([
-      { price: "1", conditions: { region: "default", speed: "standard" } },
-      { price: "2", conditions: { region: "default", speed: "fast" } },
-      { price: "1.1", conditions: { region: "eu", speed: "standard" } },
-      { price: "1.1", conditions: { region: "us", speed: "standard" } },
-      { price: "2.2", conditions: { region: "us", speed: "fast" } },
+      {
+        price: "1",
+        conditions: { region: "default", speed: "standard", service_tier: "standard" },
+      },
+      { price: "2", conditions: { region: "default", speed: "fast", service_tier: "standard" } },
+      { price: "1.1", conditions: { region: "eu", speed: "standard", service_tier: "standard" } },
+      { price: "1.1", conditions: { region: "us", speed: "standard", service_tier: "standard" } },
+      { price: "2.2", conditions: { region: "us", speed: "fast", service_tier: "standard" } },
     ]);
   });
 
@@ -11693,6 +11783,20 @@ describe("DashScope adapters", () => {
     const { models } = result;
     const model = models.find(({ model_id }) => model_id === "qwen3.7-plus");
     expect(model?.aliases).toEqual(["qwen3.7-plus-2026-05-26"]);
+    expect(model?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.4",
+          conditions: expect.objectContaining({ promotion: false }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.32",
+          conditions: expect.not.objectContaining({ service_tier: expect.anything() }),
+        }),
+      ]),
+    );
     expect(
       model?.price_facts.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
     ).toEqual(
@@ -11887,6 +11991,55 @@ describe("DashScope adapters", () => {
     await expect(parsePricing(pricingBody.replace("$1.6", "Contact sales"))).resolves.toEqual(
       expect.any(Array),
     );
+  });
+
+  it.each(["$0.4 Limited-time 20% off", "List price $0.4 20.5% off", "List price $0.4 120% off"])(
+    "retains an unresolved native discount without inventing a price (%s)",
+    async (quote) => {
+      const result = parseResult(
+        source("dashscope-pricing"),
+        await pricingBundle(
+          Promise.resolve(
+            (await fixture("dashscope/pricing.html")).replace(
+              "List price $0.4 Limited-time 20% off",
+              quote,
+            ),
+          ),
+        ),
+      );
+      const model = result.models.find((model) => model.model_id === "qwen3.7-plus");
+      expect(model?.price_facts.some((rate) => rate.meter === "input_text")).toBe(false);
+      expect(model?.price_facts.some((rate) => rate.meter === "output_text")).toBe(true);
+      expect(model?.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          reason: "unknown_applicability",
+          raw: expect.objectContaining({ fragment: quote, amount: "0.4", denomination: "USD" }),
+        }),
+      );
+    },
+  );
+  it("represents native night/daytime reductions as billing periods and promotion eligibility", async () => {
+    const result = parseResult(
+      source("dashscope-pricing"),
+      await pricingBundle(
+        Promise.resolve(
+          (await fixture("dashscope/pricing.html")).replaceAll(
+            "Limited-time 20% off",
+            "Limited-time night 60% off, daytime 20% off",
+          ),
+        ),
+      ),
+    );
+    const model = result.models.find((model) => model.model_id === "qwen3.7-plus");
+    const rates = model?.price_facts.filter(
+      (rate) => rate.meter === "input_text" && rate.conditions.service_tier !== "batch",
+    );
+    expect(rates).toMatchObject([
+      { price: "0.4", conditions: { promotion: false } },
+      { price: "0.16", conditions: { promotion: true, billing_period: "night" } },
+      { price: "0.32", conditions: { promotion: true, billing_period: "daytime" } },
+    ]);
+    expect(rates?.every((rate) => rate.conditions.service_tier === undefined)).toBe(true);
   });
 
   it.each([true, false])(
@@ -12878,7 +13031,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v20",
+      extractorVersion: "dashscope-pricing-v21",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),

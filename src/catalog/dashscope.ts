@@ -17,12 +17,17 @@ import {
   htmlValue as value,
 } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
+import { uniqueCanonicalValues } from "./canonical-value.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 import {
   assertCoverage,
   assertItemCount,
@@ -585,6 +590,7 @@ function merge(
       onConflict,
     ),
     price_facts: [...pricing.values()],
+    raw_price_facts: uniqueCanonicalValues([...left.raw_price_facts, ...right.raw_price_facts]),
     availability: availability.size === 0 ? undefined : [...availability.values()],
   };
 }
@@ -1267,14 +1273,15 @@ function normalizedPrice(price: string, rateUnit: SourcePriceFact["unit"]): stri
   return rateUnit === "million_characters" ? scaleDecimal(price, 2) : price;
 }
 
-function rates(
+function rowPrices(
   input: ParseInput,
   table: Table,
   row: Cell[],
   tasks: ModelTask[],
   sample: string,
-): SourcePriceFact[] {
+): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
   const result: SourcePriceFact[] = [];
+  const unresolved: SourceRawPricingFact[] = [];
   const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
   const idCell = idIndex === undefined ? undefined : row[idIndex];
   const priceIndexes = table.headers.flatMap((header, index) =>
@@ -1322,10 +1329,25 @@ function rates(
       continue;
     }
     const baseConditions = priceConditions(table, row, effectiveHeader);
+    const discounts = [...raw.matchAll(/(?<![\w.,+-])(?:(night|daytime)\s+)?(\d+)% off\b/gi)];
+    const discountClaim = /%\s*off\b/i.test(raw);
+    const discountKnown =
+      /^List price\s/i.test(raw) &&
+      segments.length === 1 &&
+      discounts.length > 0 &&
+      discounts.length === [...raw.matchAll(/%\s*off\b/gi)].length &&
+      discounts.every((match) => Number(match[2]) <= 100);
+    if (discountClaim && !discountKnown)
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "pricing_policy_unavailable",
+        sample: `${sample}:${effectiveHeader}:${raw}`.slice(0, 256),
+      });
     for (const segment of segments) {
       const conditions = {
         ...baseConditions,
         ...segmentConditions(segment.label),
+        ...(discountKnown ? { promotion: false } : {}),
         ...(segment.promotion === true ? { promotion: true } : {}),
         ...(segment.accountEligibility === undefined
           ? {}
@@ -1338,6 +1360,23 @@ function rates(
       for (const modality of modalities) {
         const scopedConditions = modality === undefined ? conditions : { ...conditions, modality };
         const meterName = meter(effectiveHeader, table.headings, tasks, rateUnit, scopedConditions);
+        if (discountClaim && !discountKnown) {
+          unresolved.push({
+            term_key: `unparsed:${meterName}:discount`,
+            impact: "base_price",
+            reason: "unknown_applicability",
+            conditions: scopedConditions,
+            source_ref: input.source.id,
+            raw: {
+              fragment: raw.slice(0, 4096),
+              amount: segment.price,
+              meter: meterName,
+              denomination: "USD",
+              unit: header,
+            },
+          });
+          continue;
+        }
         const base: SourcePriceFact = {
           meter: meterName,
           price: normalizedPrice(segment.price, rateUnit),
@@ -1354,9 +1393,8 @@ function rates(
           raw_unit: header,
         };
         result.push(base);
-        for (const match of raw.matchAll(/(?:(night|daytime)\s+)?(\d+)% off/gi)) {
+        for (const match of discounts) {
           const percent = Number(match[2]);
-          if (!Number.isInteger(percent) || percent < 0 || percent > 100) continue;
           const remainder = 100 - percent;
           const factor =
             remainder === 100
@@ -1369,7 +1407,7 @@ function rates(
             price: multiplyDecimal(base.price, factor),
             conditions: {
               ...base.conditions,
-              service_tier: match[1]?.toLowerCase() ?? `limited_time_${percent}_percent_off`,
+              ...(match[1] === undefined ? {} : { billing_period: match[1].toLowerCase() }),
               promotion: true,
             },
             derived: true,
@@ -1387,7 +1425,7 @@ function rates(
       }
     }
   }
-  return result;
+  return { rates: result, raw: unresolved };
 }
 
 function priceOperations(id: string, headings: string[]): ModelTask[] {
@@ -1938,7 +1976,11 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
         const tasks = priceOperations(id, table.headings);
         // A new operation column cannot disappear into an unconditional model rate.
         const billingItem = value(table, row, /^Billing item$/i);
-        const parsedRates = billingItem === undefined ? rates(input, table, row, tasks, id) : [];
+        const parsed =
+          billingItem === undefined
+            ? rowPrices(input, table, row, tasks, id)
+            : { rates: [], raw: [] };
+        const parsedRates = parsed.rates;
         if (billingItem !== undefined)
           input.onPricingReconciliation?.({
             disposition: "unsupported",
@@ -2000,6 +2042,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
                   ? "custom_quote"
                   : "unknown",
             price_facts: modelRates,
+            raw_price_facts: discontinued ? [] : parsed.raw,
             availability:
               regions.length === 0
                 ? undefined

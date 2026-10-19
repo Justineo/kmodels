@@ -848,6 +848,9 @@ never complements a missing upper or lower bound from another quote. Explicitly 
 bands remain disjoint; unqualified unequal quotes that overlap remain conflicting raw evidence.
 Anthropic's native global-routing contract likewise owns its base geography; a US quote cannot
 create a global selector on another unqualified rate.
+Shared assembly also never supplies Standard processing from a Batch, Priority or other tier quote.
+Processing scope belongs to the source's own header, price field or contract. Batch is a distinct
+execution mechanism; its existence cannot restrict an otherwise unqualified synchronous price.
 
 The pure applicability interpreter lives in `pricing-applicability.ts`. Website
 projection and the portable calculator use that same implementation, including
