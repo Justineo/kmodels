@@ -201,6 +201,15 @@ A model book contains separate on-demand and batch offers. Batch is removed from
 dimension after it becomes the offer mechanism. Standard, Priority, Flex, resolved speed, Region,
 routing scope, cache behavior, and context thresholds remain ordinary applicability dimensions.
 
+Native `On-demand Inference` input/output token SKUs establish their own latency class: the
+`-latency-optimized` suffix means optimized, and the ordinary token SKU means standard. This
+classification does not depend on another quote, its amount, Region or service tier. The native
+optimized model-label suffix describes the same callable model; it is removed for the unique
+identity join only when that SKU independently establishes optimized latency. Other labels retain
+their full identity. Unqualified Marketplace, card and unrelated units do not acquire standard
+speed from a neighboring optimized quote. Billing selectors use the actual returned performance
+configuration, because an optimized request can fall back to standard latency and its tariff.
+
 Price List context ranges come from the exact model card's unique `Pricing` section. Native
 short/long-context headings or the reviewed prompt-length pricing statement establish each bound
 independently; a model's maximum context window does not establish its tariff threshold. Quoted,
