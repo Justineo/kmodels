@@ -38,7 +38,11 @@ Prompt caching uses the following pricing multipliers relative to base input tok
 | 1-hour cache write   | 2x base input price    | Cache valid for 1 hour               |
 | Cache read (hit)     | 0.1x base input price  | Same duration as the preceding write |
 
-For Claude 4.6 and later models, specifying US-only inference through the `inference_geo` parameter incurs a 1.1x multiplier on all token pricing categories.
+### Data residency pricing
+
+For Claude 4.6 and later models, specifying US-only inference through the `inference_geo` parameter incurs a 1.1x multiplier on all token pricing categories. Global routing (the default) uses standard pricing.
+
+### Tool use pricing
 
 Each organization receives **1,550 free hours** of usage per month. Additional usage beyond 1,550 hours is billed at **$0.05 USD per hour, per container**.
 

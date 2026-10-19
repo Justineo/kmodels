@@ -131,6 +131,17 @@ Unrecognized TTL prices keep their original qualified/raw scope. Batch is an off
 distinct asynchronous execution mechanism; separate offers already express the caller's choice, so no redundant
 exclusivity relation is emitted. The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
+The unique `Data residency pricing` subsection owns the price rule, and the unique `Inference geo`
+section in the data-residency guide owns model eligibility. Quoted/code examples and declarations
+from other hosting sections cannot supply either contract. Repeated declarations must agree and
+generation numbers must be safe integers.
+
+The explicit global-routing declaration establishes `inference_geo=global` on the base prices
+before assembly, including Fast, cache, Batch and prompt-length variants. US variants derive from
+those same bases. Shared assembly never supplies a missing geography from another quote. Earlier
+models that do not support the parameter keep their unqualified rates. If the global-base contract
+itself is missing, the native amounts survive alongside unscoped raw applicability evidence;
+they cannot establish a complete cost for an invented geography.
 
 The ordinary model-price matrix establishes `speed=standard`; the Fast matrix establishes
 `speed=fast`. Both readable amounts and raw cells retain that source-owned scope even when another
@@ -178,10 +189,16 @@ authoritative. Cache policy rows are validated independently across all reviewed
 conflicting or unreadable operations withhold only their derived rates. Known sibling multipliers
 remain usable, and missing, malformed or unreviewed policy content remains raw at the affected
 tariff scope. Geography multipliers likewise require agreement. When a multiplier or generation
-threshold is unresolved, affected known rates remain explicitly global and the possible US charge
-remains raw, preventing global rates from silently pricing US inference.
+threshold is unresolved but global base pricing is established, affected known rates remain
+explicitly global and the possible US charge remains raw, preventing global rates from silently
+pricing US inference.
 Generation parsing accepts multiword family names without a family allowlist. An ID without a
 reviewed numeric generation leaves US eligibility raw and known default rates explicitly global.
+Missing geography ownership, multipliers or eligibility produce source-owned reconciliation
+diagnostics eligible for repair investigation even when the fetched content has not changed.
+An omitted eligibility companion remains an acquisition/dependency gap: US pricing stays raw,
+but absence alone does not report malformed native geography content. A present document with a
+missing or unreadable owned section does report contract drift.
 Pricing headers are matched case-insensitively; a trailing numeric note marker on an otherwise exact
 `MTok` cell is parsed only as source annotation. A model without an exact published row stays price-unknown; rates are
 never inherited from a family or replacement model.

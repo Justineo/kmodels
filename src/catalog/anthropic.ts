@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import { yamlBlock } from "./yaml.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
@@ -883,20 +884,28 @@ interface ModelGeneration {
   minor: number;
 }
 
-interface RequestAccounting {
-  dataResidencyGeneration: ModelGeneration | undefined;
-  pricingInputs: SourcePricingInputFact[];
+function sectionProse(body: string, depth: number, heading: string): string {
+  const content = markdownSection(body, depth, heading);
+  if (content === undefined) return "";
+  return markdownProse(content)
+    .split(/\r?\n/)
+    .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
+    .join("\n");
 }
 
-function geographyGeneration(body: string, label: string): ModelGeneration {
+function geographyGeneration(body: string, label: "pricing" | "data-residency"): ModelGeneration {
   const values = new Map<string, ModelGeneration>();
+  const prefix =
+    label === "pricing" ? "For Claude " : "The `inference_geo` parameter is supported on Claude ";
   for (const line of body.split(/\r?\n/)) {
-    if (!line.includes("inference_geo")) continue;
-    for (const match of line.matchAll(/Claude (\d+)\.(\d+) and later models/g)) {
-      if (match[1] === undefined || match[2] === undefined) continue;
-      const generation = { major: Number(match[1]), minor: Number(match[2]) };
-      values.set(`${generation.major}.${generation.minor}`, generation);
-    }
+    if (!line.startsWith(prefix)) continue;
+    const match = line.slice(prefix.length).match(/^(\d+)\.(\d+) and later models[,.]/);
+    if (match?.[1] === undefined || match[2] === undefined)
+      throw new Error(`Anthropic ${label} generation is unreadable`);
+    const generation = { major: Number(match[1]), minor: Number(match[2]) };
+    if (!Number.isSafeInteger(generation.major) || !Number.isSafeInteger(generation.minor))
+      throw new Error(`Anthropic ${label} generation is unsafe`);
+    values.set(`${generation.major}.${generation.minor}`, generation);
   }
   const generations = [...values.values()];
   if (generations.length !== 1 || generations[0] === undefined)
@@ -906,7 +915,7 @@ function geographyGeneration(body: string, label: string): ModelGeneration {
 
 function reviewedGeographyGeneration(
   body: string,
-  label: string,
+  label: "pricing" | "data-residency",
   input: Input,
 ): ModelGeneration | undefined {
   try {
@@ -924,7 +933,10 @@ function reviewedGeographyGeneration(
 function modelGeneration(id: string): ModelGeneration | undefined {
   const match = id.match(/^claude-[a-z]+(?:-[a-z]+)*-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
   if (match?.[1] === undefined) return undefined;
-  return { major: Number(match[1]), minor: Number(match[2] ?? 0) };
+  const generation = { major: Number(match[1]), minor: Number(match[2] ?? 0) };
+  return Number.isSafeInteger(generation.major) && Number.isSafeInteger(generation.minor)
+    ? generation
+    : undefined;
 }
 
 function atLeastGeneration(id: string, threshold: ModelGeneration): boolean {
@@ -941,26 +953,20 @@ function validateRequestAccounting(
   dataResidency: string,
   promptCaching: string,
   input: Input,
-): RequestAccounting {
-  const contract = (valid: boolean, sample: string): boolean => {
-    if (!valid) contractFinding(input, "accounting_contract_drift", sample);
-    return valid;
-  };
+): SourcePricingInputFact[] {
   const pricingInputs = anthropicMessageInputs(messages, promptCaching, input);
-
-  const dataResidencyGeneration = reviewedGeographyGeneration(
-    dataResidency,
-    "data-residency",
-    input,
-  );
-  contract(
-    dataResidency.includes("The response `usage` object includes an `inference_geo` field") &&
-      dataResidency.includes("`allowed_inference_geos`") &&
-      dataResidency.includes("`default_inference_geo`") &&
-      dataResidency.includes("return a 400 error"),
-    "inference-geography outcomes",
-  );
-  return { dataResidencyGeneration, pricingInputs };
+  const geography = sectionProse(dataResidency, 2, "Inference geo");
+  if (
+    dataResidency !== "" &&
+    !(
+      geography.includes("The response `usage` object includes an `inference_geo` field") &&
+      geography.includes("`allowed_inference_geos`") &&
+      geography.includes("`default_inference_geo`") &&
+      geography.includes("return a 400 error")
+    )
+  )
+    contractFinding(input, "accounting_contract_drift", "inference-geography outcomes");
+  return pricingInputs;
 }
 
 function rowScope(value: string): SourcePriceFact["conditions"] | undefined {
@@ -1142,7 +1148,7 @@ function validateFastMode(body: string, expectedIds: Set<string>): void {
 function pricing(
   body: string,
   fastModeBody: string,
-  dataResidencyGeneration: ModelGeneration | undefined,
+  dataResidency: string,
   input: Input,
   models: Map<string, ProviderModel>,
   observeLimit: ObserveLimit,
@@ -1340,43 +1346,64 @@ function pricing(
       observeLimit(item, "context_tokens", 1_000_000);
   }
 
-  const inferenceGeoMultiplier = agreedAmount(
-    body,
-    /incurs a ((?:0|[1-9]\d*)(?:\.\d+)?)x multiplier on all token pricing categories/g,
-  );
-  const pricingGeneration = reviewedGeographyGeneration(body, "pricing", input);
+  const geography = sectionProse(body, 3, "Data residency pricing");
+  const inferenceGeoMultiplier = geographyMultiplier(geography);
+  const globalDeclarations = geography
+    .split(/(?<=\.)\s+|\n/)
+    .filter((statement) => statement.startsWith("Global routing"));
+  const globalPricing =
+    globalDeclarations.length > 0 &&
+    globalDeclarations.every(
+      (statement) => statement === "Global routing (the default) uses standard pricing.",
+    );
+  const pricingGeneration = reviewedGeographyGeneration(geography, "pricing", input);
+  const dataResidencyGeneration =
+    dataResidency === ""
+      ? undefined
+      : reviewedGeographyGeneration(
+          sectionProse(dataResidency, 2, "Inference geo"),
+          "data-residency",
+          input,
+        );
   const matchingGeneration =
     pricingGeneration !== undefined &&
     dataResidencyGeneration !== undefined &&
     pricingGeneration.major === dataResidencyGeneration.major &&
     pricingGeneration.minor === dataResidencyGeneration.minor;
+  const scopeKnown = matchingGeneration && globalPricing;
   if (inferenceGeoMultiplier === undefined)
     input.onPricingReconciliation?.({
       disposition: "unresolved",
       reason_code: "inference_geo_multiplier_drift",
       sample: "US inference multiplier",
     });
-  if (!matchingGeneration)
+  if (
+    pricingGeneration === undefined ||
+    !globalPricing ||
+    (dataResidency !== "" && !matchingGeneration)
+  )
     input.onPricingReconciliation?.({
       disposition: "unresolved",
       reason_code: "inference_geo_eligibility_conflict",
-      sample: "pricing and data-residency generation thresholds",
+      sample: "pricing and data-residency applicability, including global base pricing",
     });
   const thresholds = [pricingGeneration, dataResidencyGeneration].filter(
     (value) => value !== undefined,
   );
-  const fragment = body
-    .split(/\r?\n/)
-    .filter(
-      (line) =>
-        line.includes("inference_geo") ||
-        line.includes("multiplier on all token pricing categories"),
-    )
-    .join("\n");
   for (const item of models.values()) {
     const knownGeneration = modelGeneration(item.model_id) !== undefined;
-    if (matchingGeneration && inferenceGeoMultiplier !== undefined && knownGeneration) {
-      if (!atLeastGeneration(item.model_id, pricingGeneration)) continue;
+    const affected =
+      item.price_facts.length > 0 &&
+      (!knownGeneration ||
+        thresholds.length === 0 ||
+        thresholds.some((value) => atLeastGeneration(item.model_id, value)));
+    if (!affected) continue;
+    if (globalPricing)
+      item.price_facts = item.price_facts.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, inference_geo: "global" },
+      }));
+    if (scopeKnown && inferenceGeoMultiplier !== undefined && knownGeneration) {
       item.price_facts.push(
         ...item.price_facts.map((rate): SourcePriceFact => ({
           ...rate,
@@ -1392,31 +1419,44 @@ function pricing(
           raw_unit: "published inference geography multiplier",
         })),
       );
-    } else if (
-      item.price_facts.length > 0 &&
-      (!knownGeneration ||
-        thresholds.length === 0 ||
-        thresholds.some((value) => atLeastGeneration(item.model_id, value)))
-    ) {
-      item.price_facts = item.price_facts.map((rate) => ({
-        ...rate,
-        conditions: { ...rate.conditions, inference_geo: "global" },
-      }));
+    } else {
       item.raw_price_facts.push({
         term_key: "unparsed:inference-geography",
         impact: "base_price",
-        reason: inferenceGeoMultiplier === undefined ? "unknown_amount" : "unknown_applicability",
-        conditions: { inference_geo: "us" },
+        reason: scopeKnown && knownGeneration ? "unknown_amount" : "unknown_applicability",
+        conditions: globalPricing ? { inference_geo: "us" } : {},
         source_ref: input.source.id,
-        raw: { fragment: fragment.slice(0, 4096) || body.slice(0, 4096) },
+        raw: { fragment: geography.slice(0, 4096) || body.slice(0, 4096) },
       });
     }
   }
-  if (matchingGeneration && inferenceGeoMultiplier !== undefined)
+  if (scopeKnown && inferenceGeoMultiplier !== undefined)
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "inference_geo_multiplier_applied",
     });
+}
+
+function geographyMultiplier(body: string): string | undefined {
+  const amounts = body
+    .split(/\r?\n/)
+    .filter((line) => /^For Claude\b/.test(line))
+    .map(
+      (line) =>
+        line.match(
+          /^For Claude \d+\.\d+ and later models, specifying US-only inference through the `inference_geo` parameter incurs a (\S+)x multiplier on all token pricing categories[.,]/,
+        )?.[1],
+    );
+  const first = amounts[0];
+  return first !== undefined &&
+    amounts.every(
+      (amount) =>
+        amount !== undefined &&
+        /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount) &&
+        decimalsEqual(amount, first),
+    )
+    ? first
+    : undefined;
 }
 
 function commercialRaw(
@@ -1804,9 +1844,10 @@ export function parseAnthropicCatalog(input: Input): SourceParseResult {
   const modelIds = document("/docs/en/about-claude/models/model-ids-and-versions.md");
   const modelsList = document("/docs/en/api/models/list.md");
   if (modelIds && modelsList) validateModelIdentityContract(modelIds, modelsList, input);
-  const requestAccounting = validateRequestAccounting(
+  const dataResidency = document("/docs/en/manage-claude/data-residency.md");
+  const requestInputs = validateRequestAccounting(
     messagesBody,
-    document("/docs/en/manage-claude/data-residency.md"),
+    dataResidency,
     document("/docs/en/build-with-claude/prompt-caching.md"),
     input,
   );
@@ -1822,7 +1863,7 @@ export function parseAnthropicCatalog(input: Input): SourceParseResult {
     pricing(
       pricingBody,
       document("/docs/en/build-with-claude/fast-mode.md"),
-      requestAccounting.dataResidencyGeneration,
+      dataResidency,
       input,
       models,
       observeLimit,
@@ -1864,7 +1905,7 @@ export function parseAnthropicCatalog(input: Input): SourceParseResult {
     },
     input,
     models,
-    requestAccounting.pricingInputs,
+    requestInputs,
   );
   return {
     models: [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid)),

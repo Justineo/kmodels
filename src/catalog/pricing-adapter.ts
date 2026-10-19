@@ -848,9 +848,6 @@ function normalizedSourceFacts(
 
   completeReviewedDefault(normalized, "service_tier", "standard");
   if (providerId === "amazon-bedrock") completeReviewedDefault(normalized, "speed", "standard");
-  if (providerId === "anthropic") {
-    completeReviewedDefault(normalized, "inference_geo", "global");
-  }
   if (providerId === "azure") completeReviewedDefault(normalized, "context_tier", "standard");
   if (providerId === "vertex") completeReviewedDefault(normalized, "region", "default");
   if (providerId === "databricks" || providerId === "vertex")

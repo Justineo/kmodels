@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
+import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
@@ -9,7 +10,10 @@ import { linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
-import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
+import {
+  sourcePricingReconciliation,
+  type PricingReconciliationItem,
+} from "../src/catalog/pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import type { Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
@@ -207,6 +211,164 @@ async function anthropicContextPricing(transform?: (body: string) => string) {
 }
 
 describe("Anthropic adapters", () => {
+  it("establishes global base pricing before assembly", async () => {
+    const parsed = await anthropicSource();
+    const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+    const global = fable?.price_facts.filter((rate) => rate.conditions.inference_geo === "global");
+    expect(global?.length).toBeGreaterThan(0);
+    expect(global?.some((rate) => rate.meter === "input_text" && rate.price === "10")).toBe(true);
+    expect(fable?.price_facts.every((rate) => rate.conditions.inference_geo !== undefined)).toBe(
+      true,
+    );
+  });
+  it.each(["quoted", "fenced", "outside", "duplicate"])(
+    "does not borrow %s geography pricing declarations",
+    async (change) => {
+      const pricing = await fixture("anthropic/pricing.md");
+      const line = pricing.split("\n").find((part) => part.startsWith("For Claude 4.6"));
+      if (line === undefined) throw new Error("Missing native geography statement");
+      const replacement =
+        change === "quoted"
+          ? "> " + line
+          : change === "fenced"
+            ? "```text\n" + line + "\n```"
+            : change === "outside"
+              ? ""
+              : line + "\n\n### Data residency pricing\n" + line;
+      const parsed = await anthropicSource({
+        overrides: {
+          "/docs/en/about-claude/pricing.md":
+            pricing.replace(line, replacement) +
+            (change === "outside" ? "\n## Examples\n" + line : ""),
+        },
+      });
+      const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+      expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo === "us")).toBe(false);
+      expect(fable?.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          term_key: "unparsed:inference-geography",
+          reason: "unknown_applicability",
+        }),
+      );
+    },
+  );
+  it.each(["missing", "conflicting"])(
+    "requires a coherent global base declaration (%s)",
+    async (change) => {
+      const pricing = (await fixture("anthropic/pricing.md")).replace(
+        "Global routing (the default) uses standard pricing.",
+        (change === "conflicting" ? "Global routing (the default) uses standard pricing. " : "") +
+          "Global routing pricing is unresolved.",
+      );
+      const parsed = await anthropicSource({
+        overrides: { "/docs/en/about-claude/pricing.md": pricing },
+      });
+      const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+      expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo !== undefined)).toBe(
+        false,
+      );
+      expect(fable?.raw_price_facts).toContainEqual(
+        expect.objectContaining({ term_key: "unparsed:inference-geography", conditions: {} }),
+      );
+    },
+  );
+  it("does not execute an inline-code declaration of the global base scope", async () => {
+    const pricing = (await fixture("anthropic/pricing.md")).replace(
+      "Global routing (the default) uses standard pricing.",
+      "`Global routing (the default) uses standard pricing.`",
+    );
+    const parsed = await anthropicSource({
+      overrides: { "/docs/en/about-claude/pricing.md": pricing },
+    });
+    const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+    expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo !== undefined)).toBe(
+      false,
+    );
+  });
+  it.each(["quoted", "fenced", "outside", "duplicate", "inline"])(
+    "does not borrow %s model eligibility from the data-residency document",
+    async (change) => {
+      const residency = await fixture("anthropic/data-residency.md");
+      const line = residency.split("\n").find((part) => part.includes("supported on Claude"));
+      if (line === undefined) throw new Error("Missing native generation contract");
+      const replacement =
+        change === "quoted"
+          ? "> " + line
+          : change === "fenced"
+            ? "```text\n" + line + "\n```"
+            : change === "outside"
+              ? ""
+              : change === "inline"
+                ? "Example: `" + line + "`"
+                : line + "\n\n## Inference geo\n" + line;
+      const parsed = await anthropicSource({
+        overrides: {
+          "/docs/en/manage-claude/data-residency.md":
+            residency.replace(line, replacement) +
+            (change === "outside" ? "\n## Workspace geo\n" + line : ""),
+        },
+      });
+      const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+      expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo === "us")).toBe(false);
+      expect(fable?.price_facts.every((rate) => rate.conditions.inference_geo === "global")).toBe(
+        true,
+      );
+    },
+  );
+  it("retains an unreadable multiplier peer without selecting a readable one", async () => {
+    const pricing = await fixture("anthropic/pricing.md");
+    const line = pricing.split("\n").find((part) => part.startsWith("For Claude 4.6"));
+    if (line === undefined) throw new Error("Missing native geography statement");
+    const parsed = await anthropicSource({
+      overrides: {
+        "/docs/en/about-claude/pricing.md": pricing.replace(
+          line,
+          line + "\n\n" + line.replace("1.1x multiplier", "unknownx multiplier"),
+        ),
+      },
+    });
+    const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+    expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo === "us")).toBe(false);
+    expect(fable?.raw_price_facts.some((rate) => rate.raw.fragment?.includes("unknownx"))).toBe(
+      true,
+    );
+  });
+  it("keeps a missing geography dependency distinct from a malformed native contract", async () => {
+    const findings: PricingReconciliationItem[] = [];
+    const parsed = await anthropicSource({
+      omit: ["/docs/en/manage-claude/data-residency.md"],
+      onPricingReconciliation: (item) => findings.push(item),
+    });
+    const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+    expect(fable?.price_facts.every((rate) => rate.conditions.inference_geo === "global")).toBe(
+      true,
+    );
+    expect(fable?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        term_key: "unparsed:inference-geography",
+        conditions: { inference_geo: "us" },
+      }),
+    );
+    expect(findings.filter((item) => item.reason_code.startsWith("inference_geo"))).toEqual([]);
+  });
+  it.each(["9007199254740992.6", "many"])("rejects an unsafe generation %s", async (generation) => {
+    const parsed = await anthropicSource({
+      overrides: {
+        "/docs/en/about-claude/pricing.md": (await fixture("anthropic/pricing.md")).replace(
+          "4.6",
+          generation,
+        ),
+        "/docs/en/manage-claude/data-residency.md": (
+          await fixture("anthropic/data-residency.md")
+        ).replace("4.6", generation),
+      },
+    });
+    const fable = parsed.models.find(({ model_id }) => model_id === "claude-fable-5");
+    expect(fable?.price_facts.some((rate) => rate.conditions.inference_geo === "us")).toBe(false);
+    expect(
+      fable?.raw_price_facts.some((rate) => rate.term_key === "unparsed:inference-geography"),
+    ).toBe(true);
+  });
   it("retains explicit native prompt bands across ordinary, cache, Batch and geography prices", async () => {
     const parsed = await anthropicContextPricing();
     const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
@@ -216,14 +378,26 @@ describe("Anthropic adapters", () => {
       haiku?.price_facts
         .filter(
           ({ meter, conditions }) =>
-            meter === "input_text" && conditions.inference_geo === undefined,
+            meter === "input_text" && conditions.inference_geo === "global",
         )
         .map(({ price, conditions }) => ({ price, conditions })),
     ).toEqual([
-      { price: "0.10", conditions: { speed: "standard", context_max_tokens: 100_000 } },
-      { price: "0.50", conditions: { speed: "standard", context_min_tokens: 100_001 } },
-      { price: "0.05", conditions: { service_tier: "batch", context_max_tokens: 100_000 } },
-      { price: "0.25", conditions: { service_tier: "batch", context_min_tokens: 100_001 } },
+      {
+        price: "0.10",
+        conditions: { speed: "standard", context_max_tokens: 100_000, inference_geo: "global" },
+      },
+      {
+        price: "0.50",
+        conditions: { speed: "standard", context_min_tokens: 100_001, inference_geo: "global" },
+      },
+      {
+        price: "0.05",
+        conditions: { service_tier: "batch", context_max_tokens: 100_000, inference_geo: "global" },
+      },
+      {
+        price: "0.25",
+        conditions: { service_tier: "batch", context_min_tokens: 100_001, inference_geo: "global" },
+      },
     ]);
     const partition = validatedPricing(parsed);
     for (const offerKey of ["sync", "batch"]) {
@@ -517,7 +691,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_write_text",
         price: "10",
-        conditions: { service_tier: "batch", cache_ttl_seconds: 3600 },
+        conditions: { service_tier: "batch", cache_ttl_seconds: 3600, inference_geo: "global" },
       }),
     );
   });
@@ -549,7 +723,11 @@ describe("Anthropic adapters", () => {
         item?.price_facts.every(({ conditions }) => conditions.inference_geo === "global"),
       ).toBe(true);
       expect(item?.raw_price_facts).toContainEqual(
-        expect.objectContaining({ impact: "base_price", conditions: { inference_geo: "us" } }),
+        expect.objectContaining({
+          impact: "base_price",
+          reason: "unknown_applicability",
+          conditions: { inference_geo: "us" },
+        }),
       );
     }
   });
@@ -659,7 +837,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "input_text",
         price: "10",
-        conditions: { speed: "standard" },
+        conditions: { speed: "standard", inference_geo: "global" },
       }),
     );
     expect(
@@ -846,7 +1024,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_write_text",
         price: "10",
-        conditions: { service_tier: "batch", cache_ttl_seconds: 3600 },
+        conditions: { service_tier: "batch", cache_ttl_seconds: 3600, inference_geo: "global" },
       }),
     );
     expect(fable?.raw_price_facts.some(({ raw }) => raw.fragment?.includes("1.5x"))).toBe(true);
@@ -893,7 +1071,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_read_text",
         price: "0.5",
-        conditions: { service_tier: "batch" },
+        conditions: { service_tier: "batch", inference_geo: "global" },
       }),
     );
   });
@@ -914,7 +1092,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "output_text",
         price: "50",
-        conditions: { speed: "standard" },
+        conditions: { speed: "standard", inference_geo: "global" },
       }),
     );
   });
@@ -1152,8 +1330,10 @@ describe("Anthropic adapters", () => {
       "1.1x multiplier",
       "an unreviewed multiplier",
     );
+    const findings: PricingReconciliationItem[] = [];
     const modelsSource = await anthropicSource({
       overrides: { "/docs/en/about-claude/pricing.md": pricing },
+      onPricingReconciliation: (item) => findings.push(item),
     });
     const models = modelsSource.models;
     validatedPricing(modelsSource);
@@ -1170,6 +1350,37 @@ describe("Anthropic adapters", () => {
         }),
       }),
     );
+    const source = manifest("anthropic").sources[0];
+    if (source === undefined) throw new Error("Missing Anthropic source");
+    expect(
+      catalogRepairCandidates({
+        schema_version: 2,
+        generated_at: observedAt,
+        providers: [
+          {
+            provider_id: "anthropic",
+            signals: [],
+            attempt: {
+              outcome: "accepted",
+              sources: [
+                {
+                  source_id: source.id,
+                  outcome: "unchanged",
+                  content_changed: false,
+                  pricing_reconciliation: sourcePricingReconciliation(models, findings, true),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        source_id: source.id,
+        trigger: "source_pricing_structure",
+        message: expect.stringContaining("inference_geo_multiplier_drift"),
+      }),
+    );
   });
 
   it("does not choose the first of conflicting geography multipliers", async () => {
@@ -1178,7 +1389,10 @@ describe("Anthropic adapters", () => {
     if (line === undefined) throw new Error("Missing geo fixture");
     const modelsSource = await anthropicSource({
       overrides: {
-        "/docs/en/about-claude/pricing.md": pricing + "\n" + line.replace("1.1x", "1.2x"),
+        "/docs/en/about-claude/pricing.md": pricing.replace(
+          line,
+          line + "\n\n" + line.replace("1.1x", "1.2x"),
+        ),
       },
     });
     const models = modelsSource.models;
@@ -1239,7 +1453,7 @@ describe("Anthropic adapters", () => {
         ({ conditions }) =>
           conditions.speed === "standard" &&
           conditions.service_tier === undefined &&
-          conditions.inference_geo === undefined,
+          conditions.inference_geo === "global",
       ),
     ).toHaveLength(4);
     expect(fable?.raw_price_facts).toContainEqual(
@@ -1322,7 +1536,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_write_text",
         price: "12.50",
-        conditions: { cache_ttl_seconds: 300, speed: "standard" },
+        conditions: { cache_ttl_seconds: 300, speed: "standard", inference_geo: "global" },
       }),
     );
   });
@@ -1343,7 +1557,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "input_text",
         price: "5",
-        conditions: { speed: "standard" },
+        conditions: { speed: "standard", inference_geo: "global" },
       }),
     );
   });
@@ -1368,7 +1582,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "input_text",
         price: "5",
-        conditions: { service_tier: "batch" },
+        conditions: { service_tier: "batch", inference_geo: "global" },
       }),
     );
     expect(fable?.raw_price_facts.some(({ raw }) => raw.amount === "EUR 25 / MTok")).toBe(true);
@@ -1394,14 +1608,14 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "cache_write_text",
         price: "10",
-        conditions: { service_tier: "batch", cache_ttl_seconds: 3600 },
+        conditions: { service_tier: "batch", cache_ttl_seconds: 3600, inference_geo: "global" },
       }),
     );
     expect(fable?.price_facts).toContainEqual(
       expect.objectContaining({
         meter: "cache_read_text",
         price: "0.5",
-        conditions: { service_tier: "batch" },
+        conditions: { service_tier: "batch", inference_geo: "global" },
       }),
     );
     expect(fable?.raw_price_facts).toContainEqual(
@@ -1448,7 +1662,7 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({
         meter: "input_text",
         price: "10",
-        conditions: { speed: "standard" },
+        conditions: { speed: "standard", inference_geo: "global" },
       }),
     );
   });
@@ -1744,7 +1958,7 @@ describe("Anthropic adapters", () => {
       stage: fable?.release_stage,
       limits: fable?.limits,
       input: fable?.price_facts.find(
-        (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === undefined,
+        (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === "global",
       )?.price,
       usInput: fable?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === "us",
@@ -1753,14 +1967,14 @@ describe("Anthropic adapters", () => {
         (rate) =>
           rate.meter === "cache_read_text" &&
           rate.conditions.service_tier === "batch" &&
-          rate.conditions.inference_geo === undefined,
+          rate.conditions.inference_geo === "global",
       )?.price,
       cacheWrites: fable?.price_facts
         .filter(
           (rate) =>
             rate.meter === "cache_write_text" &&
             rate.conditions.service_tier === undefined &&
-            rate.conditions.inference_geo === undefined,
+            rate.conditions.inference_geo === "global",
         )
         .map(({ price, conditions }) => [conditions.cache_ttl_seconds, price]),
       opusRelease: opus?.release_date,
@@ -1768,7 +1982,7 @@ describe("Anthropic adapters", () => {
         (rate) =>
           rate.meter === "input_text" &&
           rate.conditions.speed === "fast" &&
-          rate.conditions.inference_geo === undefined,
+          rate.conditions.inference_geo === "global",
       ),
       sonnetRates: sonnet?.price_facts.length,
       previewStatus: preview?.status,
@@ -1792,7 +2006,7 @@ describe("Anthropic adapters", () => {
       opusRelease: "2026-05-28",
       fastInput: expect.objectContaining({
         price: "10",
-        conditions: { speed: "fast" },
+        conditions: { speed: "fast", inference_geo: "global" },
       }),
       sonnetRates: 40,
       previewStatus: "retired",
@@ -1824,7 +2038,7 @@ describe("Anthropic adapters", () => {
         ({ meter: candidate, conditions }) =>
           candidate === meter &&
           conditions.service_tier === serviceTier &&
-          conditions.inference_geo === undefined,
+          conditions.inference_geo === "global",
       )?.price;
 
     expect(price("input_text")).toBe("10");
@@ -1879,7 +2093,7 @@ describe("Anthropic adapters", () => {
         expect.objectContaining({
           meter: "cache_read_text",
           price,
-          conditions: { service_tier: "batch" },
+          conditions: { service_tier: "batch", inference_geo: "global" },
         }),
       );
     }
@@ -2583,7 +2797,7 @@ describe("Anthropic adapters", () => {
     expect(items).toContainEqual({
       disposition: "unresolved",
       reason_code: "inference_geo_eligibility_conflict",
-      sample: "pricing and data-residency generation thresholds",
+      sample: "pricing and data-residency applicability, including global base pricing",
     });
   });
 
