@@ -696,19 +696,25 @@ describe("local canonical pricing compilation", () => {
     expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
-  it("preserves accepted pricing when replay input uses an obsolete extractor", async () => {
+  it("preserves repaired pricing instead of restoring an obsolete interpretation", async () => {
     const current = candidate("1");
+    const obsolete = replaySource("99");
+    const oldRate = obsolete.models[0]?.price_facts[0];
+    if (oldRate === undefined) throw new Error("Missing obsolete rate");
+    oldRate.conditions.context_min_tokens = 200_001;
     const snapshot = createPricingCompilationSnapshot(current, [
       {
         provider_id: providerId,
-        sources: [{ ...replaySource("1"), extractor_version: "test-pricing-v0" }],
+        sources: [{ ...obsolete, extractor_version: "test-pricing-v0" }],
       },
     ]);
+    const captured = structuredClone(snapshot);
 
     const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
     expect(compiled.replayedProviders).toEqual([]);
     expect(compiled.preservedProviders).toEqual([providerId]);
     expect(compiled.candidate.pricing).toEqual(current.pricing);
+    expect(snapshot).toEqual(captured);
   });
 
   it("preserves an obsolete snapshot when a newly adopted topology adds a feature", async () => {
