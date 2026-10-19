@@ -7,7 +7,10 @@ import {
   deepseekBillingVocabulary,
   type DeepseekBillingRule,
   type DeepseekCurrency,
+  deepseekPrice,
+  deepseekEnglishInstant,
 } from "./deepseek-pricing-policy.ts";
+import { deepseekServicePricing } from "./deepseek-services.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel, modelUid } from "./model.ts";
@@ -23,11 +26,14 @@ import { assertItemCount, contractExtensionEvidence } from "./source-contract.ts
 import { unknownCapabilities } from "./schema.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { linkedBundleSchema, type LinkedBundle as Bundle } from "./bundle.ts";
+import { parseIJson } from "./canonical-json.ts";
 
 const listItemSchema = z.object({
   id: modelIdSchema,
   object: z.literal("model"),
   owned_by: z.string().min(1),
+  context_window: z.unknown().optional(),
+  max_output_tokens: z.unknown().optional(),
 });
 const listSchema = z.object({ object: z.literal("list"), data: z.array(listItemSchema).min(1) });
 const apiListSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
@@ -98,14 +104,6 @@ function tokenCount(value: string): number {
   const result = Number(match[1]) * scale;
   if (!Number.isSafeInteger(result)) throw new Error(`Invalid DeepSeek token limit: ${value}`);
   return result;
-}
-
-function price(value: string, currency: "CNY" | "USD"): string {
-  const pattern =
-    currency === "USD" ? /^\$(0|[1-9]\d*)(?:\.(\d+))?$/ : /^(?:¥|￥)?(0|[1-9]\d*)(?:\.(\d+))?元?$/;
-  const match = value.match(pattern);
-  if (match?.[1] === undefined) throw new Error(`Invalid DeepSeek price: ${value}`);
-  return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
 }
 
 function rowLabel(value: HtmlTable["rows"][number]): string {
@@ -343,7 +341,10 @@ function anthropicClaims(input: Input, body: string | undefined): AnthropicClaim
   return { available, streaming };
 }
 
-function inventoryReferenceModelIds(body: string): Set<string> {
+function inventoryReferenceModels(
+  input: Input,
+  body: string,
+): Map<string, ProviderModel["limits"]> {
   const api = deepseekApiDocument(body, "/models", "GET");
   const rootObject = api.text("response", [["object", "string"]]);
   const itemObject = api.text("response", [
@@ -367,13 +368,16 @@ function inventoryReferenceModelIds(body: string): Set<string> {
     throw new Error("DeepSeek model-inventory reference changed response schema");
   const examples = api.responseSamples
     .flatMap((value) => {
-      let input: unknown;
+      let exampleValue: unknown;
       try {
-        input = JSON.parse(value);
+        exampleValue = parseIJson(
+          new TextEncoder().encode(value),
+          input.source.maxResponseBytes ?? 2 * 1024 * 1024,
+        );
       } catch {
         return [];
       }
-      const parsed = listSchema.safeParse(input);
+      const parsed = listSchema.safeParse(exampleValue);
       return parsed.success ? [parsed.data] : [];
     })
     .filter(({ data }) =>
@@ -385,7 +389,38 @@ function inventoryReferenceModelIds(body: string): Set<string> {
   const ids = example.data.map(({ id }) => id);
   if (new Set(ids).size !== ids.length)
     throw new Error("DeepSeek model-inventory reference returned duplicate model IDs");
-  return new Set(ids);
+  return new Map(
+    example.data.map((item): [string, ProviderModel["limits"]] => {
+      const limits: ProviderModel["limits"] = {};
+      for (const [field, target] of [
+        ["context_window", "context_tokens"],
+        ["max_output_tokens", "max_output_tokens"],
+      ] as const) {
+        const value = item[field];
+        if (value === undefined) continue;
+        if (
+          api.has("response", [
+            ["data", "object[]"],
+            [field, "integer"],
+          ]) &&
+          typeof value === "number" &&
+          Number.isSafeInteger(value) &&
+          value > 0
+        )
+          limits[target] = value;
+        else catalogFinding(input, "model_inventory_limit_contract_drift", `${item.id}:${field}`);
+      }
+      if (
+        limits.context_tokens !== undefined &&
+        limits.max_output_tokens !== undefined &&
+        limits.max_output_tokens > limits.context_tokens
+      ) {
+        catalogFinding(input, "model_inventory_limits_conflict", item.id);
+        return [item.id, {}];
+      }
+      return [item.id, limits];
+    }),
+  );
 }
 
 function catalogFinding(input: Input, code: string, sample?: string): void {
@@ -613,30 +648,13 @@ function englishScheduledEffectiveFrom(body: string): string {
     /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC \(all other hours are off-peak\).*?new prices take effect at (\d{2}:\d{2}) UTC on ([A-Za-z]+) (\d{1,2}), (\d{4})/i.exec(
       prose,
     );
-  const monthNames = [
-    "january",
-    "february",
-    "march",
-    "april",
-    "may",
-    "june",
-    "july",
-    "august",
-    "september",
-    "october",
-    "november",
-    "december",
-  ];
   const time = match?.[1];
   const monthName = match?.[2]?.toLowerCase();
   const day = match?.[3];
   const year = match?.[4];
-  const monthIndex = monthName === undefined ? -1 : monthNames.indexOf(monthName);
-  if (time === undefined || day === undefined || year === undefined || monthIndex < 0)
+  if (time === undefined || day === undefined || year === undefined || monthName === undefined)
     throw new Error("DeepSeek scheduled pricing notice changed");
-  return canonicalizeInstant(
-    `${year}-${String(monthIndex + 1).padStart(2, "0")}-${day.padStart(2, "0")}T${time}:00Z`,
-  );
+  return deepseekEnglishInstant(year, monthName, day, time, "Z");
 }
 
 function cnyScheduledEffectiveFrom(body: string): string {
@@ -828,7 +846,7 @@ function attachTariffs(
     }
     let amount: string;
     try {
-      amount = price(claim.amount, currency);
+      amount = deepseekPrice(claim.amount, currency);
     } catch {
       preserveTariff(input, target, claim, currency, "unknown_amount");
       continue;
@@ -1112,7 +1130,7 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
     inventoryBody === undefined
       ? undefined
       : catalogClaim(input, "model_inventory_contract_drift", "GET /models", () =>
-          inventoryReferenceModelIds(inventoryBody),
+          inventoryReferenceModels(input, inventoryBody),
         );
   if (
     inventoryIds !== undefined &&
@@ -1120,6 +1138,8 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
       models.some(({ model_id }) => !inventoryIds.has(model_id)))
   )
     catalogFinding(input, "model_inventory_disagreement");
+  for (const model of models)
+    model.limits = { ...model.limits, ...inventoryIds?.get(model.model_id) };
 
   const billingRule = attachPricing(input, bundle, models, table);
   attachLegacyRedirects(input, bundle.index.body, models);
@@ -1128,10 +1148,15 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
     input.source.id,
     input.onContractFinding,
   );
+  const services = deepseekServicePricing(input, bundle);
   return {
     models: bounded(input, models),
     pricing_inputs: pricingInputs,
-    vocabulary: billingRule === undefined ? [] : deepseekBillingVocabulary(billingRule),
+    commercial_facts: services.commercial_facts ?? [],
+    vocabulary: [
+      ...(billingRule === undefined ? [] : deepseekBillingVocabulary(billingRule)),
+      ...(services.vocabulary ?? []),
+    ],
   };
 }
 

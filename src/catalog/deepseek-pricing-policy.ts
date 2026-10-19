@@ -1,8 +1,45 @@
 import { load } from "cheerio";
 import { htmlText } from "./html.ts";
 import type { ProviderAtomRegistryEntry } from "./pricing-schema.ts";
+import { canonicalizeInstant } from "./pricing-time.ts";
 
 export type DeepseekCurrency = "CNY" | "USD";
+
+export function deepseekPrice(value: string, currency: DeepseekCurrency): string {
+  const pattern =
+    currency === "USD" ? /^\$(0|[1-9]\d*)(?:\.(\d+))?$/ : /^(?:¥|￥)?(0|[1-9]\d*)(?:\.(\d+))?元?$/;
+  const match = value.match(pattern);
+  if (match?.[1] === undefined) throw new Error(`Invalid DeepSeek price: ${value}`);
+  return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
+}
+
+export function deepseekEnglishInstant(
+  year: string,
+  month: string,
+  day: string,
+  time: string,
+  offset: string,
+): string {
+  const months = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+  ];
+  const index = months.indexOf(month.toLowerCase());
+  if (index < 0) throw new Error("Invalid DeepSeek date month");
+  return canonicalizeInstant(
+    `${year}-${String(index + 1).padStart(2, "0")}-${day.padStart(2, "0")}T${time}:00${offset}`,
+  );
+}
 export type DeepseekBillingPolicy = "daily" | "weekly" | "holiday" | "weekend_transition";
 
 const weekendEffectiveAt = "2026-08-22T16:00:00.000Z";

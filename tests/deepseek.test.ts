@@ -736,7 +736,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v22",
+      extractorVersion: "deepseek-catalog-v23",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
@@ -760,6 +760,7 @@ describe("DeepSeek adapters", () => {
         id: "cny-pricing",
         url: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
       },
+      { id: "search-billing", url: "https://api-docs.deepseek.com/guides/search/" },
     ]);
     expect(catalogSource.linkedDocuments?.documents?.every(({ optional }) => optional)).toBe(true);
     const findings: SourceContractEvidence[] = [];

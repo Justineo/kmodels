@@ -1,0 +1,361 @@
+<!-- Native owned excerpts of https://api-docs.deepseek.com/api/list-models; observed 2026-10-19T13:17:34.420Z; full body SHA256 00007478226661f71064fa0469d096fce6683a9f8d03ba9bff5abd9183936b14. Unrelated sibling content omitted. -->
+<article>
+  <pre
+    class="openapi__method-endpoint"
+  ><span class="badge badge--primary">GET</span> <h2 class="openapi__method-endpoint-path">/models</h2></pre>
+  <details
+    class="details_TgBV alert alert--info details_wn4R openapi-markdown__details response"
+    data-collapsed="false"
+    open=""
+  >
+    <summary class="openapi-markdown__details-summary-response">
+      <strong><p>Schema</p></strong>
+    </summary>
+    <div>
+      <div class="collapsibleContent_gaFD">
+        <div style="text-align: left; margin-left: 1rem"></div>
+        <ul style="margin-left: 1rem">
+          <div class="openapi-schema__list-item">
+            <div>
+              <span class="openapi-schema__container"
+                ><strong class="openapi-schema__property">object</strong
+                ><span class="openapi-schema__name"> <!-- -->string</span
+                ><span class="openapi-schema__divider"></span
+                ><span class="openapi-schema__required">required</span></span
+              >
+              <div>
+                <p><strong>Possible values:</strong> [<code>list</code>]</p>
+              </div>
+              <div>
+                <p>The object type, which is always <code>list</code>.</p>
+              </div>
+            </div>
+          </div>
+          <div class="openapi-schema__list-item">
+            <div class="openapi-markdown__details openapi-schema__node">
+              <div class="openapi-schema__node-summary">
+                <span class="openapi-schema__container"
+                  ><strong class="openapi-schema__property"><p>data</p></strong
+                  ><span class="openapi-schema__name"><p>object[]</p></span
+                  ><span class="openapi-schema__divider"></span
+                  ><span class="openapi-schema__required"><p>required</p></span></span
+                >
+              </div>
+              <div style="margin-left: 1rem">
+                <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                  <p>The list of model objects.</p>
+                </div>
+                <li>
+                  <div
+                    style="
+                      font-size: var(--ifm-code-font-size);
+                      opacity: 0.6;
+                      margin-left: -0.5rem;
+                      padding-bottom: 0.5rem;
+                    "
+                  >
+                    <p>Array [</p>
+                  </div>
+                </li>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">id</strong
+                      ><span class="openapi-schema__name"> <!-- -->string</span
+                      ><span class="openapi-schema__divider"></span
+                      ><span class="openapi-schema__required">required</span></span
+                    >
+                    <div>
+                      <p>The model identifier, which can be referenced in the API endpoints.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">object</strong
+                      ><span class="openapi-schema__name"> <!-- -->string</span
+                      ><span class="openapi-schema__divider"></span
+                      ><span class="openapi-schema__required">required</span></span
+                    >
+                    <div>
+                      <p><strong>Possible values:</strong> [<code>model</code>]</p>
+                    </div>
+                    <div><p>The object type, which is always "model".</p></div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">owned_by</strong
+                      ><span class="openapi-schema__name"> <!-- -->string</span
+                      ><span class="openapi-schema__divider"></span
+                      ><span class="openapi-schema__required">required</span></span
+                    >
+                    <div><p>The organization that owns the model.</p></div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">name</strong
+                      ><span class="openapi-schema__name"> <!-- -->string</span></span
+                    >
+                    <div>
+                      <p>
+                        The display name of the model, for use in model pickers and model discovery
+                        tools.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">context_window</strong
+                      ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                    >
+                    <div>
+                      <p>
+                        The total token capacity of the context window, counting both input and
+                        output tokens.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">max_output_tokens</strong
+                      ><span class="openapi-schema__name"> <!-- -->integer</span></span
+                    >
+                    <div>
+                      <p>
+                        The maximum number of output tokens the server allows in a single response,
+                        i.e. the maximum accepted value of <code>max_tokens</code>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">input_modalities</strong
+                      ><span class="openapi-schema__name"> <!-- -->string[]</span></span
+                    >
+                    <div>
+                      <p>
+                        <strong>Possible values:</strong> [<code>text</code>, <code>image</code>]
+                      </p>
+                    </div>
+                    <div><p>The input types the model accepts.</p></div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div>
+                    <span class="openapi-schema__container"
+                      ><strong class="openapi-schema__property">output_modalities</strong
+                      ><span class="openapi-schema__name"> <!-- -->string[]</span></span
+                    >
+                    <div>
+                      <p><strong>Possible values:</strong> [<code>text</code>]</p>
+                    </div>
+                    <div><p>The media types the model can generate.</p></div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div class="openapi-markdown__details openapi-schema__node">
+                    <div class="openapi-schema__node-summary">
+                      <span class="openapi-schema__container"
+                        ><strong class="openapi-schema__property"><p>effort</p></strong
+                        ><span class="openapi-schema__name"><p>object</p></span></span
+                      >
+                    </div>
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>The effort levels available when thinking mode is enabled.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">supported_levels</strong
+                            ><span class="openapi-schema__name"> <!-- -->string[]</span
+                            ><span class="openapi-schema__divider"></span
+                            ><span class="openapi-schema__required">required</span></span
+                          >
+                          <div>
+                            <p>
+                              The effort levels the model supports when thinking mode is enabled, in
+                              the recommended display order. These are the values accepted by the
+                              <code>reasoning_effort</code> parameter; <code>none</code>, which
+                              turns thinking mode off, is not included.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div>
+                          <span class="openapi-schema__container"
+                            ><strong class="openapi-schema__property">default_level</strong
+                            ><span class="openapi-schema__name"> <!-- -->string</span></span
+                          >
+                          <div>
+                            <p>
+                              The effort level the server uses when thinking mode is enabled and the
+                              request does not specify one. Always one of
+                              <code>supported_levels</code>. Only present when the server defines a
+                              default for the model.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="openapi-schema__list-item">
+                  <div class="openapi-markdown__details openapi-schema__node">
+                    <div class="openapi-schema__node-summary">
+                      <span class="openapi-schema__container"
+                        ><strong class="openapi-schema__property"><p>api_capabilities</p></strong
+                        ><span class="openapi-schema__name"><p>object</p></span></span
+                      >
+                    </div>
+                    <div style="margin-left: 1rem">
+                      <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                        <p>Model behavior declared per API protocol.</p>
+                      </div>
+                      <div class="openapi-schema__list-item">
+                        <div class="openapi-markdown__details openapi-schema__node">
+                          <div class="openapi-schema__node-summary">
+                            <span class="openapi-schema__container"
+                              ><strong class="openapi-schema__property"
+                                ><p>anthropic_messages</p></strong
+                              ><span class="openapi-schema__name"><p>object</p></span></span
+                            >
+                          </div>
+                          <div style="margin-left: 1rem">
+                            <div style="margin-top: 0.5rem; margin-bottom: 0.5rem">
+                              <p>
+                                Capabilities that apply when the model is used through the
+                                <a href="/guides/anthropic_api">Anthropic Messages API</a>.
+                              </p>
+                            </div>
+                            <div class="openapi-schema__list-item">
+                              <div>
+                                <span class="openapi-schema__container"
+                                  ><strong class="openapi-schema__property"
+                                    >system_prompt_update</strong
+                                  ><span class="openapi-schema__name"> <!-- -->string</span
+                                  ><span class="openapi-schema__divider"></span
+                                  ><span class="openapi-schema__required">required</span></span
+                                >
+                                <div>
+                                  <p>
+                                    <strong>Possible values:</strong> [<code>leading-only</code>,
+                                    <code>in-history</code>]
+                                  </p>
+                                </div>
+                                <div>
+                                  <p>
+                                    How the model picks up an updated system prompt during a
+                                    conversation.
+                                  </p>
+                                  <ul>
+                                    <li>
+                                      <code>leading-only</code>: only the system prompt at the start
+                                      of the conversation takes effect. To change the system prompt,
+                                      modify that leading system prompt; system messages appearing
+                                      later in the history are not treated as system prompt updates.
+                                    </li>
+                                    <li>
+                                      <code>in-history</code>: a <code>system</code> message may be
+                                      appended to the conversation history. The latest
+                                      <code>system</code> message in the history provides the
+                                      complete effective system prompt and replaces all earlier
+                                      ones.
+                                    </li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <li>
+                  <div
+                    style="font-size: var(--ifm-code-font-size); opacity: 0.6; margin-left: -0.5rem"
+                  >
+                    <p>]</p>
+                  </div>
+                </li>
+              </div>
+            </div>
+          </div>
+        </ul>
+      </div>
+    </div>
+  </details>
+  <div class="openapi-code__response-samples-container">
+    <div
+      class="language-json codeBlockContainer_pGXX theme-code-block"
+      style="--prism-color: #9cdcfe; --prism-background-color: #1e1e1e"
+    >
+      <div class="codeBlockContent_CRIs">
+        <pre
+          tabindex="0"
+          class="prism-code language-json codeBlock_JcNi thin-scrollbar"
+          style="color: #9cdcfe; background-color: #1e1e1e"
+        ><code class="codeBlockLines_UUn8"><span class="token-line" style="color:#9CDCFE"><span class="token plain">{</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  "object": "list",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  "data": [</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "id": "string",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "object": "model",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "owned_by": "string",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "name": "string",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "context_window": 0,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "max_output_tokens": 0,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "input_modalities": [</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "text"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      ],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "output_modalities": [</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "text"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      ],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "effort": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "supported_levels": [</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">          "string"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        ],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "default_level": "string"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      },</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "api_capabilities": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "anthropic_messages": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">          "system_prompt_update": "leading-only"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  ]</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">}</span><br></span></code></pre>
+        <div class="buttonGroup__2VR">
+          <button type="button" aria-label="Copy code to clipboard" title="Copy" class="clean-btn">
+            <span class="copyButtonIcons__UmU" aria-hidden="true"
+              ><svg viewBox="0 0 24 24" class="copyButtonIcon_a6rv">
+                <path
+                  fill="currentColor"
+                  d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"
+                ></path></svg
+              ><svg viewBox="0 0 24 24" class="copyButtonSuccessIcon_BlLq">
+                <path
+                  fill="currentColor"
+                  d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
+                ></path></svg
+            ></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="openapi-code__response-samples-container">
+    <div
+      class="language-json codeBlockContainer_pGXX theme-code-block"
+      style="--prism-color: #9cdcfe; --prism-background-color: #1e1e1e"
+    >
+      <div class="codeBlockContent_CRIs">
+        <pre
+          tabindex="0"
+          class="prism-code language-json codeBlock_JcNi thin-scrollbar"
+          style="color: #9cdcfe; background-color: #1e1e1e"
+        ><code class="codeBlockLines_UUn8"><span class="token-line" style="color:#9CDCFE"><span class="token plain">{</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  "object": "list",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  "data": [</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "id": "deepseek-flash",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "object": "model",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "owned_by": "deepseek",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "name": "DeepSeek-V4.1-Flash",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "context_window": 1048576,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "max_output_tokens": 393216,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "input_modalities": ["text", "image"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "output_modalities": ["text"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "effort": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "supported_levels": ["low", "high", "max"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "default_level": "high"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      },</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "api_capabilities": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "anthropic_messages": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">          "system_prompt_update": "in-history"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    },</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "id": "deepseek-v4-pro",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "object": "model",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "owned_by": "deepseek",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "name": "DeepSeek-V4-Pro",</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "context_window": 1048576,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "max_output_tokens": 393216,</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "input_modalities": ["text"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "output_modalities": ["text"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "effort": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "supported_levels": ["low", "high", "max"],</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "default_level": "high"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      },</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      "api_capabilities": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        "anthropic_messages": {</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">          "system_prompt_update": "leading-only"</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">        }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">      }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">    }</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">  ]</span><br></span><span class="token-line" style="color:#9CDCFE"><span class="token plain">}</span><br></span></code></pre>
+        <div class="buttonGroup__2VR">
+          <button type="button" aria-label="Copy code to clipboard" title="Copy" class="clean-btn">
+            <span class="copyButtonIcons__UmU" aria-hidden="true"
+              ><svg viewBox="0 0 24 24" class="copyButtonIcon_a6rv">
+                <path
+                  fill="currentColor"
+                  d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"
+                ></path></svg
+              ><svg viewBox="0 0 24 24" class="copyButtonSuccessIcon_BlLq">
+                <path
+                  fill="currentColor"
+                  d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
+                ></path></svg
+            ></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>

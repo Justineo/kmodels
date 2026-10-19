@@ -18,7 +18,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["cohere", ["binding"]],
   ["dashscope", ["resource", "binding"]],
   ["databricks", ["binding"]],
-  ["deepseek", ["binding"]],
+  ["deepseek", ["resource", "binding"]],
   ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
   ["kimi", ["resource", "relation", "binding", "settlement"]],

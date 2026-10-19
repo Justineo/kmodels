@@ -1,0 +1,53 @@
+<!-- Native owned excerpts of https://api-docs.deepseek.com/guides/search/; observed 2026-10-19T13:17:34.259Z; full body SHA256 93595abed4ca25a8ee51a99bfb1462422015fe567e4e1de6d04910096eca8e97. Unrelated sibling content omitted. -->
+<main>
+  <article>
+    <div class="theme-doc-markdown markdown">
+      <h2 class="anchor anchorWithStickyNavbar_YAqC" id="billing">
+        Billing<a
+          href="#billing"
+          class="hash-link"
+          aria-label="Direct link to Billing"
+          title="Direct link to Billing"
+          >​</a
+        >
+      </h2>
+      <p>
+        Search and Fetch are billed per successful request, not by tokens or by the number of
+        returned results:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>API</th>
+            <th>Unit</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Search</td>
+            <td>Per 1,000 successful requests</td>
+            <td>$0.75</td>
+          </tr>
+          <tr>
+            <td>Fetch</td>
+            <td>Per 1,000 successful requests</td>
+            <td>$0.75</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        A request is billable only when it returns HTTP 200 and produces a result (Search must
+        return a non-empty <code>results</code> array, and Fetch must return page content). Failed
+        requests, empty search results, and timeouts are not billed. <code>count</code> only
+        controls how many results are returned and does not affect the per-request price.
+      </p>
+      <p>
+        Note: when you use the DeepSeek API through DeepSeek Harness, Claude Code, or Codex,
+        server-side tool calls already hit the Search and Fetch APIs. These calls are currently free
+        of charge; per-request billing starts at 00:00 Beijing time on November 1, 2026.
+      </p>
+      <hr />
+    </div>
+  </article>
+</main>

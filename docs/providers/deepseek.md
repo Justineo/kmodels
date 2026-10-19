@@ -31,9 +31,12 @@ The fetch bundle contains only companions that contribute a current catalog or r
   Messages endpoint and streaming support, but not for usage locators that the guide does not
   document;
 - the [Vision guide](https://api-docs.deepseek.com/guides/vision) for the exact image-input model and
-  its image-to-token billing rule; and
+  its image-to-token billing rule;
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
-  current-inventory witness.
+  current-inventory witness and typed, exact token-limit evidence; and
+- the [Search & Fetch guide](https://api-docs.deepseek.com/guides/search/) for successful-request
+  qualification and the server-tool billing transition. The English and Chinese price pages own
+  amounts; the guide's repeated prices do not replace them.
 
 The [change log](https://api-docs.deepseek.com/updates) supplies exact-ID release and update dates.
 Optional authenticated `GET /models`, enabled with `DEEPSEEK_API_KEY`, may add account-scoped
@@ -83,16 +86,24 @@ tokens, so the price book does not duplicate that aggregate input usage as a sec
 Vision guide establishes image input in the model catalog, while verified Chat Completions and
 Responses usage counters remain the charge bindings for the combined billable input-token totals.
 
-The implemented books currently cover generation token rates. A tool loop can cause additional
+Model books cover generation token rates. A tool loop can cause additional
 generation requests, which an AI Gateway observes and prices individually. Generic function calling
 does not itself establish an extra service charge. Anthropic wildcard rewriting is request routing,
 not pricing or catalog identity.
 
-[Search & Fetch](https://api-docs.deepseek.com/guides/search/) service charges and their dated
-billing conditions are not represented by this collector. The current books therefore do not
-establish complete service-charge coverage. Ordinary generation token counts cannot supply
-successful tool-request quantities, model compatibility, or attribution of a tool charge to a
-generation request.
+Search and Fetch have independent provider-service books, with no inferred model compatibility.
+Each has a standalone API offer and a separate offer for provider-side tool calls made through
+DeepSeek Harness, Claude Code or Codex. The latter is free until the source's published transition,
+then uses the request tariff. The English price page, Chinese price page and guide must establish
+the same eligibility and Beijing-time instant. The current declaration starts billing on
+2026-11-01 at 00:00 Beijing time: the free interval ends exclusively and the paid interval starts
+inclusively at 2026-10-31T16:00:00Z. These service rates do not inherit model Peak/Off-peak periods.
+
+Both services charge per successful request, independently of the number of search results.
+Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.
+Failures, empty search results and timeouts are not billable. Consumers supply these precisely
+qualified request counts. A results-array length, generated token count or emitted tool-call event
+cannot substitute for a billable request count. No response counter or model association is guessed.
 
 The collector intentionally discards account balance, granted credit, recharge/refund terms,
 concurrency, capacity expansion, settlement order, and future price notices without an effective
@@ -160,9 +171,9 @@ automatic extraction through that protocol.
 
 Reasoning-token fields are subsets used for explanation, not additional charged quantities. Image
 tokens are already included in input totals, so they do not need a second charge signal. Cache
-creation is automatic and has no published cache-write price. Search/Fetch request charges require
-their own billing contract and quantity; ordinary token counters cannot measure those requests.
-The current books omit those charges and their free-to-paid transition.
+creation is automatic and has no published cache-write price. Search/Fetch request charges use
+their own successful-request quantities and dated offers; ordinary token counters cannot measure
+those requests. Known prices remain useful without an automatic acquisition method.
 
 Operation-specific model enumerations control protocol bindings. A general table feature cannot
 expand those enumerations. A disagreement is reported without removing either model or its
@@ -187,11 +198,21 @@ by retained pricing, pair composition retains the previous provider core too. Mi
 CNY companions use this same commercial boundary; English and Chinese policies cannot silently
 share one global billing-period definition when they disagree.
 
-Context/output limits currently come from the price table's display labels, normalized with decimal
-scales. The public [Models response](https://api-docs.deepseek.com/api/list-models) is used only as
-an exact-ID inventory witness; its example metadata does not override those table limits. This
-leaves a precision limitation where display labels round the API's integer limits. Identity
-agreement alone does not establish the units, version or authority of an example's other fields.
+The public Models reference independently defines `context_window` as total input/output token
+capacity and `max_output_tokens` as the per-response output limit. Its unique current response
+example can refine the price table's rounded labels for exact matching IDs. Each value requires
+the owned integer schema and a positive safe integer; field drift withholds that limit locally,
+while unreadable or duplicate JSON properties cannot select a last value. The price-table limit
+remains the fallback. Explicit legacy redirects inherit the verified target's limits.
+This authority is limited to these documented token fields: example names, modalities, effort
+settings and other additive metadata cannot overwrite independently established catalog facts or
+create identities. The table remains the identity and served-version authority.
+
+Service quotes use the same local raw fallback for unreadable amounts or units. Unreviewed service
+rows report a source pricing diagnostic. Missing or conflicting billing qualification, eligibility
+or transition evidence signals the responsible commercial dependency: collection retains the
+complete accepted provider pricing and replay input while valid catalog metadata may advance.
+Current topology admission requires the reviewed service resources as well as charge bindings.
 
 Pricing reconciliation counts native tariff cells and verified billing rules once each, including
 one item for an explicit redirect rule rather than its derived model/rate copies. Catalog, interface, inventory and
@@ -222,8 +243,9 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors,
 the three applicable published rates, and their verified pricing-input methods. The categorical
 definitions preserve the holiday rule. They do not
-show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
-web-search price. The website presents rates rather than calculating a total or deciding the
+show balance, concurrency, settlement, routing, provisioning, training or storage. Provider details
+show the independent Search and Fetch resources, both invocation mechanisms and the shared
+current/upcoming validity timeline. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by
 returned usage, and sum requests. Runtime collection, request lifecycle, ledgers, contract-price
 overrides, and invoice reconciliation remain consumer responsibilities rather than Pricebook data.
