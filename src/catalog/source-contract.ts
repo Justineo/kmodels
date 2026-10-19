@@ -404,13 +404,16 @@ export function zodContractEvidence(
   );
 }
 
-export function contractExtensionEvidence(paths: readonly string[]): SourceContractEvidence {
+export function contractExtensionEvidence(
+  paths: readonly string[],
+  kind: "unknown_field" | "unknown_value" = "unknown_value",
+): SourceContractEvidence {
   const unique = [...new Set(paths)].sort(compareUtf8);
   if (unique.length === 0) throw new Error("Contract extension evidence requires a path");
   return aggregateEvidence(
     unique.map((path, itemIndex) => ({
       diagnostic: {
-        kind: "unknown_value",
+        kind,
         path: path.startsWith("/") ? path.slice(0, 512) : `/${path.slice(0, 511)}`,
         expected: "reviewed source contract",
         observed: "string",

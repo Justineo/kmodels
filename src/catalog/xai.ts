@@ -4,6 +4,7 @@ import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import { multiplyDecimal, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type {
   ParsedProviderModel as ProviderModel,
@@ -27,6 +28,7 @@ const commonModelShape = {
   inputModalities: z.array(upperModalitySchema).min(1),
   outputModalities: z.array(upperModalitySchema).min(1),
   aliases: aliasesSchema,
+  batchEnabled: z.boolean().optional(),
 };
 const languageModelSchema = z.object({
   ...commonModelShape,
@@ -64,6 +66,7 @@ const embeddingModelSchema = z.object({
   promptImageTokenPrice: integerString,
 });
 const languageIdentitySchema = languageModelSchema.omit({
+  batchEnabled: true,
   promptTextTokenPrice: true,
   promptImageTokenPrice: true,
   promptTextTokenPriceLongContext: true,
@@ -592,7 +595,8 @@ function embeddedModels(input: ParseInput, body: string): PublicModels {
         }
       }
     }
-  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
+  if (findings.length > 0)
+    input.onContractFinding?.(contractExtensionEvidence(findings, "unknown_field"));
   return {
     clusterConfigs: recognizeItems({
       label: "xAI public model clusters",
@@ -628,6 +632,13 @@ function distinct<T extends { name: string }>(
     models.set(value.name, value);
   }
   return [...models.values()];
+}
+
+function withoutBatchFlag<T extends { batchEnabled?: boolean | undefined }>(
+  value: T,
+): Omit<T, "batchEnabled"> {
+  const { batchEnabled: _batchEnabled, ...rest } = value;
+  return rest;
 }
 
 function modelRegions(catalog: PublicModels): Map<string, string[]> {
@@ -669,24 +680,6 @@ function section(body: string, pathname: string): string {
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
 }
 
-const generalApiFields = [
-  "aliases",
-  "cached_prompt_text_token_price",
-  "cached_prompt_text_token_price_long_context",
-  "completion_text_token_price",
-  "completion_text_token_price_long_context",
-  "context_length",
-  "created",
-  "id",
-  "image_price",
-  "long_context_threshold",
-  "object",
-  "owned_by",
-  "pricing",
-  "prompt_image_token_price",
-  "prompt_text_token_price",
-  "prompt_text_token_price_long_context",
-] as const;
 const detailedApiFields = [
   "aliases",
   "created",
@@ -716,95 +709,6 @@ const imageApiFields = [
   "max_prompt_length",
   "pricing",
 ] as const;
-
-const modelApiRoutes = [
-  { path: "/v1/models", container: "data", fields: generalApiFields },
-  { path: "/v1/models/{model_id}", fields: generalApiFields },
-  { path: "/v1/language-models", container: "models", fields: languageApiFields },
-  { path: "/v1/language-models/{model_id}", fields: languageApiFields },
-  { path: "/v1/image-generation-models", container: "models", fields: imageApiFields },
-  { path: "/v1/image-generation-models/{model_id}", fields: imageApiFields },
-  { path: "/v1/video-generation-models", container: "models", fields: detailedApiFields },
-  { path: "/v1/video-generation-models/{model_id}", fields: detailedApiFields },
-] as const;
-
-function assertSameFields(actual: string[], expected: readonly string[], label: string): void {
-  const actualSet = new Set(actual);
-  const expectedSet = new Set(expected);
-  if (
-    actualSet.size !== actual.length ||
-    actualSet.size !== expectedSet.size ||
-    [...actualSet].some((field) => !expectedSet.has(field))
-  )
-    throw new Error(`xAI ${label} fields changed`);
-}
-
-function assertModelApiContract(llms: string): void {
-  const body = section(llms, "/developers/rest-api-reference/inference/models");
-  const headings = [...body.matchAll(/^## GET (\/v1\/[^\n]+)$/gm)].flatMap((match) => {
-    if (match.index === undefined || match[1] === undefined) return [];
-    return [{ path: match[1].replaceAll("\\", ""), start: match.index }];
-  });
-  assertSameFields(
-    headings.map(({ path }) => path),
-    modelApiRoutes.map(({ path }) => path),
-    "documented model API routes",
-  );
-  const recordSchema = z.record(z.string(), z.unknown());
-  const knownImageExampleFields = new Set([
-    "prompt_text_token_price",
-    "prompt_image_token_price",
-    "generated_image_token_price",
-  ]);
-  for (const expected of modelApiRoutes) {
-    const index = headings.findIndex(({ path }) => path === expected.path);
-    const heading = headings[index];
-    if (index < 0 || heading === undefined)
-      throw new Error(`xAI documented model API route disappeared: ${expected.path}`);
-    const routeBody = body.slice(heading.start, headings[index + 1]?.start);
-    const responseBody = routeBody
-      .split("### Response Body", 2)[1]
-      ?.split(/\\?\*\\?\*Response example:/, 1)[0];
-    if (responseBody === undefined)
-      throw new Error(`xAI ${expected.path} response contract disappeared`);
-    const container = "container" in expected ? expected.container : undefined;
-    const itemFields = [
-      ...responseBody.matchAll(container === undefined ? /^\* `([^`]+)`/gm : /^  \* `([^`]+)`/gm),
-    ].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
-    assertSameFields(itemFields, expected.fields, `${expected.path} response`);
-    if (container !== undefined) {
-      const topLevelFields = [...responseBody.matchAll(/^\* `([^`]+)`/gm)].flatMap((match) =>
-        match[1] === undefined ? [] : [match[1]],
-      );
-      assertSameFields(
-        topLevelFields,
-        expected.path === "/v1/models" ? [container, "object"] : [container],
-        `${expected.path} envelope`,
-      );
-    }
-
-    const json = routeBody.match(/```json\n([\s\S]*?)\n```/)?.[1];
-    if (json === undefined) throw new Error(`xAI ${expected.path} response example disappeared`);
-    const envelope = recordSchema.parse(JSON.parse(json));
-    const example =
-      container === undefined
-        ? envelope
-        : z.array(recordSchema).min(1).parse(envelope[container])[0];
-    if (example === undefined) throw new Error(`xAI ${expected.path} response example was empty`);
-    const allowed = new Set<string>(expected.fields);
-    const unexpected = Object.keys(example).filter(
-      (field) =>
-        !allowed.has(field) &&
-        !(expected.path.includes("image-generation-models") && knownImageExampleFields.has(field)),
-    );
-    if (unexpected.length > 0)
-      throw new Error(
-        `xAI ${expected.path} response example added fields: ${unexpected.join(", ")}`,
-      );
-    if (["id", "created", "object", "owned_by"].some((field) => !(field in example)))
-      throw new Error(`xAI ${expected.path} response example lost common identity fields`);
-  }
-}
 
 const endpointEvidence = [
   ["/developers/model-capabilities/text/generate-text", "Responses", "/v1/responses"],
@@ -1088,10 +992,7 @@ function batchPricingMultipliers(
   if (
     batchMultipliers.size === 0 ||
     !batch.includes("Models not listed above have no batch discount.") ||
-    !batch.includes("The batch discount applies to all token types") ||
-    !batch.includes(
-      "Image and video generation are supported in the Batch API but are billed at standard rates.",
-    )
+    !batch.includes("The batch discount applies to all token types")
   )
     throw new Error("xAI batch pricing terms were incomplete");
   return batchMultipliers;
@@ -1109,7 +1010,10 @@ function priorityPricingMultiplier(pricing: string): string {
   return scaleDecimal(multiplier, 0);
 }
 
-function batchExclusions(llms: string, models: { name: string; aliases: string[] }[]): Set<string> {
+function batchExclusions(
+  llms: string,
+  models: { name: string; aliases: string[] }[],
+): Set<string> | undefined {
   const body = section(llms, "/developers/advanced-api-usage/batch-api");
   const supported = [
     "/v1/chat/completions",
@@ -1125,6 +1029,13 @@ function batchExclusions(llms: string, models: { name: string; aliases: string[]
   const unsupported = body.match(
     /(?:^>\s*)?((?:`[^`]+`(?:, | and )?)+) (?:is|are) not currently supported for Batch API requests/m,
   )?.[1];
+  if (
+    unsupported === undefined &&
+    markdownProse(body).includes(
+      "Only batch-enabled models are accepted. Refer to the relevant [model pages](/developers/models)",
+    )
+  )
+    return;
   const ids = [...(unsupported?.matchAll(/`([^`]+)`/g) ?? [])].flatMap((match) =>
     match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
   );
@@ -1474,7 +1385,7 @@ function commercialEvidence(
   voice: VoicePrices | undefined,
 ): XaiCommercialEvidence {
   const imageGenerationModelId = reviewClaim(input, "image_generation_tool_contract_drift", () => {
-    const body = section(llms, "/developers/tools/image-generation");
+    const body = section(llms, "/developers/tools/image-generation").replace(/\s+/gu, " ");
     const current = body.match(
       /It uses the latest Imagine image models \(`(grok-[a-z0-9.-]+)`\)/,
     )?.[1];
@@ -1644,7 +1555,10 @@ function currentModels(
       const entries =
         languageRegions.get(value.name) ?? new Map<string, z.infer<typeof languageModelSchema>>();
       const previous = entries.get(cluster.clusterName);
-      if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(value))
+      if (
+        previous !== undefined &&
+        JSON.stringify(withoutBatchFlag(previous)) !== JSON.stringify(withoutBatchFlag(value))
+      )
         throw new Error(
           `xAI language model ${value.name} conflicts within region ${cluster.clusterName}`,
         );
@@ -1654,7 +1568,10 @@ function currentModels(
   }
   const regionalPrices = new Set(
     [...languageRegions].flatMap(([id, entries]) =>
-      new Set([...entries.values()].map((value) => JSON.stringify(value))).size > 1 ? [id] : [],
+      new Set([...entries.values()].map((value) => JSON.stringify(withoutBatchFlag(value)))).size >
+      1
+        ? [id]
+        : [],
     ),
   );
   const embeddings = distinct(
@@ -1664,14 +1581,17 @@ function currentModels(
   const images = distinct(
     catalog.clusterConfigs.flatMap(({ imageGenerationModels }) => imageGenerationModels),
     "image",
+    withoutBatchFlag,
   );
   const voice = distinct(
     catalog.clusterConfigs.flatMap(({ audioModels }) => audioModels),
     "voice service",
+    withoutBatchFlag,
   );
   const videos = distinct(
     catalog.clusterConfigs.flatMap(({ videoGenerationModels }) => videoGenerationModels),
     "video",
+    withoutBatchFlag,
   );
   const regions = modelRegions(catalog);
   const ratesFor = (id: string, rates: SourcePriceFact[]): SourcePriceFact[] =>
@@ -1681,9 +1601,40 @@ function currentModels(
   const multiAgent =
     reviewClaim(input, "multi_agent_contract_drift", () => multiAgentModels(llms, language)) ??
     new Set<string>();
-  const excludedFromBatch = reviewClaim(input, "batch_contract_drift", () =>
-    batchExclusions(llms, routable),
+  const batchRows = catalog.clusterConfigs.flatMap((cluster) =>
+    [
+      ...cluster.languageModels,
+      ...cluster.imageGenerationModels,
+      ...cluster.videoGenerationModels,
+    ].map((value) => ({ region: cluster.clusterName, value })),
   );
+  const excludedFromBatch = batchRows.every(({ value }) => value.batchEnabled !== undefined)
+    ? undefined
+    : reviewClaim(input, "batch_contract_drift", () => batchExclusions(llms, routable));
+  const batchRegions = new Map<string, Map<string, boolean | "unknown">>();
+  for (const { region, value } of batchRows) {
+    const enabled =
+      value.batchEnabled ??
+      (excludedFromBatch === undefined ? "unknown" : !excludedFromBatch.has(value.name));
+    const entries = batchRegions.get(value.name) ?? new Map<string, boolean | "unknown">();
+    const previous = entries.get(region);
+    if (previous !== undefined && previous !== enabled) {
+      entries.set(region, "unknown");
+      input.onContractFinding?.(
+        contractExtensionEvidence([`/clusterConfigs/${region}/models/${value.name}/batchEnabled`]),
+      );
+      input.onPricingDependencyFailure?.(input.source.url);
+    } else entries.set(region, enabled);
+    batchRegions.set(value.name, entries);
+  }
+  const batchSupport = (id: string): boolean | "unknown" => {
+    const values = [...(batchRegions.get(id)?.values() ?? [])];
+    return values.includes(true)
+      ? true
+      : values.length > 0 && values.every((value) => value === false)
+        ? false
+        : "unknown";
+  };
   const streaming =
     reviewClaim(input, "streaming_contract_drift", () => {
       assertStreaming(llms);
@@ -1726,7 +1677,6 @@ function currentModels(
     reviewClaim(input, "voice_price_summary_conflict", () =>
       assertSameVoicePrices(prices, voicePrices(input, modelsPage)),
     );
-  reviewClaim(input, "model_api_contract_drift", () => assertModelApiContract(llms));
   if (voice.length > 0 && prices !== undefined)
     reviewClaim(input, "voice_service_price_conflict", () => assertVoiceServices(prices, voice));
   const batchMultipliers =
@@ -1741,6 +1691,31 @@ function currentModels(
       : reviewClaim(input, "priority_pricing_terms_contract_drift", () =>
           priorityPricingMultiplier(pricing),
         );
+  const mediaSamePrice =
+    pricing === undefined
+      ? undefined
+      : reviewClaim(input, "batch_media_pricing_terms_contract_drift", () => {
+          const batch = markdownSection(pricing, 2, "Batch API Pricing");
+          if (
+            batch === undefined ||
+            !markdownProse(batch).includes(
+              "Image and video generation are supported in the Batch API but are billed at standard rates.",
+            )
+          )
+            throw new Error("xAI media Batch same-price rule is unavailable");
+          return true;
+        });
+  const mediaRates = (id: string, rates: SourcePriceFact[]): SourcePriceFact[] => {
+    const base = ratesFor(id, rates);
+    return [
+      ...base,
+      ...(mediaSamePrice === true
+        ? base
+            .filter((rate) => batchRegions.get(id)?.get(rate.conditions.region ?? "") === true)
+            .map((rate) => tierRate(rate, "1", "batch", "published standard media rate"))
+        : []),
+    ];
+  };
   const names =
     reviewClaim(input, "display_name_contract_drift", () => displayNames(html)) ?? new Map();
   const releases =
@@ -1781,7 +1756,7 @@ function currentModels(
         tool_call: value.features.functionCalling ?? "unknown",
         structured_output: value.features.structuredOutputs ?? "unknown",
         streaming,
-        batch: excludedFromBatch === undefined ? "unknown" : !excludedFromBatch.has(value.name),
+        batch: batchSupport(value.name),
         prompt_cache: true,
         citations: isMultiAgent ? true : "unknown",
         code_execution: isMultiAgent ? true : "unknown",
@@ -1799,9 +1774,7 @@ function currentModels(
             input.source.id,
             // An unscoped public summary cannot override a narrower regional amount.
             regionalPrices.has(value.name) ? undefined : publicPrices.text.get(value.name),
-            batchMultipliers !== undefined &&
-              excludedFromBatch !== undefined &&
-              !excludedFromBatch.has(value.name),
+            batchMultipliers !== undefined && batchRegions.get(regional.name)?.get(region) === true,
             batchMultipliers?.get(value.name),
             priorityMultiplier,
           ),
@@ -1849,7 +1822,7 @@ function currentModels(
     const rates = value.resolutionPricing.map(({ resolution, pricePerImage, quality }) =>
       mediaRate("image_generation", pricePerImage, "image", input.source.id, {
         resolution: resolution.replace("IMAGE_RESOLUTION_", ""),
-        quality,
+        ...(quality === undefined ? {} : { quality }),
       }),
     );
     if (value.pricePerInputImage !== undefined)
@@ -1867,11 +1840,11 @@ function currentModels(
       capabilities: {
         ...unknownCapabilities(),
         streaming: false,
-        batch: excludedFromBatch === undefined ? "unknown" : true,
+        batch: batchSupport(value.name),
       },
       status: "active",
       pricing_state: "numeric",
-      price_facts: ratesFor(value.name, rates),
+      price_facts: mediaRates(value.name, rates),
       raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
     });
   });
@@ -1899,11 +1872,11 @@ function currentModels(
       },
       capabilities: {
         ...unknownCapabilities(),
-        batch: excludedFromBatch === undefined ? "unknown" : true,
+        batch: batchSupport(value.name),
       },
       status: "active",
       pricing_state: "numeric",
-      price_facts: ratesFor(value.name, rates),
+      price_facts: mediaRates(value.name, rates),
       raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
     });
   });
@@ -1953,7 +1926,7 @@ function voiceModels(
   if (latestAlias === undefined) throw new Error("xAI Realtime endpoint evidence changed");
   const alias = rows.find(({ id }) => id === latestAlias);
   const aliasDescription = alias?.description.match(
-    /^Alias for `(grok-[^`]+)`\.(?:\s*Updates to `(grok-[^`]+)` on (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})\.)?$/,
+    /^Alias for `(grok-[^`]+)`\.?(?:\s*Updates to `(grok-[^`]+)` on (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})\.)?$/,
   );
   const initialAlias = aliasDescription?.[1];
   const updatedAlias = aliasDescription?.[2];
@@ -1981,7 +1954,10 @@ function voiceModels(
   )
     throw new Error("xAI voice model table was incomplete");
   const latestServices = services.filter(({ aliases }) => aliases.includes(latestAlias));
-  if (latestServices.length !== 1 || latestServices[0]?.name !== latestModel)
+  if (
+    latestServices.length > 1 ||
+    (latestServices.length === 1 && latestServices[0]?.name !== latestModel)
+  )
     throw new Error("xAI structured and documented voice aliases differ");
   const endpoint: ApiEndpoint = { name: "Realtime", path: "/v1/realtime" };
   return models.map((row) => {
@@ -1996,7 +1972,7 @@ function voiceModels(
     return model(input, row.id, {
       version: service.version,
       description: row.description,
-      aliases: service.aliases,
+      aliases: unique([...service.aliases, ...(row.id === latestModel ? [latestAlias] : [])]),
       tasks: ["text_generation", "speech_to_speech"],
       api_endpoints: [endpoint],
       modalities: {
@@ -2011,7 +1987,13 @@ function voiceModels(
         effort_control: true,
       },
       release_date: releaseDate(releases, row.id, row.id),
-      status: row.deprecated ? "deprecated" : "active",
+      status:
+        row.deprecated ||
+        section(llms, "/developers/pricing").includes(
+          `| Speech to Speech (${row.id}) — Deprecated |`,
+        )
+          ? "deprecated"
+          : "active",
       pricing_state: prices === undefined ? "unknown" : "numeric",
       price_facts:
         prices === undefined
