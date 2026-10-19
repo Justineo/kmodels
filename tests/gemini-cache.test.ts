@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
+import type { ProviderModel } from "../src/catalog/schema.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { canonicalJson } from "../src/catalog/canonical-json.ts";
 import { requiredUsageSignals } from "../src/catalog/pricing-calculation.ts";
@@ -13,7 +14,14 @@ import { createCalculator, type Quantity } from "../src/pricing/index.ts";
 
 const observedAt = "2026-10-19T00:00:00.000Z";
 
-async function cachePricing(withDiscovery: boolean) {
+const liveEndpoint = {
+  name: "bidiGenerateContent",
+  path: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+};
+async function cachePricing(
+  withDiscovery: boolean,
+  endpoints: ProviderModel["api_endpoints"] = [],
+) {
   const manifest = manifests.find(({ provider }) => provider.id === "gemini");
   const source = manifest?.sources.find(({ id }) => id === "gemini-pricing");
   if (manifest === undefined || source === undefined) throw new Error("Missing Gemini source");
@@ -25,6 +33,10 @@ async function cachePricing(withDiscovery: boolean) {
     sourceId: source.id,
     observedAt,
   });
+  model.api_endpoints = endpoints;
+  if (endpoints.some(({ path }) => path === liveEndpoint.path)) {
+    model.tasks = ["speech_to_speech"];
+  }
   // Synthetic rate controls use the reviewed public table layout and independent accounting fixture.
   const body = `<div class="devsite-article-body"><div class="models-section"><div class="heading-group"><code>cache-test</code></div></div><section><h3>Standard</h3><table class="pricing-table"><thead><tr><th></th><th>Free Tier</th><th>Paid Tier, per 1M tokens in USD</th></tr></thead><tbody><tr><td>Input price</td><td>Not available</td><td>$2.00 (image, audio, video)</td></tr><tr><td>Context caching price</td><td>Not available</td><td>$0.20 (image, audio, video)</td></tr></tbody></table></section></div>`;
   const parsed = parseSource({
@@ -40,6 +52,13 @@ async function cachePricing(withDiscovery: boolean) {
               url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
               body: await readFile(
                 new URL("./fixtures/gemini/discovery.json", import.meta.url),
+                "utf8",
+              ),
+            },
+            {
+              url: "https://ai.google.dev/api/interactions-api",
+              body: await readFile(
+                new URL("./fixtures/gemini/interactions-fields.html", import.meta.url),
                 "utf8",
               ),
             },
@@ -109,6 +128,58 @@ async function cachePricing(withDiscovery: boolean) {
 }
 
 describe("Gemini multimodal cache calculations", () => {
+  it("does not describe a BidiGenerateContent response with GenerateContent counters", async () => {
+    const { offer } = await cachePricing(true, [liveEndpoint]);
+    const variants = offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
+    expect(variants).toHaveLength(6);
+    expect(variants.every((v) => v.charge_binding !== undefined)).toBe(true);
+    expect(
+      variants.flatMap(
+        (v) => v.charge_binding?.quantity_methods?.flatMap((m) => m.input_sources ?? []) ?? [],
+      ),
+    ).toEqual([]);
+    expect(variants.flatMap((v) => v.selector_sources ?? [])).toEqual([]);
+  });
+  it("keeps a separately documented GenerateContent route on a model that also supports Live", async () => {
+    const { offer } = await cachePricing(true, [
+      liveEndpoint,
+      { name: "generateContent", path: "/v1beta/models/cache-test:generateContent" },
+    ]);
+    const inputs = offer.terms.flatMap((term) =>
+      term.kind === "rate"
+        ? term.variants.flatMap(
+            (v) => v.charge_binding?.quantity_methods?.flatMap((m) => m.input_sources ?? []) ?? [],
+          )
+        : [],
+    );
+    expect(inputs.some(({ locator }) => locator.value.startsWith("GenerateContentResponse."))).toBe(
+      true,
+    );
+    expect(inputs.some(({ locator }) => locator.value.startsWith("Interaction."))).toBe(false);
+  });
+  it.each([false, true])(
+    "requires exact Interactions endpoint support before adding its modality counters (supported=%s)",
+    async (supported) => {
+      const { offer } = await cachePricing(
+        true,
+        supported ? [{ name: "interactions.create", path: "/v1beta/interactions" }] : [],
+      );
+      const inputs = offer.terms.flatMap((term) =>
+        term.kind === "rate"
+          ? term.variants.flatMap(
+              (v) =>
+                v.charge_binding?.quantity_methods?.flatMap((m) => m.input_sources ?? []) ?? [],
+            )
+          : [],
+      );
+      expect(inputs.some(({ locator }) => locator.value.startsWith("Interaction."))).toBe(
+        supported,
+      );
+      expect(
+        inputs.some(({ locator }) => locator.value.startsWith("GenerateContentResponse.")),
+      ).toBe(true);
+    },
+  );
   it.each(["audio", "image", "video", "document"])(
     "retains and calculates the %s cache partition",
     async (modality) => {

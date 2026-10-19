@@ -95,6 +95,59 @@ function assembleParsed(parsed: SourceParseResult) {
 }
 
 describe("Gemini grounding source policies", () => {
+  it.each([false, true])(
+    "keeps GenerateContent Search counters on their own protocol (Live=%s)",
+    async (live) => {
+      const models = catalogModels.map((model) =>
+        live
+          ? {
+              ...model,
+              tasks: ["speech_to_speech" as const],
+              api_endpoints: [
+                {
+                  name: "bidiGenerateContent",
+                  path: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+                },
+              ],
+            }
+          : model,
+      );
+      const result = parseSource({
+        provider,
+        source,
+        observedAt,
+        catalogModels: models,
+        body: JSON.stringify({
+          index: { url: source.url, body: await fixture("grounding-current.html") },
+          documents: [
+            {
+              url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+              body: await fixture("discovery.json"),
+            },
+            {
+              url: "https://ai.google.dev/gemini-api/docs/maps-grounding",
+              body: await fixture("maps-grounding-current.html"),
+            },
+          ],
+        }),
+      });
+      const partition = assembleParsedProviderPricing(
+        provider.id,
+        observedAt,
+        [{ source, ...result }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      const variants =
+        partition?.books
+          .find((b) => b.book_key === "service:google-search")
+          ?.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))) ??
+        [];
+      expect(variants.length).toBeGreaterThan(0);
+      expect(variants.every((v) => v.charge_binding !== undefined)).toBe(true);
+      expect(variants.some((v) => v.charge_binding?.quantity_methods !== undefined)).toBe(!live);
+    },
+  );
   it("keeps a shared monthly pool singular across Standard and Priority observations", async () => {
     const body = await fixture("grounding-current.html");
     const section = body.match(/<section>[\s\S]*?<\/section>/)?.[0];
