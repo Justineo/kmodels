@@ -138,6 +138,17 @@ matrix is missing. Shared assembly does not infer Anthropic speed from sibling p
 already a distinct execution mechanism and has no speed selector, because Fast is unavailable for
 Batch. Derived cache and geography rates retain their owning matrix's speed scope.
 
+An exact `(for prompts up to N tokens)` or `(for prompts over N tokens)` row label owns its
+inclusive upper or exclusive lower prompt-length bound. Counts accept plain or correctly grouped
+safe integers. Each row establishes its own bound; a missing peer row does not imply another band.
+Derived cache, Batch and geography rates retain those conditions together with any valid dated
+quote. Duplicate, unknown or unsafe qualifiers remain raw locally. The reviewed cache-read column
+accepts both `Cache hits & refreshes` and `Cache hits and refreshes`.
+Prompt length counts all input tokens, including cache reads and writes. No single aggregate
+response field is asserted for that total: the calculator requires the caller's complete
+`context_tokens` selector, separately from the billable uncached/cache quantities. Uncached
+`usage.input_tokens` alone must not select the prompt-length band.
+
 The same bucket distinction applies to a raw price in an explicitly reviewed five-minute or
 one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
 dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.

@@ -12,7 +12,7 @@ const columns: Record<AnthropicPriceKind, readonly Column[]> = {
     { header: "base input tokens", meter: "input_text" },
     { header: "5m cache writes", meter: "cache_write_text", ttl: 300 },
     { header: "1h cache writes", meter: "cache_write_text", ttl: 3600 },
-    { header: "cache hits & refreshes", meter: "cache_read_text" },
+    { header: "cache hits and refreshes", meter: "cache_read_text" },
     { header: "output tokens", meter: "output_text" },
   ],
   batch: [
@@ -25,8 +25,12 @@ const columns: Record<AnthropicPriceKind, readonly Column[]> = {
   ],
 };
 
+function columnName(header: string): string {
+  return header.toLowerCase().replaceAll(" & ", " and ");
+}
+
 export function anthropicPriceKind(headers: readonly string[]): AnthropicPriceKind | undefined {
-  const names = headers.map((header) => header.toLowerCase());
+  const names = headers.map(columnName);
   if (names[0] !== "model") return;
   if (
     names.includes("base input tokens") ||
@@ -48,7 +52,7 @@ export function anthropicPriceRow(
   const rates: SourcePriceFact[] = [];
   const raw: SourceRawPricingFact[] = [];
   const reviewed = columns[kind];
-  const names = headers.map((header) => header.toLowerCase());
+  const names = headers.map(columnName);
   const shape = headers.length === values.length;
   const addRaw = (
     column: Column | undefined,

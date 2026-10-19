@@ -187,7 +187,181 @@ async function anthropicCatalog(
   return (await anthropicSource(options)).models;
 }
 
+async function anthropicContextPricing(transform?: (body: string) => string) {
+  const native = await fixture("anthropic/prompt-length-pricing.md");
+  return anthropicSource({
+    overview:
+      (await fixture("anthropic/overview.md")) +
+      `
+| Feature | Claude Haiku 5.5 |
+| --- | --- |
+| Claude API ID | claude-haiku-5-5 |
+| Context window | 1M tokens |
+| Max output | 128K tokens |
+`,
+    overrides: {
+      "/docs/en/about-claude/pricing.md":
+        (await fixture("anthropic/pricing.md")) + "\n" + (transform?.(native) ?? native),
+    },
+  });
+}
+
 describe("Anthropic adapters", () => {
+  it("retains explicit native prompt bands across ordinary, cache, Batch and geography prices", async () => {
+    const parsed = await anthropicContextPricing();
+    const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+    expect(haiku?.raw_price_facts).toEqual([]);
+    expect(haiku?.price_facts).toHaveLength(40);
+    expect(
+      haiku?.price_facts
+        .filter(
+          ({ meter, conditions }) =>
+            meter === "input_text" && conditions.inference_geo === undefined,
+        )
+        .map(({ price, conditions }) => ({ price, conditions })),
+    ).toEqual([
+      { price: "0.10", conditions: { speed: "standard", context_max_tokens: 100_000 } },
+      { price: "0.50", conditions: { speed: "standard", context_min_tokens: 100_001 } },
+      { price: "0.05", conditions: { service_tier: "batch", context_max_tokens: 100_000 } },
+      { price: "0.25", conditions: { service_tier: "batch", context_min_tokens: 100_001 } },
+    ]);
+    const partition = validatedPricing(parsed);
+    for (const offerKey of ["sync", "batch"]) {
+      const input = partition.books
+        .find(({ book_key }) => book_key === "model:anthropic/claude-haiku-5-5")
+        ?.offers.find(({ offer_key }) => offer_key === offerKey)
+        ?.terms.find(({ term_key }) => term_key === "input_text");
+      if (input?.kind !== "rate") throw new Error("Missing context-priced input term");
+      expect(input.raw_variants).toEqual([]);
+      for (const [context, denominator] of [
+        [100_000, 10_000_000],
+        [100_001, 2_000_000],
+      ] as const) {
+        const selected = input.variants.filter(
+          ({ applicability }) =>
+            evaluateApplicability(applicability, [
+              {
+                dimension: { namespace: "kmodels", value: "context_tokens" },
+                kind: "decimal",
+                value: String(context),
+                unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+              },
+              ...(["speed", "inference_geo", "service_tier"] as const).map((dimension) => ({
+                dimension: { namespace: "kmodels" as const, value: dimension },
+                kind: "categorical" as const,
+                value: {
+                  namespace: "provider" as const,
+                  provider_id: "anthropic",
+                  value: dimension === "inference_geo" ? "global" : "standard",
+                },
+              })),
+            ]).state === "true",
+        );
+        expect(selected).toHaveLength(1);
+        expect(selected[0]?.price.value).toEqual({
+          numerator: "1",
+          denominator: String(denominator * (offerKey === "batch" ? 2 : 1)),
+        });
+      }
+    }
+  });
+
+  it.each(["up to", "over"])(
+    "keeps a source prompt band explicit when its peer is absent (%s)",
+    async (band) => {
+      const parsed = await anthropicContextPricing((body) =>
+        body
+          .split("\n")
+          .filter((line) => !line.includes(`(for prompts ${band} `))
+          .join("\n"),
+      );
+      const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+      expect(haiku?.raw_price_facts).toEqual([]);
+      expect(haiku?.price_facts).toHaveLength(20);
+      expect(
+        haiku?.price_facts.every(({ conditions }) =>
+          band === "up to"
+            ? conditions.context_min_tokens === 100_001 &&
+              conditions.context_max_tokens === undefined
+            : conditions.context_max_tokens === 100_000 &&
+              conditions.context_min_tokens === undefined,
+        ),
+      ).toBe(true);
+      validatedPricing(parsed);
+    },
+  );
+
+  it.each(["100,00", "1e5", "100000.5", "-100000", "9007199254740992"])(
+    "retains an invalid native prompt count as raw (%s)",
+    async (count) => {
+      const parsed = await anthropicContextPricing((body) => body.replaceAll("100,000", count));
+      const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+      expect(haiku?.price_facts).toEqual([]);
+      expect(haiku?.raw_price_facts).toHaveLength(14);
+      expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
+        true,
+      );
+      validatedPricing(parsed);
+    },
+  );
+
+  it.each([
+    "(for prompts up to 100,000 tokens) (for prompts over 200,000 tokens)",
+    "(for prompts up to 100,000 tokens) (for prompts up to 100,000 tokens)",
+    "(for prompts up to 100,000 tokens) (unknown condition)",
+  ])("retains ambiguous native prompt qualifiers locally (%s)", async (qualifier) => {
+    const parsed = await anthropicContextPricing((body) =>
+      body.replaceAll("(for prompts up to 100,000 tokens)", qualifier),
+    );
+    const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+    expect(haiku?.price_facts).toHaveLength(20);
+    expect(
+      haiku?.price_facts.every(({ conditions }) => conditions.context_min_tokens === 100_001),
+    ).toBe(true);
+    expect(haiku?.raw_price_facts).toHaveLength(7);
+    expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
+      true,
+    );
+    validatedPricing(parsed);
+  });
+
+  it("does not overflow an exclusive native prompt threshold", async () => {
+    const parsed = await anthropicContextPricing((body) =>
+      body.replaceAll(
+        "for prompts over 100,000 tokens",
+        "for prompts over 9,007,199,254,740,991 tokens",
+      ),
+    );
+    const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+    expect(haiku?.price_facts).toHaveLength(20);
+    expect(
+      haiku?.price_facts.every(({ conditions }) => conditions.context_max_tokens === 100_000),
+    ).toBe(true);
+    expect(haiku?.raw_price_facts).toHaveLength(7);
+    validatedPricing(parsed);
+  });
+
+  it("retains dated validity together with an explicit native prompt band", async () => {
+    const parsed = await anthropicContextPricing((body) =>
+      body.replaceAll(
+        "(for prompts over 100,000 tokens)",
+        "(for prompts over 100,000 tokens) through August 31, 2026",
+      ),
+    );
+    const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+    expect(haiku?.raw_price_facts).toEqual([]);
+    expect(haiku?.price_facts).toHaveLength(40);
+    expect(
+      haiku?.price_facts
+        .filter(({ conditions }) => conditions.context_min_tokens === 100_001)
+        .every(
+          ({ conditions }) =>
+            conditions.effective_until === "2026-08-31" && conditions.promotion === true,
+        ),
+    ).toBe(true);
+    validatedPricing(parsed);
+  });
+
   it.each([false, true])(
     "establishes ordinary speed from the native price matrix independently of Fast rows (%s)",
     async (omitFastRows) => {
