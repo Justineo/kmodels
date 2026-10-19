@@ -9,6 +9,7 @@ import type {
   ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
+  UsageSignal,
 } from "./pricing-schema.ts";
 import type {
   SourceCommercialPricingFact,
@@ -17,6 +18,26 @@ import type {
 } from "./pricing-source.ts";
 import { canonicalizeSourceUnit, canonicalizeUnitPrice } from "./pricing-units.ts";
 
+export function bedrockModelQuantity(
+  meter: string,
+  unitValue: string,
+  unit: UnitExpression,
+): { signal: UsageSignal; atom: Extract<ProviderAtomRegistryEntry, { kind: "usage_signal" }> } {
+  const key = `runtime_${meter}_${unitValue}`;
+  return {
+    signal: { namespace: "provider", provider_id: "amazon-bedrock", value: key },
+    atom: {
+      kind: "usage_signal",
+      key,
+      definition: `Amazon Bedrock ${meter.replaceAll("_", " ")} quantity measured in ${unitValue}`,
+      unit,
+      resolution_phase:
+        unitValue !== "token" && (meter.startsWith("input_") || meter === "embedding")
+          ? "request"
+          : "outcome",
+    },
+  };
+}
 const providerId = "amazon-bedrock";
 const requestUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }],

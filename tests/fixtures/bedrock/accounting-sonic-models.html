@@ -1,0 +1,39 @@
+<!-- Reviewed native excerpt of https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html; observed 2026-10-19T09:26:17.111Z; full body SHA256 fb4c6584ecddaeeda7a34e0a28ec310511b4bdbf85e338dfbb055a6b163fe497. Unrelated sections omitted. -->
+<main>
+  <h1 class="topictitle" id="models-api-compatibility">API compatibility</h1>
+  <h2 id="models-supporting-invokemodelwithbidirectionalstream">
+    <b>InvokeModelWithBidirectionalStream</b>
+  </h2>
+  <p>
+    <code class="code">InvokeModelWithBidirectionalStream</code> is an Amazon Bedrock Runtime API
+    that establishes a persistent, full-duplex channel between the caller and the model, allowing
+    audio data to flow in both directions simultaneously and continuously. Unlike the standard
+    <code class="code">InvokeModel</code> or even
+    <code class="code">InvokeModelWithResponseStream</code> APIs, which follow a
+    request-then-response pattern, this API keeps the connection open for the duration of a session
+    so that the model can process incoming audio as it arrives and stream generated speech back in
+    near real-time, without waiting for a complete utterance to finish. The interaction is
+    structured around three phases: session initialization (where the client sends configuration
+    events to set up the stream), audio streaming (where captured audio is encoded and sent as a
+    continuous event stream), and response streaming (where the model simultaneously returns text
+    transcriptions of user speech and synthesized audio output).
+    <code class="code">InvokeModelWithBidirectionalStream</code> cannot be used with Amazon Bedrock
+    API keys and requires standard AWS credential-based authentication, reflecting its more complex
+    session lifecycle compared to other Bedrock Runtime operations.
+  </p>
+  <p>The following models support this API:</p>
+  <div class="itemizedlist">
+    <ul class="itemizedlist">
+      <li class="listitem">
+        <p>
+          <b>Amazon Nova 2 Sonic</b>: <code class="code">amazon.nova-2-sonic-v1:0</code> uses it as
+          its sole invocation path, since the speech-to-speech architecture fundamentally requires a
+          live bidirectional channel that neither <code class="code">InvokeModel</code> nor
+          <code class="code">Converse</code> can provide.
+        </p>
+      </li>
+    </ul>
+  </div>
+  <awsdocs-copyright class="copyright-print"></awsdocs-copyright
+  ><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback>
+</main>

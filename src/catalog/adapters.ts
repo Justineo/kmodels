@@ -10,6 +10,7 @@ import {
   parseAzureRetailPrices,
 } from "./azure.ts";
 import { parseAzureAccounting } from "./azure-accounting.ts";
+import { parseBedrockAccounting } from "./bedrock-accounting.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseSagemakerCatalog } from "./sagemaker.ts";
 import { parseSagemakerPricing } from "./sagemaker-pricing.ts";
@@ -128,6 +129,8 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return parseOllamaCloud(input);
     case "bedrock-catalog":
       return parseBedrockCatalog(input);
+    case "bedrock-accounting":
+      return parseBedrockAccounting(input);
     case "sagemaker-catalog":
       return parseSagemakerCatalog(input);
     case "sagemaker-sdk":

@@ -4,6 +4,7 @@ import {
   calculatedQuantityMethods,
   indexPricingInputs,
   mergeQuantityMethods,
+  pricingInputFacts,
   subtractQuantityMethods,
   sumQuantityMethods,
 } from "../src/catalog/pricing-input.ts";
@@ -24,6 +25,20 @@ const cachedFact: SourcePricingInputFact = {
   key: "usage.cached",
   locator: { kind: "json_pointer", value: "/usage/cached" },
 };
+
+it("requires the exact owning model before exposing a scoped acquisition contract", () => {
+  const scoped = { ...totalFact, model_refs: ["test/one"] };
+  const other = {
+    ...totalFact,
+    model_refs: ["test/two"],
+    locator: { kind: "json_pointer" as const, value: "/other" },
+  };
+  const index = indexPricingInputs([cachedFact, scoped, other]);
+  expect(pricingInputFacts(index, [totalFact.key])).toEqual([]);
+  expect(pricingInputFacts(index, [totalFact.key], "test/one")).toEqual([scoped]);
+  expect(pricingInputFacts(index, [totalFact.key], "test/missing")).toEqual([]);
+  expect(pricingInputFacts(index, [cachedFact.key], "test/one")).toEqual([cachedFact]);
+});
 
 it("keeps known cache arithmetic and surviving evidence when a locator disappears", () => {
   const complete = subtractQuantityMethods(

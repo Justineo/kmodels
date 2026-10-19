@@ -1,6 +1,7 @@
 import { load, type CheerioAPI } from "cheerio";
 import * as ts from "typescript";
-import type { LinkedBundle } from "./bundle.ts";
+import { linkedBundleSchema, type LinkedBundle } from "./bundle.ts";
+import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import { uniquePricingInputFacts } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -121,7 +122,9 @@ function numericPath(
   const value = propertyAt(shapes[0], path);
   return (
     value !== undefined &&
-    ((ts.isNumericLiteral(value) && /^(?:0|[1-9]\d*)$/.test(value.text)) ||
+    ((ts.isNumericLiteral(value) &&
+      /^(?:0|[1-9]\d*)$/.test(value.text) &&
+      Number.isSafeInteger(Number(value.text))) ||
       (ts.isIdentifier(value) && value.text === "number"))
   );
 }
@@ -156,20 +159,214 @@ function pricingInput(
   };
 }
 
+function uniqueDocument(
+  documents: ReadonlyArray<BedrockDocuments[number]>,
+  path: string,
+): string | undefined {
+  const matches = documents.filter(({ url }) => {
+    const parsed = new URL(url);
+    return parsed.hostname === "docs.aws.amazon.com" && parsed.pathname === path;
+  });
+  return matches.length === 1 ? matches[0]?.body : undefined;
+}
+
+function normalized(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function owned($: CheerioAPI, selector: string) {
+  return $(selector).filter(
+    (_, node) => $(node).closest("blockquote,pre,code,template").length === 0,
+  );
+}
+
+function sonicModels(body: string | undefined, legacy: boolean): string[] {
+  if (body === undefined) return [];
+  const $ = load(body);
+  const title = owned($, "h1");
+  const heading = owned($, "h2").filter(
+    (_, node) =>
+      normalized($(node).text()) ===
+      (legacy ? "URI Request Parameters" : "InvokeModelWithBidirectionalStream"),
+  );
+  if (
+    title.length !== 1 ||
+    normalized(title.text()) !==
+      (legacy ? "InvokeModelWithBidirectionalStream" : "API compatibility") ||
+    heading.length !== 1
+  )
+    return [];
+  const scope = heading.nextUntil("h2");
+  const rows = legacy
+    ? scope
+        .find("dt")
+        .filter(
+          (_, node) =>
+            $(node).attr("id") ===
+              "bedrock-runtime_InvokeModelWithBidirectionalStream-request-uri-modelId" &&
+            normalized($(node).text()) === "modelId" &&
+            $(node).parents("dl").length === 1 &&
+            $(node).closest("blockquote,pre,code,template").length === 0,
+        )
+    : scope
+        .find("li")
+        .filter(
+          (_, node) =>
+            $(node).parents("li").length === 0 &&
+            normalized($(node).text()).startsWith("Amazon Nova 2 Sonic:"),
+        );
+  if (legacy && rows.length !== 1) return [];
+  const claimed = (legacy ? rows.nextUntil("dt").filter("dd").children("p").first() : rows).filter(
+    (_, node) => $(node).closest("blockquote,pre,code,template").length === 0,
+  );
+  if (claimed.length !== 1) return [];
+  const identifiers = claimed
+    .find("code")
+    .filter((_, node) => $(node).closest("blockquote,pre,template").length === 0)
+    .map((_, node) => normalized($(node).text()))
+    .get()
+    .filter((value) => /^amazon\.[a-z0-9][a-z0-9.:-]*$/.test(value));
+  const id = identifiers[0];
+  if (identifiers.length !== 1 || id === undefined) return [];
+  if (
+    legacy &&
+    normalized(claimed.text()) !==
+      `The model ID or ARN of the model ID to use. Currently, only ${id} is supported.`
+  )
+    return [];
+  if (
+    !legacy &&
+    !normalized(claimed.text()).startsWith(
+      `Amazon Nova 2 Sonic: ${id} uses it as its sole invocation path,`,
+    )
+  )
+    return [];
+  return [`amazon-bedrock/${id}`];
+}
+
+function sonicEventShapes(body: string | undefined, legacy: boolean): ts.ObjectLiteralExpression[] {
+  if (body === undefined) return [];
+  const $ = load(body);
+  const title = owned($, "h1");
+  const heading = owned($, "h2").filter(
+    (_, node) => normalized($(node).text()).toLowerCase() === "output event flow",
+  );
+  if (
+    title.length !== 1 ||
+    normalized(title.text()) !== "Handling output events with the bidirectional API" ||
+    heading.length !== 1
+  )
+    return [];
+  const tracking = owned($, "h2").filter(
+    (_, node) => normalized($(node).text()) === "Usage Tracking",
+  );
+  if (!legacy && (tracking.length !== 1 || tracking.attr("id") !== "sonic-usage-tracking"))
+    return [];
+  const prose = (legacy ? heading.prevUntil("h1,h2") : tracking.nextUntil("h1,h2"))
+    .filter("p")
+    .clone();
+  prose.find("blockquote,pre,code,template").remove();
+  if (
+    !normalized(prose.text()).includes("incremental changes") ||
+    !normalized(prose.text()).includes("running totals")
+  )
+    return [];
+  const examples = heading
+    .nextUntil("h2")
+    .filter("pre")
+    .add(heading.nextUntil("h2").find("pre"))
+    .filter((_, node) => $(node).closest("blockquote,template").length === 0);
+  const shapes = examples.toArray().flatMap((node) => {
+    const code = $(node).text().trim();
+    if (!/^"event"\s*:\s*\{/.test(code)) return [];
+    const diagnostics =
+      ts.transpileModule(`const shape = ({${code}});`, {
+        reportDiagnostics: true,
+        compilerOptions: { target: ts.ScriptTarget.ES2023 },
+      }).diagnostics ?? [];
+    if (diagnostics.some(({ category }) => category === ts.DiagnosticCategory.Error)) return [];
+    return codeShapes($, $(node).toString()).filter((shape) => {
+      const usage = propertyAt(shape, ["usageEvent"]);
+      return (
+        usage !== undefined &&
+        ts.isObjectLiteralExpression(usage) &&
+        ["completionId", "promptName", "sessionId"].every((key) => {
+          const field = propertyAt(usage, [key]);
+          return field !== undefined && ts.isStringLiteral(field) && field.text !== "";
+        })
+      );
+    });
+  });
+  return shapes.length === 1 ? shapes : [];
+}
+
+const sonicCounters = [
+  ["input_text", "input", "textTokens"],
+  ["input_audio", "input", "speechTokens"],
+  ["output_text", "output", "textTokens"],
+  ["output_audio", "output", "speechTokens"],
+] as const;
+
+function sonicInputs(
+  documents: ReadonlyArray<BedrockDocuments[number]>,
+  sourceRef: string,
+): SourcePricingInputFact[] {
+  return [
+    {
+      guide: "/nova/latest/userguide/output-events.html",
+      owner: "/bedrock/latest/APIReference/API_runtime_InvokeModelWithBidirectionalStream.html",
+      legacy: true,
+    },
+    {
+      guide: "/nova/latest/nova2-userguide/sonic-output-events.html",
+      owner: "/bedrock/latest/userguide/models-api-compatibility.html",
+      legacy: false,
+    },
+  ].flatMap(({ guide, owner, legacy }) => {
+    const model_refs = sonicModels(uniqueDocument(documents, owner), legacy);
+    if (model_refs.length === 0) return [];
+    const shapes = sonicEventShapes(uniqueDocument(documents, guide), legacy);
+    return sonicCounters.flatMap(([meter, direction, field]) => {
+      const path = ["usageEvent", "details", "delta", direction, field];
+      if (!numericPath(shapes, path)) return [];
+      return [
+        {
+          ...pricingInput(
+            sourceRef,
+            `runtime.sonic.${meter}_delta_tokens`,
+            "stream_event",
+            { kind: "json_pointer", value: `/event/${path.join("/")}` },
+            "conditional",
+          ),
+          model_refs,
+        },
+      ];
+    });
+  });
+}
+
+export function parseBedrockAccounting(input: SourceParseInput): SourceParseResult {
+  if (input.source.extractor.kind !== "bedrock-accounting")
+    throw new Error("Wrong Bedrock accounting extractor");
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const facts = uniquePricingInputFacts(
+    sonicInputs([bundle.index, ...bundle.documents], input.source.id),
+  );
+  input.onPricingReconciliation?.({
+    disposition: facts.length === 8 ? "normalized" : "unbound",
+    reason_code:
+      facts.length === 8 ? "pricing_input_contract_bound" : "pricing_input_contract_partial",
+    sample: `${facts.length}/8 Bedrock Sonic pricing inputs`,
+  });
+  return { models: [], pricing_inputs: facts };
+}
+
 export function extractBedrockPricingInputs(
   documents: ReadonlyArray<BedrockDocuments[number]>,
   sourceRef: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
-  const document = (path: string): string | undefined => {
-    const matches = documents.filter(({ url }) => {
-      const parsed = new URL(url);
-      return (
-        parsed.hostname === "docs.aws.amazon.com" && parsed.pathname === `/bedrock/latest/${path}`
-      );
-    });
-    return matches.length === 1 ? matches[0]?.body : undefined;
-  };
+  const document = (path: string) => uniqueDocument(documents, `/bedrock/latest/${path}`);
   const api = (owner: string, response = false) =>
     apiFields(document(`APIReference/API_runtime_${owner}.html`), owner, response);
   const tokenUsage = api("TokenUsage");

@@ -137,6 +137,17 @@ sources:
 - ApplyGuardrail's response reference, GuardrailUsage, and InvokeGuardrailChecks references establish
   their exact returned usage fields.
 
+The independent optional `bedrock-accounting` source owns Sonic event contracts. Its
+[Nova Sonic guide](https://docs.aws.amazon.com/nova/latest/userguide/output-events.html) and
+[Nova 2 Sonic guide](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-output-events.html)
+declare separate text and speech deltas. Model scope comes from the owned
+[bidirectional model parameter](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithBidirectionalStream.html)
+and the specific [API compatibility section](https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html#models-supporting-invokemodelwithbidirectionalstream).
+The older general API page's single-model statement does not exclude newer models positively
+documented by the specific compatibility guide. These contracts do not create catalog models or
+publish prices. Separate source records retain their own hashes, extractor versions and observation
+times, so an API contract update need not relabel retained price evidence.
+
 API fields must be owned by the corresponding Contents or Response Elements definition list, with
 the exact declared object/scalar type. Request fields, nested definitions, prose mentions, duplicate
 fields and duplicate type declarations cannot establish a returned counter. Served-tier and speed
@@ -236,6 +247,8 @@ Token modality belongs to the price row, independently of the model's tasks. Unq
 and Output token rows remain generic, including on transcription and speech-capable models.
 Explicit Text and Speech/Audio components remain distinct. The native `1k tokens` and `1K tokens`
 units both denote one thousand tokens; their original unit spelling and decimal remain evidence.
+An explicit text-only token quote carries its own typed billable quantity before accounting
+contracts are joined. Its meaning cannot depend on another modality's price being available.
 
 Services, acquisition contracts and provider vocabulary return independently of model rows. Native
 Price List service dimensions establish canonical rate terms at the parser boundary, including
@@ -310,12 +323,29 @@ counter cannot stand in for that TTL's quantity.
 Audio-token and input-video-duration rates retain distinct billable quantity signals, including
 Batch job quantities. A missing model-specific usage contract cannot remove their semantic binding
 or make an aggregate token counter stand in for that component.
-When text and media are independently priced in overlapping currency, applicability, validity and
-execution mechanism, text charges require their own billable partition. Converse, invocation-log
-and Batch aggregate counters cannot supply that text-only quantity. Disjoint modality quotes do
-not affect its acquisition. Cache-dependent invocation-log eligibility uses the same tariff scopes,
+Text-only charges require their own billable partition. Converse, invocation-log and Batch aggregate
+counters cannot supply it. Related media prices in overlapping currency, applicability, validity and
+execution mechanism can also withhold an unproved aggregate acquisition path; they do not change
+an unqualified quote's quantity into text-only usage. Disjoint modality quotes do not affect its
+acquisition. Cache-dependent invocation-log eligibility uses the same tariff scopes,
 rather than another Region, currency or Batch offer's cache policy. Rates survive these acquisition
 gaps; consumers can supply exact billable partitions themselves.
+
+For independently owned Sonic models on the Runtime bidirectional API, each `usageEvent` supplies
+four conditional counters at `/event/usageEvent/details/delta/{input,output}/{textTokens,speechTokens}`.
+The `sonic_usage_event` aggregation boundary means one incremental event, including multiple events
+sharing the same session, prompt and completion IDs. Consumers price each delivered event once;
+cumulative `details.total` and `total*Tokens` values are not added to those deltas. Exact per-token
+arithmetic introduces no intermediate money rounding. Explicit text and speech quotes use their
+own counter; an unqualified token quote sums the two independently reported modalities.
+Every model in the book must own the protocol, and every rate scope must be Runtime without a
+different operation restriction. These mappings do not cover another model, Mantle, Invoke,
+Converse or Batch merely because it has similar fields or a related name. Bidi-only models also
+do not borrow generic invocation-log selectors. A missing counter is unknown, including when its
+sibling fields remain readable; a separately priced cache partition with no native counter is not
+silently omitted from input acquisition. Model ownership, event shape and incremental semantics
+require their own unquoted unique declarations. Known sibling fields survive local type drift,
+and the existing partial-contract diagnostic admits investigation even on unchanged source bytes.
 
 CUR is not a request-level input. AWS states that CUR aggregates by usage type over an hour or day
 and carries no request identifier. A billing service may join invocation logs to CUR at
