@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelIdSchema } from "./identity.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -65,11 +66,14 @@ const openApiContracts: readonly InputContract[] = [
   ...chatUsage("input_tokens", "prompt_tokens"),
   ...chatUsage("cached_input_tokens", "cached_tokens"),
   ...chatUsage("output_tokens", "completion_tokens"),
+  ...chatUsage("cache_write_tokens", "prompt_tokens_details.cache_write_tokens"),
   responseUsage("input_tokens", ["input_tokens"], /including cached tokens|含命中缓存/i),
   responseUsage("cached_input_tokens", ["input_tokens_details", "cached_tokens"]),
+  responseUsage("cache_write_tokens", ["input_tokens_details", "cache_write_tokens"]),
   responseUsage("output_tokens", ["output_tokens"], /including reasoning tokens|含推理 Token/i),
   ...messagesUsage("uncached_input_tokens", ["input_tokens"], /excluding cache hits|不含命中缓存/i),
   ...messagesUsage("cached_input_tokens", ["cache_read_input_tokens"]),
+  ...messagesUsage("cache_write_tokens", ["cache_creation_input_tokens"]),
   ...messagesUsage("output_tokens", ["output_tokens"], /including reasoning tokens|含推理 Token/i),
 ];
 
@@ -81,6 +85,9 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
     ...reviewEndpoint(input, "messages_endpoint_contract", () => messagesEndpoint(spec)),
   ];
   const region = regionKey(input.baseUrl);
+  const request = object(requestSchema(spec, chatPath));
+  const mapping = object(property(property(request, "discriminator"), "mapping"));
+  const chatModels = Object.keys(mapping).map((id) => modelIdSchema.parse(id));
   const facts: SourcePricingInputFact[] = [
     {
       key: `request.api_origin.${region}`,
@@ -92,13 +99,23 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
     ...openApiContracts.flatMap((contract) => {
       try {
         contract.verify(spec);
+        const modelIds = contract.key.startsWith("chat.")
+          ? chatModels
+          : (endpoints.find(
+              ({ path }) =>
+                path === (contract.key.startsWith("responses.") ? responsesPath : messagesPath),
+            )?.modelIds ?? []);
+        if (modelIds.length === 0) return [];
         return [
           {
-            key: contract.key,
+            key: profiledKey(spec, contract, input.onFinding),
             channel: contract.channel,
             locator: contract.locator,
             availability: contract.availability,
             source_ref: input.sourceRef,
+            model_refs: modelIds
+              .map((id) => `kimi/${id}`)
+              .sort((left, right) => left.localeCompare(right)),
           } satisfies SourcePricingInputFact,
         ];
       } catch {
@@ -200,16 +217,28 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
 
 function chatUsage(signal: string, field: string): InputContract[] {
   return [
-    openApiInput(`chat.${signal}`, "response", `/usage/${field}`, "success_only", (spec) => {
-      integerField(spec, responseSchema(spec, chatPath, "application/json"), ["usage", field]);
-    }),
+    openApiInput(
+      `chat.${signal}`,
+      "response",
+      `/usage/${field.replaceAll(".", "/")}`,
+      "success_only",
+      (spec) => {
+        integerField(spec, responseSchema(spec, chatPath, "application/json"), [
+          "usage",
+          ...field.split("."),
+        ]);
+      },
+    ),
     openApiInput(
       `chat.stream.${signal}`,
       "stream_event",
-      `/usage/${field}`,
+      `/usage/${field.replaceAll(".", "/")}`,
       "terminal_only",
       (spec) => {
-        integerField(spec, responseSchema(spec, chatPath, "text/event-stream"), ["usage", field]);
+        integerField(spec, responseSchema(spec, chatPath, "text/event-stream"), [
+          "usage",
+          ...field.split("."),
+        ]);
         chatStreamingUsage(spec);
       },
     ),
@@ -247,13 +276,7 @@ function messagesUsage(
       "response",
       `/usage/${path.join("/")}`,
       "success_only",
-      (spec) =>
-        integerField(
-          spec,
-          responseSchema(spec, messagesPath, "application/json"),
-          ["usage", ...path],
-          description,
-        ),
+      (spec) => integerField(spec, messageSchema(spec, false), ["usage", ...path], description),
     ),
     openApiInput(
       `messages.stream.${signal}`,
@@ -261,15 +284,70 @@ function messagesUsage(
       `/usage/${path.join("/")}`,
       "terminal_only",
       (spec) => {
-        const stream = dereference(spec, responseSchema(spec, messagesPath, "text/event-stream"));
-        const delta = oneOf(stream).filter(
-          (candidate) => object(candidate).title === "message_delta",
-        );
-        if (delta.length !== 1) throw new Error("Kimi Messages stream omitted message_delta");
-        integerField(spec, delta[0], ["usage", ...path], description);
+        integerField(spec, messageSchema(spec, true), ["usage", ...path], description);
       },
     ),
   ];
+}
+
+function messageSchema(spec: JsonSpec, streaming: boolean): unknown {
+  if (!streaming) return responseSchema(spec, messagesPath, "application/json");
+  const stream = dereference(spec, responseSchema(spec, messagesPath, "text/event-stream"));
+  const delta = oneOf(stream).filter((candidate) => object(candidate).title === "message_delta");
+  if (delta.length !== 1) throw new Error("Kimi Messages stream omitted message_delta");
+  return delta[0];
+}
+
+function profiledKey(
+  spec: JsonSpec,
+  contract: InputContract,
+  onFinding: OpenApiInput["onFinding"],
+): string {
+  const streaming = contract.channel === "stream_event";
+  if (contract.key === "chat.input_tokens" || contract.key === "chat.stream.input_tokens") {
+    try {
+      const schema = responseSchema(
+        spec,
+        chatPath,
+        streaming ? "text/event-stream" : "application/json",
+      );
+      integerField(spec, schema, ["usage", "prompt_tokens_details", "cache_write_tokens"]);
+      const details = object(schemaAt(spec, schema, ["usage", "prompt_tokens_details"]));
+      if (
+        /cached_tokens.*cache_write_tokens.*(?:mutually exclusive.*sum to prompt_tokens|互斥.*等于 prompt_tokens)/i.test(
+          String(details.description),
+        )
+      )
+        return `${contract.key}.cache_write_partition`;
+      onFinding?.(
+        contractExtensionEvidence([`/pricing-inputs/${contract.key}/cache_write_partition`]),
+      );
+    } catch {
+      /* A weak total-input contract survives without an unproved partition. */
+    }
+  }
+  if (
+    contract.key === "messages.uncached_input_tokens" ||
+    contract.key === "messages.stream.uncached_input_tokens"
+  ) {
+    try {
+      const schema = messageSchema(spec, streaming);
+      integerField(spec, schema, ["usage", "cache_creation_input_tokens"]);
+      const field = object(schemaAt(spec, schema, ["usage", "input_tokens"]));
+      if (
+        /excluding cache hits and cache writes|不含命中缓存与写入缓存/i.test(
+          String(field.description),
+        )
+      )
+        return `${contract.key}.excludes_cache_writes`;
+      onFinding?.(
+        contractExtensionEvidence([`/pricing-inputs/${contract.key}/excludes_cache_writes`]),
+      );
+    } catch {
+      /* Preserve the weaker read-cache-only contract. */
+    }
+  }
+  return contract.key;
 }
 
 function openApiInput(
