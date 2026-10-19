@@ -64,6 +64,29 @@ function bedrockResult(bundle: z.infer<typeof linkedBundleFixtureSchema>): Sourc
   });
 }
 
+async function contextBundle() {
+  return {
+    index: {
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
+      body: "# Model cards",
+    },
+    documents: [
+      {
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.md",
+        body: await fixture("bedrock/model-card-haiku-context.md"),
+      },
+      {
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.md",
+        body: await fixture("bedrock/model-card-gpt6-context.md"),
+      },
+      {
+        url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
+        body: await fixture("bedrock/context-price-list.json"),
+      },
+    ],
+  };
+}
+
 function priceDimension(unit: string, usage: string) {
   return {
     url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
@@ -96,6 +119,132 @@ function priceDimension(unit: string, usage: string) {
 }
 
 describe("Bedrock adapters", () => {
+  it("binds each native token SKU to its owning model-card context range", async () => {
+    const models = bedrockModels(await contextBundle());
+    for (const [id, threshold] of [
+      ["anthropic.claude-haiku-5-5", 100_000],
+      ["openai.gpt-6-astra", 272_000],
+    ] as const) {
+      const model = models.find(({ model_id }) => model_id === id);
+      expect(model?.raw_price_facts).toEqual([]);
+      expect(model?.price_facts).toHaveLength(4);
+      expect(
+        model?.price_facts.filter(({ conditions }) => conditions.context_max_tokens === threshold),
+      ).toHaveLength(2);
+      expect(
+        model?.price_facts.filter(
+          ({ conditions }) => conditions.context_min_tokens === threshold + 1,
+        ),
+      ).toHaveLength(2);
+      expect(
+        model?.price_facts.every(
+          ({ price, raw_price, unit, raw_unit, source_locator }) =>
+            price === raw_price &&
+            unit === "million_tokens" &&
+            raw_unit === "1M tokens" &&
+            source_locator?.kind === "sku",
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it.each(["short", "long"])(
+    "does not infer a missing native context-band definition (%s)",
+    async (removed) => {
+      const bundle = await contextBundle();
+      const card = bundle.documents[0];
+      if (card === undefined) throw new Error("Missing native card");
+      card.body = card.body.replace(
+        removed === "short"
+          ? /Prompts of 100,000 tokens or fewer are billed at the standard per-token rates\./
+          : /Prompts that exceed 100,000 tokens are billed at higher rates for input, output, and cache read and write operations\./,
+        "",
+      );
+      const models = bedrockModels(bundle);
+      const haiku = models.find(({ model_id }) => model_id === "anthropic.claude-haiku-5-5");
+      expect(haiku?.price_facts).toHaveLength(2);
+      expect(haiku?.raw_price_facts).toHaveLength(2);
+      expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
+        true,
+      );
+      expect(
+        haiku?.price_facts.every(({ conditions }) =>
+          removed === "short"
+            ? conditions.context_min_tokens === 100_001
+            : conditions.context_max_tokens === 100_000,
+        ),
+      ).toBe(true);
+      expect(
+        models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.price_facts,
+      ).toHaveLength(4);
+    },
+  );
+
+  it.each(["fenced", "quoted", "unowned", "contradictory", "invalid", "duplicate"])(
+    "does not acquire context scope from %s card claims",
+    async (change) => {
+      const bundle = await contextBundle();
+      const card = bundle.documents[0];
+      if (card === undefined) throw new Error("Missing native card");
+      const note = card.body.split("\n").find((line) => line.includes("Prompts of 100,000"));
+      if (note === undefined) throw new Error("Missing native context note");
+      const content =
+        change === "fenced"
+          ? "```text\n" + note + "\n```"
+          : change === "quoted"
+            ? "> " + note
+            : change === "unowned"
+              ? ""
+              : change === "contradictory"
+                ? note + "\n" + note.replaceAll("100,000", "200,000")
+                : change === "invalid"
+                  ? note.replaceAll("100,000", "100,00")
+                  : note + "\n\n## Pricing\n" + note;
+      card.body = card.body.replace(note, content);
+      if (change === "unowned") card.body += "\n\n## Examples\n" + note;
+      const models = bedrockModels(bundle);
+      const haiku = models.find(({ model_id }) => model_id === "anthropic.claude-haiku-5-5");
+      expect(haiku?.price_facts).toHaveLength(
+        ["fenced", "quoted", "unowned"].includes(change) ? 2 : 0,
+      );
+      expect(
+        haiku?.price_facts.every(
+          ({ conditions }) =>
+            conditions.context_min_tokens === undefined &&
+            conditions.context_max_tokens === undefined,
+        ),
+      ).toBe(true);
+      expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
+        true,
+      );
+      expect(haiku?.raw_price_facts).toHaveLength(
+        ["fenced", "quoted", "unowned"].includes(change) ? 2 : 4,
+      );
+      expect(
+        models.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.price_facts,
+      ).toHaveLength(4);
+    },
+  );
+
+  it("ignores example headings and fenced duplicate owners while retaining real native bounds", async () => {
+    const bundle = await contextBundle();
+    for (const card of bundle.documents.filter(({ url }) => url.endsWith(".md")))
+      card.body = card.body
+        .replace("## Pricing", "```text\n## Pricing\n```\n\n## Pricing")
+        .replace(
+          "## Programmatic Access",
+          "### Examples — Commercial Regions, short context (512K input tokens or fewer)\n\n## Programmatic Access",
+        )
+        .replaceAll("\n", "\r\n");
+    const models = bedrockModels(bundle);
+    expect(
+      models.every(
+        ({ price_facts, raw_price_facts }) =>
+          price_facts.length === 4 && raw_price_facts.length === 0,
+      ),
+    ).toBe(true);
+  });
+
   it.each([
     {
       name: "prose cannot restore a renamed counter",
@@ -409,7 +558,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v32");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v33");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -1460,7 +1609,7 @@ describe("Bedrock adapters", () => {
     if (source === undefined) throw new Error("Missing Bedrock source");
     const body = (await fixture("document/bedrock.json")).replace(
       "USE1-ClaudeHaiku45-input-tokens",
-      "USE1-ClaudeHaiku45-input-tokens-long-ctx-latency-optimized",
+      "USE1-ClaudeHaiku45-input-tokens-latency-optimized",
     );
     const model = parseSource({
       provider: provider(value),
@@ -1479,7 +1628,6 @@ describe("Bedrock adapters", () => {
         deployment_scope: "in_region",
         service_tier: "standard",
         speed: "optimized",
-        context_min_tokens: 200_001,
       },
     });
   });
@@ -1891,6 +2039,7 @@ describe("Bedrock adapters", () => {
     const terms = onDemand?.terms ?? [];
     expect(
       terms
+        .filter(({ kind }) => kind === "rate")
         .map((term) => [
           term.term_key,
           term.kind === "rate" ? term.variants.length : 0,
@@ -1898,11 +2047,19 @@ describe("Bedrock adapters", () => {
         ])
         .sort(([left], [right]) => String(left).localeCompare(String(right))),
     ).toEqual([
-      ["cache_read_text", 2, 0],
-      ["cache_write_text", 2, 0],
-      ["input_text", 2, 0],
-      ["output_text", 2, 0],
+      ["cache_read_text", 1, 0],
+      ["cache_write_text", 1, 0],
+      ["input_text", 1, 0],
+      ["output_text", 1, 0],
     ]);
+    const unresolved = terms.flatMap((term) => (term.kind === "raw" ? term.variants : []));
+    expect(unresolved).toHaveLength(4);
+    expect(unresolved.every(({ reason }) => reason === "unknown_applicability")).toBe(true);
+    expect(
+      unresolved
+        .flatMap(({ observations }) => observations.map(({ raw }) => raw.amount))
+        .sort((left, right) => String(left).localeCompare(String(right))),
+    ).toEqual(["0.0006000000", "0.0060000000", "0.0075000000", "0.0225000000"]);
     expect(
       batchOffer?.terms
         .map((term) => [term.term_key, term.kind === "rate" ? term.variants.length : 0])
@@ -1917,7 +2074,7 @@ describe("Bedrock adapters", () => {
     const standard = input.variants.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "3.0000000000"),
     );
-    const longContext = input.variants.find(({ observations }) =>
+    const longContext = unresolved.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "0.0060000000"),
     );
     const batchInput = batchOffer?.terms.find(({ term_key }) => term_key === "input_text");
@@ -1936,24 +2093,17 @@ describe("Bedrock adapters", () => {
     expect(standard?.observations.some(({ raw }) => raw.validity === "2026-07-01T00:00:00Z")).toBe(
       true,
     );
-    expect(standard?.applicability.any_of[0]?.all_of).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "decimal_range",
-          dimension: { namespace: "kmodels", value: "context_tokens" },
-          upper: { value: "200000", inclusive: true },
-        }),
-      ]),
-    );
-    expect(longContext?.applicability.any_of[0]?.all_of).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "decimal_range",
-          dimension: { namespace: "kmodels", value: "context_tokens" },
-          lower: { value: "200001", inclusive: true },
-        }),
-      ]),
-    );
+    expect(
+      standard?.applicability.any_of[0]?.all_of.some(
+        ({ dimension }) => dimension.value === "context_tokens",
+      ),
+    ).toBe(false);
+    expect(longContext).toBeDefined();
+    expect(
+      longContext?.possible_scope?.any_of[0]?.all_of.some(
+        ({ dimension }) => dimension.value === "context_tokens",
+      ),
+    ).toBe(false);
     expect(
       batch?.applicability.any_of[0]?.all_of.some(
         ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "service_tier",
