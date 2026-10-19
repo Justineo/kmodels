@@ -45,22 +45,22 @@ them once. A model is not a transport record for independent services or account
 ## Rates and calculation inputs
 
 Public model rates are USD per million tokens. The native per-token API values are scaled with exact
-decimal arithmetic. A structured model-card rate is independent supporting evidence; narrative
-duplicates are not parsed as additional rates.
+decimal arithmetic. Its exact-scope quotes take precedence over conflicting model-card quotes;
+the shared resolver preserves superseded card evidence. A structured model-card rate is independent
+supporting evidence and supplies a missing API quote. Narrative duplicates are not additional rates.
 
-When an offer has an admitted cache-read rate, Kmodels splits its token charges:
+Cached and freshly processed input use the same standard rate. Kmodels charges the entire prompt
+once and does not derive a duplicate cache tariff from a card's input quote:
 
 ```text
-cached input   = usage.prompt_tokens_details.cached_tokens
-uncached input = max(usage.prompt_tokens - cached input, 0)
-output         = usage.completion_tokens
+input  = usage.prompt_tokens
+output = usage.completion_tokens
 ```
 
-The subtraction is a closed, dimension-checked calculation graph. It is not a script or a runtime
-policy. A capability flag cannot create that split. Without a separate admitted cache charge, an
-unqualified input rate keeps the total-input signal. An explicit cache-read rate owns its cached
-signal independently of capability metadata. A calculator may use any published alternative that
-is present in its evaluation record.
+The cache breakdown and capability flag do not change the price or calculation requirements.
+Missing `cached_tokens` therefore cannot prevent calculating the known full-prompt charge.
+The cache policy companion remains monitored for drift; its usage counters remain independent
+source evidence. A different cache tariff would require positive pricing evidence and a new binding.
 
 API mappings require exact official document identity and field ownership. Chat resolves the
 operation's successful response reference and typed `usage` paths in its OpenAPI component schema.
@@ -83,7 +83,7 @@ the cache-price equality rule or the Batch charging-policy prose.
 | Batch result item    | output                | `/response/usage/completion_tokens`          | successful item only |
 
 Chat and Completions contracts are field-local. Drift in one field removes only its locator;
-known cache subtraction and surviving input mappings remain. The caller must supply the unmapped
+surviving input mappings remain. The caller must supply the unmapped
 quantity. The model, rate, endpoint, and sibling quantities are preserved. Missing terminal usage after
 an interrupted stream is a downstream capture outcome, not a Kmodels lifecycle problem.
 
