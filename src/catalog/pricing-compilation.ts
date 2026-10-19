@@ -77,7 +77,7 @@ export const pricingCompilationSnapshotSchema = z
         ["providers", providerIndex, "sources"],
       );
       for (const [sourceIndex, source] of provider.sources.entries()) {
-        const facts = sourcePricingFacts(source.models, source);
+        const facts = sourcePricingFacts(source, source.models);
         if (!hasSourceProvenance(facts, source.source_id))
           context.addIssue({
             code: "custom",
@@ -205,7 +205,7 @@ export function capturePricingReplaySources(
         throw new Error(`Pricing compilation source record ${source.id} is missing`);
       if (models.some(({ provider_id }) => provider_id !== record.provider_id))
         throw new Error(`Pricing compilation source ${source.id} has mixed provider ownership`);
-      const facts = sourcePricingFacts(models, sourceFacts);
+      const facts = sourcePricingFacts(sourceFacts, models);
       if (
         !hasSourceProvenance(facts, source.id) ||
         models.some((model) => pricingFactSourceRefs(model).some((ref) => ref !== source.id))
@@ -492,7 +492,7 @@ function replaySources(
       throw new Error(
         `Pricing replay source ${source.source_id} does not match the price snapshot`,
       );
-    const facts = sourcePricingFacts(source.models, source);
+    const facts = sourcePricingFacts(source, source.models);
     const hasClaims =
       (facts.commercial_facts?.length ?? 0) > 0 ||
       (facts.pricing_inputs?.length ?? 0) > 0 ||

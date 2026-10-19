@@ -549,8 +549,8 @@ describe("Mistral adapters", () => {
     expect(result.pricing_inputs).toHaveLength(20);
     expect(
       models.every(
-        ({ pricing_inputs, commercial_facts }) =>
-          pricing_inputs === undefined && commercial_facts === undefined,
+        (model) =>
+          !Object.hasOwn(model, "pricing_inputs") && !Object.hasOwn(model, "commercial_facts"),
       ),
     ).toBe(true);
     const value = manifest("mistral");
@@ -1804,7 +1804,7 @@ describe("Mistral adapters", () => {
     const models = await mistralCatalog({ large }, (item) => items.push(item));
     const model = models.find(({ model_id }) => model_id === "mistral-large-2512");
     expect(model).toMatchObject({ status: "active", pricing_state: "numeric" });
-    expect(model?.commercial_facts).toBeUndefined();
+    expect(model).not.toHaveProperty("commercial_facts");
     expect(items).not.toContainEqual(
       expect.objectContaining({ reason_code: "weight_distribution_drift" }),
     );

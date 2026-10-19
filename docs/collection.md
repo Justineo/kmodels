@@ -363,41 +363,19 @@ Status: implemented
   authority, so an accounting-only API or schema document cannot accidentally
   claim that it published a price.
 - The parser boundary returns model observations together with source-level commercial facts,
-  acquisition inputs and reviewed vocabulary. Existing provider extractors that still attach
-  independent facts to model records are normalized at this boundary. New compilation writes
-  independent facts once at source level; old inputs remain readable and provenance-checked.
-  Accounting-only OpenAI and Azure sources return no synthetic catalog rows. TypeSafe and
-  DeepSeek return their usage contracts independently of model inventory.
-  Cohere's model-document source likewise returns its billed-unit mappings independently of model
-  rows; catalog, pricing-overlay and account-inventory results share the explicit source envelope.
-  The price overlay retains its own identity when combined with catalog and accounting evidence.
-  Cerebras likewise returns independent usage contracts; a Batch result contract does not imply a
-  published Batch price state. API field evidence is separate from cache-price policy evidence.
-  xAI returns service rates and accounting contracts independently as well; a source with no model
-  rows can still preserve its provider-resource prices through capture and replay.
-  DashScope's built-in search facts likewise have source-owned storage while retaining their
-  positive model/region joins and the source's required model inventory checks.
-  SageMaker infrastructure/Marketplace facts likewise return independently, retaining exact
-  admitted catalog, listing and instance joins through compilation and replay.
-  Anthropic also returns services, acquisition inputs and reviewed vocabulary at source level,
-  including typed Code Execution minimums and monthly allowances. OpenAI pricing likewise returns independent services,
-  fixed-search contributions and container calculations; service-only input needs no model carrier.
-  A fixed-search service still requires an exact admitted catalog identity. Scoped source states
-  survive capture and replay separately from whole-model pricing dispositions.
-  Gemini and Vertex pricing also return grounding services, canonical allowance pools, acquisition
-  contracts and vocabulary at source level. Their pricing results contain only observed model pricing facts;
-  service and accounting facts do not require an arbitrary model row.
-  Hugging Face router inputs likewise return independently; native route promotions are typed scoped
-  model-state facts rather than raw control markers. Unrecognized legacy raw evidence stays raw.
-  Mistral pricing returns independent request-service facts and accounting inputs; source-only
-  services can survive compilation without a model observation.
-  Kimi OpenAPI and pricing likewise return independent acquisition contracts and services.
-  Batch bindings retain the native regional guide's positive model scope and source provenance;
-  a missing regional input cannot borrow another source's acquisition evidence.
-  Bedrock returns independent services, inputs and vocabulary. Native Price List service rates use
-  canonical rate terms; Nova Grounding already has exact source-owned model relationships. Typed
-  rate terms share canonical conflict handling and source/identity checks. Old extractor versions
-  preserve their accepted partitions rather than reinterpreting legacy raw service payloads.
+  acquisition inputs and reviewed vocabulary. Every dispatch branch returns the explicit source
+  result; model-only leaf parsers are adapted there without a runtime array-or-result bridge.
+  Live model types contain only model pricing and scoped state observations. Independent facts
+  cannot depend on a selected model row or disappear when the source has no model observations.
+  Compilation writes them once at source level; persisted model-carried inputs remain readable,
+  deduplicated and provenance-checked for replay.
+  Source ownership does not relax admission: services retain their exact model, region, listing
+  or instance relationships, and accounting contracts establish neither a price nor an offer state.
+  Missing regional accounting cannot borrow another source's acquisition evidence. Provider-native
+  rules use typed canonical terms, bindings, selectors and vocabulary rather than raw control markers.
+  Scoped price states remain distinct from whole-model pricing dispositions. Unknown raw evidence
+  stays raw, and incompatible old extractor versions preserve accepted partitions instead of
+  reinterpreting legacy payloads. Provider guides own native admission details.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

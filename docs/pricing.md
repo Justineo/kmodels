@@ -92,9 +92,10 @@ Replay takes published model metadata from the bound catalog. Minimal pricing or
 cannot overwrite the catalog's endpoints, capabilities, or lifecycle. Complete public inputs are
 captured before assembly so a failed normalization can still be repaired offline.
 Source results carry independent service facts, acquisition contracts and reviewed vocabulary
-beside model observations. Compilation writes those facts once at source level; it can also read
-model-carried facts in existing inputs. Services and accounting contracts can survive without a
-model carrier. Source records used by the compilation input retain their exact hash and extractor
+beside model observations. The live model type excludes independent carrier fields; dispatch uses
+one explicit source result shape. Compilation writes those facts once at source level and reads
+model-carried facts only for persisted-input compatibility. Services and accounting contracts
+survive without a model observation. Source records used by the compilation input retain their exact hash and extractor
 binding even when no current rate consumes one of their observations. Recognized vocabulary is
 typed data; raw fragments provide evidence and never select an executable policy.
 Recognized charge bindings and source rate/allowance/contribution terms reuse the existing canonical

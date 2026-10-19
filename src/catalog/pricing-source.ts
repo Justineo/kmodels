@@ -255,18 +255,18 @@ export const sourcePricingFactsSchema = z.strictObject({
 });
 export type SourcePricingFacts = z.infer<typeof sourcePricingFactsSchema>;
 
-// Also reads model-carried facts from existing compilation inputs while providers migrate.
+// Only persisted compilation inputs may carry independent facts on model records.
 export function sourcePricingFacts(
-  models: readonly ParsedPricingModel[],
-  facts: SourcePricingFacts = {},
+  facts: SourcePricingFacts,
+  legacyModels: readonly ParsedPricingModel[] = [],
 ): SourcePricingFacts {
   const commercial = uniqueCanonicalValues([
     ...(facts.commercial_facts ?? []),
-    ...models.flatMap((model) => model.commercial_facts ?? []),
+    ...legacyModels.flatMap((model) => model.commercial_facts ?? []),
   ]);
   const inputs = uniqueCanonicalValues([
     ...(facts.pricing_inputs ?? []),
-    ...models.flatMap((model) => model.pricing_inputs ?? []),
+    ...legacyModels.flatMap((model) => model.pricing_inputs ?? []),
   ]);
   return {
     ...(commercial.length === 0 ? {} : { commercial_facts: commercial }),
@@ -315,15 +315,7 @@ export type SourcePricingInputFact = z.infer<typeof sourcePricingInputFactSchema
 export type ParsedPricingState = z.infer<typeof parsedPricingStateSchema>;
 export type ParsedPricingModel = z.infer<typeof parsedPricingModelSchema>;
 export type ParsedProviderModel = ProviderModel &
-  Pick<
-    ParsedPricingModel,
-    | "pricing_state"
-    | "price_facts"
-    | "raw_price_facts"
-    | "state_facts"
-    | "commercial_facts"
-    | "pricing_inputs"
-  >;
+  Pick<ParsedPricingModel, "pricing_state" | "price_facts" | "raw_price_facts" | "state_facts">;
 
 export function commercialFactSourceRefs(fact: SourceCommercialPricingFact): string[] {
   return [
@@ -430,8 +422,6 @@ export function publishedModel(model: ParsedProviderModel): ProviderModel {
     price_facts: _priceFacts,
     raw_price_facts: _rawPriceFacts,
     state_facts: _stateFacts,
-    commercial_facts: _commercialFacts,
-    pricing_inputs: _pricingInputs,
     ...published
   } = model;
   return providerModelSchema.parse(published);

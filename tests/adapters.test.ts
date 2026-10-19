@@ -1669,7 +1669,7 @@ describe("source taxonomy", () => {
 describe("Cohere adapters", () => {
   it("keeps source accounting independent of model rows and preserves it in replay inputs", async () => {
     const { models, sources } = await cohereCatalogResult();
-    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     const root = sources.find(({ source }) => source.id === "cohere-models");
     const embedding = models.find(({ model_id }) => model_id === "embed-v4.0");
     if (root === undefined || embedding === undefined)
@@ -2847,8 +2847,8 @@ describe("Meta Llama adapters", () => {
       { id: "Llama-4-Maverick-17B-128E-Instruct:fp8", pricing: "not_published" },
       { id: "Llama-Guard-4-12B", pricing: "not_published" },
     ]);
-    expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
-    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
+    expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     expect(items).toContainEqual({
       disposition: "excluded",
       reason_code: "historical_limited_free_preview",
@@ -2911,7 +2911,7 @@ describe("Meta Llama adapters", () => {
       responseItems.push(item),
     );
     expect(responseModels).toHaveLength(12);
-    expect(responseModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
+    expect(responseModels.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     expect(responseItems).toContainEqual(
       expect.objectContaining({
         reason_code: "chat_metrics_contract_drift",
@@ -2928,7 +2928,7 @@ describe("Meta Llama adapters", () => {
       streamItems.push(item),
     );
     expect(streamModels).toHaveLength(12);
-    expect(streamModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
+    expect(streamModels.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     expect(streamItems).toContainEqual(
       expect.objectContaining({
         reason_code: "stream_metrics_contract_drift",
@@ -5842,8 +5842,8 @@ describe("Databricks adapters", () => {
     if (source === undefined) throw new Error("Missing Databricks source");
     const result = await databricksCatalogResult();
     const { models } = result;
-    expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual([]);
-    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(5);
     expect(pricingInputs).toEqual(
@@ -7174,8 +7174,8 @@ describe("xAI adapter", () => {
     const { models } = result;
     expect(
       models.every(
-        ({ pricing_inputs, commercial_facts }) =>
-          pricing_inputs === undefined && commercial_facts === undefined,
+        (model) =>
+          !Object.hasOwn(model, "pricing_inputs") && !Object.hasOwn(model, "commercial_facts"),
       ),
     ).toBe(true);
     const partition = assembleParsedProviderPricing(
@@ -8269,8 +8269,8 @@ describe("Vercel adapter", () => {
     ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 1 });
     expect(
       models.every(
-        ({ commercial_facts, pricing_inputs }) =>
-          commercial_facts === undefined && pricing_inputs === undefined,
+        (model) =>
+          !Object.hasOwn(model, "commercial_facts") && !Object.hasOwn(model, "pricing_inputs"),
       ),
     ).toBe(true);
     expect(result.commercial_facts?.map(({ resource_key: key }) => key).sort()).toEqual(
@@ -9401,8 +9401,8 @@ describe("Cerebras adapter", () => {
     const inputs = result.pricing_inputs ?? [];
     expect(
       result.models.every(
-        ({ pricing_inputs, commercial_facts }) =>
-          pricing_inputs === undefined && commercial_facts === undefined,
+        (model) =>
+          !Object.hasOwn(model, "pricing_inputs") && !Object.hasOwn(model, "commercial_facts"),
       ),
     ).toBe(true);
     expect(result.commercial_facts).toBeUndefined();
@@ -11949,8 +11949,8 @@ describe("DashScope adapters", () => {
     const { models } = result;
     expect(
       models.every(
-        ({ pricing_inputs, commercial_facts }) =>
-          pricing_inputs === undefined && commercial_facts === undefined,
+        (model) =>
+          !Object.hasOwn(model, "pricing_inputs") && !Object.hasOwn(model, "commercial_facts"),
       ),
     ).toBe(true);
     const inputs = result.pricing_inputs ?? [];
@@ -14583,7 +14583,7 @@ describe("Ollama adapters", () => {
       "text_generation",
       "ocr",
     ]);
-    expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
     expect(
       models.every(
         ({ price_facts, raw_price_facts }) =>
@@ -14641,7 +14641,7 @@ describe("Ollama adapters", () => {
     expect(
       models.find(({ model_id }) => model_id === "gemini-3-flash-preview")?.retired_at,
     ).toBeUndefined();
-    expect(models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    expect(models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     const pricingInputs = result.pricing_inputs ?? [];
     expect(pricingInputs).toHaveLength(30);
     expect(pricingInputs).toEqual(

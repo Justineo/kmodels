@@ -118,7 +118,7 @@ describe("Hugging Face source-owned route states", () => {
       body.replace('"input": 0, "output": "0.0"', '"input": 2, "output": 4'),
     );
     expect(parsed.pricing_inputs).toHaveLength(9);
-    expect(parsed.models.every(({ pricing_inputs }) => pricing_inputs === undefined)).toBe(true);
+    expect(parsed.models.every((model) => !Object.hasOwn(model, "pricing_inputs"))).toBe(true);
     const free = parsed.models.find(({ model_id }) => model_id === "org/free-model");
     expect(free?.raw_price_facts).toEqual([]);
     expect(free?.state_facts).toMatchObject([

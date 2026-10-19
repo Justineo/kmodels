@@ -216,11 +216,11 @@ export function assembleParsedProviderPricing(
     }
   }
   const commercialFacts = pricingSources.flatMap(
-    (source) => sourcePricingFacts(source.models, source).commercial_facts ?? [],
+    (source) => sourcePricingFacts(source, source.models).commercial_facts ?? [],
   );
   const pricingInputs = sources
     .filter(({ source }) => isPricingInputSource(source))
-    .flatMap((source) => sourcePricingFacts(source.models, source).pricing_inputs ?? []);
+    .flatMap((source) => sourcePricingFacts(source, source.models).pricing_inputs ?? []);
   const books = [
     ...[...contexts.values()].flatMap(pricingBooks),
     ...commercialPricingBooks(
