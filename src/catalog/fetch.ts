@@ -2404,6 +2404,17 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
   const page = normalizedText($.root().text());
   const costCard = /\bCost \/1M tokens\b/.test(page);
   const fields = ["input", "cached", "output"] as const;
+  const periods = new Map<string, Set<string>>();
+  $("button[data-rate]").each((_index, element) => {
+    const key = $(element).attr("data-rate")?.trim().toLowerCase();
+    const label = normalizedText($(element).text()).toLowerCase();
+    const period =
+      label === "off-peak" ? "off_peak" : label === "peak" || label === "base" ? label : undefined;
+    if (key === undefined) return;
+    const labels = periods.get(key) ?? new Set();
+    labels.add(period ?? "unrecognized");
+    periods.set(key, labels);
+  });
   const tiered = new Map<string, Partial<Record<(typeof fields)[number], string>>>();
   $(".pricing-rate[data-rate]").each((_index, element) => {
     const rate = $(element).attr("data-rate")?.trim().toLowerCase();
@@ -2420,10 +2431,16 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
     tiered.size > 0
       ? [...tiered]
           .sort(([left], [right]) => left.localeCompare(right))
-          .map(([billingPeriod, values]) => ({
-            ...(tiered.size === 1 ? {} : { billing_period: billingPeriod }),
-            ...values,
-          }))
+          .map(([key, values]) => {
+            const labels = periods.get(key);
+            const [period] = labels ?? [];
+            if (
+              (tiered.size > 1 || periods.size > 0) &&
+              (labels?.size !== 1 || period === undefined || period === "unrecognized")
+            )
+              throw new Error("Ollama pricing period labels were missing or ambiguous");
+            return { ...(period === undefined ? {} : { billing_period: period }), ...values };
+          })
       : [
           Object.fromEntries(
             fields.flatMap((field) => {

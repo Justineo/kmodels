@@ -6,7 +6,12 @@ import type {
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
-import { bindRateTerm, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
+import {
+  bindRateTerm,
+  isStandardUnit,
+  rawEvidence,
+  standardSignal,
+} from "./pricing-commercial-assembly.ts";
 import {
   directQuantityMethods,
   mergeQuantityMethods,
@@ -86,11 +91,18 @@ function binding(
   hasCacheRate: boolean,
 ): ChargeBinding | undefined {
   if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
+  const publishedInputSignal = variant.charge_binding?.signal;
+  const inputSignal =
+    publishedInputSignal?.namespace === "kmodels" &&
+    (publishedInputSignal.value === "input_tokens" ||
+      publishedInputSignal.value === "uncached_input_tokens")
+      ? publishedInputSignal
+      : standardSignal(hasCacheRate ? "uncached_input_tokens" : "input_tokens");
   const signal =
     meter.value === "cache_read_text"
       ? standardSignal("cached_input_tokens")
       : meter.value === "input_text"
-        ? standardSignal(hasCacheRate ? "uncached_input_tokens" : "input_tokens")
+        ? inputSignal
         : meter.value === "output_text"
           ? standardSignal("output_tokens")
           : undefined;
@@ -105,6 +117,7 @@ function binding(
     ...(mapped.methods.length === 0 ? {} : { quantity_methods: mapped.methods }),
     observations: [
       rawEvidence(variant.observation),
+      ...(variant.charge_binding?.observations ?? []),
       ...mapped.facts.map(pricingInputObservation),
     ].sort(compareCanonicalValues),
   };
@@ -137,10 +150,4 @@ function directMethods(signal: UsageSignal, inputIndex: PricingInputIndex): Meth
     ]),
     inputIndex,
   );
-}
-
-function standardSignal(
-  value: "cached_input_tokens" | "input_tokens" | "output_tokens" | "uncached_input_tokens",
-): Extract<UsageSignal, { namespace: "kmodels" }> {
-  return { namespace: "kmodels", value };
 }

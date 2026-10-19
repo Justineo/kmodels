@@ -4,6 +4,7 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { extractOllamaPricingInputs } from "./ollama-accounting.ts";
+import { applyOllamaPublicPricing, ollamaPricingUrl } from "./ollama-pricing.ts";
 import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
@@ -111,10 +112,6 @@ interface ShowClaims {
 interface Retirement {
   date: string;
   replacement?: string;
-}
-
-interface PagePricing {
-  rates: SourcePriceFact[];
 }
 
 const cloudFamily = "Ollama Cloud";
@@ -353,12 +350,9 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
   const thinking = rawThinking === undefined ? undefined : thinkingSchema.safeParse(rawThinking);
   if (rawThinking !== undefined && !thinking?.success) diagnostic(input, "/show/thinking");
   const rawInfo = Reflect.get(raw, "model_info");
-  const modelInfo =
-    rawInfo !== null && typeof rawInfo === "object" && !Array.isArray(rawInfo)
-      ? (rawInfo as Record<string, unknown>)
-      : {};
-  if (rawInfo !== undefined && Object.keys(modelInfo).length === 0)
-    diagnostic(input, "/show/model_info");
+  const parsedInfo = z.record(z.string(), z.unknown()).safeParse(rawInfo);
+  const modelInfo = parsedInfo.success ? parsedInfo.data : {};
+  if (rawInfo !== undefined && !parsedInfo.success) diagnostic(input, "/show/model_info");
   const modified = validDateTime(Reflect.get(raw, "modified_at"));
   const retirement = validDateTime(Reflect.get(raw, "retirement_on"));
   if (Reflect.get(raw, "modified_at") !== undefined && modified === undefined)
@@ -485,33 +479,38 @@ function cloudModel(
   };
 }
 
-function pricingFor(result: Map<string, PagePricing>, id: string): PagePricing {
-  const current = result.get(id);
-  if (current !== undefined) return current;
-  const created = { rates: [] };
-  result.set(id, created);
-  return created;
-}
-
 function pagePricing(
   input: ParseInput,
   pages: readonly z.infer<typeof pageEntrySchema>[],
-): { pricing: Map<string, PagePricing>; pageModels: Set<string> } {
-  const pricing = new Map<string, PagePricing>();
+): { pricing: Map<string, SourcePriceFact[]>; pageModels: Set<string> } {
+  const pricing = new Map<string, SourcePriceFact[]>();
   const pageModels = new Set<string>();
   for (const page of pages) {
-    pageModels.add(page.model);
-    if (new URL(page.url).pathname !== `/library/${page.model}`)
+    const url = new URL(page.url);
+    if (
+      url.origin !== "https://ollama.com" ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.pathname !== `/library/${page.model}`
+    ) {
       diagnostic(input, "/pages/url_identity");
+      continue;
+    }
     if (page.body === null || typeof page.body !== "object") {
       diagnostic(input, "/pages/body");
       continue;
     }
     const bodyModel = Reflect.get(page.body, "model");
-    if (bodyModel !== undefined && bodyModel !== page.model)
+    if (bodyModel !== page.model) {
       diagnostic(input, "/pages/model_identity");
+      continue;
+    }
     const title = Reflect.get(page.body, "title");
-    if (title !== undefined && title !== page.model) diagnostic(input, "/pages/title_identity");
+    if (title !== page.model) {
+      diagnostic(input, "/pages/title_identity");
+      continue;
+    }
+    pageModels.add(page.model);
     const tags = Reflect.get(page.body, "tags");
     if (Array.isArray(tags))
       for (const tag of tags) {
@@ -534,15 +533,9 @@ function pagePricing(
       diagnostic(input, "/pages/cost");
       continue;
     }
-    const value = pricingFor(pricing, page.model);
+    const value = pricing.get(page.model) ?? [];
+    pricing.set(page.model, value);
     const variants = recognizedRows(input, cost.data.variants, pageRateSchema, () => undefined);
-    const periods = new Set(variants.flatMap(({ billing_period }) => billing_period ?? []));
-    if (periods.size > 1)
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "billing_period_selector_unavailable",
-        sample: page.model,
-      });
     for (const variant of variants) {
       const conditions =
         variant.billing_period === undefined ? {} : { billing_period: variant.billing_period };
@@ -553,7 +546,7 @@ function pagePricing(
       ] as const) {
         const amount = variant[field];
         if (typeof amount === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount))
-          value.rates.push(
+          value.push(
             publishedRate(
               meter,
               amount,
@@ -570,12 +563,15 @@ function pagePricing(
   return { pricing, pageModels };
 }
 
-function applyPagePricing(model: ProviderModel, pricing: PagePricing | undefined): ProviderModel {
+function applyPagePricing(
+  model: ProviderModel,
+  pricing: SourcePriceFact[] | undefined,
+): ProviderModel {
   if (pricing === undefined) return model;
   return {
     ...model,
-    pricing_state: pricing.rates.length > 0 ? "numeric" : "unknown",
-    price_facts: [...model.price_facts, ...pricing.rates],
+    pricing_state: pricing.length > 0 ? "numeric" : "unknown",
+    price_facts: [...model.price_facts, ...pricing],
   };
 }
 
@@ -696,13 +692,9 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
       ? {}
       : { onReconciliation: input.onPricingReconciliation }),
   });
-  for (const id of pricing.keys())
-    if (!ids.has(id))
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "model_page_price_unbound",
-        sample: id,
-      });
+  const publicPricing = docs.get(ollamaPricingUrl);
+  const vocabulary =
+    publicPricing === undefined ? [] : applyOllamaPublicPricing(input, result, publicPricing);
   for (const model of result)
     input.onPricingReconciliation?.(
       model.price_facts.length > 0
@@ -717,5 +709,21 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
             sample: model.model_id,
           },
     );
-  return { models: result, pricing_inputs: pricingInputs };
+  const scheduledPeriods = new Set(
+    vocabulary.flatMap((atom) =>
+      atom.kind === "categorical_value" && atom.schedule !== undefined ? [atom.key] : [],
+    ),
+  );
+  for (const model of result) {
+    const periods = new Set(
+      model.price_facts.flatMap((fact) => fact.conditions.billing_period ?? []),
+    );
+    if (periods.size > 1 && [...periods].some((period) => !scheduledPeriods.has(period)))
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "billing_period_selector_unavailable",
+        sample: model.model_id,
+      });
+  }
+  return { models: result, pricing_inputs: pricingInputs, vocabulary };
 }

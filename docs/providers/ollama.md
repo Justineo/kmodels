@@ -47,13 +47,13 @@ still apply. Replaying source facts does not turn a Library identity into a pric
   terminal `include_usage` chunks, and Responses usage events. The tag is deliberately pinned so a
   moving branch cannot silently change a calculation input; a provider review bumps it.
 
-The current collector does not include the fixed [pricing page](https://ollama.com/pricing).
-This is a known source-coverage gap: the page contains an independent model token-price table and
-an explicit Off-Peak schedule, alongside out-of-scope subscription content. The model table must
-not be excluded merely because the same page also describes plans. Adding it requires exact Cloud
-identity binding, local extraction of invocation rates, and reconciliation with family-page cards.
-Collection still does not scan `llms.txt` for arbitrary commercial-looking pages. The reviewed
-compatibility page remains a fixed input.
+The fixed [pricing page](https://ollama.com/pricing) supplies an independent model token-price table
+and Off-Peak schedule. Only its owned `Model pricing` section, per-million-token claim, exact column
+headers and linked model identities establish rates. Rows join current Cloud identities exactly;
+a table row cannot admit a model or spread a family rate to a named size. Subscription sections
+remain outside the price book. Agreeing family-page and central quotes share canonical rates;
+conflicting quotes become local raw evidence while safe sibling meters survive. No source wins by
+document order. Collection does not discover arbitrary commercial pages through `llms.txt`.
 
 ## Catalog and identity rules
 
@@ -82,13 +82,24 @@ offer. A simple card has up to three shared rate terms; for example, Kimi K3 pub
 - cached input text: USD 0.30 per million tokens;
 - output text: USD 15 per million tokens.
 
-Some family pages publish separate `Base` and `Peak` amounts. Kmodels currently preserves both as
-exact `billing_period` variants without an automatic selector. The official pricing page does
-publish an Off-Peak schedule: outside 12:00–18:00 UTC on weekdays and all day on weekends.
-The remaining work is to bind its exact model/period rows to the family-card variants and model
-the schedule, including the provider's boundary semantics. This is unimplemented source/selector
-coverage, not an absence of a first-party schedule. Existing consumers still need to supply the
-period until that contract is implemented.
+Named family-card periods come from visible button labels. Internal `data-rate` keys are UI state
+and may have the opposite meaning: a key named `base` can display Peak, while `peak` displays
+Off-Peak. Missing or ambiguous labels cannot establish a conditional numeric quote.
+The central table's explicit Off-Peak rows and their paired standard rows establish `off_peak` and
+`peak` variants. The owned schedule uses the shared weekly UTC rule: Peak is weekdays from 12:00
+to 18:00, and Off-Peak is the remainder, including weekends. Windows follow the shared inclusive
+start/exclusive end convention. The caller resolves the period from its billing instant and supplies
+that selector. SDK `evaluatedAt` controls snapshot and quote validity; it does not supply a server
+billing timestamp or implicitly select a period. If that exact schedule claim drifts, prices remain
+manually selectable and the structured rule is withheld. Legacy `Base` labels
+remain separate caller selections unless their meaning is established by the source.
+Snapshots that recorded only internal rate keys do not establish the displayed period's
+applicability. Their original quotes remain raw evidence until a fresh owned source establishes it;
+current labels and schedules are never assigned to historical observations.
+
+An unrecognized or missing component quote, including a table dash, remains raw unknown evidence
+rather than zero. The central table separates Input from Cached input; its input rates retain the
+uncached-input binding even when the cache amount itself is unavailable.
 
 The Pro/Max access gate and extra-usage-credit settlement do not qualify list rates and are not price
 dimensions. An ordinal Low/Medium/High usage class is an allowance-consumption label, not a currency
@@ -144,6 +155,9 @@ TODO, so Kmodels does not expose it as a trustworthy thinking-token input.
   reject the page or provider.
 - Malformed rate fields suppress only that meter within that named variant. A valid input, cached,
   output, Base, or Peak sibling remains published.
+- A mismatched page origin, path, model ID or title cannot supply prices or additional tag identities.
+  Independently witnessed list/catalog identities survive. A malformed central pricing dependency
+  retains the accepted commercial partition while catalog observations can still refresh.
 - Absence of a rate card means unknown price, not `not_published`. A previous verified rate is
   removed only when a fresh exhaustive source disproves it under the provider-atomic publication
   rules.
