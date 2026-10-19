@@ -1,4 +1,3 @@
-import { attachCommercialFacts } from "./pricing.ts";
 import type {
   ParsedProviderModel,
   SourceCommercialPricingFact,
@@ -29,10 +28,10 @@ export interface XaiCommercialEvidence {
 
 /** Keep only public rates attributable to an inference request or result. */
 export function extractXaiCommercialFacts(
-  models: ParsedProviderModel[],
+  models: readonly ParsedProviderModel[],
   sourceId: string,
   evidence: XaiCommercialEvidence,
-): void {
+): SourceCommercialPricingFact[] {
   const responseRefs = models
     .filter(
       ({ api_endpoints, tasks }) =>
@@ -127,7 +126,7 @@ export function extractXaiCommercialFacts(
       raw_price_facts: [],
     });
 
-  attachCommercialFacts(models, facts);
+  return facts;
 }
 
 function service(

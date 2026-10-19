@@ -61,6 +61,11 @@ dynamic product documentation as a refresh dependency.
 - Comparator catalogs and Azure, OCI, or Agent Platform listings are audit evidence only. Their
   identities and prices belong to their respective sellers.
 
+Catalog and authenticated inventory parsers return the explicit source envelope. Public service
+rates and accounting contracts belong to the source, independently of its model observations;
+no model is selected as their storage carrier. Service-only results can be captured and replayed.
+Services whose applicability names models still require the exact admitted model identities.
+
 Preserve the structured `version` as identity. Dated aliases are evaluated at the
 observation time. Exact retired IDs that still redirect remain separate legacy rows and
 derive the target rate from the documented redirect date. Internal TTS/STT service
