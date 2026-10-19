@@ -227,7 +227,12 @@ function modelBinding(
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
   const aggregation = mechanism === "batch" ? "result_item" : "request";
-  if (meter.namespace !== "kmodels") return;
+  if (
+    meter.namespace === "provider" &&
+    (meter.provider_id !== input.provider_id ||
+      !/^cache_read_(?:audio|image|video)$/.test(meter.value))
+  )
+    return;
   if (isStandardUnit(variant.price.per, "image") && meter.value === "image_generation") {
     const signal = standardSignal("generated_images");
     return quantityBinding(
@@ -286,7 +291,7 @@ function modelBinding(
     return quantityBinding(
       signal,
       aggregation,
-      cachedInputMethods(modality, mechanism, input, inputIndex, variant.price.per),
+      cachedInputMethods(signal, modality, mechanism, input, inputIndex, variant.price.per),
       variant,
     );
   }
@@ -369,6 +374,19 @@ function directFamilyMethods(
   );
 }
 
+function reportedCachedSignal(
+  input: AtomicProviderPricing,
+  modality: string,
+  unit: UnitExpression,
+): UsageSignal {
+  return providerSignal(
+    input,
+    `reported_cached_${modality}_tokens`,
+    `Gemini reported cached ${modality} prompt tokens`,
+    unit,
+  );
+}
+
 function uncachedInputMethods(
   modality: string,
   mechanism: Mechanism,
@@ -384,12 +402,7 @@ function uncachedInputMethods(
       `Gemini reported ${value} prompt tokens including cached content`,
       unit,
     ),
-    cached: providerSignal(
-      input,
-      `reported_cached_${value}_tokens`,
-      `Gemini reported cached ${value} prompt tokens`,
-      unit,
-    ),
+    cached: reportedCachedSignal(input, value, unit),
   }));
   const nodes: UsageQuantityNode[] = inputs.flatMap(({ prompt, cached }, index) => {
     const offset = index * 3;
@@ -461,6 +474,7 @@ function embeddingInputMethods(
 }
 
 function cachedInputMethods(
+  signal: UsageSignal,
   modality: string,
   mechanism: Mechanism,
   input: AtomicProviderPricing,
@@ -468,30 +482,9 @@ function cachedInputMethods(
   unit: UnitExpression,
 ): MethodsAndFacts {
   if (modality !== "image")
-    return directFamilyMethods(
-      providerSignal(
-        input,
-        `cached_input_${modality}_tokens`,
-        `Cached Gemini ${modality} input tokens`,
-        unit,
-      ),
-      "cache",
-      modality,
-      mechanism,
-      inputIndex,
-    );
-  const image = providerSignal(
-    input,
-    "reported_cached_image_tokens",
-    "Gemini reported cached image tokens",
-    unit,
-  );
-  const document = providerSignal(
-    input,
-    "reported_cached_document_tokens",
-    "Gemini reported cached document tokens",
-    unit,
-  );
+    return directFamilyMethods(signal, "cache", modality, mechanism, inputIndex);
+  const image = reportedCachedSignal(input, "image", unit);
+  const document = reportedCachedSignal(input, "document", unit);
   const calculation = {
     nodes: [
       { op: "signal" as const, signal: image },

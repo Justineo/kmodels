@@ -1865,6 +1865,35 @@ describe("parsed-source canonical pricing adapter", () => {
       "generate.thoughts",
     ]);
     expect(observationKeys(modelRef, "output_image")).toEqual(["generate.candidates.image"]);
+    const cachedImage = variant(modelRef, "provider:cache_read_image")?.charge_binding;
+    expect(cachedImage).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "gemini",
+        value: "cached_input_image_rate_tokens",
+      },
+    });
+    if (cachedImage === undefined) throw new Error("Missing Gemini image cache binding");
+    expect(
+      evaluateChargeQuantity(cachedImage, [
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "gemini",
+            value: "reported_cached_image_tokens",
+          },
+          value: { numerator: "20", denominator: "1" },
+        },
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "gemini",
+            value: "reported_cached_document_tokens",
+          },
+          value: { numerator: "30", denominator: "1" },
+        },
+      ]),
+    ).toEqual({ kind: "resolved", value: { numerator: "50", denominator: "1" } });
     expect(variant(modelRef, "image_generation")?.charge_binding).toMatchObject({
       signal: { namespace: "kmodels", value: "generated_images" },
       quantity_methods: [
