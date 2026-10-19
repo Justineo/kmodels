@@ -66,14 +66,33 @@ replacement.
 - Standard, Priority, Flex, and Batch are shared `service_tier` values. Online conditions become
   `served_service_tier`; `trafficType` or the equivalent partner response value selects Standard,
   Priority, or Flex. Batch is a separate offer and uses successful result-item accounting.
-- Global and non-global values use `deployment_scope`; exact locations use `region`. A request
-  location can select an exact region, but it does not infer the wildcard meaning of non-global.
+- A Region column's Global and Non-global categories use `deployment_scope`. Named endpoint-location
+  tabs use `region`, including `global`, `us`, `eu`, and explicit regional locations. The
+  [partner endpoint contract](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/use-partner-models)
+  defines these as distinct request `locations` values. A concrete request location does not infer
+  the wildcard meaning of Non-global. Processing and billing-unit tabs supply no geographic scope.
+  A tab requires one unquoted matching label; a missing, duplicated or unreadable location owner
+  preserves local raw quotes. Normalizing the page preserves typed table metadata rather than
+  trusting synthetic attributes embedded in external HTML.
   A quote without a region stays unqualified. A separately priced location cannot establish a
   synthetic default region for another quote, including a globally routed or differently dated row.
 - Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
   independent applicability dimensions.
   A dated ordinary price remains unqualified by promotion unless its own source establishes
   eligibility. A promotional quote cannot add `promotion=false` to a sibling price or date.
+- Each numeric context header owns its bound, using safe whole-token counts. A missing opposite
+  quote cannot create a complementary range. A referenced footnote must be readable and agree with
+  that header; only its own endpoint panel or adjacent table notes can establish the contract.
+  Unknown, missing or contradictory declarations retain each affected quote and known scope as
+  raw applicability evidence, including the original amount, unit, meter, labels and owned notes.
+  Readable sibling columns and endpoint panels survive independently.
+  Labeled-cell shape checks retain the literal column heading, so another context band cannot
+  supply a label sequence that silently chooses between conflicting prices in the affected cell.
+  The public Claude tables currently disagree at the 100K and some 200K boundaries: headers use
+  strict `>` while their notes use “longer than or equal to”. Those affected claims remain unknown;
+  neither a direct provider's tariff nor a choice of preferred statement resolves the conflict.
+  Owned context/location failures produce explicit diagnostics and enter repair investigation even
+  on unchanged source bytes. Ordinary raw prices do not acquire that contract-failure trigger.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only
   under the reviewed model-provider section titles. The Gemini 2.5 layout keeps its exact
   short/long-context and cached-input columns. Unrelated abbreviated tables remain excluded.
