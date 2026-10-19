@@ -12,7 +12,13 @@ import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
-import { decimalsEqual, multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import {
+  decimalsEqual,
+  multiplyDecimal,
+  publishedRate,
+  scaleDecimal,
+  wholeTokenCount,
+} from "./pricing.ts";
 import {
   sourceRawPricingFactKey,
   sourcePriceFactKey,
@@ -45,6 +51,13 @@ interface LabeledPrice {
 
 type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
+interface PricingTableContext {
+  labels: string[];
+  location: string | undefined;
+  processingTier: string | undefined;
+  notes: string[];
+}
+type PricingTableContexts = ReadonlyMap<NonNullable<Selection[0]>, PricingTableContext>;
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 type LinkedDocument = { url: string; body: string };
 type Reconcile = Input["onPricingReconciliation"];
@@ -211,9 +224,75 @@ function tableHeaders($: LoadedDocument, table: Selection): string[] {
   return texts($, table.find("tr").first().find("th,td"));
 }
 
-function pricingDocument(body: string): LoadedDocument {
+function pricingTableContext($: LoadedDocument, table: Selection): PricingTableContext {
+  const panel = table.closest('[role="tabpanel"]');
+  let location: string | undefined = "";
+  let processingTier: string | undefined;
+  let labels: string[] = [];
+  if (panel.length > 0) {
+    const labelId = panel.attr("aria-labelledby");
+    labels = $('[role="tab"][id]')
+      .toArray()
+      .filter(
+        (node) =>
+          $(node).attr("id") === labelId &&
+          $(node).closest("blockquote,pre,code,template").length === 0,
+      )
+      .map((node) => text($(node).text()));
+    location = labelId !== undefined && labels.length === 1 ? labels[0] : undefined;
+    if (location === "") location = undefined;
+    const label = location?.toLowerCase();
+    if (
+      ["standard model", "standard", "priority", "batch", "flex/batch", "deferred"].includes(
+        label ?? "",
+      )
+    ) {
+      processingTier = label === "standard model" ? "standard" : label;
+      location = "";
+    } else if (label === "token-based pricing" || label === "modality-based pricing") location = "";
+  }
+  const notesFor = (paragraphs: Selection) =>
+    paragraphs
+      .toArray()
+      .filter(
+        (node) =>
+          $(node).closest("table,blockquote,pre,code,template").length === 0 &&
+          (panel.length === 0 || $(node).closest('[role="tabpanel"]').get(0) === panel.get(0)),
+      )
+      .map((node) => text($(node).text()));
+  let notes = notesFor(table.nextUntil("table,h1,h2,h3,h4").filter("p"));
+  if (panel.length > 0) {
+    const containers = [...table.parentsUntil('[role="tabpanel"]').toArray(), ...panel.toArray()];
+    for (const node of containers) {
+      const owner = $(node);
+      const ownedTables = owner
+        .find("table")
+        .toArray()
+        .filter(
+          (node) =>
+            $(node).closest("blockquote,pre,code,template").length === 0 &&
+            $(node).closest('[role="tabpanel"]').get(0) === panel.get(0),
+        );
+      if (ownedTables.length !== 1) break;
+      const ownedNotes = notesFor(owner.find("p"));
+      if (ownedNotes.some((note) => /^\*+|query input context|long context rates/i.test(note))) {
+        notes = ownedNotes;
+        break;
+      }
+    }
+  }
+  return { labels, location, processingTier, notes };
+}
+
+function pricingDocument(body: string): { $: LoadedDocument; tableContexts: PricingTableContexts } {
   const source = load(body);
-  if (source(".devsite-article-body").length > 0) return source;
+  const tableContexts = new Map<NonNullable<Selection[0]>, PricingTableContext>();
+  if (source(".devsite-article-body").length > 0) {
+    source("table").each((_index, node) => {
+      tableContexts.set(node, pricingTableContext(source, source(node)));
+    });
+    return { $: source, tableContexts };
+  }
   const normalized = load('<main><div class="devsite-article-body"></div></main>');
   const article = normalized(".devsite-article-body");
   source("h1,h2,h3,h4,table").each((_index, element) => {
@@ -223,9 +302,10 @@ function pricingDocument(body: string): LoadedDocument {
       if (label !== "" && !/Consumption model ID:/i.test(label)) article.append(item.clone());
       return;
     }
+    if (item.closest("blockquote,pre,code,template").length > 0) return;
     const table = item.clone();
-    const scope = pricingTabScope(source, item);
-    if (scope !== "") table.attr("data-kmodels-pricing-scope", scope);
+    const node = table.get(0);
+    if (node !== undefined) tableContexts.set(node, pricingTableContext(source, item));
     table.find('button,[role="status"]').remove();
     const headers = table.find("tr").first().find("th,td");
     const omitted = new Set<number>();
@@ -242,7 +322,7 @@ function pricingDocument(body: string): LoadedDocument {
       });
     article.append(table);
   });
-  return normalized;
+  return { $: normalized, tableContexts };
 }
 
 function unique<T>(values: T[]): T[] {
@@ -1196,12 +1276,43 @@ function addRate(model: ProviderModel, rate: SourcePriceFact, reconcile?: Reconc
   });
 }
 
+function addPriceQuote(
+  model: ProviderModel,
+  rate: SourcePriceFact,
+  fragment: string,
+  missingScope: "context" | "location" | undefined,
+  context: PricingTableContext,
+  reconcile?: Reconcile,
+): void {
+  if (missingScope === undefined) return addRate(model, rate, reconcile);
+  model.raw_price_facts.push({
+    term_key: "unparsed_base_rate",
+    impact: "base_price",
+    reason: "unknown_applicability",
+    source_ref: rate.source_ref,
+    conditions: rate.conditions,
+    raw: {
+      fragment: [fragment, ...context.labels, ...context.notes].join("\n").slice(0, 4096),
+      amount: rate.raw_price ?? rate.price,
+      denomination: rate.currency,
+      unit: rate.raw_unit ?? rate.unit,
+      meter: rate.meter,
+    },
+  });
+  reconcile?.({
+    disposition: "unresolved",
+    reason_code: `pricing_${missingScope}_scope_unresolved`,
+    sample: `${model.model_id}: ${rate.meter}: ${rate.raw_unit ?? rate.unit}`.slice(0, 256),
+  });
+}
+
 function tiers(
   table: Selection,
   header: string,
   headers: string[],
   descriptor = "",
   scope = "",
+  processingTier?: string,
 ): (string | undefined)[] {
   if (/\bPriority\b/i.test(header)) return ["priority"];
   if (/\bFlex\s*\/\s*Batch\b/i.test(header)) {
@@ -1216,8 +1327,8 @@ function tiers(
   if (/\bFlex\b/i.test(descriptor)) return ["flex"];
   if (/\bPriority\b/i.test(descriptor)) return ["priority"];
   if (/\bOnline\b/i.test(descriptor)) return ["standard"];
-  const value = text(table.prevAll("h3,h4").first().text()).toLowerCase();
-  if (value === "standard" || value === "priority") return [value];
+  const value = processingTier ?? text(table.prevAll("h3,h4").first().text()).toLowerCase();
+  if (["standard", "priority", "batch", "deferred"].includes(value)) return [value];
   if (value === "flex/batch") return ["flex", "batch"];
   return [undefined];
 }
@@ -1233,28 +1344,29 @@ function deploymentScope(value: string): string | undefined {
   return /^(?:Global|Non-global)$/i.test(scope) ? scope.toLowerCase() : undefined;
 }
 
-function pricingScope($: LoadedDocument, table: Selection, rowScope: string): string {
-  if (rowScope !== "") return normalizePricingScope(rowScope);
-  const retained = table.attr("data-kmodels-pricing-scope");
-  if (retained !== undefined) return normalizePricingScope(retained);
-  return pricingTabScope($, table);
-}
-
-function pricingTabScope($: LoadedDocument, table: Selection): string {
-  const panel = table.closest('[role="tabpanel"][aria-labelledby]').first();
-  const labelId = panel.attr("aria-labelledby");
-  if (labelId === undefined) return "";
-  let label = "";
-  $('[role="tab"][id]').each((_index, element) => {
-    if ($(element).attr("id") === labelId) label = text($(element).text());
-  });
-  return label;
+function pricingScope(
+  rowScope: string,
+  context: PricingTableContext,
+): { label: string; conditions: SourcePriceFact["conditions"] } | undefined {
+  const label = normalizePricingScope(rowScope || context.location || "");
+  if (rowScope !== "") {
+    const deployment = deploymentScope(label);
+    if (deployment !== undefined) return { label, conditions: { deployment_scope: deployment } };
+  } else if (context.location === undefined) return;
+  const location = label.replace(/\s*\((?:Batch|Flex)\)/gi, "").toLowerCase();
+  if (location === "") return { label, conditions: {} };
+  if (/^(?:global|us|eu|[a-z]+-[a-z]+\d)$/.test(location))
+    return { label, conditions: { region: location } };
 }
 
 function normalizePricingScope(value: string): string {
   const scope = text(value);
-  const multiRegion = scope.match(/^(?:US|EU) Multi-Region \((US|EU)\)$/i)?.[1];
-  if (multiRegion !== undefined) return multiRegion.toLowerCase();
+  const multiRegion = scope.match(/^(US|EU) Multi-Region(?: \((US|EU)\))?$/i);
+  if (
+    multiRegion?.[1] !== undefined &&
+    (multiRegion[2] === undefined || multiRegion[1].toLowerCase() === multiRegion[2].toLowerCase())
+  )
+    return multiRegion[1].toLowerCase();
   return /^[a-z]+-[a-z]+\s+\d$/i.test(scope) ? scope.replace(/\s+/g, "") : scope;
 }
 
@@ -1278,11 +1390,39 @@ function pageAlternativeVerified(
   );
 }
 
-function contextTokenBounds(header: string): SourcePriceFact["conditions"] {
-  return {
-    ...(/(?:<=|=<)\s*200K/i.test(header) ? { context_max_tokens: 200_000 } : {}),
-    ...(/>\s*200K/i.test(header) ? { context_min_tokens: 200_001 } : {}),
-  };
+function contextTokenBounds(
+  header: string,
+  notes: readonly string[],
+): SourcePriceFact["conditions"] | undefined {
+  const matches = [
+    ...header.matchAll(/(<=|=<|>=|=>|≤|≥|<|>)\s*([^\s]+)\s+(?:(?:cached )?input )?tokens?\b/gi),
+  ];
+  const match = matches[0];
+  if (matches.length === 0) return /[<>=≤≥]/.test(header) ? undefined : {};
+  if (matches.length !== 1 || match?.[1] === undefined || match[2] === undefined) return;
+  const count = wholeTokenCount(match[2].toUpperCase());
+  if (count === undefined) return;
+  const lower = [">", ">=", "=>", "≥"].includes(match[1]);
+  const inclusive = ["<=", "=<", "≤", ">=", "=>", "≥"].includes(match[1]);
+  const boundary = lower ? count + (inclusive ? 0 : 1) : count - (inclusive ? 0 : 1);
+  if (!Number.isSafeInteger(boundary) || boundary < 0) return;
+  const marker = header.match(/\*+\s*$/)?.[0]?.trim();
+  const ownedNotes =
+    marker === undefined
+      ? notes.filter((note) => /query input context|long context rates/i.test(note))
+      : notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
+  if (marker !== undefined && ownedNotes.length === 0) return;
+  for (const note of ownedNotes) {
+    const rule = note.match(
+      /^(\*+)\s*If a query input context is longer than( or equal to)? ([^\s]+) tokens, all tokens \(input and output\) are charged at long context rates\.?$/i,
+    );
+    const noteCount = rule?.[3] === undefined ? undefined : wholeTokenCount(rule[3].toUpperCase());
+    if (marker === undefined && noteCount !== count) continue;
+    if (rule === null || noteCount !== count) return;
+    const longMin = noteCount + (rule[2] === undefined ? 1 : 0);
+    if (!Number.isSafeInteger(longMin) || boundary !== (lower ? longMin : longMin - 1)) return;
+  }
+  return lower ? { context_min_tokens: boundary } : { context_max_tokens: boundary };
 }
 
 function pricingValidity(label: string): SourcePriceFact["conditions"] {
@@ -1305,6 +1445,7 @@ function pricingValidity(label: string): SourcePriceFact["conditions"] {
 function excludedPricingTable(table: Selection, headers: string[]): boolean {
   const section = text(table.prevAll("h2,h3,h4").first().text());
   return (
+    table.closest("blockquote,pre,code,template").length > 0 ||
     /^(?:Agents|CodeMender|Model Tuning|AlphaEvolve|Agent Platform Model Optimizer|Provisioned Throughput|Context Cache Storage)/i.test(
       section,
     ) ||
@@ -1326,6 +1467,7 @@ function tokenTables(
   models: Map<string, Evidence>,
   sourceId: string,
   $: LoadedDocument,
+  tableContexts: PricingTableContexts,
   evidence: PricingEvidence,
   reconcile?: Reconcile,
 ): void {
@@ -1357,6 +1499,7 @@ function tokenTables(
     const typeIndex = headers.findIndex((header) => /^Type$/i.test(header));
     const regionIndex = headers.findIndex((header) => /^Region$/i.test(header));
     const requestTypeIndex = headers.findIndex((header) => /^Request Type$/i.test(header));
+    const tableContext = tableContexts.get(tableElement) ?? pricingTableContext($, table);
     let current: ProviderModel[] = [];
     let descriptor = "";
     let validity: SourcePriceFact["conditions"] = {};
@@ -1417,9 +1560,8 @@ function tokenTables(
         if (rowDescriptor !== "") descriptor = rowDescriptor;
         const requestType = text(column(cells, headers.length, requestTypeIndex)?.text() ?? "");
         const scope = pricingScope(
-          $,
-          table,
           text(column(cells, headers.length, regionIndex)?.text() ?? ""),
+          tableContext,
         );
         cells.each((cellIndex, cell) => {
           const logicalIndex = cellIndex + offset;
@@ -1431,6 +1573,7 @@ function tokenTables(
           )
             return;
           const header = headers[logicalIndex] ?? "";
+          const context = contextTokenBounds(header, tableContext.notes);
           const cached = /cached/i.test(header);
           const rateMeters = meters(descriptor, cached);
           if (rateMeters.length === 0) return;
@@ -1449,11 +1592,26 @@ function tokenTables(
                 });
           for (const item of prices)
             for (const serviceTier of item.serviceTier === undefined
-              ? tiers(table, header, headers, `${descriptor} ${requestType}`, scope)
+              ? tiers(
+                  table,
+                  header,
+                  headers,
+                  `${descriptor} ${requestType}`,
+                  scope?.label,
+                  tableContext.processingTier,
+                )
               : [item.serviceTier])
               for (const target of current)
-                for (const rateMeter of rateMeters)
-                  addRate(
+                for (const rateMeter of rateMeters) {
+                  const conditions = {
+                    ...scope?.conditions,
+                    ...context,
+                    service_tier: serviceTier,
+                    ...(/\b5m\b/i.test(descriptor) ? { cache_ttl_seconds: 300 } : {}),
+                    ...(/\b1h\b/i.test(descriptor) ? { cache_ttl_seconds: 3600 } : {}),
+                    ...validity,
+                  };
+                  addPriceQuote(
                     target,
                     publishedRate(
                       rateMeter,
@@ -1466,18 +1624,20 @@ function tokenTables(
                         prices.some(({ unit }) => unit === undefined)
                           ? { billing_unit: item.unit === "second" ? "second" : "token" }
                           : {}),
-                        service_tier: serviceTier,
-                        deployment_scope: item.scope ?? deploymentScope(scope),
-                        region:
-                          scope === "" || deploymentScope(scope) !== undefined ? undefined : scope,
-                        ...contextTokenBounds(header),
-                        ...(/\b5m\b/i.test(descriptor) ? { cache_ttl_seconds: 300 } : {}),
-                        ...(/\b1h\b/i.test(descriptor) ? { cache_ttl_seconds: 3600 } : {}),
-                        ...validity,
+                        ...conditions,
+                        ...(item.scope === undefined ? {} : { deployment_scope: item.scope }),
                       },
                     ),
+                    raw,
+                    scope === undefined
+                      ? "location"
+                      : context === undefined
+                        ? "context"
+                        : undefined,
+                    tableContext,
                     reconcile,
                   );
+                }
           if (alternative >= 0)
             for (const target of current)
               for (const rateMeter of rateMeters)
@@ -1494,10 +1654,8 @@ function tokenTables(
                     `${modelLabel || target.name}; ${header}`,
                     raw,
                     {
-                      deployment_scope: deploymentScope(scope),
-                      region:
-                        scope === "" || deploymentScope(scope) !== undefined ? undefined : scope,
-                      ...contextTokenBounds(header),
+                      ...scope?.conditions,
+                      ...context,
                       ...validity,
                     },
                     "base_price",
@@ -1560,7 +1718,7 @@ const labeledPricePattern =
   /(5m Batch Cache Write|1h Batch Cache Write|Batch Cache Write|Batch Cache Hit|Batch Input|Batch Output|5m Cache Write|1h Cache Write|Cache Write|Cache Hit|Input|Output):\s*\$(\d+(?:\.\d+)?)/gi;
 
 function labeledCellKey(modelLabel: string, header: string): string {
-  return `${priceName(modelLabel)}\0${priceName(header)}\0${JSON.stringify(contextTokenBounds(header))}`;
+  return `${priceName(modelLabel)}\0${text(header).toLowerCase()}`;
 }
 
 function labeledPrices(fragment: string): LabeledPrice[] {
@@ -1671,6 +1829,7 @@ function labeledTables(
   models: Map<string, Evidence>,
   sourceId: string,
   $: LoadedDocument,
+  tableContexts: PricingTableContexts,
   evidence: PricingEvidence,
   reconcile?: Reconcile,
 ): void {
@@ -1688,9 +1847,16 @@ function labeledTables(
     const heading = text(table.prevAll("h2,h3,h4").first().text());
     // These cells have an explicit token column and are already handled by tokenTables.
     if (abbreviatedTokenTable(headers, heading)) return;
-    const region = /^(?:Global|US Multi-Region|EU Multi-Region|[a-z]+-[a-z]+\d)$/i.test(heading)
+    const tableContext = tableContexts.get(tableElement) ?? pricingTableContext($, table);
+    const legacyLocation = /^(?:Global|US Multi-Region|EU Multi-Region|[a-z]+-[a-z]+\d)$/i.test(
+      heading,
+    )
       ? heading
-      : undefined;
+      : "";
+    const scope = pricingScope("", {
+      ...tableContext,
+      location: tableContext.location === "" ? legacyLocation : tableContext.location,
+    });
     table
       .find("tr")
       .slice(1)
@@ -1702,6 +1868,7 @@ function labeledTables(
         const validity = pricingValidity(modelLabel);
         cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1] ?? "";
+          const context = contextTokenBounds(header, tableContext.notes);
           const originalFragment = cellText($(cell));
           const canonical = canonicalLabeledFragment(
             originalFragment,
@@ -1728,8 +1895,8 @@ function labeledTables(
                 : lower.includes("output")
                   ? "output_text"
                   : "input_text";
-            for (const model of targets)
-              addRate(
+            for (const model of targets) {
+              addPriceQuote(
                 model,
                 publishedRate(
                   rateMeter,
@@ -1738,9 +1905,9 @@ function labeledTables(
                   sourceId,
                   `${header}; ${rateLabel}`,
                   {
-                    region,
+                    ...scope?.conditions,
                     service_tier: lower.includes("batch") ? "batch" : undefined,
-                    ...contextTokenBounds(header),
+                    ...context,
                     cache_ttl_seconds: lower.startsWith("5m")
                       ? 300
                       : lower.startsWith("1h")
@@ -1749,12 +1916,16 @@ function labeledTables(
                     ...validity,
                   },
                 ),
+                fragment,
+                scope === undefined ? "location" : context === undefined ? "context" : undefined,
+                tableContext,
                 reconcile,
               );
+            }
           }
           const conditions = {
-            region,
-            ...contextTokenBounds(header),
+            ...scope?.conditions,
+            ...context,
           };
           const cacheDuplicate =
             matches.some(({ label }) => /^Cache Write$/i.test(label)) &&
@@ -2354,10 +2525,10 @@ function applyPricing(
   groundingReferences: GroundingReferences | undefined,
   reconcile?: Reconcile,
 ): VertexGroundingClaim[] {
-  const $ = pricingDocument(body);
+  const { $, tableContexts } = pricingDocument(body);
   const claims: VertexGroundingClaim[] = [];
-  tokenTables(models, sourceId, $, evidence, reconcile);
-  labeledTables(models, sourceId, $, evidence, reconcile);
+  tokenTables(models, sourceId, $, tableContexts, evidence, reconcile);
+  labeledTables(models, sourceId, $, tableContexts, evidence, reconcile);
   mediaTables(models, sourceId, $, reconcile);
   embeddingCountTables(models, sourceId, $, reconcile);
   inlineUnitTables(models, sourceId, $, reconcile);
