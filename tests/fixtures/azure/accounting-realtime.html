@@ -1,0 +1,65 @@
+<!-- Reviewed usage excerpt of https://learn.microsoft.com/en-us/azure/foundry-classic/openai/realtime-audio-reference-ga
+     observed 2026-10-19T08:43:01.898Z, full body SHA-256 55408a7588727f674acb23362b5740ada0294a059547aa8e6838e7cabe402d5b.
+     Native field names and usage values retained; unrelated response output content omitted. -->
+<main>
+  <h3 id="responsedone">response.done</h3>
+  <p>
+    The server response.done event is returned when a response is done streaming. The server emits
+    this event regardless of final state.
+  </p>
+  <p>
+    The response object included in response.done includes all output items in the response but
+    omits the raw audio data.
+  </p>
+  <h4>Event structure</h4>
+  <pre><code class="lang-json">{
+    "type": "response.done",
+    "event_id": "event_CCXHxcMy86rrKhBLDdqCh",
+    "response": {
+      "object": "realtime.response",
+      "id": "resp_CCXHw0UJld10EzIUXQCNh",
+      "status": "completed",
+      "usage": {
+        "total_tokens": 253,
+        "input_tokens": 132,
+        "output_tokens": 121,
+        "input_token_details": {
+          "text_tokens": 119,
+          "audio_tokens": 13,
+          "image_tokens": 0,
+          "cached_tokens": 64,
+          "cached_tokens_details": {"text_tokens": 64, "audio_tokens": 0, "image_tokens": 0}
+        },
+        "output_token_details": {"text_tokens": 30, "audio_tokens": 91}
+      }
+    }
+  }</code></pre>
+  <h4>Properties</h4>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>type</td>
+        <td>string</td>
+        <td>The event type must be response.done.</td>
+      </tr>
+      <tr>
+        <td>event_id</td>
+        <td>string</td>
+        <td>The unique ID of the server event.</td>
+      </tr>
+      <tr>
+        <td>response</td>
+        <td>object</td>
+        <td>The response resource.</td>
+      </tr>
+    </tbody>
+  </table>
+  <h3>response.output_item.added</h3>
+</main>
