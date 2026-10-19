@@ -2,6 +2,7 @@ import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePriceFact, SourceRawPricingFact } from "./pricing-source.ts";
 import type { ModelTask } from "./schema.ts";
+import { openAiTextQuantity } from "./openai-commercial-source.ts";
 
 export type OpenAiPricingTier = "standard" | "batch" | "flex" | "fast" | "ultrafast";
 export interface OpenAiPricingTable {
@@ -16,6 +17,7 @@ export interface OpenAiPricingCell {
   meter?: SourcePriceFact["meter"];
   unit?: SourcePriceFact["unit"];
   rawUnit: string;
+  textTokens?: boolean;
   conditions: SourcePriceFact["conditions"];
   excluded?: "commercial_fact_outside_invocation_scope" | "price_estimate_not_billing_basis";
 }
@@ -57,6 +59,22 @@ export function parseOpenAiPricingCell(
       cell.conditions,
     );
     if (cell.value === "Free") rate.raw_price = "Free";
+    const quantity =
+      cell.textTokens === true && cell.unit === "million_tokens"
+        ? openAiTextQuantity(cell.meter)
+        : undefined;
+    if (quantity !== undefined)
+      rate.charge_binding = {
+        signal: quantity.signal,
+        aggregation: "request",
+        observations: [
+          {
+            source_ref: sourceId,
+            locator: { kind: "table", value: `Text tokens: ${cell.label}` },
+            raw: { label: `Text tokens: ${cell.label}`, amount: cell.value, unit: cell.rawUnit },
+          },
+        ],
+      };
     return {
       rate,
       item: item(
@@ -186,11 +204,14 @@ export function openAiModelPriceCells(
           : characters
             ? "output_audio"
             : modalityMeters.get(modality)?.[index];
-      return make(
-        header,
-        meter,
-        duration ? "minute" : characters ? "million_characters" : "million_tokens",
-      );
+      return {
+        ...make(
+          header,
+          meter,
+          duration ? "minute" : characters ? "million_characters" : "million_tokens",
+        ),
+        ...(modality === "Text" && !duration && !characters ? { textTokens: true } : {}),
+      };
     });
   }
   if (headers === "Model|Size|Portrait|Landscape|Price per second")

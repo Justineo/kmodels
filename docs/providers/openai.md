@@ -125,7 +125,9 @@ establish a universal static alias tariff, so the missing declaration leaves the
 
 Model-card prices are fallbacks. For the same meter, denomination, unit, and applicability:
 
-- equal card and pricing-page values coalesce;
+- equal card and pricing-page values coalesce; for an exactly matching scope, denomination, unit
+  and validity, the pricing page also establishes the billing basis. A broader card token heading
+  cannot introduce a competing quantity for the same schedule;
 - an unequal pricing-page value wins through
   `openai_pricing_page_over_model_card` and the superseded card value remains visible as conflict
   evidence; and
@@ -185,7 +187,7 @@ Batch is a separate result-item mechanism. Standard, Flex, Fast, and Ultrafast r
 inference. Returned usage selects cache, modality, generated quantity, and served-tier rates; a
 request selector alone is not treated as final billed usage.
 
-The optional accounting contract maps Responses usage, image-generation usage, embedding usage,
+The optional accounting contract maps Responses and Chat Completions usage, image-generation usage, embedding usage,
 video result duration/resolution, and Realtime response events into charge quantity methods.
 These are source-level facts and do not create a model row.
 The known uncached-input equation remains available with surviving locators when an accounting
@@ -206,10 +208,21 @@ compositions, rejects duplicate schemas/properties/types, nested lookalikes, ref
 conflicting union types, and withholds only the affected mappings. Counters require integer
 types; selectors and video duration retain their source-declared String representations; generated
 image counts require an Array. Missing or partial mappings are reported as partial contracts.
-The current official OpenAPI establishes all 23 reviewed fields; the
+The current official OpenAPI establishes all 25 reviewed fields; the
 [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) independently
 establishes the total-minus-cache-read-minus-cache-write quantity equation. Cache writes form their
 own input partition rather than an additional charge on ordinary input.
+
+Native `Text` modality rows and model-card `Text tokens` groups retain explicit text quantities
+before commercial assembly. Their input, cache-read, cache-write and output signals stay distinct
+from audio quantities even when a peer quote is missing. A derived text cache-write price retains
+the cache-write quantity rather than copying the uncached-input signal.
+The owned Chat Completions response supplies separate text/audio output counters through
+`usage.completion_tokens_details`. These map only to a model with the exact Chat Completions
+endpoint, at synchronous request scope. The input breakdown lacks per-modality cached partitions,
+so it cannot establish uncached text/audio input from aggregate prompt or cache counts; those
+billable quantities remain caller inputs. Missing source or runtime fields leave the affected
+charge unknown while other charges and known prices survive.
 
 For a model supporting the native Realtime API, the owned `response.done` event supplies text,
 audio and image input counters, their separate cached subsets, and text/audio output counters.
@@ -248,6 +261,8 @@ compilation input. They may withdraw bucket or unsupported API paths while retai
 established calculations and valid direct response fields. They cannot attach a newer Realtime
 contract to an older transaction. A calculation-only uncached-input method requires the published
 total, cache-read and cache-write signals, rather than the withdrawn bucket shortcut.
+Existing captured Text-meter quotes can also establish a corrected caller-owned text signal while
+retaining their native price evidence; that semantic correction adds no acquisition contract.
 The served-tier selector also publishes the response normalization proven by OpenAI's contract:
 `default` selects Standard, `flex` selects Flex, returned `priority` or `fast` selects Fast mode,
 and `ultrafast` selects the independently published Ultrafast schedule. Request

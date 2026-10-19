@@ -197,6 +197,15 @@ describe("owned OpenAI card price rules", () => {
       { price: "2.5", conditions: { context_max_tokens: 272000 } },
       { price: "5", conditions: { context_min_tokens: 272001 } },
     ]);
+    expect(writes.every((rate) => rate.derived)).toBe(true);
+    expect(
+      writes.every(
+        (rate) =>
+          rate.charge_binding?.signal.namespace === "provider" &&
+          rate.charge_binding.signal.provider_id === "openai" &&
+          rate.charge_binding.signal.value === "cache_write_text_tokens",
+      ),
+    ).toBe(true);
   });
   it("rejects competing Pricing owners rather than borrowing the first one", async () => {
     const input = await bundle();
