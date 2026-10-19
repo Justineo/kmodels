@@ -243,6 +243,11 @@ served-tier or context selectors. Organization Usage results are time-bucket agg
 model, tier and Batch grouping. Neither a `results[*]` locator nor a reconciliation-only label proves
 a single request or a homogeneous price scope. They are not pricing-input contracts for the
 request, session or result-item bindings published here.
+Historical acquisition corrections preserve captured price/source revisions and the original
+compilation input. They may withdraw bucket or unsupported API paths while retaining independently
+established calculations and valid direct response fields. They cannot attach a newer Realtime
+contract to an older transaction. A calculation-only uncached-input method requires the published
+total, cache-read and cache-write signals, rather than the withdrawn bucket shortcut.
 The served-tier selector also publishes the response normalization proven by OpenAI's contract:
 `default` selects Standard, `flex` selects Flex, returned `priority` or `fast` selects Fast mode,
 and `ultrafast` selects the independently published Ultrafast schedule. Request
