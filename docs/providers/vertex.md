@@ -125,8 +125,9 @@ replacement.
   `Free` or `No charge` cell establishes zero, while a missing cell never does.
 - A reviewed Gemini Omni table can name both Flash versions in one model cell; each target must
   resolve independently to an existing catalog identity. Lyria's `$ / 1 count` entries price
-  generated music clips as items, not elapsed seconds or one request: a request can return multiple
-  clips. The source amount scales exactly to the shared thousand-item unit.
+  generated music outputs as items, counting each full song or clip once: a request can return multiple
+  outputs. The source amount scales exactly to the shared thousand-item unit; callers supply the
+  generated item count without an invented response locator.
 - The current text-embedding table publishes dollars per 1,000 `count` without defining whether
   that count is tokens or billable characters. Its exact online/Batch and input/output cells are
   retained as bounded raw rates for Gemini Embedding 001 and the named older Google text-embedding
@@ -138,6 +139,10 @@ replacement.
   units. The parser does not reinterpret the per-second amount as a conflicting token price or
   charge both alternative measures of the same output. A provider-owned `billing_unit` selector
   separates the alternatives; consumers supply the applicable token or second billing basis.
+- Media denominators come only from the price cell or its price-column heading. Input/output labels
+  such as `Text/Image prompt` cannot establish a per-image unit. An unexplained `/ 1 count` Veo quote
+  retains its amount, meter and scope as raw `unknown_unit` evidence with an explicit diagnostic;
+  it does not imply images, seconds or one request.
 - Explicit `N/A` cells are local non-numeric evidence and do not reject another meter or model.
 
 ## Grounding prices and allowances
@@ -191,6 +196,14 @@ The current reviewed accounting surface is:
 - Imagen: actual returned `predictions` count and requested output resolution; and
 - Veo: requested duration and actual returned video count, multiplied to produce generated seconds,
   plus requested resolution and audio selection.
+
+These are protocol contracts, not publisher-wide capabilities. Live-only models retain caller-owned
+quantities and selectors unless their own catalog evidence also establishes GenerateContent.
+Predict-only and embedding routes likewise cannot establish GenerateContent usage or grounding.
+GenerateContent inline-image counters and Imagen `predict` counters/resolution selectors bind only
+to models with the corresponding documented route. Model-specific grounding offers use the same
+protocol boundary as their model's inference book. Known arithmetic remains available even when
+no native acquisition is established.
 
 The former Veo generation guide now redirects to the generic `endpoints.predict` method. Its
 `parameters` field links to the first-party

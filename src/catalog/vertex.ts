@@ -1997,6 +1997,16 @@ function labeledTables(
   });
 }
 
+function mediaPriceUnit(value: string): SourcePriceFact["unit"] | undefined {
+  if (/per image|\/\s*(?:1\s+)?image/i.test(value)) return "image";
+  if (/\bsong\b|per \d+ seconds?/i.test(value)) return "request";
+  if (/(?:second|\/\s*sec\b)/i.test(value)) return "second";
+  if (/frame/i.test(value)) return "frame";
+  if (/1M tokens/i.test(value)) return "million_tokens";
+  if (/1,000 input tokens/i.test(value)) return "thousand_tokens";
+  if (/1,000 characters|1k characters/i.test(value)) return "thousand_characters";
+}
+
 function mediaTables(
   models: Map<string, Evidence>,
   sourceId: string,
@@ -2009,7 +2019,8 @@ function mediaTables(
     const section = text(table.prevAll("h2,h3,h4").first().text());
     if (
       !/^(?:Model|Open Source Model)$/.test(headers[0] ?? "") ||
-      !/(Imagen|Veo|Lyria|Embedding)/i.test(section)
+      !/(Imagen|Veo|Lyria|Embedding)/i.test(section) ||
+      embeddingCountRows($, table) !== undefined
     )
       return;
     let current: ProviderModel[] = [];
@@ -2049,23 +2060,8 @@ function mediaTables(
         const lyriaCount = section === "Lyria" && /^\$[\d.]+ \/ 1 count$/.test(raw);
         const unit: SourcePriceFact["unit"] | undefined = lyriaCount
           ? "thousand_items"
-          : /per image|\/image/i.test(rowText)
-            ? "image"
-            : /\bsong\b/i.test(rowText) || /per \d+ seconds?/i.test(rowText)
-              ? "request"
-              : /(?:second|\/sec\b)/i.test(rowText)
-                ? "second"
-                : /frame/i.test(rowText)
-                  ? "frame"
-                  : /1M tokens/i.test(rowText)
-                    ? "million_tokens"
-                    : /1,000 input tokens/i.test(headers.at(-1) ?? "")
-                      ? "thousand_tokens"
-                      : /1,000 characters/i.test(headers.at(-1) ?? "") ||
-                          /1k characters/i.test(rowText)
-                        ? "thousand_characters"
-                        : undefined;
-        if (unit === undefined) return;
+          : (mediaPriceUnit(raw) ??
+            (/\/|\bper\b/i.test(raw) ? undefined : mediaPriceUnit(headers.at(-1) ?? "")));
         const rateMeter: SourcePriceFact["meter"] = /Imagen/i.test(section)
           ? "image_generation"
           : /Veo/i.test(section)
@@ -2084,7 +2080,42 @@ function mediaTables(
         );
         for (const item of money(raw))
           for (const resolution of resolutions.length === 0 ? [undefined] : resolutions)
-            for (const model of current)
+            for (const model of current) {
+              const conditions: SourcePriceFact["conditions"] = {
+                operation: operation || undefined,
+                resolution,
+                region:
+                  regionIndex >= 0 && fullRow
+                    ? text(cells.eq(regionIndex).text()) || undefined
+                    : undefined,
+                service_tier: item.serviceTier,
+                audio: /video \+ audio/i.test(operation) || undefined,
+                modality:
+                  /input (text|image|video|audio)/i.exec(rowText)?.[1]?.toLowerCase() ??
+                  (/Embeddings for Text/i.test(label) ? "text" : undefined),
+              };
+              if (unit === undefined) {
+                model.raw_price_facts.push({
+                  term_key: "unparsed_base_rate",
+                  impact: "base_price",
+                  reason: "unknown_unit",
+                  conditions,
+                  source_ref: sourceId,
+                  raw: {
+                    fragment: `${label}; ${headers.at(-1) ?? ""}; ${raw}`.slice(0, 4096),
+                    amount: item.price,
+                    denomination: "USD",
+                    meter: rateMeter,
+                    unit: /\/|\bper\b/i.test(raw) ? raw : `${headers.at(-1) ?? ""}; ${raw}`,
+                  },
+                });
+                reconcile?.({
+                  disposition: "raw",
+                  reason_code: "pricing_unknown_unit",
+                  sample: `${model.model_id}: ${rateMeter}: ${raw}`.slice(0, 256),
+                });
+                continue;
+              }
               addRate(
                 model,
                 publishedRate(
@@ -2093,24 +2124,31 @@ function mediaTables(
                   unit,
                   sourceId,
                   raw,
-                  {
-                    operation: operation || undefined,
-                    resolution,
-                    region:
-                      regionIndex >= 0 && fullRow
-                        ? text(cells.eq(regionIndex).text()) || undefined
-                        : undefined,
-                    service_tier: item.serviceTier,
-                    audio: /video \+ audio/i.test(operation) || undefined,
-                    modality:
-                      /input (text|image|video|audio)/i.exec(rowText)?.[1]?.toLowerCase() ??
-                      (/Embeddings for Text/i.test(label) ? "text" : undefined),
-                  },
+                  conditions,
                 ),
                 reconcile,
               );
+            }
       });
   });
+}
+
+function embeddingCountRows(
+  $: LoadedDocument,
+  table: Selection,
+): NonNullable<Selection[0]>[] | undefined {
+  if (
+    tableHeaders($, table).join("|") !== "Model|Type|Region|Request Type|Price / 1,000 count (USD)"
+  )
+    return;
+  const rows = table.find("tr").slice(1).toArray();
+  if (rows.length !== 8) return;
+  const labels = rows.map((row) => text($(row).find("td").eq(0).text()));
+  if (
+    labels.join("|") !== "Gemini Embedding||||Embeddings for Text (Excluding Gemini Embedding)|||"
+  )
+    return;
+  return rows;
 }
 
 function embeddingCountTables(
@@ -2123,15 +2161,8 @@ function embeddingCountTables(
   $(".devsite-article-body table").each((_index, element) => {
     if (parsed) return;
     const table = $(element);
-    const headers = tableHeaders($, table);
-    if (headers.join("|") !== "Model|Type|Region|Request Type|Price / 1,000 count (USD)") return;
-    const rows = table.find("tr").slice(1).toArray();
-    if (rows.length !== 8) return;
-    const labels = rows.map((row) => text($(row).find("td").eq(0).text()));
-    if (
-      labels.join("|") !== "Gemini Embedding||||Embeddings for Text (Excluding Gemini Embedding)|||"
-    )
-      return;
+    const rows = embeddingCountRows($, table);
+    if (rows === undefined) return;
     parsed = true;
     for (let index = 0; index < rows.length; index += 1) {
       const cells = $(rows[index]).find("td");

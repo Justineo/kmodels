@@ -46,7 +46,10 @@ import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-sour
 
 type Mechanism = "sync" | "batch";
 type Family = "google" | "anthropic" | "responses" | "chat";
-type PublishedModel = Pick<ParsedProviderModel, "service_families" | "tasks" | "uid">;
+type PublishedModel = Pick<
+  ParsedProviderModel,
+  "service_families" | "tasks" | "uid" | "api_endpoints"
+>;
 
 const servedTier = { namespace: "kmodels", value: "served_service_tier" } as const;
 const requestServices = new Set([
@@ -77,7 +80,7 @@ export function applyVertexCommercialTopology(
         return [migrated];
       }
       return requestServices.has(book.scope.resource_key)
-        ? [bindRequestService(book, input, inputIndex)]
+        ? [bindRequestService(book, input, inputIndex, models)]
         : [];
     })
     .map(includePricingInputSourceRefs);
@@ -91,20 +94,43 @@ function splitModelBook(
   models: ReadonlyMap<string, PublishedModel>,
   inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
+  const modelRef = book.scope.kind === "models" ? book.scope.model_refs[0] : undefined;
   const model =
-    book.scope.kind === "models" && book.scope.model_refs.length === 1
-      ? models.get(book.scope.model_refs[0]!)
+    book.scope.kind === "models" && book.scope.model_refs.length === 1 && modelRef !== undefined
+      ? models.get(modelRef)
       : undefined;
   const family = modelFamily(model);
+  const inputs = modelInputs(model, inputIndex);
   return {
     ...book,
     offers: book.offers.flatMap((offer) => {
       if (offer.offer_key !== "usage") return [{ ...offer, settlement: [] }];
       return (["sync", "batch"] as const)
-        .map((mechanism) => partitionOffer(offer, mechanism, family, model, input, inputIndex))
+        .map((mechanism) => partitionOffer(offer, mechanism, family, model, input, inputs))
         .filter((candidate): candidate is AtomicPricingOffer => candidate !== undefined);
     }),
   };
+}
+
+function modelInputs(
+  model: PublishedModel | undefined,
+  inputIndex: PricingInputIndex,
+): PricingInputIndex {
+  const paths = model?.api_endpoints?.map(({ path }) => path) ?? [];
+  const generate = paths.some((path) => /:(?:generateContent|streamGenerateContent)$/.test(path));
+  const predict = paths.some((path) => path.endsWith(":predict"));
+  const live = model?.tasks.includes("speech_to_speech") === true;
+  const separateRoute = paths.some((path) =>
+    /:(?:predict|predictLongRunning|embedContent)$/.test(path),
+  );
+  return indexPricingInputs(
+    [...inputIndex.values()].flat().filter(({ key }) => {
+      if (key === "generate.output.images") return generate;
+      if (key.startsWith("generate.")) return !(live || separateRoute) || generate;
+      if (key.startsWith("imagen.")) return predict;
+      return true;
+    }),
+  );
 }
 
 function partitionOffer(
@@ -158,6 +184,7 @@ function partitionTerm(
   }
   if (term.kind !== "rate") return mechanism === "sync" ? [term] : [];
   const variants = term.variants.flatMap((variant) => {
+    const { charge_binding: _binding, selector_sources: _selectors, ...quote } = variant;
     const applicability = mechanismApplicability(variant.applicability, mechanism, input);
     if (applicability === undefined) return [];
     const observation = withApplicability(variant.observation, applicability);
@@ -174,7 +201,7 @@ function partitionTerm(
     const selector_sources = selectorSources(applicability, mechanism, family, model, inputIndex);
     return [
       {
-        ...variant,
+        ...quote,
         applicability,
         observation,
         ...(charge_binding === undefined ? {} : { charge_binding }),
@@ -256,6 +283,24 @@ function modelBinding(
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
   const aggregation = mechanism === "batch" ? "result_item" : "request";
+  if (
+    family === "google" &&
+    model?.tasks.includes("audio_generation") === true &&
+    meter.namespace === "kmodels" &&
+    meter.value === "output_audio" &&
+    isStandardUnit(variant.price.per, "item")
+  )
+    return quantityBinding(
+      providerSignal(
+        input,
+        "generated_music_items",
+        "Generated Agent Platform music outputs, counting each full song or clip once",
+        variant.price.per,
+      ),
+      aggregation,
+      emptyMethods(),
+      variant,
+    );
   if (family === "google" && isStandardUnit(variant.price.per, "image")) {
     if (meter.namespace !== "kmodels" || meter.value !== "image_generation") return;
     const signal = standardSignal("generated_images");
@@ -783,28 +828,45 @@ function bindRequestService(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  models: ReadonlyMap<string, PublishedModel>,
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const resourceKey = book.scope.resource_key;
   return {
     ...book,
     resource_edges: [],
-    offers: book.offers.map((offer) => ({
-      ...offer,
-      enrollment: [],
-      settlement: [],
-      terms: offer.terms.map((term) => {
-        if (term.kind !== "rate") return term;
-        return {
-          ...term,
-          variants: term.variants.map((variant) => ({
-            ...variant,
-            charge_binding: serviceBinding(resourceKey, variant, input, inputIndex),
-          })),
-        };
-      }),
-    })),
+    offers: book.offers.map((offer) => {
+      const model = models.get(serviceModelRef(offer) ?? "");
+      const inputs = modelInputs(model, inputIndex);
+      const family = modelFamily(model);
+      return {
+        ...offer,
+        enrollment: [],
+        settlement: [],
+        terms: offer.terms.map((term) => {
+          if (term.kind !== "rate") return term;
+          return {
+            ...term,
+            variants: term.variants.map((variant) => {
+              const { selector_sources: _selectors, ...quote } = variant;
+              const sources = selectorSources(variant.applicability, "sync", family, model, inputs);
+              return {
+                ...quote,
+                charge_binding: serviceBinding(resourceKey, variant, input, inputs),
+                ...(sources.length === 0 ? {} : { selector_sources: sources }),
+              };
+            }),
+          };
+        }),
+      };
+    }),
   };
+}
+
+function serviceModelRef(offer: AtomicPricingOffer): string | undefined {
+  return offer.offer_key.startsWith("request:")
+    ? offer.offer_key.slice("request:".length)
+    : undefined;
 }
 
 function serviceBinding(
@@ -941,18 +1003,13 @@ function tierNormalization(
         : [],
     ),
   );
-  const sources = {
-    standard: ["ON_DEMAND", "TRAFFIC_TYPE_UNSPECIFIED", "on_demand", "standard"],
-    priority: ["ON_DEMAND_PRIORITY", "priority"],
-    flex: ["ON_DEMAND_FLEX", "ON_DEMAND_OFFPEAK", "flex"],
-  } as const;
+  const sources = new Map<string, readonly string[]>([
+    ["standard", ["ON_DEMAND", "TRAFFIC_TYPE_UNSPECIFIED", "on_demand", "standard"]],
+    ["priority", ["ON_DEMAND_PRIORITY", "priority"]],
+    ["flex", ["ON_DEMAND_FLEX", "ON_DEMAND_OFFPEAK", "flex"]],
+  ]);
   const entries = values.flatMap((value) =>
-    value.value in sources
-      ? sources[value.value as keyof typeof sources].map((source_value) => ({
-          source_value,
-          value,
-        }))
-      : [],
+    (sources.get(value.value) ?? []).map((source_value) => ({ source_value, value })),
   );
   return entries.length === 0
     ? {}
@@ -965,9 +1022,7 @@ function bindServiceRelations(
 ): void {
   if (book.scope.kind !== "provider_resource") return;
   for (const offer of book.offers) {
-    const modelRef = offer.offer_key.startsWith("request:")
-      ? offer.offer_key.slice("request:".length)
-      : undefined;
+    const modelRef = serviceModelRef(offer);
     const target = modelRef === undefined ? undefined : modelOffers.get(modelRef);
     if (target !== undefined)
       offer.relations.push(

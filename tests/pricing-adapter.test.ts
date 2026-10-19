@@ -2485,18 +2485,39 @@ describe("parsed-source canonical pricing adapter", () => {
     const image = vertexModel("imagen-test", ["image_generation"], "publishers/google", [
       rate("image_generation", "image", { resolution: "2k" }),
     ]);
+    image.api_endpoints = [
+      {
+        name: "predict",
+        path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict",
+      },
+    ];
     const video = vertexModel("veo-test", ["video_generation"], "publishers/google", [
       rate("video_generation", "second", { resolution: "1080p", audio: true }),
     ]);
-    const imageCommercialFacts: SourceCommercialPricingFact[] = [
+    video.api_endpoints = [
+      {
+        name: "predictLongRunning",
+        path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predictLongRunning",
+      },
+    ];
+    const gemini = vertexModel("gemini-test", ["text_generation"], "publishers/google", [
+      rate("input_text", "million_tokens"),
+    ]);
+    gemini.api_endpoints = [
+      {
+        name: "generateContent",
+        path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent",
+      },
+    ];
+    const groundingFacts: SourceCommercialPricingFact[] = [
       {
         source_ref: pricingSource.id,
         book_key: "service:google-maps",
         book_name: "Grounding with Google Maps",
         resource_kind: "service",
         resource_key: "google-maps",
-        model_refs: [image.uid],
-        offer_key: `request:${image.uid}`,
+        model_refs: [gemini.uid],
+        offer_key: `request:${gemini.uid}`,
         offer_name: "Maps grounding",
         billing_mode: "usage",
         pricing_state: "numeric",
@@ -2507,7 +2528,7 @@ describe("parsed-source canonical pricing adapter", () => {
         raw_price_facts: [],
       },
     ];
-    const models = [xai, chat, image, video];
+    const models = [xai, chat, image, video, gemini];
     const pricing = assembleParsedProviderPricing(
       "vertex",
       observedAt,
@@ -2516,7 +2537,7 @@ describe("parsed-source canonical pricing adapter", () => {
           source: pricingSource,
           models,
           pricing_inputs: xaiInputs,
-          commercial_facts: imageCommercialFacts,
+          commercial_facts: groundingFacts,
         },
       ],
       models,
