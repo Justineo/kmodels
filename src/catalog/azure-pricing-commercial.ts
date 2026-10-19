@@ -384,7 +384,24 @@ function modelChargeBinding(
   const quantity =
     rateMeters === undefined
       ? { methods: [], facts: [] }
-      : quantityMethods(spec, meter, mechanism, model, rateMeters, inputIndex);
+      : mergeMethods([
+          quantityMethods(spec, meter, mechanism, model, rateMeters, inputIndex),
+          ...(mechanism === "sync" &&
+          isStandardUnit(variant.price.per, "token") &&
+          hasEndpoint(model, "openai/v1/realtime/sessions")
+            ? [
+                realtimeQuantityMethods(
+                  spec,
+                  meter,
+                  variant.price.per,
+                  model,
+                  rateMeters,
+                  input,
+                  inputIndex,
+                ),
+              ]
+            : []),
+        ]);
   return {
     signal: spec.signal,
     aggregation:
@@ -551,11 +568,74 @@ function quantityMethods(
     rateMeters.some((candidate) => isMeter(candidate, "output_audio"))
   )
     return textOutputMethods(model, inputIndex);
-  const facts = pricingInputFacts(inputIndex, spec.directKeys);
+  return directQuantityMethods(spec.signal, pricingInputFacts(inputIndex, spec.directKeys));
+}
+
+function directQuantityMethods(
+  signal: UsageSignal,
+  facts: SourcePricingInputFact[],
+): MethodsAndFacts {
   return {
-    methods: facts.length === 0 ? [] : [{ input_sources: usageInputSources(spec.signal, facts) }],
+    methods: facts.length === 0 ? [] : [{ input_sources: usageInputSources(signal, facts) }],
     facts,
   };
+}
+
+function realtimeQuantityMethods(
+  spec: SignalSpec,
+  meter: PriceMeter,
+  unit: UnitExpression,
+  model: PublishedModel | undefined,
+  rateMeters: readonly PriceMeter[],
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+): MethodsAndFacts {
+  const modalities: ReadonlyArray<{ modality: string; cached: PriceMeter }> = [
+    { modality: "text", cached: { namespace: "kmodels", value: "cache_read_text" } },
+    {
+      modality: "audio",
+      cached: { namespace: "provider", provider_id: "azure", value: "cache_read_audio" },
+    },
+    {
+      modality: "image",
+      cached: { namespace: "provider", provider_id: "azure", value: "cache_read_image" },
+    },
+  ];
+  for (const { modality, cached } of modalities) {
+    if (isMeter(meter, `input_${modality}`)) {
+      // Realtime reports cached subsets per modality, but no cache-write partition.
+      if (rateMeters.some((candidate) => isMeter(candidate, `cache_write_${modality}`)))
+        return { methods: [], facts: [] };
+      return subtractionMethod(
+        [
+          {
+            signal: providerSignal(
+              input,
+              `realtime_input_${modality}_tokens`,
+              `Azure Realtime reported ${modality}-input tokens including cached tokens`,
+              unit,
+            ),
+            key: `realtime.input_${modality}_tokens`,
+          },
+          {
+            signal: modelSignal(cached, unit, "sync", model, input).signal,
+            key: `realtime.cached_${modality}_tokens`,
+          },
+        ],
+        inputIndex,
+      );
+    }
+    if (isMeter(meter, cached.value))
+      return directQuantityMethods(
+        spec.signal,
+        pricingInputFacts(inputIndex, [`realtime.cached_${modality}_tokens`]),
+      );
+  }
+  const output = ["text", "audio"].find((modality) => isMeter(meter, `output_${modality}`));
+  return directQuantityMethods(
+    spec.signal,
+    pricingInputFacts(inputIndex, output === undefined ? [] : [`realtime.output_${output}_tokens`]),
+  );
 }
 
 function uncachedInputMethods(
@@ -571,12 +651,10 @@ function uncachedInputMethods(
   if (separatelyPricedImage && model?.tasks.includes("image_generation") !== true)
     return { methods: [], facts: [] };
   if (!subtractCached && !subtractWritten && !subtractAudio) {
-    const signal = standardSignal("uncached_input_tokens");
-    const facts = pricingInputFacts(inputIndex, inputTextKeys(model, mechanism));
-    return {
-      methods: facts.length === 0 ? [] : [{ input_sources: usageInputSources(signal, facts) }],
-      facts,
-    };
+    return directQuantityMethods(
+      standardSignal("uncached_input_tokens"),
+      pricingInputFacts(inputIndex, inputTextKeys(model, mechanism)),
+    );
   }
 
   const families = mechanism === "batch" ? ["batch"] : inferenceFamilies(model);

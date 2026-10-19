@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { parseIJson } from "./canonical-json.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -25,6 +26,29 @@ const batchDocument = "/azureopenai/batch";
 const embeddingDocument = "/azureopenai/embeddings";
 const mediaDocument = "/azure/foundry/openai/reference-preview-latest";
 const cacheDocument = "/azure/foundry/openai/how-to/prompt-caching";
+const realtimeDocument = "/azure/foundry-classic/openai/realtime-audio-reference-ga";
+const realtimeContracts = [
+  ...["text", "audio", "image"].flatMap((modality) => [
+    {
+      key: `realtime.input_${modality}_tokens`,
+      path: ["response", "usage", "input_token_details", `${modality}_tokens`],
+    },
+    {
+      key: `realtime.cached_${modality}_tokens`,
+      path: [
+        "response",
+        "usage",
+        "input_token_details",
+        "cached_tokens_details",
+        `${modality}_tokens`,
+      ],
+    },
+  ]),
+  ...["text", "audio"].map((modality) => ({
+    key: `realtime.output_${modality}_tokens`,
+    path: ["response", "usage", "output_token_details", `${modality}_tokens`],
+  })),
+];
 
 const responseContracts: readonly SchemaContract[] = [
   schemaContract(
@@ -243,8 +267,9 @@ export function parseAzureAccounting(input: Input): SourceParseResult {
     throw new Error("Wrong Azure accounting extractor");
 
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const documents = [bundle.index, ...bundle.documents];
   const bodies = new Map(
-    [bundle.index, ...bundle.documents].map((document) => [
+    documents.map((document) => [
       accountingDocument(new URL(document.url).pathname),
       document.body,
     ]),
@@ -294,12 +319,17 @@ export function parseAzureAccounting(input: Input): SourceParseResult {
       ]),
     );
 
+  const realtime = documents.filter(
+    ({ url }) => accountingDocument(new URL(url).pathname) === realtimeDocument,
+  );
+  facts.push(...realtimeInputs(realtime.length === 1 ? realtime[0]?.body : undefined, input));
   if (facts.length === 0)
     throw new Error("Azure accounting contract contained no recognized pricing inputs");
   const expected =
     responseContracts.length +
     responseContracts.filter(({ document }) => document === chatDocument).length +
-    1;
+    1 +
+    realtimeContracts.length;
   const pricingInputs = finalizePricingInputs(
     facts,
     expected,
@@ -319,6 +349,7 @@ function accountingDocument(pathname: string): string {
       embeddingDocument,
       mediaDocument,
       cacheDocument,
+      realtimeDocument,
     ].find((suffix) => pathname.endsWith(suffix)) ?? pathname
   );
 }
@@ -382,4 +413,90 @@ function pricingInput(sourceRef: string, contract: SchemaContract): SourcePricin
 
 function normalize(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
+}
+
+function pathValue(value: unknown, path: readonly string[]): unknown {
+  for (const key of path) {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !Object.hasOwn(value, key)
+    )
+      return;
+    value = Reflect.get(value, key);
+  }
+  return value;
+}
+
+function realtimeInputs(body: string | undefined, input: Input): SourcePricingInputFact[] {
+  let event: unknown;
+  if (body !== undefined) {
+    const $ = load(body);
+    const heading = $("h2,h3").filter(
+      (_i, node) =>
+        normalize($(node).text()) === "response.done" &&
+        $(node).closest("blockquote,pre,code,template").length === 0,
+    );
+    const section = heading.nextUntil("h2,h3");
+    const paragraphs = section.filter("p").clone();
+    paragraphs.find("blockquote,pre,code,template").remove();
+    const prose = normalize(paragraphs.text());
+    const tables = section.filter("table");
+    const rows = tables
+      .find("tbody tr")
+      .toArray()
+      .map((node) =>
+        $(node)
+          .find("td")
+          .map((_i, cell) => normalize($(cell).text()))
+          .get(),
+      );
+    const type = rows.filter(([name]) => name === "type");
+    const response = rows.filter(([name]) => name === "response");
+    const examples = section.filter("pre").find("code");
+    if (
+      heading.length === 1 &&
+      tables.length === 1 &&
+      type.length === 1 &&
+      type[0]?.[1] === "string" &&
+      type[0]?.[2] === "The event type must be response.done." &&
+      response.length === 1 &&
+      response[0]?.[1] === "object" &&
+      /done streaming/.test(prose) &&
+      /regardless of final state/.test(prose) &&
+      examples.length === 1
+    ) {
+      try {
+        const candidate = parseIJson(new TextEncoder().encode(examples.text()), 64 * 1024);
+        if (
+          pathValue(candidate, ["type"]) === "response.done" &&
+          pathValue(candidate, ["response", "object"]) === "realtime.response"
+        )
+          event = candidate;
+      } catch {
+        /* A broken reference example cannot establish numeric fields. */
+      }
+    }
+  }
+  return realtimeContracts.flatMap(({ key, path }) => {
+    const count = pathValue(event, path);
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+      input.onContractFinding?.(
+        contractExtensionEvidence([
+          `/documents${realtimeDocument}/response.done/${path.join("/")}`,
+        ]),
+      );
+      return [];
+    }
+    return [
+      {
+        key,
+        channel: "stream_event",
+        locator: { kind: "json_pointer", value: `/${path.join("/")}` },
+        availability: "terminal_only",
+        source_ref: input.source.id,
+      },
+    ];
+  });
 }

@@ -517,13 +517,14 @@ describe("Azure adapters", () => {
   it("extracts fact-local accounting inputs from the reviewed Azure API contracts", async () => {
     const value = manifest("azure");
     const source = azureAccountingSource();
-    const [chat, responses, batch, embeddings, media, cache] = await Promise.all([
+    const [chat, responses, batch, embeddings, media, cache, realtime] = await Promise.all([
       fixture("azure/accounting-chat.html"),
       fixture("azure/accounting-responses.html"),
       fixture("azure/accounting-batch.html"),
       fixture("azure/accounting-embeddings.html"),
       fixture("azure/accounting-media.html"),
       fixture("azure/accounting-cache.html"),
+      fixture("azure/accounting-realtime.html"),
     ]);
     const bundle = (responseBody = responses): string =>
       JSON.stringify({
@@ -549,6 +550,10 @@ describe("Azure adapters", () => {
             url: "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/prompt-caching",
             body: cache,
           },
+          {
+            url: "https://learn.microsoft.com/en-us/azure/foundry-classic/openai/realtime-audio-reference-ga",
+            body: realtime,
+          },
         ],
       });
     const reconciliation: PricingReconciliationItem[] = [];
@@ -561,7 +566,7 @@ describe("Azure adapters", () => {
     });
     expect(parsed.models).toEqual([]);
     const inputs = parsed.pricing_inputs ?? [];
-    expect(inputs).toHaveLength(30);
+    expect(inputs).toHaveLength(38);
     expect(inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -596,7 +601,7 @@ describe("Azure adapters", () => {
       {
         disposition: "normalized",
         reason_code: "pricing_input_contract_bound",
-        sample: "30/30 Azure pricing inputs",
+        sample: "38/38 Azure pricing inputs",
       },
     ]);
 
@@ -609,7 +614,7 @@ describe("Azure adapters", () => {
       catalogModels: [azurePricingModel("gpt-test")],
       onContractFinding: (finding) => findings.push(finding),
     });
-    expect(drifted.pricing_inputs).toHaveLength(29);
+    expect(drifted.pricing_inputs).toHaveLength(37);
     expect(drifted.pricing_inputs?.some(({ key }) => key === "responses.cached_input_tokens")).toBe(
       false,
     );
