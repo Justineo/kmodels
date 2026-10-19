@@ -3,6 +3,7 @@ import type { OpenAiPricingClaim } from "./openai-pricing-cells.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { multiplyDecimal, rawPricingFact, scaleDecimal, wholeTokenCount } from "./pricing.ts";
 import type { SourcePriceFact, SourceRawPricingFact } from "./pricing-source.ts";
+import { openAiTextQuantity } from "./openai-commercial-source.ts";
 
 function decimal(value: string | undefined): string | undefined {
   return value !== undefined && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)
@@ -153,15 +154,25 @@ export function applyOpenAiCardRules(
       first !== undefined && multipliers.every((value) => value === first) ? first : undefined;
     if (multiplier !== undefined)
       rates.push(
-        ...missing.map((rate) => ({
-          ...rate,
-          meter: "cache_write_text" as const,
-          price: multiplyDecimal(rate.price, multiplier),
-          derived: true,
-          derivation: multiplier + " × published uncached input rate",
-          raw_price: undefined,
-          raw_unit: "published cache-write multiplier",
-        })),
+        ...missing.map((rate) => {
+          const quantity = openAiTextQuantity("cache_write_text");
+          const binding = rate.charge_binding;
+          return {
+            ...rate,
+            ...(quantity !== undefined &&
+            binding?.signal.namespace === "provider" &&
+            binding.signal.provider_id === "openai" &&
+            binding.signal.value === "uncached_input_text_tokens"
+              ? { charge_binding: { ...binding, signal: quantity.signal } }
+              : {}),
+            meter: "cache_write_text" as const,
+            price: multiplyDecimal(rate.price, multiplier),
+            derived: true,
+            derivation: multiplier + " × published uncached input rate",
+            raw_price: undefined,
+            raw_unit: "published cache-write multiplier",
+          };
+        }),
       );
     for (const note of cacheNotes) {
       const covered = missing.length === 0 && explicitWrites.length > 0;

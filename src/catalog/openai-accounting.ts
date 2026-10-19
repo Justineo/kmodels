@@ -21,6 +21,15 @@ const openAiAccountingContracts: readonly OpenAiAccountingContract[] = [
   responseUsage("cached_input_tokens", ["input_tokens_details", "cached_tokens"]),
   responseUsage("cache_write_tokens", ["input_tokens_details", "cache_write_tokens"]),
   responseUsage("output_tokens", ["output_tokens"]),
+  ...["text", "audio"].map((modality): OpenAiAccountingContract => ({
+    key: `chat.output_${modality}_tokens`,
+    schema: "CreateChatCompletionResponse",
+    path: ["usage", "completion_tokens_details", `${modality}_tokens`],
+    type: "integer",
+    channel: "response",
+    locator: { kind: "json_pointer", value: `/usage/completion_tokens_details/${modality}_tokens` },
+    availability: "terminal_only",
+  })),
   responseField(
     "served_service_tier",
     "service_tier",

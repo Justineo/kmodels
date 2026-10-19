@@ -1,0 +1,240 @@
+# Native components from https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+# Captured 2026-10-19T11:50:48.428Z; full body SHA256 0f7c2aa03117464a5f4f84aa7681082f6f44b49cfac6858bf8e5342cbc798e32
+# Whole owned components preserved; unrelated sibling schemas omitted.
+components:
+  schemas:
+    CreateChatCompletionResponse:
+      type: object
+      description: Represents a chat completion response returned by model, based on
+        the provided input.
+      properties:
+        id:
+          type: string
+          description: A unique identifier for the chat completion.
+        choices:
+          type: array
+          description: A list of chat completion choices. Can be more than one if `n` is
+            greater than 1.
+          items:
+            type: object
+            required:
+              - finish_reason
+              - index
+              - message
+              - logprobs
+            properties:
+              finish_reason:
+                type: string
+                description: >
+                  The reason the model stopped generating tokens. This will be
+                  `stop` if the model hit a natural stop point or a provided
+                  stop sequence,
+
+                  `length` if the maximum number of tokens specified in the
+                  request was reached,
+
+                  `content_filter` if content was omitted due to a flag from our
+                  content filters,
+
+                  `tool_calls` if the model called a tool, or `function_call`
+                  (deprecated) if the model called a function.
+
+                  Read the [Model
+                  Spec](https://model-spec.openai.com/2025-12-18.html) for more.
+                enum:
+                  - stop
+                  - length
+                  - tool_calls
+                  - content_filter
+                  - function_call
+              index:
+                type: integer
+                description: The index of the choice in the list of choices.
+              message:
+                $ref: "#/components/schemas/ChatCompletionResponseMessage"
+              logprobs:
+                anyOf:
+                  - description: Log probability information for the choice.
+                    type: object
+                    properties:
+                      content:
+                        anyOf:
+                          - description: A list of message content tokens with log probability information.
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/ChatCompletionTokenLogprob"
+                          - type: "null"
+                      refusal:
+                        anyOf:
+                          - description: A list of message refusal tokens with log probability information.
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/ChatCompletionTokenLogprob"
+                          - type: "null"
+                    required:
+                      - content
+                      - refusal
+                  - type: "null"
+        created:
+          type: integer
+          format: unixtime
+          description: The Unix timestamp (in seconds) of when the chat completion was
+            created.
+        model:
+          type: string
+          description: The model used for the chat completion.
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        service_tier:
+          $ref: "#/components/schemas/ServiceTier"
+        system_fingerprint:
+          type: string
+          deprecated: true
+          description: >
+            This fingerprint represents the backend configuration that the model
+            runs with.
+
+
+            Can be used in conjunction with the `seed` request parameter to
+            understand when backend changes have been made that might impact
+            determinism.
+        object:
+          type: string
+          description: The object type, which is always `chat.completion`.
+          enum:
+            - chat.completion
+          x-stainless-const: true
+        usage:
+          $ref: "#/components/schemas/CompletionUsage"
+        moderation:
+          anyOf:
+            - $ref: "#/components/schemas/ChatCompletionModeration"
+              description: >
+                Moderation results for the request input and generated output,
+                if moderated
+
+                completions were requested.
+            - type: "null"
+      required:
+        - choices
+        - created
+        - id
+        - model
+        - object
+      x-oaiMeta:
+        name: The chat completion object
+        group: chat
+        example: >
+          {
+            "id": "chatcmpl-B9MHDbslfkBeAs8l4bebGdFOJ6PeG",
+            "object": "chat.completion",
+            "created": 1741570283,
+            "model": "gpt-6-astra",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The image shows a wooden boardwalk path running through a lush green field or meadow. The sky is bright blue with some scattered clouds, giving the scene a serene and peaceful atmosphere. Trees and shrubs are visible in the background.",
+                  "refusal": null,
+                  "annotations": []
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1117,
+              "completion_tokens": 46,
+              "total_tokens": 1163,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "audio_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0,
+                "audio_tokens": 0,
+                "accepted_prediction_tokens": 0,
+                "rejected_prediction_tokens": 0
+              }
+            },
+            "service_tier": "default",
+            "system_fingerprint": "fp_fc9f1d7035"
+          }
+    CompletionUsage:
+      type: object
+      description: Usage statistics for the completion request.
+      properties:
+        completion_tokens:
+          type: integer
+          default: 0
+          description: Number of tokens in the generated completion.
+        prompt_tokens:
+          type: integer
+          default: 0
+          description: Number of tokens in the prompt.
+        total_tokens:
+          type: integer
+          default: 0
+          description: Total number of tokens used in the request (prompt + completion).
+        completion_tokens_details:
+          type: object
+          description: Breakdown of tokens used in a completion.
+          properties:
+            accepted_prediction_tokens:
+              type: integer
+              default: 0
+              description: |
+                When using Predicted Outputs, the number of tokens in the
+                prediction that appeared in the completion.
+            audio_tokens:
+              type: integer
+              default: 0
+              description: Audio input tokens generated by the model.
+            reasoning_tokens:
+              type: integer
+              default: 0
+              description: Tokens generated by the model for reasoning.
+            text_tokens:
+              type: integer
+              description: Text output tokens generated by the model.
+            rejected_prediction_tokens:
+              type: integer
+              default: 0
+              description: >
+                When using Predicted Outputs, the number of tokens in the
+
+                prediction that did not appear in the completion. However, like
+
+                reasoning tokens, these tokens are still counted in the total
+
+                completion tokens for purposes of billing, output, and context
+                window
+
+                limits.
+        prompt_tokens_details:
+          type: object
+          description: Breakdown of tokens used in the prompt.
+          properties:
+            audio_tokens:
+              type: integer
+              default: 0
+              description: Audio input tokens present in the prompt.
+            cached_tokens:
+              type: integer
+              default: 0
+              description: Cached tokens present in the prompt.
+            text_tokens:
+              type: integer
+              description: Text input tokens present in the prompt.
+            image_tokens:
+              type: integer
+              description: Image input tokens present in the prompt.
+            cache_write_tokens:
+              type: integer
+              default: 0
+              description: The unadjusted number of prompt tokens written to cache.
+      required:
+        - prompt_tokens
+        - completion_tokens
+        - total_tokens

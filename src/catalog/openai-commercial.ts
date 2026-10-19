@@ -43,14 +43,12 @@ import {
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { preferOpenAiPricingPage } from "./openai-price-authority.ts";
 import type { ProviderModel } from "./schema.ts";
+import { openAiTextQuantity, openAiTokenUnit } from "./openai-commercial-source.ts";
 
 type PublishedModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "tasks" | "uid">;
 
 const eventUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "event" }, power: 1 }],
-};
-const tokenUnit: UnitExpression = {
-  factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
 };
 
 export function applyOpenAiCommercialTopology(
@@ -275,7 +273,14 @@ function modelChargeBinding(
   inputIndex: PricingInputIndex,
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
-  const spec = modelSignal(meter, variant.price.per, model, input, rateMeters);
+  const spec = modelSignal(
+    meter,
+    variant.price.per,
+    model,
+    input,
+    rateMeters,
+    variant.charge_binding?.signal,
+  );
   if (spec === undefined) return;
   const unownedOperation =
     supportsApi(model, "Realtime", "v1/realtime") &&
@@ -302,6 +307,7 @@ function modelChargeBinding(
     ...(quantity.methods.length === 0 ? {} : { quantity_methods: quantity.methods }),
     observations: uniqueObservations([
       rawEvidence(variant.observation),
+      ...(variant.charge_binding?.observations ?? []),
       ...quantity.facts.map(pricingInputObservation),
     ]),
   };
@@ -326,6 +332,8 @@ function modelInputs(
   index: PricingInputIndex,
 ): PricingInputIndex {
   const permits = (key: string) => {
+    if (key.startsWith("chat."))
+      return supportsApi(model, "Chat Completions", "v1/chat/completions");
     if (key.startsWith("realtime.")) return supportsApi(model, "Realtime", "v1/realtime");
     if (key.startsWith("responses.usage.") || key === "responses.served_service_tier")
       return supportsApi(model, "Responses", "v1/responses");
@@ -380,7 +388,7 @@ function providerModelSignal(
     kind: "usage_signal",
     key,
     definition,
-    unit: tokenUnit,
+    unit: openAiTokenUnit,
     resolution_phase: "outcome",
   });
   return { signal: { namespace: "provider", provider_id: "openai", value: key }, directKeys };
@@ -392,6 +400,7 @@ function modelSignal(
   model: PublishedModel | undefined,
   input: AtomicProviderPricing,
   rateMeters: readonly PriceMeter[],
+  sourceSignal?: UsageSignal,
 ): ModelSignalSpec | undefined {
   const standard = (
     value: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
@@ -434,6 +443,21 @@ function modelSignal(
         modality === "image" ? [] : [`realtime.output_${modality}_tokens`],
       );
     }
+  }
+  const textQuantity =
+    meter.namespace === "kmodels" && isStandardUnit(unit, "token")
+      ? openAiTextQuantity(meter.value)
+      : undefined;
+  if (
+    textQuantity !== undefined &&
+    sourceSignal !== undefined &&
+    canonicalJson(sourceSignal) === canonicalJson(textQuantity.signal)
+  ) {
+    addAtom(input, textQuantity.atom);
+    return {
+      signal: textQuantity.signal,
+      directKeys: meter.value === "output_text" ? ["chat.output_text_tokens"] : [],
+    };
   }
   if (meter.namespace === "provider") {
     if (meter.provider_id !== "openai" || !isStandardUnit(unit, "token")) return;
@@ -488,7 +512,9 @@ function modelSignal(
   if (meter.value === "input_audio" && isStandardUnit(unit, "token"))
     return provider("uncached_input_audio_tokens", "Billable uncached audio-input tokens", []);
   if (meter.value === "output_audio" && isStandardUnit(unit, "token"))
-    return provider("output_audio_tokens", "Billable audio-output tokens", []);
+    return provider("output_audio_tokens", "Billable audio-output tokens", [
+      "chat.output_audio_tokens",
+    ]);
   if (meter.value === "input_image" && isStandardUnit(unit, "token"))
     return provider("uncached_input_image_tokens", "Billable uncached image-input tokens", []);
   if (meter.value === "output_image" && isStandardUnit(unit, "token"))

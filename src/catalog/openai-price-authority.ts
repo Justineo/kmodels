@@ -34,6 +34,30 @@ function preferTerm(term: AtomicRateTerm): AtomicRateTerm {
       variants.push(variant);
       continue;
     }
+    // Equal quotes still use the primary page's billing basis. A card's broader token heading
+    // must not create competing quantities for the exact same published schedule.
+    const equal = authority.filter(
+      (value) =>
+        compatibleQuantity(variant, value) &&
+        canonicalJson(variant.applicability) === canonicalJson(value.applicability) &&
+        canonicalJson(variant.price) === canonicalJson(value.price),
+    );
+    const primary = equal[0];
+    if (
+      primary !== undefined &&
+      equal.every(
+        (value) =>
+          canonicalJson(value.charge_binding ?? null) ===
+          canonicalJson(primary.charge_binding ?? null),
+      )
+    ) {
+      const { charge_binding: _binding, ...rest } = variant;
+      variants.push({
+        ...rest,
+        ...(primary.charge_binding === undefined ? {} : { charge_binding: primary.charge_binding }),
+      });
+      continue;
+    }
     const overrides = authority.filter(
       (value) =>
         compatibleQuantity(variant, value) &&

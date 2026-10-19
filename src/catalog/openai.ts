@@ -340,6 +340,7 @@ function openAiPricing(
             ...(meter === undefined ? {} : { meter }),
             ...(unit === undefined || serviceTier === undefined ? {} : { unit }),
             rawUnit,
+            ...(group === "Text tokens" && unit === "million_tokens" ? { textTokens: true } : {}),
             conditions,
           },
           sourceId,

@@ -9,6 +9,7 @@ import {
 } from "../src/catalog/pricing-applicability.ts";
 import type { SourcePriceFact } from "../src/catalog/pricing-source.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
+import { openAiTextQuantity } from "../src/catalog/openai-commercial-source.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 const rate = (
@@ -112,6 +113,31 @@ function atTokens(tokens: string): PricingSelection[] {
 }
 
 describe("OpenAI scoped pricing authority", () => {
+  it("keeps one primary billing basis when an equal card quote has a narrower text heading", () => {
+    const quantity = openAiTextQuantity("input_text");
+    if (quantity === undefined) throw new Error("Missing text quantity");
+    const card = rate("2");
+    card.charge_binding = {
+      signal: quantity.signal,
+      aggregation: "request",
+      observations: [
+        {
+          source_ref: "openai-overview",
+          locator: { kind: "table", value: "Text tokens" },
+          raw: { label: "Text tokens" },
+        },
+      ],
+    };
+    const { term } = assemble([card], [rate("2")]);
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]?.charge_binding?.signal).toEqual({
+      namespace: "kmodels",
+      value: "uncached_input_tokens",
+    });
+    expect(
+      term.variants[0]?.observations.map((observation) => observation.source_ref).sort(),
+    ).toEqual(["openai-overview", "openai-pricing"]);
+  });
   it.each(["resolution", "region", "quality"] as const)(
     "preserves a disjoint %s fallback",
     (dimension) => {
