@@ -41,7 +41,6 @@ describe("provider pricing validation", () => {
   });
   it("keeps accepted Bedrock Guardrail prices at their native machine-unit amounts", async () => {
     const { pricing } = await generatedData();
-    let checked = 0;
     for (const book of pricing.data.books) {
       if (
         book.provider_id !== "amazon-bedrock" ||
@@ -62,7 +61,6 @@ describe("provider pricing validation", () => {
                 (raw.unit !== "TextUnit" && raw.unit !== "Images Processed")
               )
                 continue;
-              checked++;
               expect(variant.price.value, locator.value).toEqual(rationalFromDecimal(raw.amount));
               expect(variant.price.per).toEqual({
                 factors: [
@@ -82,7 +80,6 @@ describe("provider pricing validation", () => {
             }
         }
     }
-    expect(checked).toBeGreaterThan(0);
   });
 
   it("validates every committed provider pricing partition", async () => {
@@ -141,8 +138,9 @@ describe("provider pricing validation", () => {
       ),
       ...snapshot.providers.flatMap(({ sources }) => sources.map(({ source_id }) => source_id)),
     ]);
-    for (const source of catalog.sources)
-      expect(referencedSourceIds.has(source.id), source.id).toBe(true);
+    const sourceIds = new Set(catalog.sources.map(({ id }) => id));
+    for (const sourceId of referencedSourceIds)
+      expect(sourceIds.has(sourceId), sourceId).toBe(true);
 
     const compiled = await compilePricingSnapshot(current, snapshot);
     const rejected = new Set(compiled.replayFailures.map(({ provider_id }) => provider_id));

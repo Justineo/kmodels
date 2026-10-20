@@ -14,8 +14,10 @@ Status: implemented
   `tests/generated-data-context.ts`. They validate schemas, referential integrity, projection
   parity, security boundaries, and explicit resource budgets. They must not encode
   the current existence, price, status, or variant count of an otherwise volatile provider record.
-  Source-reference closure includes models, independent canonical pricing and accepted replay
-  dependencies; a service or accounting source need not be attached to a model row.
+  Source-reference closure requires every model, canonical pricing and accepted replay reference to
+  resolve to a catalog source. A collected service or accounting source need not have a consumer
+  in the current pair: compatible catalog observations may advance while pricing retains its
+  previous inputs. Source ownership and reviewed hosts are checked independently.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
 - Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source

@@ -87,6 +87,8 @@ join to a Mantle SKU.
 Runtime-only tariff readers check the card's positive endpoint before interpreting its tables.
 Mantle-only commercial and GovCloud tables, such as Grok 4.3, cannot trigger Runtime duplicate-table
 failure or acquire Runtime prices; independently parsed model facts and native SKUs survive.
+Unresolved card cells use dedicated `model_card_price:*` raw term keys. Their partial scopes cannot
+collide with ordinary numeric meter terms or reject independently bound native SKUs.
 The OpenAI Bedrock cards use separately owned Standard and Ultrafast tables. Each heading supplies
 its own exact short/long input-context bound; its model context window supplies none. Commercial
 rows are limited to the card's positive regional and endpoint availability. An explicit Geo CRIS
