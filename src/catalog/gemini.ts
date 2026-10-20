@@ -1323,7 +1323,7 @@ function optionalDocument(
 
 const geminiUsageModalities = ["TEXT", "IMAGE", "VIDEO", "AUDIO", "DOCUMENT"] as const;
 const expectedInteractionPricingInputs = geminiUsageModalities.length * 3 + 4 + 2;
-const videoPricingInputFields = ["durationSeconds", "resolution", "generateAudio"] as const;
+const videoPricingInputFields = ["durationSeconds", "resolution"] as const;
 
 function pricingInputContracts(): PricingInputContract[] {
   const usage = [
@@ -1786,12 +1786,7 @@ function videoPricingInputs(body: string, sourceRef: string): SourcePricingInput
   const codes = documentedCodes(body);
   return videoPricingInputFields.flatMap((field): SourcePricingInputFact[] => {
     if (!codes.has(field)) return [];
-    const value =
-      field === "durationSeconds"
-        ? "duration_seconds"
-        : field === "generateAudio"
-          ? "generate_audio"
-          : field;
+    const value = field === "durationSeconds" ? "duration_seconds" : field;
     return [
       {
         key: `video.request.${value}`,

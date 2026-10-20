@@ -74,9 +74,11 @@ bounded conflicts. A card does not silently override a native SKU. Kimi K3 curre
 Global and US cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
 These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Its
-Priority and Flex multipliers produce rates explicitly qualified by the Responses or Chat Completions
-operation. They are not broadened to Converse/Invoke, nor bound to those APIs' usage/selector paths.
-If the API restriction cannot be recovered, Standard rates survive and tier scope drift is reported.
+Priority and Flex multipliers use the API scope positively stated in that card's owned Service Tiers
+section. The older Responses/Chat Completions restriction and the current declaration supporting
+those APIs plus Converse/InvokeModel produce their respective exact operation selectors. Missing
+or contradictory declarations retain Standard rates and report tier scope drift. An API selector
+does not authorize borrowing another operation's usage counters.
 The same reader accepts cards without a cache-write column, including
 [Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
 Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is

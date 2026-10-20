@@ -1944,6 +1944,36 @@ describe("Mistral adapters", () => {
     ).toMatchObject({ status: "active", release_stage: "preview" });
   });
 
+  it("excludes weights-only definitions before validating hosted API facets", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await mistralCatalog(
+      {
+        medium:
+          'export default { slug: "timestral-1-0-209m", identifiers: { apiNames: [] }, capabilities: { input: ["timeseries"] } };',
+      },
+      (item) => reconciliation.push(item),
+      (finding) => findings.push(finding),
+    );
+    expect(models).toHaveLength(5);
+    expect(findings).toEqual([]);
+    expect(reconciliation).toContainEqual({
+      disposition: "excluded",
+      reason_code: "definition_without_api_name",
+      sample: "mistral-medium-3-5-26-04",
+    });
+    const invalid: SourceContractEvidence[] = [];
+    await mistralCatalog(
+      {
+        medium:
+          'export default { slug: "unrelated", identifiers: { apiNames: ["hosted-model"] } };',
+      },
+      undefined,
+      (finding) => invalid.push(finding),
+    );
+    expect(invalid.length).toBeGreaterThan(0);
+  });
+
   it("skips one malformed model definition without rejecting recognized siblings", async () => {
     const findings: SourceContractEvidence[] = [];
     const models = await mistralCatalog(

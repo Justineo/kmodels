@@ -2057,12 +2057,49 @@ function fallbackVoiceModels(
   });
 }
 
+function transcriptionModels(input: ParseInput, llms: string): ProviderModel[] {
+  const guide = section(llms, "/developers/model-capabilities/audio/speech-to-text");
+  const selection = markdownSection(guide, 2, "Model Selection");
+  if (selection === undefined) throw new Error("xAI transcription model selection was not found");
+  const prose = markdownProse(selection);
+  if (!prose.includes("| Model | Description |") || !guide.includes("https://api.x.ai/v1/stt"))
+    throw new Error("xAI transcription model selection contract changed");
+  const ids = [...prose.matchAll(/^\| `([^`]+)` \|[^\n]+\|\s*$/gm)].map((match) =>
+    modelIdSchema.parse(match[1]),
+  );
+  if (ids.length === 0 || new Set(ids).size !== ids.length)
+    throw new Error("xAI transcription model selection is empty or ambiguous");
+  return ids.map((id) =>
+    model(input, id, {
+      tasks: ["transcription"],
+      modalities: { input: ["audio"], output: ["text"] },
+      api_endpoints: [{ name: "Speech to text", path: "/v1/stt" }],
+      status: "active",
+    }),
+  );
+}
+
 function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
   const lifecycle = section(llms, "/developers/migration/may-15-retirement");
   const dateMatch = lifecycle.match(/Effective (May) (\d{1,2}), (\d{4}) at 12:00 PM PT/);
   if (dateMatch?.[2] === undefined || dateMatch[3] === undefined)
     throw new Error("xAI retirement date was not found");
-  const date = `${dateMatch[3]}-05-${dateMatch[2].padStart(2, "0")}`;
+  const date = z.iso.date().parse(`${dateMatch[3]}-05-${dateMatch[2].padStart(2, "0")}`);
+  const pacific = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const instants = [19, 20]
+    .map((hour) => `${date}T${hour}:00:00.000Z`)
+    .filter((value) => pacific.format(new Date(value)) === `${date} 12:00`);
+  const instant = instants[0];
+  if (instants.length !== 1 || instant === undefined)
+    throw new Error("xAI Pacific-noon activation is ambiguous");
   const intro = lifecycle.slice(0, lifecycle.indexOf("### How the redirects work"));
   const redirected = [...intro.matchAll(/^\* `([^`]+)`$/gm)].map((match) =>
     modelIdSchema.parse(match[1]),
@@ -2081,7 +2118,7 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
     !/automatically redirect/i.test(lifecycle)
   )
     throw new Error("xAI redirect model and replacement evidence changed");
-  const isLegacy = input.observedAt.slice(0, 10) >= date;
+  const isLegacy = Date.parse(input.observedAt) >= Date.parse(instant);
   const releases =
     reviewClaim(input, "lifecycle_release_notes_contract_drift", () =>
       releaseSections(section(llms, "/developers/release-notes")),
@@ -2089,7 +2126,7 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
   return redirected.map((id) =>
     model(input, id, {
       release_date: releaseDate(releases, id, id),
-      deprecated_at: date,
+      deprecated_at: instant,
       status: isLegacy ? "legacy" : "deprecated",
       replacement_model_ids: [replacements.get(id) ?? ""].filter(Boolean),
     }),
@@ -2239,7 +2276,11 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
   );
   const lifecycle =
     reviewClaim(input, "lifecycle_contract_drift", () => lifecycleModels(input, llms)) ?? [];
-  const combined = combine([...current.models, ...lifecycle]);
+  const transcription =
+    reviewClaim(input, "transcription_model_contract_drift", () =>
+      transcriptionModels(input, llms),
+    ) ?? [];
+  const combined = combine([...current.models, ...lifecycle, ...transcription]);
   const models =
     reviewClaim(input, "redirect_price_join_drift", () => redirectedModels(combined)) ?? combined;
   const pricingInputs = extractXaiPricingInputs(

@@ -365,9 +365,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
         );
       if (
         ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
-        (consumedContractDrift ||
-          incompleteFindings ||
-          (sourceAttempt.content_changed === true && findings.length > 0))
+        (consumedContractDrift || incompleteFindings)
       ) {
         const value = sourceCandidate(
           provider.provider_id,
@@ -415,9 +413,10 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       }
       if (
         changedSources.length === 0 &&
-        !attempt.sources.some(({ outcome }) =>
-          ["fetch_failed", "skipped_not_configured"].includes(outcome),
-        )
+        (attempt.sources.some(({ outcome }) => ["changed", "unchanged"].includes(outcome)) ||
+          !attempt.sources.some(({ outcome }) =>
+            ["fetch_failed", "skipped_not_configured"].includes(outcome),
+          ))
       ) {
         const value = providerCandidate(
           provider.provider_id,

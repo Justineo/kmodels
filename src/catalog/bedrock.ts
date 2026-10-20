@@ -817,22 +817,30 @@ function modelCardRates(
   const apiScoped = prose.match(
     /Priority is billed at (\d+(?:\.\d+)?)x the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?)x the Standard rate \([^)]*\); apply these multipliers to whichever Standard base rate \(Global or US CRIS\) applies to your request\./,
   );
+  const tierProse = serviceTierContent?.replace(/\s+/g, " ");
   const restrictedApis =
-    serviceTierContent
-      ?.replace(/\s+/g, " ")
-      .includes(
-        "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.",
-      ) === true;
-  const multipliers = apiScoped === null ? unrestricted : restrictedApis ? apiScoped : null;
-  if (apiScoped !== null && !restrictedApis)
+    tierProse?.includes(
+      "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.",
+    ) === true;
+  const allApis =
+    tierProse?.includes(
+      "supports service tiers on the Responses, Chat Completions, Converse, and `InvokeModel` APIs.",
+    ) === true;
+  let operations: (string | undefined)[] | undefined;
+  if (restrictedApis !== allApis)
+    operations = restrictedApis
+      ? ["responses", "chat_completions"]
+      : ["responses", "chat_completions", "converse", "invoke_model"];
+  else if (!restrictedApis && apiScoped === null) operations = [undefined];
+  const multipliers = operations === undefined ? null : (apiScoped ?? unrestricted);
+  if ((apiScoped !== null || unrestricted !== null) && operations === undefined)
     onPricingReconciliation?.({
       disposition: "unsupported",
       reason_code: "model_card_service_tier_scope_unresolved",
       sample: "Priority/Flex API applicability",
     });
-  if (multipliers?.[1] !== undefined && multipliers[2] !== undefined) {
+  if (multipliers?.[1] !== undefined && multipliers[2] !== undefined && operations !== undefined) {
     const standard = [...prices];
-    const operations = restrictedApis ? ["responses", "chat_completions"] : [undefined];
     for (const [tier, multiplier] of [
       ["priority", multipliers[1]],
       ["flex", multipliers[2]],

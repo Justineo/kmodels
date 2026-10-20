@@ -818,6 +818,29 @@ describe("OpenAI adapters", () => {
     });
   });
 
+  it("recognizes Decisions regional support without assigning text-generation pricing", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-data-residency");
+    if (source === undefined) throw new Error("Missing residency source");
+    const findings: SourceContractEvidence[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: (await fixture("openai/data-residency.md")).replace(
+        "| `Code Interpreter tool`",
+        "| `/v1/decisions` | Decisions | All listed regions | United States, Europe (EEA + Switzerland) | `gpt-6-luna` | None | Regional processing supported. |\n| `Code Interpreter tool`",
+      ),
+      onContractFinding: (finding) => findings.push(finding),
+    }).models;
+    expect(models.find(({ model_id }) => model_id === "gpt-6-luna")).toMatchObject({
+      tasks: ["classification"],
+      api_endpoints: [{ name: "Decisions", path: "v1/decisions" }],
+      price_facts: [],
+    });
+    expect(findings).toEqual([]);
+  });
+
   it("takes the earliest exact model release from changelog feature entries", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-changelog");

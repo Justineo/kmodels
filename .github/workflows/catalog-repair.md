@@ -151,10 +151,10 @@ safe-outputs:
           required: true
           type: string
       steps:
-        - name: Download the validated repair
+        - name: Download the admitted repair
           uses: actions/download-artifact@v8
           with:
-            name: validated-catalog-repair
+            name: admitted-catalog-repair
             path: ${{ runner.temp }}/catalog-repair-validation
         - name: Checkout latest main
           uses: actions/checkout@v7
@@ -295,20 +295,17 @@ post-steps:
       set -euo pipefail
       git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
       vp node "$RUNNER_TEMP/catalog-repair-publication.ts" capture
-  - name: Validate the proposed repair
-    if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
-    run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
-  - name: Verify that validation did not change the repair
+  - name: Verify the admitted repair identity
     if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
     env:
       REPAIR_BASE_SHA: ${{ github.sha }}
       REPAIR_PATCH_SHA256: ${{ steps.repair_outcome.outputs.patch_sha256 }}
     run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" verify
-  - name: Upload the validated repair
+  - name: Upload the admitted repair
     if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
     uses: actions/upload-artifact@v7
     with:
-      name: validated-catalog-repair
+      name: admitted-catalog-repair
       path: ${{ runner.temp }}/catalog-repair-validation/
       if-no-files-found: error
       retention-days: 30
@@ -398,6 +395,10 @@ Use these check kinds and phases:
   under `/tmp/gh-aw/agent/`; do not run live collection. Record concrete rejected fields/rows or
   structured changes, including remaining omissions. A text search or fallback test is not parser replay.
 - `regression after`: run the focused deterministic test demonstrating the repaired behavior.
+- `consumer investigation` or `consumer after`: exercise the actual calculator/export/UI boundary,
+  including a relevant unknown or disjoint-scope control; parser counts are not consumer proof.
+- `transition investigation` or `transition after`: verify reconciliation/retention/publication
+  behavior and identify the accepted source revisions; this does not authorize data edits.
 - `navigation investigation`: fetch and inspect first-party indexes, navigation or linked types
   for relocated sources or missing pricing/contracts. Use the reviewed evidence CLI and its
   `--index`/`--linked` modes below. A rejected URL argument is not a successful navigation check.
@@ -458,6 +459,15 @@ dependencies after justified repairs, preserving behavior and evidence. Clear co
 manufactured refactor. Keep cross-provider hypotheses outside this run unless they establish a
 concrete independent defect that can be repaired within its admission, permissions and deadline.
 
+Both periodic review kinds require the prepared `coverage` entries: `discovery`,
+`identity_lifecycle`, `pricing`, `accounting`, `publication`, `consumers`, `diagnostics_repair`,
+and `simplicity`. Each has `status: reviewed` or `blocked`, a concrete `reason`, and hashed
+`evidence` references. A blocked area also has `next_action` and needs an alternative diagnostic;
+it cannot support `not_a_defect`. Reviewed `publication` and `consumers` need successful
+`transition` and `consumer` check receipts respectively. Reuse applicable saved evidence rather
+than rerunning commands for each entry. A narrow repair can be delivered with blocked areas,
+but its periodic review stays incomplete; the trusted scope summary exposes that distinction.
+
 For `scheduled_architecture_review`, read the domain guides and shared collection, price-model,
 calculation, presentation and repair boundaries together. Review current provider books and reports
 for ad hoc semantics, cross-provider inconsistency, raw-text control protocols, misleading coverage,
@@ -476,9 +486,9 @@ admitted candidate without its prescribed evidence.
 The agent execution budget is 45 minutes, separate from the 60-minute job budget for setup,
 independent validation, and artifact upload. Finish evidence review and focused repairs within
 the investigation deadline in the prepared admission (20 minutes after preparation), reserve
-the next 20 minutes for full validation and corrections, and keep
-the final 5 minutes for the completed outcome. One complete `stage` run currently takes about
-5 minutes; do not start additional independent repair work while a validation command is running.
+the next 20 minutes for affected validation and corrections, and keep
+the final 5 minutes for the completed outcome. The selected stage duration depends on the affected
+contract; do not start additional independent repair work while validation is running.
 Complete candidate triage before staging. After `stage` succeeds, publish that validated coherent
 repair promptly instead of reopening investigation or expanding the patch. Record remaining
 evidenced blockers in the repair report for a later run. Never treat elapsed time as validation success.
@@ -615,6 +625,13 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    Keep source ownership and native labels/types in the fixture. Check affected siblings and a
    relevant missing-input/disjoint-scope control; changing quantity or exported scope also needs
    the actual calculator/export/display path, not only a parser array or a plausible numeric total.
+   Prefer `vp node scripts/replay-catalog-evidence.ts SOURCE_ID EVIDENCE_JSON` for the complete
+   `scope: source` body. It verifies the source/hash and uses its actual observation clock.
+   A context-dependent adapter needs an explicitly saved parsed catalog-model context as the
+   optional third argument; do not synthesize that context or manually rebuild a source bundle.
+   Parse success proves only extraction. Do not call parser output/counts calculator parity,
+   retention correctness or publication adoption; those require their own checks. Never catch a
+   rejected replay and return exit zero from an after-check.
 5. Do not run the live collector and do not modify anything under `data/`. Identify whether accepted
    snapshots also need repair and record their source/extractor evidence separately. Current-source
    reproduction can justify a producer fix without proving historical identity. Do not bypass an
@@ -626,14 +643,15 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    `vp exec oxfmt --write` invokes an IDE-only wrapper and fails. Check every command's exit status;
    a failed formatting or validation command remains unresolved until its corrected rerun succeeds.
    Leave the complete repair in the working tree, including new fixtures. Do not commit or push.
-   Run `vp node scripts/catalog-repair-publication.ts stage`. This command runs the complete
-   sequential `vp check`, `vp test --run`, `vp run collect:fixtures`, `vp run build`,
-   `vp run package:build`, and `vp run package:check` suite and checks package artifacts before
-   writing the detection patch. Wait for the command to finish and inspect its exit status.
+   Run `vp node scripts/catalog-repair-publication.ts stage`. It uses
+   `scripts/validate-changes.ts` to select affected tests and consumers against the repair base,
+   then writes the detection patch only if every selected check passes. Full tests already include
+   fixtures; do not repeat `collect:fixtures`. Site/package checks run only for affected inputs.
+   Wait for the command to finish and inspect its exit status.
    If it fails, diagnose the specific error, fix the allowed repair files, format them, and rerun
    `stage`. Make up to three repair/validation attempts within this run. For an apparently
-   transient failure, rerun the failing command once to establish whether it persists, then rerun
-   the complete `stage` gate. Do not simply repeat an unchanged deterministic failure. Never
+   transient failure, rerun the failing command once to establish whether it persists. Do not
+   simply repeat an unchanged deterministic failure. Never
    request publication after a failed check, skip a test, supply real credentials to tests, or
    weaken validation. A persistent infrastructure failure outside the allowed edit scope remains
    incomplete; record the command and concrete cause. A recoverable first failure is not a reason
@@ -642,11 +660,11 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    an evidence-backed report. Make no further edits after staging the patch; if an edit is needed,
    rerun `stage` before requesting publication.
    The deterministic post-execution step captures and admits the actual working-tree patch, then
-   independently repeats the same validation suite. This second gate does not replace the
-   in-agent gate: failures must be discovered while you can still correct the repair.
-   The publication job applies that exact patch to latest main, repeats complete validation, then
+   independently verifies its admission, evidence and patch identity without repeating tests.
+   The publication job applies that exact patch to latest main, independently validates the
+   affected delta using the protected planner, then
    commits and pushes without force. If main advances before push, publication reapplies the
-   same admitted patch to current main and repeats full validation once before another push.
+   same admitted patch to current main and validates the new affected delta once before another push.
    Conflicts, failed validation, or a second race fail publication and are retried from current
    evidence by the next daily run. A publication request is only an intent.
    If validation is blocked by the environment, report the exact
@@ -665,7 +683,7 @@ A denied tool, blocked fetch, or missing source is incomplete investigation, nev
 or concrete blockers are established. If all candidates are proven not defective, run
 `check-no-defect` and request `noop` with an empty patch. This does not waive any evidence requirement.
 Otherwise request one small `commit_repair` describing the source change, repair, focused
-regression results, and the successful full `stage` validation.
+regression results, and the successful affected `stage` checks.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
 it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing

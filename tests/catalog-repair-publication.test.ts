@@ -343,8 +343,10 @@ it("returns failed validation to the agent and stages only a successful unchange
   let validated = false;
   git.mockImplementation((command: string, args: string[]) => {
     if (command === "vp") {
-      if (args[0] === "test" && failTests) return { status: 1 };
-      if (args[1] === "package:check") validated = true;
+      if (args[1] === "scripts/validate-changes.ts") {
+        if (failTests) return { status: 1 };
+        validated = true;
+      }
       return success("");
     }
     if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
@@ -352,7 +354,7 @@ it("returns failed validation to the agent and stages only a successful unchange
       return success(changeDuringValidation && validated ? "changed patch" : patch);
     return success("");
   });
-  await expect(runRepairPublication("stage")).rejects.toThrow("vp test --run failed");
+  await expect(runRepairPublication("stage")).rejects.toThrow("Affected repair checks failed");
   expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
   expect(git.mock.calls.some(([command, args]) => command === "vp" && args[1] === "build")).toBe(
     false,
@@ -364,15 +366,11 @@ it("returns failed validation to the agent and stages only a successful unchange
   expect(
     git.mock.calls
       .filter(([command]) => command === "vp")
-      .slice(-6)
+      .slice(-2)
       .map(([, args]) => args),
   ).toEqual([
-    ["check"],
-    ["test", "--run"],
-    ["run", "collect:fixtures"],
-    ["run", "build"],
-    ["run", "package:build"],
-    ["run", "package:check"],
+    ["node", "scripts/catalog-repair-review.ts", "check-repair"],
+    ["node", "scripts/validate-changes.ts", "1".repeat(40)],
   ]);
 
   changeDuringValidation = true;
@@ -393,7 +391,7 @@ it("rejects incomplete investigation before staging or spending time on the full
 
 it("does not accept a killed or unavailable validation process", () => {
   git.mockReturnValueOnce({ status: null, signal: "SIGTERM" });
-  expect(validateRepair).toThrow("vp check failed (SIGTERM)");
+  expect(validateRepair).toThrow("Affected repair checks failed (SIGTERM)");
   git.mockReturnValueOnce({ error: new Error("vp unavailable") });
   expect(validateRepair).toThrow("vp unavailable");
 });

@@ -50,8 +50,10 @@ establish the response-file JSONL item types, and the Veo guide at `/gemini-api/
 documented video request selectors. `/video` is now an overview linking to Veo and Omni; it is not
 the parameter reference. Interactions fields are recognized from both inline code and the API
 reference's `.signature > .field-name` definitions, never from arbitrary prose or navigation.
-The current Veo parameter table establishes duration and resolution; an absent `generateAudio`
-definition remains an explicitly reported missing mapping. A missing or incompatible field removes only that exact
+The current Veo parameter table establishes duration and resolution. Gemini does not expose Vertex's
+`generateAudio` request switch; audio generation is a model feature, not a missing Gemini counter.
+The collector neither advertises that locator nor treats its absence as contract drift.
+A missing or incompatible supported field removes only that exact
 input mapping; rates, sibling mappings, and model identity still refresh.
 
 The authenticated `/v1beta/models` source is an optional account-scoped inventory overlay enabled

@@ -142,6 +142,28 @@ it("reviews every provider and global consistency once in each daily cycle witho
   expect(commands).not.toContain("vp node scripts/fetch-catalog-evidence.ts openai-api");
 });
 
+it.each(["fetch_failed", "skipped_not_configured"])(
+  "keeps unchanged successful-source validation failures reviewable despite an unrelated %s source",
+  (outcome) => {
+    const input = report([
+      provider({
+        attempt: {
+          outcome: "rejected",
+          sources: [
+            { source_id: "openai-models", outcome: "unchanged", content_changed: false },
+            { source_id: "openai-api", outcome },
+          ],
+          validation_issue: { code: "model_count_drop", message: "Model count dropped" },
+        },
+      }),
+    ]);
+    expect(catalogRepairCandidates(input)).toMatchObject([
+      { provider_id: "openai", scope: "provider", trigger: "provider_validation" },
+    ]);
+    expect(catalogRepairEvidenceIncomplete(input)).toBe(outcome === "fetch_failed");
+  },
+);
+
 it("prepares exact reviewed source commands instead of provider IDs", () => {
   const candidates = catalogRepairCandidates(
     report([
@@ -504,11 +526,14 @@ describe("catalog repair candidate selection", () => {
     ]);
   });
 
-  it.each(["unchanged", "changed"])("reviews consumed contract drift on %s bytes", (outcome) => {
+  it.each([
+    ["unchanged", false],
+    ["changed", true],
+  ] as const)("reviews consumed contract drift on %s bytes", (outcome, contentChanged) => {
     const source = {
       source_id: "openai-models",
       outcome,
-      content_changed: false,
+      content_changed: contentChanged,
       contract_findings: [
         {
           disposition: "accept_with_signal",
@@ -652,7 +677,7 @@ describe("catalog repair candidate selection", () => {
     }
   });
 
-  it("selects a changed contract extension and an authenticated parser failure", () => {
+  it("keeps an unused changed extension informational while admitting an authenticated parser failure", () => {
     expect(
       catalogRepairCandidates(
         report([
@@ -691,10 +716,6 @@ describe("catalog repair candidate selection", () => {
         source_id: "openai-api",
         source_access: "authenticated",
         trigger: "source_parse_failure",
-      }),
-      expect.objectContaining({
-        source_id: "openai-models",
-        trigger: "source_contract_change",
       }),
     ]);
   });

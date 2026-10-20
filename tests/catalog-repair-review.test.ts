@@ -6,6 +6,8 @@ import {
   readReviewEvidence,
   reviewHash,
   validateRepairReview,
+  periodicReviewAreas,
+  repairScopeSummary,
 } from "../scripts/catalog-repair-review.ts";
 
 function scenario() {
@@ -63,6 +65,83 @@ function scenario() {
   return { id, admission, files, check, blocked, repaired, report, read };
 }
 
+it("rejects a parser-only periodic completion and requires evidence at every reviewed boundary", async () => {
+  const s = scenario();
+  const admission = JSON.stringify({
+    schema_version: 1,
+    candidates: [{ id: s.id, trigger: "scheduled_provider_review" }],
+  });
+  const row = s.repaired();
+  const review = (candidate: unknown) =>
+    JSON.stringify({ admission_sha256: reviewHash(admission), candidates: [candidate] });
+  await expect(validateRepairReview(admission, review(row), s.read)).rejects.toThrow("record list");
+  const coverage = periodicReviewAreas.map((area) => ({
+    area,
+    status: "reviewed",
+    reason: "Verified the affected owner and relevant sibling",
+    evidence: row.evidence,
+  }));
+  await expect(
+    validateRepairReview(admission, review({ ...row, coverage: coverage.slice(1) }), s.read),
+  ).rejects.toThrow();
+  await expect(
+    validateRepairReview(admission, review({ ...row, coverage }), s.read),
+  ).rejects.toThrow("transition check");
+  const transitioned = { ...row, coverage, checks: [...row.checks, s.check("transition")] };
+  await expect(validateRepairReview(admission, review(transitioned), s.read)).rejects.toThrow(
+    "consumer check",
+  );
+  expect(
+    await validateRepairReview(
+      admission,
+      review({ ...transitioned, checks: [...transitioned.checks, s.check("consumer")] }),
+      s.read,
+    ),
+  ).toMatchObject({ repaired: 1 });
+});
+
+it("keeps a blocked periodic area visible while allowing an independently verified repair", async () => {
+  const s = scenario();
+  const admission = JSON.stringify({
+    schema_version: 1,
+    candidates: [{ id: s.id, trigger: "scheduled_provider_review" }],
+    deferred_candidates: [{ id: "azure/azure-retail-prices" }],
+  });
+  const row = s.repaired();
+  const coverage = periodicReviewAreas.map((area) => ({
+    area,
+    status: area === "publication" ? "blocked" : "reviewed",
+    reason: "Source interpretation verified; accepted-data adoption is not yet verified",
+    evidence: row.evidence,
+    next_action: "Inspect the accepted transition",
+  }));
+  const candidate = {
+    ...row,
+    coverage,
+    checks: [...row.checks, s.check("consumer"), s.check("alternative")],
+  };
+  const review = JSON.stringify({
+    admission_sha256: reviewHash(admission),
+    candidates: [candidate],
+  });
+  expect(
+    await validateRepairReview(admission, review, s.read, { requireRepair: true }),
+  ).toMatchObject({ repaired: 1 });
+  const summary = repairScopeSummary(admission, review);
+  expect(summary).toContain('"area": "publication"');
+  expect(summary).toContain('"azure/azure-retail-prices"');
+  await expect(
+    validateRepairReview(
+      admission,
+      JSON.stringify({
+        admission_sha256: reviewHash(admission),
+        candidates: [{ ...candidate, status: "not_a_defect" }],
+      }),
+      s.read,
+    ),
+  ).rejects.toThrow("healthy review");
+});
+
 it("rejects missing, duplicate, unknown, or stale candidate reviews", async () => {
   const s = scenario();
   await expect(validateRepairReview(s.admission, s.report([]), s.read)).rejects.toThrow(
@@ -78,6 +157,36 @@ it("rejects missing, duplicate, unknown, or stale candidate reviews", async () =
   await expect(validateRepairReview(s.admission + " ", s.report([row]), s.read)).rejects.toThrow(
     "this run",
   );
+});
+
+it("summarizes only validated periodic coverage and leaves interrupted areas incomplete", () => {
+  const admission = JSON.stringify({
+    candidates: [
+      { id: "source", trigger: "source_contract" },
+      { id: "periodic", trigger: "scheduled_provider_review" },
+    ],
+  });
+  const summary = repairScopeSummary(
+    admission,
+    JSON.stringify({
+      candidates: [
+        {
+          id: "source",
+          status: "blocked",
+          blocker: { next_action: "Inspect current units" },
+          coverage: "unused unvalidated extension",
+        },
+        {
+          id: "periodic",
+          status: "pending",
+          next_action: "Continue area review",
+          coverage: "not yet reviewed",
+        },
+      ],
+    }),
+  );
+  expect(summary).toContain('"review_complete": false');
+  expect(summary).not.toContain("blocked_areas");
 });
 
 it("permits an admitted no-op only when every candidate has verified no-defect evidence", async () => {

@@ -584,7 +584,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v39");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v40");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -931,6 +931,36 @@ describe("Bedrock adapters", () => {
     expect(
       unknownScope.find(({ model_id }) => model_id === "moonshotai.kimi-k3")?.price_facts,
     ).toHaveLength(8);
+    card.body = body.replace(
+      "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.",
+      "Kimi K3 supports service tiers on the Responses, Chat Completions, Converse, and `InvokeModel` APIs.",
+    );
+    const expanded = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+    }).models.find(({ model_id }) => model_id === "moonshotai.kimi-k3");
+    expect(
+      new Set(
+        expanded?.price_facts
+          .filter(({ conditions }) => conditions.service_tier === "priority")
+          .map(({ conditions }) => conditions.operation),
+      ),
+    ).toEqual(new Set(["responses", "chat_completions", "converse", "invoke_model"]));
+    card.body = card.body.replace(
+      "Kimi K3 supports service tiers on",
+      "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.\n\nKimi K3 supports service tiers on",
+    );
+    const contradictory = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+    }).models.find(({ model_id }) => model_id === "moonshotai.kimi-k3");
+    expect(
+      contradictory?.price_facts.filter(({ conditions }) => conditions.service_tier !== "standard"),
+    ).toEqual([]);
   });
 
   it("uses Grok's Runtime card for Geo and Global tiers without borrowing Mantle prices", async () => {

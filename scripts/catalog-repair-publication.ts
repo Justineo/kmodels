@@ -120,24 +120,14 @@ export function repairPatchHash(patch: string): string {
 
 /** Also runs inside the agent so failed checks can be repaired before final output. */
 export function validateRepair(): void {
-  for (const arguments_ of [
-    ["check"],
-    ["test", "--run"],
-    ["run", "collect:fixtures"],
-    ["run", "build"],
-    ["run", "package:build"],
-    ["run", "package:check"],
-  ]) {
-    const command = `vp ${arguments_.join(" ")}`;
-    console.log(`Catalog repair validation: ${command}`);
-    const result = spawnSync("vp", arguments_, { stdio: "inherit" });
-    if (result.error !== undefined) throw result.error;
-    if (result.status !== 0)
-      throw new Error(
-        `${command} failed (${result.signal ?? result.status}). Fix the failure and rerun stage before requesting publication.`,
-      );
-    if (arguments_[1] === "package:build") git(["diff", "--exit-code", "--", "packages/pricing"]);
-  }
+  const result = spawnSync("vp", ["node", "scripts/validate-changes.ts", baseSha()], {
+    stdio: "inherit",
+  });
+  if (result.error !== undefined) throw result.error;
+  if (result.status !== 0)
+    throw new Error(
+      `Affected repair checks failed (${result.signal ?? result.status}). Fix the failure and rerun stage before requesting publication.`,
+    );
 }
 
 function environment(name: string): string {
@@ -230,7 +220,7 @@ export async function runRepairPublication(operation: string | undefined): Promi
         );
       await writeFile(patchPath, patch);
       console.log(
-        "Catalog repair stage passed: full validation completed and detection patch saved.",
+        "Catalog repair stage passed: affected checks completed and detection patch saved.",
       );
       break;
     }

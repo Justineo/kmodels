@@ -111,12 +111,30 @@ after each test, including failures.
 
 ## Required validation
 
-Run `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build` before handoff. The
-scheduled refresh may run only the generated-data project because code-only behavior and reviewed
-fixtures are validated on pushes and pull requests.
+Use `vp node scripts/validate-changes.ts BASE_SHA` (or `HEAD` for uncommitted work). `--plan`
+prints the paths and selected commands. Ordinary CI compares against the push's previous commit
+or the PR base. The same planner is used inside repair and by its trusted latest-main publication.
 
-Automatic catalog repair runs these checks and the portable-package checks before admitting its
-candidate for publication, then repeats them against latest `main` after applying the exact patch.
+- Code changes run formatting/lint/type checks and Vitest's related unit tests. The test-boundary
+  guard is included; workflow changes also select the harness workflow checks.
+- Generated data or changes in its consumer dependency closure select the generated project.
+  Site and package checks run only when their source/resource dependency closures change;
+  generated catalog/projection assets also select the production build.
+- Filesystem-loaded fixtures cannot be fully traced by Vitest's import graph. Their change uses
+  the unit-project fallback, rather than pretending that an incomplete graph proves a narrower
+  scope. Focused tests remain preferable during editing when the actual readers are known.
+- Shared configuration, runtime, lockfile and test-setup changes select one complete test run,
+  the production build and package gates. An unavailable/initial comparison also selects this
+  complete gate. `collect:fixtures` is a convenience subset, never a second gate after full tests.
+- Documentation-only changes need formatting. Unchanged passing checks are not rerun while
+  awaiting delivery. Re-run a failed check after its cause changes, then validate the affected
+  result; a different checkout or trust boundary needs its own relevant proof.
+
+The scheduled refresh checks the generated project and production build because code-only
+behavior was already verified in CI. Repair stages run affected checks while the agent can correct
+failures. Trusted post-execution checking admits the exact patch and evidence without repeating
+the tests; publication independently checks the affected delta against latest `main` before commit.
+This keeps the independent trust boundary without three identical test/build passes.
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
 validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
 a successful test process alone does not authorize publishing a different patch.
@@ -124,11 +142,11 @@ Investigation-review tests separately exercise candidate coverage and saved evid
 missing/stale candidates, the Veo rejected-URL early stop, fallback-only conclusions, missing second
 passes, unsupported source-blocker labels, failed acquisition, before/after parser checks, evidence
 mutation, command-status disagreement, and interrupted pending work. Stage tests require investigation
-review before full validation, and workflow tests verify trusted post-execution checking and artifact
+review before validation, and workflow tests verify trusted post-execution checking and artifact
 retention. These are deterministic harness regressions; they do not measure whether the model chose
 or interpreted the right evidence. Review real agent traces to assess investigation quality.
 
-For calculator or package changes, also run `vp run package:build` and `vp run package:check`.
+Calculator/package inputs select `vp run package:build` and `vp run package:check`.
 Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
 checks pack an allowlisted artifact, reject frontend/collection/transport dependencies and real
 provider data, and execute the same vectors in Node and a browser-like ESM context with network
