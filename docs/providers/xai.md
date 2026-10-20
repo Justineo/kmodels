@@ -43,6 +43,11 @@ dynamic product documentation as a refresh dependency.
   lifecycle redirects, Batch and Priority terms, endpoint examples, Voice model IDs,
   and paid-tool semantics. `llms.txt` is only a link index and cannot replace the complete
   sectioned document; the missing pricing sections would discard provider-resource evidence.
+- Only release-note entries that announce availability (`is [now] available`, `is live`,
+  `is released`, `you can now use`, `generally available`, `early access`, `beta`) establish
+  `release_date`. Retirement, redirect, pricing, and modality-update entries for an already
+  callable model are revisions. A model documented only through such revisions reports no
+  `release_date`, and its alias snapshot date stays the `updated_date`.
   The Chat Completions, Responses, and Speech to Text accounting contracts are read from their
   reviewed `/developers/rest-api-reference/inference/chat-completions`,
   `/developers/rest-api-reference/inference/responses`, and

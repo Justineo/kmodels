@@ -1179,51 +1179,79 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
     throw new Error("Wrong DeepSeek updates extractor");
   const $ = load(input.body);
   const dates = new Map<string, Dates>();
+  const record = (
+    id: string,
+    date: string,
+    release: boolean,
+    releaseStage?: Dates["releaseStage"],
+  ) => {
+    const current = dates.get(id) ?? {};
+    const released = release ? earliest(current.release, date) : current.release;
+    const observedReleaseStage = current.releaseStage ?? releaseStage;
+    const updated: Dates = {
+      update: latest(current.update, date),
+      ...(observedReleaseStage === undefined ? {} : { releaseStage: observedReleaseStage }),
+    };
+    dates.set(id, released === undefined ? updated : { ...updated, release: released });
+  };
+  const releaseLanguage =
+    /(?:\bAPI now supports\b|\bis our new model\b|\bofficial release\b|\bnow available\b|正式发布|正式版|上线|现已支持|已支持)/i;
+  const compatibilityLanguage =
+    /(?:backward compatibility|corresponds? to|discontinued|legacy|旧版|兼容|指向|路由|停用|停止|下线)/i;
+  // A change-log entry announces a release in one paragraph and names the model IDs in another,
+  // so the release signal is section-wide while legacy/redirect aliases keep their clause.
+  const clause = (prose: string, id: string): string =>
+    prose.split(/(?<=[。；！？;!?])|(?<=\.)\s+/).find((part) => part.includes(id)) ?? prose;
+  // Both locales publish the same change log. The English page currently serves the docs
+  // homepage, so the reviewed source is the Chinese page with `时间:` headings.
   $("article h2").each((_index, heading) => {
     const label = htmlText($(heading).text());
-    if (!label.startsWith("Date:")) return;
-    const parsedDate = z.iso.date().safeParse(label.slice(5).trim());
+    const dated = /^(?:Date:|时间[:：])\s*(\S+)$/.exec(label);
+    if (dated?.[1] === undefined) return;
+    const parsedDate = z.iso.date().safeParse(dated[1]);
     if (!parsedDate.success) {
       catalogFinding(input, "update_date_invalid", label);
       return;
     }
     const date = parsedDate.data;
-    $(heading)
-      .nextUntil("h2")
+    const section = $(heading).nextUntil("h2");
+    const sectionRelease = releaseLanguage.test(
+      htmlText(section.clone().find("a").remove().end().text()),
+    );
+    section
       .filter("p,li")
-      .add($(heading).nextUntil("h2").find("p,li"))
+      .add(section.find("p,li"))
       .each((_paragraphIndex, paragraph) => {
         const prose = htmlText($(paragraph).text());
         if (
-          !/(?:model parameter|API model names?|model name|model upgraded|\bnew\b.*\bmodel\b|models? .* upgraded|corresponds? to)/i.test(
+          !/(?:model parameter|API model names?|model name|model upgraded|\bnew\b.*\bmodel\b|models? .* upgraded|corresponds? to|模型|model\s*(?:参数|名)|发布|上线|更新)/i.test(
             prose,
           )
         )
           return;
-        const release =
-          !/backward compatibility/i.test(prose) &&
-          /(?:\bAPI now supports\b|\bis our new model\b|\bofficial release\b|\bnow available\b)/i.test(
-            prose,
-          );
-        const releaseStage = /\bexperimental model\b/i.test(prose)
+        const releaseStage = /\bexperimental model\b|实验性(?:质)?(?:的)?模型/i.test(prose)
           ? "experimental"
-          : /\bpublic beta\b/i.test(prose)
+          : /\bpublic beta\b|公测|预览版/i.test(prose)
             ? "preview"
             : undefined;
+        const consider = (id: string) =>
+          record(
+            id,
+            date,
+            (sectionRelease || releaseLanguage.test(prose)) &&
+              !compatibilityLanguage.test(clause(prose, id)),
+            releaseStage,
+          );
         $(paragraph)
           .find("code")
           .each((_codeIndex, code) => {
             const id = updateModelId(htmlText($(code).text()));
-            if (id === undefined) return;
-            const current = dates.get(id) ?? {};
-            const released = release ? earliest(current.release, date) : current.release;
-            const observedReleaseStage = current.releaseStage ?? releaseStage;
-            const updated: Dates = {
-              update: latest(current.update, date),
-              ...(observedReleaseStage === undefined ? {} : { releaseStage: observedReleaseStage }),
-            };
-            dates.set(id, released === undefined ? updated : { ...updated, release: released });
+            if (id !== undefined) consider(id);
           });
+        for (const assignment of prose.matchAll(/model\s*=\s*['"]([^'"]+)['"]/g)) {
+          const id = assignment[1] === undefined ? undefined : exactId(assignment[1]);
+          if (id !== undefined) consider(id);
+        }
       });
   });
   const models = [...dates].map(([id, observed]): ProviderModel => ({

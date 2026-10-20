@@ -7251,6 +7251,31 @@ describe("xAI adapter", () => {
     );
   });
 
+  it("derives release dates from availability announcements rather than lifecycle notices", async () => {
+    const models = await xaiCatalog(
+      "xai/models.txt",
+      (body) => body,
+      (body) =>
+        body.replace(
+          "## July",
+          [
+            "## September",
+            "",
+            "### Grok Imagine API model quality retirement",
+            "",
+            "`grok-imagine-image-quality` will be retired on November 2, 2026. Requests will redirect",
+            "to `grok-imagine-image-2.0`.",
+            "",
+            "## July",
+          ].join("\n"),
+        ),
+    );
+    const quality = models.find(({ model_id }) => model_id === "grok-imagine-image-quality");
+    expect(quality?.release_date).toBeUndefined();
+    expect(quality?.updated_date).toBe("2026-04-03");
+    expect(models.find(({ model_id }) => model_id === "grok-4.5")?.release_date).toBe("2026-07");
+  });
+
   it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
     const result = await xaiCatalogResult();
     const { models } = result;
