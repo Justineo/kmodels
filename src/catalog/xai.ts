@@ -870,6 +870,11 @@ function releaseSections(notes: string): ReleaseSection[] {
   return dated;
 }
 
+// Only availability announcements establish a release date; retirement, redirect, pricing and
+// modality updates for an already callable model are revisions, not first availability.
+const announcesAvailability =
+  /\b(?:is|are)\s+(?:now\s+)?(?:available|live|released)\b|\byou can now use\b|\bnow available\b|\bgenerally available\b|\bearly access\b|\bbeta\b/i;
+
 function releaseDate(
   releases: ReleaseSection[],
   id: string,
@@ -886,6 +891,7 @@ function releaseDate(
       .split(/^### /m)
       .slice(1)
       .some((entry) => {
+        if (!announcesAvailability.test(entry)) return false;
         const heading = entry.split("\n", 1)[0]?.toLowerCase().replaceAll("-", " ") ?? "";
         const codes = new Set([...entry.matchAll(/`([^`]+)`/g)].map((match) => match[1]));
         return (

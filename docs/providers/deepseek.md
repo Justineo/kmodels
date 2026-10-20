@@ -38,7 +38,11 @@ The fetch bundle contains only companions that contribute a current catalog or r
   qualification and the server-tool billing transition. The English and Chinese price pages own
   amounts; the guide's repeated prices do not replace them.
 
-The [change log](https://api-docs.deepseek.com/updates) supplies exact-ID release and update dates.
+The [change log](https://api-docs.deepseek.com/zh-cn/updates) supplies exact-ID release and update
+dates. The English `/updates` route currently renders the docs homepage, so the reviewed source is
+the Chinese page; its `时间:` date headings, Chinese release wording and `model=` assignments are
+parsed with the same exact-ID rules. Entries that only retire, redirect or alias an existing model
+name never establish a release date.
 Optional authenticated `GET /models`, enabled with `DEEPSEEK_API_KEY`, may add account-scoped
 provenance to exact public matches but cannot create or remove global rows. Family-level marketing,
 the consumer app, open weights, status pages, and third-party catalogs are not identity or price

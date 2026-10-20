@@ -1786,6 +1786,36 @@ describe("DeepSeek adapters", () => {
     ).toBe(true);
   });
 
+  it("reads the Chinese change log with section-wide release evidence", async () => {
+    const models = await parsed("deepseek", "deepseek/updates-zh.html", "deepseek-updates");
+    expect(models.find(({ model_id }) => model_id === "deepseek-flash")).toMatchObject({
+      release_date: "2026-09-10",
+      updated_date: "2026-10-17",
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "deepseek-v4-flash-vision-exp"),
+    ).toMatchObject({
+      release_date: "2026-08-21",
+      updated_date: "2026-09-10",
+      release_stage: "experimental",
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
+      release_date: "2026-04-24",
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-flash")).toMatchObject({
+      release_date: "2026-04-24",
+      updated_date: "2026-09-10",
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
+      updated_date: "2026-04-24",
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-chat")).not.toHaveProperty(
+      "release_date",
+    );
+    expect(models.some(({ model_id }) => model_id.startsWith("/"))).toBe(false);
+    expect(models.some(({ model_id }) => model_id.includes("base_url"))).toBe(false);
+  });
+
   it("retains catalog, change-log, and authenticated API observations", async () => {
     const catalogSource = source("deepseek-catalog");
     const updateSource = source("deepseek-updates");
