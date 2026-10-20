@@ -29,7 +29,7 @@ const loadingMore = ref(false);
 const chunkError = ref<string>();
 const query = ref("");
 const visibleCount = ref(PAGE_SIZE);
-const offerLoads = ref<Record<string, { offer?: WebsitePricingOffer; error?: string }>>({});
+const offerLoads = ref(new Map<string, { offer?: WebsitePricingOffer; error?: string }>());
 const hasMoreChunks = computed(
   () => nextChunk.value < props.provider.pricing_coverage.detail_chunks,
 );
@@ -71,7 +71,7 @@ watch(
     chunkError.value = undefined;
     query.value = "";
     visibleCount.value = PAGE_SIZE;
-    offerLoads.value = {};
+    offerLoads.value.clear();
   },
   { immediate: true },
 );
@@ -98,28 +98,23 @@ watch(
 
 async function loadOffer(summary: WebsiteProviderPricingOffer): Promise<void> {
   const detail = props.detail;
-  const existing = offerLoads.value[summary.id];
-  if (detail === undefined || existing !== undefined) return;
-  offerLoads.value = { ...offerLoads.value, [summary.id]: {} };
+  if (detail === undefined || offerLoads.value.has(summary.id)) return;
+  offerLoads.value.set(summary.id, {});
   try {
     const offer = await loadWebsiteProviderPricingOffer(
       detail.data_version,
       detail.provider_id,
       summary,
     );
-    if (props.detail === detail)
-      offerLoads.value = { ...offerLoads.value, [summary.id]: { offer } };
+    if (props.detail === detail) offerLoads.value.set(summary.id, { offer });
   } catch {
     if (props.detail === detail)
-      offerLoads.value = {
-        ...offerLoads.value,
-        [summary.id]: { error: "Pricing is temporarily unavailable." },
-      };
+      offerLoads.value.set(summary.id, { error: "Pricing is temporarily unavailable." });
   }
 }
 
 function retryOffer(summary: WebsiteProviderPricingOffer): void {
-  delete offerLoads.value[summary.id];
+  offerLoads.value.delete(summary.id);
   void loadOffer(summary);
 }
 
@@ -181,9 +176,9 @@ async function fillVisibleEntries(): Promise<void> {
       <PricingServiceOffer
         v-for="entry in visibleEntries"
         :key="entry.summary.id"
-        :offer="offerLoads[entry.summary.id]?.offer ?? entry.summary"
+        :offer="offerLoads.get(entry.summary.id)?.offer ?? entry.summary"
         :resource-title="entry.resourceTitle"
-        :error="offerLoads[entry.summary.id]?.error"
+        :error="offerLoads.get(entry.summary.id)?.error"
         @retry="retryOffer(entry.summary)"
       />
       <p v-if="chunkError" class="service-status" role="alert">
