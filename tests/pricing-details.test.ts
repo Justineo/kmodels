@@ -5,6 +5,7 @@ import type {
   WebsitePriceApplicability,
   WebsitePricingDetail,
   WebsitePricingOffer,
+  WebsiteProvider,
 } from "../src/catalog/website-schema.ts";
 import { renderComponent } from "./render-component.ts";
 
@@ -228,6 +229,40 @@ describe("model pricing details", () => {
     expect(html.indexOf("$2")).toBeLessThan(html.indexOf("Web Search"));
     expect(html.indexOf("Web Search")).toBeLessThan(html.indexOf("$10"));
     expect(html).not.toContain("Optional");
+  });
+
+  it("uses one other-charges disclosure for both model and provider services", async () => {
+    const mechanism = offer([{ amount: "$2", scope: allContexts }]);
+    const service = offer([{ amount: "$10", scope: allContexts }], {
+      id: "c".repeat(64),
+      title: "Web Search",
+      group: "optional_service",
+    });
+    const provider = {
+      id: "test",
+      name: "Test",
+      pricing_coverage: {
+        representative_models: 0,
+        offer_models: 1,
+        unknown_models: 0,
+        not_applicable_models: 0,
+        standalone_resources: 2,
+        detail_chunks: 1,
+      },
+    } satisfies WebsiteProvider;
+    const html = await renderComponent(PricingDetails, {
+      model,
+      provider,
+      dataVersion: "a".repeat(64),
+      detail: { offers: [mechanism, service] },
+      loading: false,
+      error: undefined,
+    });
+    expect(html.match(/Other charges &amp; services/g)).toHaveLength(1);
+    expect(html.match(/class="additional-costs"/g)).toHaveLength(1);
+    expect(html).toContain("Web Search");
+    expect(html).not.toContain("Test services");
+    expect(html).not.toContain('class="provider-services"');
   });
 
   it("labels automatic components separately", async () => {

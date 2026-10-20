@@ -52,9 +52,9 @@ describe("model details", () => {
       html.indexOf("</header>"),
     );
     const content = html.slice(html.indexOf('<div class="details-content"'));
-    expect(content).toContain("Test Provider services");
-    expect(content).toContain("2 separately priced resources");
-    expect(content).toContain("does not establish compatibility with this model");
+    expect(content).toContain("Other charges &amp; services");
+    expect(content).not.toContain("Test Provider services");
+    expect(content).not.toContain("provider-services");
 
     expect(header).not.toContain("active");
     expect(header).not.toContain("regional catalog");

@@ -105,6 +105,11 @@ after each test, including failures.
   resource and offer loading, currency selection and current/upcoming rates in the browser. Check
   note grouping against complete offer coverage and partial or unknown scopes; keep canonical facts
   intact. A completion claim distinguishes data/calculator support from a reachable UI flow.
+- Unification requires a common interaction path as well as common rate objects. Exercise a model-linked
+  service and an independent provider service through the same other-charges disclosure and offer-card
+  renderer. Preserve exact model/mechanism scope while checking deduplication, bounded offer loading,
+  unknown pricing, future rates and individual retries. A separate resource browser that happens to
+  reuse the rate body does not satisfy this contract.
 - Require the subject to exist before asserting that one of its optional fields is absent; optional
   chaining must not allow a missing subject to satisfy the assertion accidentally.
 - Prefer explicit structural assertions over large snapshots. A failure should identify the model,
