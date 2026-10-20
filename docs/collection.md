@@ -99,9 +99,10 @@ Status: implemented
   copied into the website UI payload.
 - Provenance is additive. Every successful allowlisted source that exactly matches a published model remains in `source_refs`.
 - A successfully fetched new extractor version recomputes that source's observations. Rows and provenance omitted by the new interpretation are not retained as if the obsolete extractor had still observed them. A source whose maintained summary is known to be non-exhaustive may explicitly retain source-owned facts for previously observed rows that the unchanged extractor no longer sees; each such retention emits a source coverage warning. A row observed by the current source always uses the current interpretation.
-- An exact official release date is an immutable observation. If a later rolling or recomputed
-  source omits it, retain the previous date and its release-date source reference; a newly observed
-  exact date still replaces it and therefore supports an explicit upstream correction.
+- Preserve an official release date and its source reference across rolling omissions by the
+  unchanged extractor or unavailable sources. A successful new extractor version replaces that
+  source's earlier interpretation, including a withdrawn release date; independent unchanged
+  release-date evidence still survives. A newly observed exact date replaces the previous date.
 - Publish the latest successful record for each referenced source. If an optional source is skipped, retain its last validated record.
 - Retain sources used by published models, canonical pricing or captured compilation inputs.
   Independent service or accounting facts retain their source record without inventing a model

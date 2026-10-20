@@ -7274,6 +7274,22 @@ describe("xAI adapter", () => {
     expect(quality?.release_date).toBeUndefined();
     expect(quality?.updated_date).toBe("2026-04-03");
     expect(models.find(({ model_id }) => model_id === "grok-4.5")?.release_date).toBe("2026-07");
+    if (quality === undefined) throw new Error("Missing quality model");
+    const [published] = reconcileCatalog(
+      [quality],
+      [{ ...quality, release_date: "2026-09", first_seen_at: "2026-04-03T00:00:00.000Z" }],
+      {
+        catalog: new Set(["xai-models"]),
+        exhaustive: new Set(),
+        recomputed: new Set(["xai-models"]),
+        releaseDate: new Set(["xai-models"]),
+      },
+    );
+    expect(published?.release_date).toBeUndefined();
+    expect(published).toMatchObject({
+      first_seen_at: "2026-04-03T00:00:00.000Z",
+      updated_date: "2026-04-03",
+    });
   });
 
   it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
@@ -7939,7 +7955,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v22");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v23");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -16090,13 +16106,29 @@ describe("provider drift validation", () => {
       reconcileCatalog([current], [dated], {
         catalog: new Set(["official-api", "official-website"]),
         exhaustive: new Set(),
-        recomputed: new Set(["official-api"]),
+        recomputed: new Set(),
         releaseDate: new Set(["official-api"]),
       })[0],
     ).toMatchObject({
       release_date: "2026-01-10",
       source_refs: ["official-api", "official-website"],
     });
+    const [recomputed] = reconcileCatalog([current], [dated], {
+      catalog: new Set(["official-api", "official-website"]),
+      exhaustive: new Set(),
+      recomputed: new Set(["official-api"]),
+      releaseDate: new Set(["official-api"]),
+    });
+    expect(recomputed?.release_date).toBeUndefined();
+    expect(recomputed?.source_refs).toEqual(["official-website"]);
+    expect(
+      reconcileCatalog([current], [{ ...dated, source_refs: ["official-api", "release-notes"] }], {
+        catalog: new Set(["official-api", "official-website", "release-notes"]),
+        exhaustive: new Set(),
+        recomputed: new Set(["official-api"]),
+        releaseDate: new Set(["official-api", "release-notes"]),
+      })[0]?.release_date,
+    ).toBe("2026-01-10");
     expect(
       reconcileCatalog([{ ...current, release_date: "2026-01-11" }], [dated], {
         catalog: new Set(["official-api", "official-website"]),
