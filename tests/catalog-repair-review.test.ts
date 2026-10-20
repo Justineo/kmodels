@@ -23,8 +23,9 @@ function scenario() {
     return { path, sha256: reviewHash(body) };
   };
   let number = 0;
-  const check = (kind: string, phase = "investigation", exit = 0) => {
-    const command = `vp node /tmp/replay-${++number}.mjs`;
+  const check = (kind: string, phase = "investigation", exit = 0, commandOverride?: string) => {
+    number += 1;
+    const command = commandOverride ?? `vp node /tmp/replay-${number}.mjs`;
     const receipt = {
       schema_version: 1,
       kind,
@@ -64,6 +65,25 @@ function scenario() {
   };
   return { id, admission, files, check, blocked, repaired, report, read };
 }
+
+it.each(["consumer", "transition"])(
+  "rejects source-only commands labeled as %s proof",
+  async (kind) => {
+    const s = scenario();
+    const row = s.blocked();
+    row.checks.push(
+      s.check(
+        kind,
+        "investigation",
+        0,
+        "vp node scripts/replay-catalog-evidence.ts vertex-pricing /tmp/source.json",
+      ),
+    );
+    await expect(validateRepairReview(s.admission, s.report([row]), s.read)).rejects.toThrow(
+      "Source-only",
+    );
+  },
+);
 
 it("rejects a parser-only periodic completion and requires evidence at every reviewed boundary", async () => {
   const s = scenario();
