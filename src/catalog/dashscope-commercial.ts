@@ -602,8 +602,8 @@ const cacheWriteKeys = [
   "anthropic.cache_creation_input_tokens",
   "anthropic.stream.cache_creation_input_tokens",
 ];
-const batchInputKeys = ["batch.chat.input_tokens", "batch.responses.input_tokens"];
-const batchOutputKeys = ["batch.chat.output_tokens", "batch.responses.output_tokens"];
+const batchInputKeys = ["batch.chat.input_tokens"];
+const batchOutputKeys = ["batch.chat.output_tokens"];
 
 function uncachedInputMethods(inputIndex: PricingInputIndex): MethodsAndFacts {
   return mergeMethods([
@@ -815,8 +815,7 @@ function selectorKeys(
 ): string[] {
   if (dimension === "region") return ["request.resolved_region"];
   if (dimension === "context_tokens") return mechanism === "batch" ? batchInputKeys : syncInputKeys;
-  if (dimension === "resolution")
-    return ["image.effective_size", "video.effective_resolution", "video.effective_size"];
+  if (dimension === "resolution") return ["video.effective_resolution", "video.effective_size"];
   if (dimension !== "operation") return [];
   const values = categoricalValues(applicability, dimension).map(({ value }) => value);
   return [

@@ -77,7 +77,6 @@ const languageIdentitySchema = languageModelSchema.omit({
 });
 const imageModelSchema = z.object({
   ...commonModelShape,
-  imagePrice: integerString.optional(),
   resolutionPricing: z
     .array(
       z
@@ -1138,9 +1137,11 @@ function publicPricingReview(
   const rowsById = summaryRows(pricing);
   const modelRowsById = summaryRows(modelsPage);
   for (const value of images) {
-    const raw = value.imagePrice ?? value.resolutionPricing[0]?.pricePerImage;
-    const exact = raw === undefined ? undefined : scaleDecimal(raw, -10);
-    if (exact === undefined || rowsById.get(value.name) !== exact)
+    if (
+      !value.resolutionPricing.some(
+        ({ pricePerImage }) => rowsById.get(value.name) === scaleDecimal(pricePerImage, -10),
+      )
+    )
       warn(
         value.name,
         "imagine_summary_price_conflict",
@@ -1154,9 +1155,11 @@ function publicPricingReview(
       );
   }
   for (const value of videos) {
-    const raw = value.resolutionPricing[0]?.pricePerSecond;
-    const exact = raw === undefined ? undefined : scaleDecimal(raw, -10);
-    if (exact === undefined || rowsById.get(value.name) !== exact)
+    if (
+      !value.resolutionPricing.some(
+        ({ pricePerSecond }) => rowsById.get(value.name) === scaleDecimal(pricePerSecond, -10),
+      )
+    )
       warn(
         value.name,
         "imagine_summary_price_conflict",

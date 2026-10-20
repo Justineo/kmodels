@@ -72,6 +72,10 @@ and required catalog context. Use a reduced fixture that retains the relevant ow
 types and scope, and demonstrate the old failure when practical. Passing neighboring fixtures or
 fallback behavior is not reproduction. Assertions should test the claim and its independent siblings,
 not mirror implementation structure. Do not add tests that merely assert this guide's wording.
+Preserve existing negative controls during repair. Do not delete a failing case or weaken its
+assertion to make a patch pass; first establish whether current owned evidence actually changes
+that contract. Verify an acquisition locator's complete parent/leaf path, not just nearby matching
+tokens. A repair report and passing tests do not replace review of the proposed diff.
 
 Check whether a producer fix also affects accepted stored data; changing an extractor does not repair
 an older partition automatically. Use offline pricing compilation only with admitted inputs and

@@ -29,6 +29,9 @@ The generated-data file list is defined once in `tests/generated-data-tests.ts` 
 configuration and the test-boundary guard. Adding a test that reads durable generated state
 requires adding it to that list. The boundary guard follows test helpers, static imports,
 re-exports, dynamic imports, and URL paths recursively, including nested test directories.
+The generated project loads and decodes its shared accepted pair in a bounded setup hook. This
+keeps cold filesystem, decompression and schema-validation cost out of the first assertion's
+default five-second budget; assertion and production resource limits remain independent.
 
 For replay performance changes, compare the same committed data and pinned Node version with
 the same heap limit. Measure elapsed time and peak process RSS, including worker threads;
