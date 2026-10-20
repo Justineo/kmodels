@@ -33,6 +33,14 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 - `tests/`: behavior tests; `tests/fixtures/` contains reviewed provider inputs.
 - `data/`: durable generated catalog consumed by the static build.
 
+## Maintenance and review method
+
+- Define the affected contract, evidence and completion condition before expanding an investigation. Fix demonstrated correctness defects; select cleanup for concrete duplication or maintenance benefit. An unproved completeness concern is not an unlimited rewrite mandate.
+- For a comprehensive review, complete each provider's source-to-consumer path and review cross-provider consistency. Keep a finite closing list; reopen accepted work only for new concrete evidence or a regression. Progress means accepted scope and remaining work, not commit or test counts.
+- Trace claims from owned source evidence through extraction, canonical assembly, persistence and actual consumers. Parser success and retained publication do not establish semantic correctness or complete discovery. Use the [review method](docs/refresh-repair-audit.md#review-method) for catalog/pricing reviews and repairs.
+- Fix a rule at the layer that owns it. Keep independent commercial facts independent of arbitrary model rows, and converge provider mappings on the shared price model rather than adding provider-specific evaluator or UI policies. Validate only consumed contracts; unused SDK metadata or historical promotion pages should not become refresh dependencies.
+- Simplify the requested scope while preserving public contracts and evidence. Remove actual repetition, dead state and unnecessary dependencies; do not manufacture an abstraction or a refactor to produce a patch. A producer fix, historical-data repair and projection rebuild are distinct operations with different evidence and authorization requirements.
+
 ## Toolchain
 
 - Use `vp` as the command entry point. Run Vite+ built-ins directly, `vp run <script>` for `package.json` scripts or configured tasks, and `vp exec <command>` for local package binaries.
@@ -60,3 +68,8 @@ Before handoff, update affected guides and run all of:
 2. `vp test --run`
 3. `vp run collect:fixtures`
 4. `vp run build`
+
+For pricing calculation, export or package changes, also run `vp run package:build` and
+`vp run package:check`. Use focused regressions while editing; repeat complete validation after
+new changes or upstream integration that can affect the validated result, not while an unchanged
+passing result is merely awaiting delivery. Report actual checks and evidence limits.
