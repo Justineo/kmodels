@@ -106,6 +106,7 @@ tools:
   bash:
     - "git diff:*"
     - "git status:*"
+    - "jq:*"
     - "command:*"
     - "find:*"
     - "rg:*"
@@ -361,6 +362,13 @@ If the prepared toolchain is unavailable, report the failure with `report_incomp
 Read the prepared repair context directly; do not rerun `scripts/catalog-repair.ts` inside the
 sandbox. It writes runner-only summary/output paths that are not mounted in the agent container.
 
+Use the edit/create tools for repository changes and replay scripts. `/tmp/gh-aw/agent/` already
+exists. Shell permits the configured read commands, `jq`, and `vp`; it does not permit `mkdir`,
+`rm`, `cp`, or Git writes such as `checkout`. Revert your own edits with the edit tool. After a
+permission denial, use the documented tool rather than retrying blocked command variants;
+repeated denials terminate the runner. Run one diagnostic command at a time without shell chains
+or output pipes. Inspect a truncated tool result's saved output before drawing a conclusion.
+
 ## Verifiable investigation record
 
 Update `/tmp/gh-aw/agent/catalog-repair-review.json` as you investigate. Preparation initialized
@@ -381,6 +389,8 @@ It executes `vp VP_ARGUMENTS`, saves stdout/stderr/status in a command receipt, 
 object. Copy that object into `checks` and add `result` explaining the observed output and its
 implication for this candidate. A failing command still creates a receipt and returns failure;
 inspect its saved output and correct invocation errors. Do not author or edit receipts yourself.
+For example, use `probe regression after -- test --run tests/fetch.test.ts`; the wrapper already
+supplies `vp`, so do not add another `vp` after `--`.
 Use these check kinds and phases:
 
 - `parser before` and `parser after`: run the actual affected parser/assembly against the same
@@ -526,6 +536,11 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    is an available tool. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
+   For replay, read the saved `scope: source` artifact and pass its `body` unchanged to `parseSource`
+   with the configured manifest. It already contains the collector's normalization and complete
+   linked-document envelope. Raw `--index` HTML and individual companions are navigation/diagnostic
+   evidence; manually rebuilding a source bundle from them can introduce decoding errors that are
+   absent from collection. Never reinterpret that reconstruction failure as a provider defect.
    Copy the exact prepared evidence commands. `amazon-bedrock` is a provider ID;
    `bedrock-models` is its public source ID. Unknown-source, bad-argument, JSON/HTML decoding, and
    missing-local-file errors require correcting the command, not reporting unavailable credentials.

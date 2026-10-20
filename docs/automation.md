@@ -183,6 +183,11 @@ Status: implemented
   while repairing. After its final edit it formats explicit changed paths with `vp fmt` and runs
   `vp check`, resolving every failed command before staging its patch and requesting publication.
   The standalone `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting.
+  The shell allowlist includes `jq` for read-only JSON inspection. File changes and replay scripts
+  use the edit/create tools; the shared evidence directory is already prepared. Direct shell
+  `mkdir`/`rm`/`cp` and Git checkout/reset remain outside the allowlist. Correct a denied invocation instead of repeatedly
+  requesting variants: the runner terminates after numerous permission denials. Receipt commands
+  run individually, without output pipes or an extra `vp` prefix after the probe separator.
   `vp node scripts/catalog-repair-publication.ts stage` runs the complete sequential check, test,
   fixture, build, and portable-package suite before capturing the actual patch for framework
   threat detection. A failed command returns control to the agent, which diagnoses and corrects
