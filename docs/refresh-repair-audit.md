@@ -84,7 +84,9 @@ that contract. Verify an acquisition locator's complete parent/leaf path, not ju
 tokens. A repair report and passing tests do not replace review of the proposed diff.
 
 Check whether a producer fix also affects accepted stored data; changing an extractor does not repair
-an older partition automatically. Use offline pricing compilation only with admitted inputs and
+an older partition automatically. Replay the transition from the incorrect accepted fact through
+reconciliation and publication; clean parser output alone cannot prove the correction survives retention.
+Use offline pricing compilation only with admitted inputs and
 current extractor/revision guards, and projection preparation only when the canonical pair is already
 correct. Do not force an obsolete replay to make a source fix appear adopted. Changes to executable
 pricing or exported scope need proof in the actual built/packed consumer path as well as in-memory

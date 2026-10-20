@@ -149,7 +149,10 @@ export function reconcileCatalog(
     if (old === undefined) return model;
     const releaseDateRefs =
       model.release_date === undefined && old.release_date !== undefined
-        ? old.source_refs.filter((sourceId) => sources.releaseDate?.has(sourceId) === true)
+        ? old.source_refs.filter(
+            (sourceId) =>
+              sources.releaseDate?.has(sourceId) === true && !sources.recomputed.has(sourceId),
+          )
         : [];
     return {
       ...model,
