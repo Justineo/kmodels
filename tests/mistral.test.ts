@@ -740,12 +740,12 @@ describe("Mistral adapters", () => {
     expect(linkedDocumentUrls(body, source).map(({ href }) => href)).toContain(
       "https://docs.mistral.ai/models/mistral-large-4-0",
     );
-    const parse = (html: string) => {
+    const parse = (html: string, context = catalogModels) => {
       const findings: PricingReconciliationItem[] = [];
       const models = parseSource({
         provider: provider(value),
         source,
-        catalogModels,
+        catalogModels: context,
         observedAt,
         body: JSON.stringify({ index: { url: source.url, body: html }, documents: [] }),
         onPricingReconciliation: (item) => findings.push(item),
@@ -767,12 +767,66 @@ describe("Mistral adapters", () => {
     expect(ocr?.price_facts).toEqual([
       expect.objectContaining({ meter: "input_image", price: "4", unit: "thousand_pages" }),
     ]);
+    expect(ocr?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown_meter",
+        raw: expect.objectContaining({
+          label: "Cached input (/1000 pages)",
+          amount: "0.4",
+          denomination: "USD",
+        }),
+      }),
+    );
+    const partition = assembleParsedProviderPricing(
+      "mistral",
+      observedAt,
+      [{ source, models: result.models }],
+      result.models,
+    );
+    const raw = partition?.books
+      .filter(({ scope }) => scope.kind === "models" && scope.model_refs.includes(ocr?.uid ?? ""))
+      .flatMap(({ offers }) =>
+        offers.flatMap(({ terms }) =>
+          terms.flatMap((term) =>
+            term.kind === "raw"
+              ? term.variants.flatMap(({ observations }) => observations.map(({ raw }) => raw))
+              : [],
+          ),
+        ),
+      );
+    expect(raw).toContainEqual(
+      expect.objectContaining({
+        label: "Cached input (/1000 pages)",
+        amount: "0.4",
+        denomination: "USD",
+      }),
+    );
     expect(result.findings).toContainEqual(
       expect.objectContaining({
+        disposition: "raw",
         reason_code: "public_price_label_unsupported",
         sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
       }),
     );
+    const ambiguous = parse(body, [
+      ...catalogModels,
+      {
+        ...baseModel({
+          providerId: "mistral",
+          id: "mistral-ocr-4-1",
+          version: "alternate",
+          name: "OCR 4.1",
+          sourceId: "mistral-models",
+          observedAt,
+        }),
+        status: "active",
+      },
+    ]);
+    expect(
+      ambiguous.models
+        .flatMap(({ raw_price_facts }) => raw_price_facts)
+        .some(({ raw }) => raw.label === "Cached input (/1000 pages)"),
+    ).toBe(false);
     for (const bad of [
       body.replace("$0.68", "$oops"),
       body.replace("$0.68</ins>", "$0.68</ins><ins>$0.34</ins>"),
@@ -2136,7 +2190,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v8",
+        extractorVersion: "mistral-pricing-v9",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

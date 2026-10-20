@@ -42,7 +42,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   or otherwise unreadable sale markup is isolated to the affected cell and signaled.
   Header semantics remain part of the meter: a cached-input page cell cannot overwrite ordinary
   OCR pages. Cached non-token columns currently have no reviewed meter/quantity contract and are
-  signaled as unsupported, preserving ordinary page, minute, and character amounts.
+  signaled as unsupported. When one exact model owns the cell, its published amount, currency and
+  unit survive as raw evidence alongside ordinary page, minute, and character rates. An ambiguous
+  identity cannot assign that quote to multiple models. Raw cached prices do not borrow token-cache
+  counters, establish an uncached/total partition, or become a free offer when their amount is zero.
   The page's model tables
   alone do not establish current request-service rates or prove those rates were withdrawn.
   A missing service section requires first-party successor evidence before a source repair;

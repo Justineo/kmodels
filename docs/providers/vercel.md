@@ -76,6 +76,10 @@ with an unreviewed denominator stays raw in its native-search service book, pres
 token rates in the inference book. A missing or unfamiliar companion field is local; a contradictory
 model/route identity or duplicate route owner raises a structured constraint failure so a refresh
 cannot silently replace the accepted partition with misbound or incomplete route prices.
+The explicit `x_search_post` and `x_search_user` endpoint amounts likewise survive as raw quotes
+within their exact model/route scope. Their field names do not establish a denominator or authorize
+another seller's accounting contract. An unreadable value remains bounded raw evidence and cannot
+discard sibling rates.
 
 The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
 returned array is the completed-image quantity. Older examples that expose the same result as

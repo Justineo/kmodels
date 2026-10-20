@@ -1604,7 +1604,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v31",
+        extractorVersion: "vercel-catalog-v32",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -3019,7 +3019,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v8",
+        extractorVersion: "mistral-pricing-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],

@@ -3,7 +3,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { canonicalJson } from "./canonical-json.ts";
-import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import {
   parsedPriceFact,
   type ParsedProviderModel as ProviderModel,
@@ -237,6 +237,8 @@ const endpointPricingSchema = endpointTokenPriceSchema
     image: z.literal("0"),
     image_output: z.literal("0"),
     web_search: decimal,
+    x_search_post: z.unknown().optional(),
+    x_search_user: z.unknown().optional(),
     internal_reasoning: z.literal("0"),
     discount: z.literal(0),
     service_tiers: z.record(z.string().min(1), endpointServiceTierSchema).optional(),
@@ -811,23 +813,36 @@ function peakPricingFacts(
 }
 
 function endpointRawPrices(endpoint: Endpoint, sourceId: string): SourceRawPricingFact[] {
-  if (decimalsEqual(endpoint.pricing.web_search, "0")) return [];
-  return [
-    {
-      term_key: "endpoint_web_search",
-      impact: "base_price",
-      reason: "unknown_unit",
-      conditions: { route_provider: endpoint.provider_name },
-      source_ref: sourceId,
-      raw: {
-        amount: endpoint.pricing.web_search,
-        denomination: "USD",
-        unit: "endpoint.pricing.web_search",
-        meter: "web_search",
-        fragment: "The endpoint publishes a web_search amount without a reviewed denominator.",
-      },
-    },
-  ];
+  const values = [
+    [
+      "web_search",
+      decimalsEqual(endpoint.pricing.web_search, "0") ? undefined : endpoint.pricing.web_search,
+    ],
+    ["x_search_post", endpoint.pricing.x_search_post],
+    ["x_search_user", endpoint.pricing.x_search_user],
+  ] as const;
+  return values.flatMap(([meter, value]) => {
+    if (value === undefined) return [];
+    const amount = decimal.safeParse(value);
+    return [
+      rawPricingFact(
+        sourceId,
+        `endpoint_${meter}`,
+        "base_price",
+        amount.success ? "unknown_unit" : "unknown_amount",
+        {
+          ...(amount.success ? { amount: amount.data } : {}),
+          denomination: "USD",
+          unit: `endpoint.pricing.${meter}`,
+          meter,
+          fragment: amount.success
+            ? `The endpoint publishes a ${meter} amount without a reviewed denominator.`
+            : (JSON.stringify(value) ?? "null").slice(0, 1000),
+        },
+        { route_provider: endpoint.provider_name },
+      ),
+    ];
+  });
 }
 
 function rawPageRate(

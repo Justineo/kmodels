@@ -8819,7 +8819,13 @@ describe("Vercel adapter", () => {
           ...value,
           status: 1,
           quantization: { future: true },
-          pricing: { ...value.pricing, prompt: "0.000003", completion: "0.000004" },
+          pricing: {
+            ...value.pricing,
+            prompt: "0.000003",
+            completion: "0.000004",
+            x_search_post: "0.005",
+            x_search_user: "unreviewed",
+          },
         })),
       },
     });
@@ -8840,6 +8846,23 @@ describe("Vercel adapter", () => {
       }),
     );
     expect(preserved?.routes).toEqual([]);
+    expect(preserved?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown_unit",
+        conditions: { route_provider: "acme" },
+        raw: expect.objectContaining({
+          meter: "x_search_post",
+          amount: "0.005",
+          denomination: "USD",
+        }),
+      }),
+    );
+    expect(preserved?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown_amount",
+        raw: expect.objectContaining({ meter: "x_search_user", fragment: '"unreviewed"' }),
+      }),
+    );
     expect(healthFindings).toEqual([]);
     expect(
       dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "unbound"]),

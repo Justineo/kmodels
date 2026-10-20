@@ -90,6 +90,10 @@ Preserve existing negative controls during repair. Do not delete a failing case 
 assertion to make a patch pass; first establish whether current owned evidence actually changes
 that contract. Verify an acquisition locator's complete parent/leaf path, not just nearby matching
 tokens. A repair report and passing tests do not replace review of the proposed diff.
+For an in-scope quote with an exact model or route owner, an unreviewed meter or unit must preserve
+the known amount, currency and native label as raw evidence. A diagnostic alone does not conserve
+that quote. Unknown identity cannot assign it to a guessed model, and raw amounts do not authorize
+executable counters, conversions or free-offer states.
 
 Check whether a producer fix also affects accepted stored data; changing an extractor does not repair
 an older partition automatically. Replay the transition from the incorrect accepted fact through
