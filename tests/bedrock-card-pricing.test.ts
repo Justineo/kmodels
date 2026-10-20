@@ -360,6 +360,18 @@ describe("native Bedrock card tariffs", () => {
       ({ conditions }) => conditions.service_tier === "ultrafast",
     );
     expect(raw).toHaveLength(24);
+    const partition = assembleParsedProviderPricing(
+      "amazon-bedrock",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    expect(partition).toBeDefined();
+    const terms = partition?.books.flatMap(({ offers }) => offers.flatMap(({ terms }) => terms));
+    expect(terms).toContainEqual(expect.objectContaining({ kind: "rate", term_key: "input_text" }));
+    expect(terms).toContainEqual(
+      expect.objectContaining({ kind: "raw", term_key: "model_card_price:input_text" }),
+    );
     expect(
       raw.every(
         ({ reason, raw }) =>

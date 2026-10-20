@@ -1049,7 +1049,7 @@ function openAiModelCardPricing(
           rawFacts.push(
             rawPricingFact(
               sourceId,
-              meter ?? "model_card_price",
+              `model_card_price:${meter ?? "unknown_meter"}`,
               "base_price",
               reason ?? "unsupported_structure",
               {
