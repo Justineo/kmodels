@@ -1874,15 +1874,15 @@ const openAiMonths = new Map(
     "December",
   ].map((month, index) => [month, index + 1]),
 );
+const openAiAbbreviatedMonths = new Map(
+  [...openAiMonths].map(([month, number]) => [month.slice(0, 3), number]),
+);
 
 export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
   if (input.catalogModels === undefined)
     throw new Error("OpenAI changelog requires the collected catalog");
   const known = new Map(input.catalogModels.map((model) => [model.model_id, model]));
   const releases = new Map<string, string>();
-  const abbreviatedMonths = new Map(
-    [...openAiMonths].map(([month, number]) => [month.slice(0, 3), number]),
-  );
   let year: string | undefined;
   let month: number | undefined;
   let date: string | undefined;
@@ -1900,7 +1900,7 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
     const dayHeading = line.match(/^### ([A-Z][a-z]{2}) ([1-9]|[12]\d|3[01])$/);
     if (line.startsWith("### ")) {
       const headingMonth =
-        dayHeading?.[1] === undefined ? undefined : abbreviatedMonths.get(dayHeading[1]);
+        dayHeading?.[1] === undefined ? undefined : openAiAbbreviatedMonths.get(dayHeading[1]);
       const candidate =
         headingMonth === undefined ||
         headingMonth !== month ||
@@ -1953,7 +1953,7 @@ function openAiShutdownDate(value: string): string | undefined {
   const match = normalized.match(/^([A-Z][a-z]+) ([1-9]|[12]\d|3[01]), (\d{4})$/);
   if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined)
     return undefined;
-  const month = openAiMonths.get(match[1]);
+  const month = openAiMonths.get(match[1]) ?? openAiAbbreviatedMonths.get(match[1]);
   if (month === undefined) return undefined;
   const date = `${match[3]}-${String(month).padStart(2, "0")}-${match[2].padStart(2, "0")}`;
   return z.iso.date().safeParse(date).success ? date : undefined;
@@ -1976,6 +1976,7 @@ export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
     const modelIndex = headers.findIndex(
       (header) =>
         header === "model / system" ||
+        header === "model family / snapshot" ||
         header === "deprecated model" ||
         header === "legacy model" ||
         header === "model snapshot" ||

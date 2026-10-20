@@ -347,6 +347,8 @@ describe("catalog repair candidate selection", () => {
     ]);
     expect(catalogRepairCandidates(input)).toEqual([]);
     expect(catalogRepairEvidenceIncomplete(input)).toBe(true);
+    expect(catalogRepairEvidenceIncomplete(input, new Set(["openai"]))).toBe(true);
+    expect(catalogRepairEvidenceIncomplete(input, new Set(["xai"]))).toBe(false);
     expect(
       catalogRepairEvidenceIncomplete(
         report([

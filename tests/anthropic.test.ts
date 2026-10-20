@@ -211,6 +211,92 @@ async function anthropicContextPricing(transform?: (body: string) => string) {
 }
 
 describe("Anthropic adapters", () => {
+  it("reads the owned Message response union without borrowing stream or example usage", async () => {
+    const body = await fixture("anthropic/messages-response-union.md");
+    const original = await anthropicSource();
+    const parsed = await anthropicSource({
+      overrides: { "/docs/en/api/messages/create.md": body },
+    });
+    expect(parsed.pricing_inputs).toEqual(original.pricing_inputs);
+    for (const changed of [
+      body.replace("`Message object`", "`Other object`"),
+      body.replace('`type: "message"`', '`type: "message_delta"`'),
+      body.replace("`Message object`", "`Message object`\n\n- `Message object`"),
+      body.replace("## Returns", "## Request examples"),
+      body + "\n## Returns\nUnavailable.",
+    ]) {
+      const invalid = await anthropicSource({
+        overrides: { "/docs/en/api/messages/create.md": changed },
+      });
+      expect(
+        invalid.pricing_inputs?.some(
+          ({ key, locator }) =>
+            key === "messages.usage.uncached_input_tokens" && locator.kind === "json_pointer",
+        ),
+      ).toBe(false);
+      expect(invalid.models[0]?.price_facts).toEqual(parsed.models[0]?.price_facts);
+    }
+  });
+
+  it("accepts Fast feature metadata and the current tool-overhead columns", async () => {
+    const fast =
+      "---\nfeatureMetadata:\n  supportedModels:\n    - claude-opus-4-8\n    - claude-opus-4-7\n---\n" +
+      (await fixture("anthropic/fast-mode.md")).replace(/^- Claude .+\n/gm, "");
+    const pricing = (await fixture("anthropic/pricing.md"))
+      .replace(
+        "Model           | Tool choice | Tool use system prompt token count",
+        "Model | Tool use system prompt tokens: auto, none | Tool use system prompt tokens: any, tool",
+      )
+      .replaceAll("| auto        |", "| 313 tokens | ");
+    const items: PricingReconciliationItem[] = [];
+    await anthropicSource({
+      overrides: {
+        "/docs/en/build-with-claude/fast-mode.md": fast,
+        "/docs/en/about-claude/pricing.md": pricing,
+      },
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    expect(
+      items.filter(({ reason_code }) =>
+        ["fast_compatibility_conflict", "tool_overhead_table_drift"].includes(reason_code),
+      ),
+    ).toEqual([]);
+  });
+
+  it("binds a retired display name only through its dated explicit ID announcement", async () => {
+    const id = "claude-3-5-haiku-20241022";
+    const lifecycle =
+      (await fixture("anthropic/lifecycle.md")).replace(
+        "Not sooner than June 9, 2027",
+        "To be announced",
+      ) +
+      `\n### 2025-12-19: Claude Haiku 3.5 model\n\n| Retirement date | Deprecated model | Recommended replacement |\n| --- | --- | --- |\n| February 19, 2026 | ${id} | claude-opus-4-8 |\n`;
+    const announcement = `- We've retired the Claude Haiku 3.5 model (\`${id}\`).`;
+    const releases = await fixture("anthropic/release-notes.md");
+    const findings: SourceContractEvidence[] = [];
+    for (const [note, named] of [
+      ["### February 19, 2026\n\n" + announcement, true],
+      ["## Examples\n\n" + announcement, false],
+      ["### February 19, 2026\n\n> " + announcement, false],
+      ["### February 19, 2026\n\n```text\n" + announcement + "\n```", false],
+    ] as const) {
+      const parsed = await anthropicSource({
+        overrides: {
+          "/docs/en/about-claude/model-deprecations.md": lifecycle,
+          "/docs/en/release-notes/overview.md": releases + "\n" + note,
+        },
+        onContractFinding: (finding) => findings.push(finding),
+      });
+      const haiku = parsed.models.find(({ model_id }) => model_id === id);
+      expect(haiku).toBeDefined();
+      expect(haiku?.name).toBe(named ? "Claude Haiku 3.5" : id);
+      expect(haiku?.aliases).toEqual([]);
+    }
+    expect(contractPaths(findings)).not.toContain(
+      "/anthropic/lifecycle_date_invalid/retirement date: To be announced",
+    );
+  });
+
   it.each([false, true])(
     "keeps public synchronous scope independent of Batch peer quotes (%s)",
     async (withBatch) => {

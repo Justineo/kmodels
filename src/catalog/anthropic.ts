@@ -190,7 +190,8 @@ function limitObserver(input: Input): ObserveLimit {
 }
 
 function tableDate(value: string, field: string, input: Input): string | undefined {
-  if (value === "N/A" || value.startsWith("Not sooner than ")) return undefined;
+  if (value === "N/A" || value === "To be announced" || value.startsWith("Not sooner than "))
+    return undefined;
   const parsed = date(value);
   if (parsed === undefined) {
     contractFinding(input, "lifecycle_date_invalid", `${field}: ${value}`);
@@ -351,12 +352,24 @@ function overview(
 }
 
 function releaseNotes(body: string, input: Input, models: Map<string, ProviderModel>): void {
+  const names = new Map<string, Set<string>>();
   let currentDate: string | undefined;
   let launches = 0;
   const conflicts = new Set<string>();
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of markdownProse(body).split(/\r?\n/)) {
     const heading = line.match(/^### (.+)$/)?.[1];
     if (/^#{1,3} /.test(line)) currentDate = heading === undefined ? undefined : date(heading);
+    if (currentDate !== undefined && /^[*-] We've retired the /.test(line))
+      for (const match of line.matchAll(
+        /\b(Claude [A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)* \d+(?:\.\d+)?)(?: model)? \(`(claude-[a-z0-9._:/-]+)`\)/g,
+      )) {
+        const name = match[1];
+        const id = match[2];
+        if (name === undefined || id === undefined || !models.has(id)) continue;
+        const observed = names.get(id) ?? new Set<string>();
+        observed.add(name);
+        names.set(id, observed);
+      }
     const subject = line.match(/^[*-] We've launched (.+)$/)?.[1];
     if (subject === undefined) continue;
     const opening = text(subject.split(",", 1)[0] ?? "");
@@ -385,6 +398,11 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
       } else item.release_date = currentDate;
       launches += 1;
     }
+  }
+  for (const [id, observed] of names) {
+    const item = models.get(id);
+    const [name] = observed;
+    if (item?.name === id && observed.size === 1 && name !== undefined) item.name = name;
   }
   if (launches === 0) contractFinding(input, "release_notes_drift", "model launches");
 }
@@ -1135,7 +1153,10 @@ function validateFastMode(body: string, expectedIds: Set<string>): void {
     throw new Error("Anthropic fast-mode request contract drifted");
   const modelPattern = /^\s*[*-] Claude [^(]+\(`?(claude-[a-z0-9._:/-]+)`?\)$/gm;
   const supported = new Set(
-    [...body.matchAll(modelPattern)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])),
+    listedModelIds(body) ??
+      [...body.matchAll(modelPattern)].flatMap((match) =>
+        match[1] === undefined ? [] : [match[1]],
+      ),
   );
   if (
     supported.size === 0 ||
@@ -1319,7 +1340,12 @@ function pricing(
     }
   }
 
-  const tools = parsedTables.find((table) => table.headers.includes("Tool choice"));
+  const tools = parsedTables.find(
+    (table) =>
+      table.headers.join("|") === "Model|Tool choice|Tool use system prompt token count" ||
+      table.headers.join("|") ===
+        "Model|Tool use system prompt tokens: auto, none|Tool use system prompt tokens: any, tool",
+  );
   if (tools === undefined)
     input.onPricingReconciliation?.({
       disposition: "unresolved",

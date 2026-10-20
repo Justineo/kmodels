@@ -24,6 +24,10 @@ Status: implemented
   every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
   later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
   This bounds investigation without allowing the agent to drop difficult candidates after admission.
+  Source-acquisition completeness uses the same admitted-provider scope. A failure elsewhere stays
+  unresolved in the full report without expanding this batch into a whole-catalog investigation;
+  the architecture-review slot checks acquisition globally. Refresh execution evidence remains
+  a workflow-wide requirement.
   A provider simply not publishing a price is never a repair candidate,
   but a parser that rejects the whole catalog because one model lacks a price is repairable.
   Repair preserves valid sibling models and keeps an unobserved price unknown. A `not_published`
