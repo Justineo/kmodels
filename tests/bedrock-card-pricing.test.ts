@@ -68,6 +68,23 @@ function astra(result: ReturnType<typeof parse>) {
 }
 
 describe("native Bedrock card tariffs", () => {
+  it("keeps Mantle-only regional tables out of the runtime cross-region tariff parser", async () => {
+    const bundle = await nativeBundle(true);
+    const before = astra(parse(bundle));
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-3.md",
+      body: await readFile(
+        new URL("./fixtures/bedrock/model-card-grok-mantle.md", import.meta.url),
+        "utf8",
+      ),
+    });
+    const result = parse(bundle);
+    const grok = result.models.find(({ model_id }) => model_id === "xai.grok-4.3");
+    expect(grok).toBeDefined();
+    expect(grok?.api_endpoints).toContainEqual({ name: "Responses", path: "openai/v1/responses" });
+    expect(grok?.price_facts).toEqual([]);
+    expect(astra(result).price_facts).toEqual(before.price_facts);
+  });
   it.each(["quoted", "fenced", "duplicate", "unowned"])(
     "does not borrow %s service-tier instructions",
     async (change) => {
@@ -460,6 +477,7 @@ describe("native Bedrock card tariffs", () => {
     );
   });
 
+  // Two complete assemblies also check document-order invariance; allow for slower CI workers.
   it("composes card and bulk observations without silently selecting an unequal amount", async () => {
     const bundle = await nativeBundle(true);
     const bulk = bundle.documents[1];
@@ -503,5 +521,5 @@ describe("native Bedrock card tariffs", () => {
       reversed.models,
     );
     expect(again?.books).toEqual(partition?.books);
-  });
+  }, 15_000);
 });

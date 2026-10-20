@@ -334,6 +334,11 @@ test. A `noop` requires every admitted candidate to have independently checked `
 evidence and an empty patch. Blocked, pending or repaired candidates cannot become a no-op.
 Never manufacture a code change to close an investigation that found no defect.
 
+The prepared admission defines this run's active batch: one error-driven provider plus the
+independent periodic slot and workflow evidence items. Other providers' candidates remain in the
+deferred queue in the context and immutable admission. Do not expand investigation to that queue,
+dismiss its entries or describe the whole catalog as healthy after closing only this batch.
+
 Read `design.md`, `AGENTS.md`, the review method in `docs/refresh-repair-audit.md`,
 `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 refresh report identified in that context, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.

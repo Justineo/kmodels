@@ -18,7 +18,13 @@ Status: implemented
   pricing validation. The gate excludes operational states such as fetch failures and missing
   credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
-  safe code repair exists. A provider simply not publishing a price is never a repair candidate,
+  safe code repair exists. Preparation admits one error-driven provider per run, using a stable
+  rotation over configured providers by UTC day, alongside the independent periodic-review slot.
+  All candidates for that error provider stay together. The context and immutable admission retain
+  every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
+  later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
+  This bounds investigation without allowing the agent to drop difficult candidates after admission.
+  A provider simply not publishing a price is never a repair candidate,
   but a parser that rejects the whole catalog because one model lacks a price is repairable.
   Repair preserves valid sibling models and keeps an unobserved price unknown. A `not_published`
   state needs an explicit source claim; an absent or empty price field cannot establish it. Repair
@@ -387,7 +393,9 @@ Status: implemented
 - Deployment uses the pinned `void` dependency, the Node.js version in `.node-version`, and GitHub
   OIDC. The workflow explicitly selects Void Cloud with `VOID_API_URL=https://api.void.cloud` before
   exchanging the GitHub token; a fresh runner has no local platform selection. `void.json` deploys
-  static `dist/`; `VOID_PROJECT` is the only repository variable.
+  static `dist/`; `VOID_PROJECT` is the only repository variable. Each fresh runner first
+  registers `VOID_API_URL` with `void connect --no-login`, as required by the pinned CLI, then
+  deploys using the existing short-lived GitHub OIDC authorization.
 - Renovate uses the Shanghai timezone, a seven-day minimum release age, grouped automerge for
   non-major updates, and isolated manual major updates. Its custom package-manager matcher keeps
   the strict `devEngines.packageManager.version` pin synchronized with the standard

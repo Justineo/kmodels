@@ -18,6 +18,12 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 ### Set a finite scope
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
+Preparation selects one error-driven provider per UTC day against the stable configured-provider
+rotation, keeping all of that provider's source and validation candidates together. It also admits
+the independent periodic slot and workflow evidence items. Other candidates stay in the prepared
+deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
+list. A continuously failing provider gets its own slot at least once per configured-provider cycle;
+same-day reruns select from the latest evidence. Closing a batch is not a whole-catalog health claim.
 For a comprehensive review, define the provider queue and acceptance conditions first. Prioritize
 wrong prices or quantities, identity loss, misleading states and regressions; select further cleanup
 only for a concrete correctness or maintenance benefit. Complete provider rounds and a concentrated

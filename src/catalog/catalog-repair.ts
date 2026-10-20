@@ -130,6 +130,41 @@ export interface CatalogRepairCandidate {
   diagnostics: z.infer<typeof diagnosticSchema>[];
 }
 
+/** Admit one error-driven provider per run, keeping the independent periodic review. */
+export function catalogRepairBatch(
+  candidates: readonly CatalogRepairCandidate[],
+  at: Date,
+): {
+  selected: CatalogRepairCandidate[];
+  deferred: CatalogRepairCandidate[];
+} {
+  if (!Number.isFinite(at.getTime())) throw new Error("Catalog repair batch requires a valid date");
+  const periodic = (candidate: CatalogRepairCandidate) =>
+    candidate.trigger === "scheduled_provider_review" ||
+    candidate.trigger === "scheduled_architecture_review";
+  const pending = new Set(
+    candidates.filter((candidate) => !periodic(candidate)).map(({ provider_id }) => provider_id),
+  );
+  const providers = manifests.map(({ provider }) => provider.id).sort(compareUtf8);
+  for (const providerId of pending)
+    if (!providers.includes(providerId))
+      throw new Error(`Unconfigured repair provider: ${providerId}`);
+  const day = Math.floor(at.getTime() / 86_400_000);
+  const start = ((day % providers.length) + providers.length) % providers.length;
+  const providerId = Array.from(
+    { length: providers.length },
+    (_, offset) => providers[(start + offset) % providers.length],
+  ).find((id) => id !== undefined && pending.has(id));
+  return {
+    selected: candidates.filter(
+      (candidate) => periodic(candidate) || candidate.provider_id === providerId,
+    ),
+    deferred: candidates.filter(
+      (candidate) => !periodic(candidate) && candidate.provider_id !== providerId,
+    ),
+  };
+}
+
 /** Build commands from reviewed source IDs, never from provider IDs or report prose. */
 export function catalogRepairEvidenceCommands(
   candidates: readonly CatalogRepairCandidate[],

@@ -17,10 +17,15 @@ The catalog is collected atomically with the bounded
 [documentation index](https://docs.typesafe.ai/llms.txt). Newly indexed commercial paths
 require review before publication. SDK usage guides and application cookbooks are outside
 the commercial index partition. The optional, claim-local
-[API reference](https://docs.typesafe.ai/api.md) supplies typed-question and response-usage
+[System One API reference](https://docs.typesafe.ai/api/system-one.md) supplies typed-question and response-usage
 contracts. It cannot erase independently observed identities or rates when unavailable.
 Usage contracts are source-level facts, shared by the observed System One models; they are not
 copied into each model observation or repeated in compilation input.
+The current index links the operation-specific page instead of the former `/api.md`. Its labeled
+OpenAPI block must bind the JSON request and successful response to their owning schemas. Question
+union members and constants establish typed output; referenced integer fields on the response's
+direct `usage` property establish counters. Examples and unrelated operation schemas cannot supply
+missing contracts. Reviewed legacy MDX response fields remain readable for historical fixtures.
 All requests stay on the reviewed documentation host; linked content is not automatically crawled.
 
 Authenticated `GET /v1/models` is account inventory and currently lists aliases, not an
