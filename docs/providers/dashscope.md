@@ -68,9 +68,9 @@ Production collection uses only Alibaba Cloud first-party sources:
   compatible-model lists, regional scopes, and per-call rates;
 - the [image-search guide](https://www.alibabacloud.com/help/en/model-studio/image-search.md)
   and [text-to-image search guide](https://www.alibabacloud.com/help/en/model-studio/web-search-image.md)
-  own their separate compatibility, regional rates, and count fields;
-- the [OpenAI-compatible Chat](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md),
-  [native Qwen](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-dashscope.md),
+  own their separate compatibility and regional rates;
+- the [OpenAI-compatible Chat](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions),
+  [native Qwen](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-dashscope),
   [Anthropic-compatible Messages](https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages.md),
   [Responses](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses.md),
   and [Batch](https://www.alibabacloud.com/help/en/model-studio/batch-interfaces-compatible-with-openai.md)
@@ -79,7 +79,7 @@ Production collection uses only Alibaba Cloud first-party sources:
   [video](https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference.md),
   [TTS](https://www.alibabacloud.com/help/en/model-studio/qwen-tts-api.md),
   [music](https://www.alibabacloud.com/help/en/model-studio/fun-music-api.md), and
-  [ASR](https://www.alibabacloud.com/help/en/model-studio/non-realtime-speech-recognition-user-guide.md)
+  [ASR HTTP reference](https://www.alibabacloud.com/help/en/model-studio/fun-asr-recorded-speech-recognition-http-api.md)
   API guides own successful-result quantities; the
   [ASR event guide](https://www.alibabacloud.com/help/en/model-studio/fun-asr-server-events.md)
   owns its terminal streaming duration; and
@@ -243,16 +243,32 @@ not invalidate the price, a different protocol, or another usage field. The curr
   cache-creation counters, preserving that protocol's separately reported cache-token semantics;
 - Responses response and `response.completed` totals, multimodal billing details, ordinary and
   session-cache fields, reasoning details, and priced hosted-tool counts;
-- successful Batch JSONL result-item usage for both Chat-style and Responses-style bodies;
-- successful image count and effective size, video output/total/input durations and effective
-  resolution, TTS characters and token details, music duration, and ASR duration; and
+- successful Batch JSONL result-item Chat `prompt_tokens` and `completion_tokens`; no undocumented
+  Responses-style or fine-grained Batch counters are inferred;
+- successful image count and dimensions, video output/total/input durations and effective
+  resolution, TTS characters and aggregate text-input/audio-output tokens, music duration, and ASR duration; and
 - request-side resolved region, thinking-mode flags, and `prompt_extend` where those values select
   variants.
 
-Owned JSON/JSONC examples may establish nonnegative integer usage fields as well as typed prose.
-Only the response usage envelope is admitted; Responses billing-detail entries require their
-`response_api` discriminator. Malformed JSON, duplicate properties and unrelated example objects
-do not establish fields. Optional fine-grained counters have no absent-as-zero default.
+Chat and native Qwen use the official HTML reference when their Markdown endpoints reject access.
+HTML and MDX property trees establish fields only under an owned response `usage` object/map and
+its directly associated Properties containers. Exact parent/leaf types and unique declarations
+matter; nearby words, request trees and sibling examples do not supply a missing path. Chat stream
+fields require the owned boolean `stream_options.include_usage` option. Alternative model-specific
+wire shapes share a logical input key: retain every evidenced locator, report that input missing
+only when none resolves, and measure completeness against logical inputs rather than aliases.
+
+Owned JSON/JSONC and SSE examples may establish nonnegative numeric usage fields as well as typed
+prose. Only the response usage envelope is admitted; Responses billing-detail entries require their
+`response_api` discriminator. The guide's `response.completed.response.output: [...]` placeholder
+may be elided because that array is unrelated to accounting. Placeholders inside usage, malformed
+JSON, duplicate properties, nonterminal Responses events and unrelated example objects do not
+establish fields. Optional fine-grained counters have no absent-as-zero default.
+String-valued `usage.size` is a resolution selector, never a numeric counter. Image width/height
+remain independent observed dimensions; no response `usage.size` is inferred from a request's
+`parameters.size`. Responses session-cache creation belongs to the discriminated `usage.x_details`
+entry rather than an assumed top-level `usage.prompt_tokens_details` object. The ASR overview links
+to the HTTP reference that actually owns successful task `usage.duration`.
 
 Ordinary HTTP usage envelopes are withheld from positively identified Realtime-only models.
 Documented ordinary routes retain their contracts, including models offering both mechanisms.
@@ -283,6 +299,10 @@ second time when Alibaba bills them inside output tokens. Character-priced TTS b
 `usage.image_count`; and video generation uses one provider-owned billable-duration signal. For
 video-to-video rows whose source says “input and output price,” the quantity is the single published
 total duration rather than two duplicated rate terms.
+Token-priced TTS uses `usage.input_tokens` for input text and `usage.output_tokens` for output
+audio, following their explicit definitions. Streaming ASR owns `payload.usage.duration` alongside
+`payload.output.sentence.sentence_end`; the output object does not own usage. Priced image-search
+counts are acquired from the Responses API reference, while product guides own rates and eligibility.
 
 Context bands select from total input, not uncached input. Region selects from a canonical
 `HttpRequest.resolved_region` value that the downstream collector derives from the actual endpoint;

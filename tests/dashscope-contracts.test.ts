@@ -282,6 +282,241 @@ function target(realtime = false, dual = false): ParsedProviderModel {
   };
 }
 describe("DashScope usage contracts", () => {
+  it("reads owned HTML properties, terminal stream options and alternative cache locators", async () => {
+    const documents = await Promise.all(
+      [
+        ["qwen-api-via-openai-chat-completions", "chat-properties.html"],
+        ["qwen-api-via-dashscope", "native-properties.html"],
+      ].map(async ([path, name]) => ({
+        url: origin + path,
+        body: await readFile(new URL(`./fixtures/dashscope/${name}`, import.meta.url), "utf8"),
+      })),
+    );
+    const missing: string[] = [];
+    const inputs = extractDashscopePricingInputs(documents, source.id, (finding) => {
+      missing.push(...finding.diagnostics.map(({ path }) => path));
+    });
+    for (const protocol of ["chat", "native"]) {
+      for (const stream of ["", "stream."]) {
+        const key = `${protocol}.${stream}cache_creation_input_tokens`;
+        expect(inputs).toContainEqual(
+          expect.objectContaining({
+            key,
+            locator: {
+              kind: "json_pointer",
+              value: "/usage/prompt_tokens_details/cache_creation_input_tokens",
+            },
+          }),
+        );
+        expect(missing.some((path) => path.endsWith(`/${key}`))).toBe(false);
+      }
+    }
+    expect(inputs).toContainEqual(
+      expect.objectContaining({
+        key: "native.input_image_tokens",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens_details/image_tokens" },
+      }),
+    );
+    expect(inputs.some(({ locator }) => locator.value === "/usage/image_tokens")).toBe(false);
+  });
+  it.each([
+    ["request tree", (body: string) => body.replace("Chat response object", "Request body")],
+    ["wrong parent", (body: string) => body.replace("prompt_tokens_details", "request_options")],
+    [
+      "wrong leaf type",
+      (body: string) =>
+        body.replace("cached_tokens</strong><code>integer", "cached_tokens</strong><code>string"),
+    ],
+    [
+      "duplicate leaf",
+      (body: string) =>
+        body.replace(
+          "<p><strong>cached_tokens</strong><code>integer</code></p>",
+          "<p><strong>cached_tokens</strong><code>integer</code></p>".repeat(2),
+        ),
+    ],
+    [
+      "unowned accordion",
+      (body: string) =>
+        body.replace(
+          "<p><strong>prompt_tokens_details",
+          "<h3>Unrelated properties</h3><p><strong>prompt_tokens_details",
+        ),
+    ],
+  ])("does not borrow an HTML field from %s", async (_name, mutate) => {
+    const body = await readFile(
+      new URL("./fixtures/dashscope/chat-properties.html", import.meta.url),
+      "utf8",
+    );
+    const inputs = extractDashscopePricingInputs(
+      [{ url: origin + "qwen-api-via-openai-chat-completions", body: mutate(body) }],
+      source.id,
+    );
+    expect(inputs.some(({ key }) => key === "chat.cached_input_tokens")).toBe(false);
+  });
+  it("reads MDX billing properties only inside the response_api discriminator", () => {
+    const body = `## Response object <span id="response" />
+<strong>usage</strong> \`object\`
+<Accordion title="Properties">
+<strong>x_details</strong> \`array\`
+<Accordion title="Properties">
+<strong>x_billing_type</strong> \`string\`
+The value is fixed to response_api.
+<strong>input_tokens_details</strong> \`object\`
+<Accordion title="Properties">
+<strong>image_tokens</strong> \`integer\`
+</Accordion>
+<strong>prompt_tokens_details</strong> \`object\`
+<Accordion title="Properties">
+<strong>cache_creation_input_tokens</strong> \`integer\`
+</Accordion>
+</Accordion>
+</Accordion>`;
+    const extract = (value: string) =>
+      extractDashscopePricingInputs(
+        [{ url: origin + "qwen-api-via-openai-responses.md", body: value }],
+        source.id,
+      ).some(({ key }) => key === "responses.detail.input_image_tokens");
+    expect(extract(body)).toBe(true);
+    expect(extract(body.replace("fixed to response_api", "fixed to tool_api"))).toBe(false);
+    const inputs = extractDashscopePricingInputs(
+      [{ url: origin + "qwen-api-via-openai-responses.md", body }],
+      source.id,
+    );
+    expect(inputs).toContainEqual(
+      expect.objectContaining({
+        key: "responses.session_cache_creation_input_tokens",
+        locator: {
+          kind: "provider_field",
+          value:
+            "Response.usage.x_details[x_billing_type=response_api].prompt_tokens_details.cache_creation_input_tokens",
+        },
+      }),
+    );
+    expect(
+      inputs.some(
+        ({ locator }) =>
+          locator.value === "/usage/prompt_tokens_details/cache_creation_input_tokens",
+      ),
+    ).toBe(false);
+  });
+  it("keeps response selectors separate from numeric counters and request size", () => {
+    const inputs = extractDashscopePricingInputs(
+      [
+        {
+          url: origin + "text-to-video-api-reference.md",
+          body: '```json\n{"usage":{"size":"1280*720","duration":0.5}}\n```',
+        },
+        {
+          url: origin + "qwen-image-api.md",
+          body: '```json\n{"parameters":{"size":"1280*720"},"usage":{"width":1280,"height":720,"image_count":1}}\n```',
+        },
+      ],
+      source.id,
+    );
+    expect(inputs).toContainEqual(
+      expect.objectContaining({
+        key: "video.effective_size",
+        locator: { kind: "json_pointer", value: "/usage/size" },
+      }),
+    );
+    expect(inputs).toContainEqual(
+      expect.objectContaining({
+        key: "video.billable_seconds",
+        locator: { kind: "json_pointer", value: "/usage/duration" },
+      }),
+    );
+    expect(inputs.some(({ key }) => key === "image.effective_size")).toBe(false);
+    expect(inputs).toContainEqual(expect.objectContaining({ key: "image.width" }));
+  });
+  it.each([
+    [
+      "terminal SSE",
+      'data:{"type":"response.completed","response":{"output":[...],"usage":{"x_tools":{"web_search_image":{"count":1}}}}}',
+      true,
+    ],
+    [
+      "nonterminal SSE",
+      'data:{"type":"response.in_progress","response":{"output":[],"usage":{"x_tools":{"web_search_image":{"count":1}}}}}',
+      false,
+    ],
+    [
+      "malformed usage",
+      'data:{"type":"response.completed","response":{"output":[],"usage":{"x_tools":{"web_search_image":{"count":1}},"unknown":[...]}}}',
+      false,
+    ],
+    [
+      "duplicate usage",
+      'data:{"type":"response.completed","response":{"output":[],"usage":{"x_tools":{"web_search_image":{"count":1}},"x_tools":{}}}}',
+      false,
+    ],
+  ])("checks %s before binding hosted-tool counters", (_name, example, expected) => {
+    const inputs = extractDashscopePricingInputs(
+      [
+        {
+          url: origin + "qwen-api-via-openai-responses.md",
+          body: "```json Image search\n" + example + "\n```",
+        },
+      ],
+      source.id,
+    );
+    expect(inputs.some(({ key }) => key === "responses.stream.web_search_image_count")).toBe(
+      expected,
+    );
+  });
+  it("keeps successful Batch and ASR usage under their actual response envelopes", () => {
+    const inputs = extractDashscopePricingInputs(
+      [
+        {
+          url: origin + "batch-interfaces-compatible-with-openai.md",
+          body: '```json\n{"response":{"status_code":200,"body":{"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}}}\n```',
+        },
+        {
+          url: origin + "fun-asr-server-events.md",
+          body: '```json\n{"header":{"event":"result-generated"},"payload":{"output":{"sentence":{"sentence_end":true}},"usage":{"duration":3}}}\n```',
+        },
+      ],
+      source.id,
+    );
+    expect(inputs.filter(({ key }) => key.startsWith("batch."))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "batch.chat.input_tokens",
+          locator: { kind: "json_pointer", value: "/response/body/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "batch.chat.output_tokens",
+          locator: { kind: "json_pointer", value: "/response/body/usage/completion_tokens" },
+        }),
+      ]),
+    );
+    expect(inputs).toContainEqual(
+      expect.objectContaining({
+        key: "asr.stream.processed_audio_seconds",
+        locator: { kind: "json_pointer", value: "/payload/usage/duration" },
+      }),
+    );
+  });
+  it.each([
+    [
+      "failed Batch item",
+      "batch-interfaces-compatible-with-openai.md",
+      '{"response":{"status_code":400,"body":{"usage":{"prompt_tokens":10}}}}',
+      "batch.chat.input_tokens",
+    ],
+    [
+      "interim ASR result",
+      "fun-asr-server-events.md",
+      '{"header":{"event":"result-generated"},"payload":{"output":{"sentence":{"sentence_end":false}},"usage":{"duration":3}}}',
+      "asr.stream.processed_audio_seconds",
+    ],
+  ])("does not bind usage from a %s", (_name, path, example, key) => {
+    const inputs = extractDashscopePricingInputs(
+      [{ url: origin + path, body: "```json\n" + example + "\n```" }],
+      source.id,
+    );
+    expect(inputs.some((input) => input.key === key)).toBe(false);
+  });
   it("reads nested usage examples and the documented terminal include_usage option", () => {
     const body =
       '## Response\n```json\n{"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":4,"text_tokens":10}}}\n```\n```python\nstream_options={"include_usage": True}\n```';

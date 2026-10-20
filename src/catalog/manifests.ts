@@ -3341,7 +3341,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v20",
+        extractorVersion: "xai-catalog-v21",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3727,7 +3727,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v22",
+        extractorVersion: "dashscope-pricing-v23",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3770,12 +3770,12 @@ export const manifests = [
             ],
             [
               "chat-accounting",
-              "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md",
+              "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions",
               1,
             ],
             [
               "native-accounting",
-              "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-dashscope.md",
+              "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-dashscope",
               1,
             ],
             [
@@ -3815,7 +3815,7 @@ export const manifests = [
             ],
             [
               "asr-accounting",
-              "https://www.alibabacloud.com/help/en/model-studio/non-realtime-speech-recognition-user-guide.md",
+              "https://www.alibabacloud.com/help/en/model-studio/fun-asr-recorded-speech-recognition-http-api.md",
               1,
             ],
             [

@@ -1,0 +1,44 @@
+<main>
+  <h2>Request body</h2>
+  <table>
+    <tr>
+      <td>
+        <p><strong>stream_options</strong><code>object</code>(Optional)</p>
+        <p>Configuration for streaming output.</p>
+        <section class="collapse">
+          <p>Properties</p>
+          <div>
+            <p>
+              <strong>include_usage</strong><code>boolean</code>(Optional) Default value:
+              <code>false</code>
+            </p>
+            <p>Include token consumption in the last data chunk.</p>
+          </div>
+        </section>
+      </td>
+    </tr>
+  </table>
+  <h2>Chat response object</h2>
+  <table>
+    <tr>
+      <td>
+        <p><strong>usage</strong><code>object</code></p>
+        <p>Token usage for this response.</p>
+        <section class="collapse">
+          <p>Properties</p>
+          <div>
+            <p><strong>prompt_tokens</strong><code>integer</code></p>
+            <p><strong>prompt_tokens_details</strong><code>object</code></p>
+            <section class="collapse">
+              <p>Properties</p>
+              <div>
+                <p><strong>cached_tokens</strong><code>integer</code></p>
+                <p><strong>cache_creation_input_tokens</strong><code>integer</code></p>
+              </div>
+            </section>
+          </div>
+        </section>
+      </td>
+    </tr>
+  </table>
+</main>

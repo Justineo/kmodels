@@ -6797,6 +6797,56 @@ describe("xAI adapter", () => {
     ).toBe(true);
   });
 
+  it("checks Imagine summaries against explicit tiers independently of order and deprecated prices", async () => {
+    const tiers = [
+      { resolution: "IMAGE_RESOLUTION_1K", pricePerImage: "400000000", quality: "low" },
+      { resolution: "IMAGE_RESOLUTION_2K", pricePerImage: "600000000", quality: "low" },
+    ];
+    for (const resolutionPricing of [tiers, tiers.toReversed()]) {
+      const image = {
+        name: "grok-imagine-image-2.0",
+        version: "1.0",
+        aliases: [],
+        inputModalities: ["TEXT", "IMAGE"],
+        outputModalities: ["IMAGE"],
+        imagePrice: "obsolete",
+        resolutionPricing,
+      };
+      const index = () =>
+        `<script>globalThis.__XAI_PUBLIC_MODELS__=${JSON.stringify({
+          clusterConfigs: [{ clusterName: "us-east-1", imageGenerationModels: [image] }],
+        })};</script>`;
+      for (const amount of ["0.04", "0.07"]) {
+        const reconciliation: PricingReconciliationItem[] = [];
+        const result = await xaiCatalogResult(
+          "xai/models.txt",
+          index,
+          (body) =>
+            body.replaceAll(
+              "| grok-imagine-image-quality | $0.05 / image |",
+              `| grok-imagine-image-quality | $0.05 / image |\n| ${image.name} | $${amount} / image |`,
+            ),
+          (item) => reconciliation.push(item),
+          undefined,
+          1,
+        );
+        const model = result.models.find(({ model_id }) => model_id === image.name);
+        expect(model).toBeDefined();
+        expect(
+          model?.price_facts
+            .filter(({ meter }) => meter === "image_generation")
+            .map(({ price }) => price)
+            .toSorted(),
+        ).toEqual(["0.04", "0.06"]);
+        expect(
+          reconciliation.some(
+            ({ reason_code }) => reason_code === "imagine_summary_price_conflict",
+          ),
+        ).toBe(amount === "0.07");
+      }
+    }
+  });
+
   it("keeps media Batch availability separate from a missing same-price rule", async () => {
     const result = await xaiCatalogResult(
       "xai/models.txt",
@@ -7864,7 +7914,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v20");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v21");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -11707,7 +11757,7 @@ describe("DashScope adapters", () => {
     ["text-to-video-api-reference", "video-accounting", "usage.html"],
     ["qwen-tts-api", "tts-accounting", "usage.html"],
     ["fun-music-api", "music-accounting", "usage.html"],
-    ["non-realtime-speech-recognition-user-guide", "asr-accounting", "usage.html"],
+    ["fun-asr-recorded-speech-recognition-http-api", "asr-accounting", "usage.html"],
     ["fun-asr-server-events", "asr-stream-accounting", "usage.html"],
     ["base-url", "base-url", "base-url.html"],
   ] as const;
@@ -12423,11 +12473,11 @@ describe("DashScope adapters", () => {
           availability: "terminal_only",
         }),
         expect.objectContaining({
-          key: "batch.responses.reasoning_tokens",
+          key: "batch.chat.input_tokens",
           channel: "result",
           locator: {
             kind: "json_pointer",
-            value: "/response/body/usage/output_tokens_details/reasoning_tokens",
+            value: "/response/body/usage/prompt_tokens",
           },
         }),
         expect.objectContaining({
@@ -13319,7 +13369,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v22",
+      extractorVersion: "dashscope-pricing-v23",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
