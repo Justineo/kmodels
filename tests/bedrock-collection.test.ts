@@ -195,13 +195,7 @@ describe("Bedrock collection dependency isolation", () => {
       refresh_failure: { code: "source_schema_changed", attempted_at: currentAt },
     });
     const candidate = prepareCatalogPair(composed.catalog, composed.pricing);
-    const entries = pricingCompilationEntries(
-      candidate,
-      [next],
-      new Map([[manifest.provider.id, transition]]),
-      new Set(),
-      previousReplay,
-    );
+    const entries = pricingCompilationEntries(candidate, [next], new Set(), previousReplay);
     expect(entries).toEqual(previousReplay.providers);
     expect(createPricingCompilationSnapshot(candidate, entries).providers).toEqual(
       previousReplay.providers,

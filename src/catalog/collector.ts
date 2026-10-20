@@ -1437,13 +1437,7 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   const [candidate] = await Promise.all([candidatePromise, ...stateWrites]);
   const pricingCompilation = createPricingCompilationSnapshot(
     candidate,
-    pricingCompilationEntries(
-      candidate,
-      results,
-      pricingTransitions,
-      explicitProviders,
-      previousPricingCompilation,
-    ),
+    pricingCompilationEntries(candidate, results, explicitProviders, previousPricingCompilation),
   );
   const runReportPath = process.env.KMODELS_REFRESH_REPORT_PATH;
   if (runReportPath !== undefined && runReportPath.trim() !== "")
@@ -1471,7 +1465,6 @@ async function loadPreviousPricingCompilation(
 export function pricingCompilationEntries(
   candidate: CatalogPairCandidate,
   results: readonly Pick<ProviderResult, "provider" | "pricingReplaySources">[],
-  transitions: ReadonlyMap<string, ProviderPricingTransition>,
   explicitProviders: ReadonlySet<string>,
   previous: PricingCompilationSnapshot | undefined,
 ): PricingReplayProvider[] {
@@ -1483,23 +1476,16 @@ export function pricingCompilationEntries(
   const previousProviders = new Map(
     previous?.providers.map((provider) => [provider.provider_id, provider]),
   );
-  return candidate.pricing.data.provider_snapshots.flatMap(({ provider_id: providerId }) => {
-    const prior = previousProviders.get(providerId);
-    if (
-      candidate.catalog.warnings.some(
-        (warning) =>
-          warning.code === "retained_pricing_core_mismatch" &&
-          "provider_id" in warning &&
-          warning.provider_id === providerId,
-      )
-    )
-      return prior === undefined ? [] : [prior];
+  return candidate.pricing.data.provider_snapshots.flatMap(
+    ({ provider_id: providerId, publication }) => {
+      const prior = previousProviders.get(providerId);
+      if (publication === "retained") return prior === undefined ? [] : [prior];
 
-    const transition = transitions.get(providerId);
-    const sources = replaySources.get(providerId);
-    if (!explicitProviders.has(providerId) && sources !== undefined)
-      return [{ provider_id: providerId, sources }];
+      const sources = replaySources.get(providerId);
+      if (!explicitProviders.has(providerId) && sources !== undefined)
+        return [{ provider_id: providerId, sources }];
 
-    return transition?.kind === "failed" && prior !== undefined ? [prior] : [];
-  });
+      return [];
+    },
+  );
 }

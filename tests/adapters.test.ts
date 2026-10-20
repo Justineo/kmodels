@@ -14510,6 +14510,13 @@ describe("Kimi adapters", () => {
     const published = applyGroups([], sources, true);
     const partition = assembleParsedProviderPricing("kimi", observedAt, sources, published);
     expect(partition).toBeDefined();
+    if (partition === undefined) throw new Error("Missing Kimi pricing partition");
+    expect(() => validateAdoptedTopology(partition)).not.toThrow();
+    expect(
+      partition.books.every(({ offers }) =>
+        offers.every(({ settlement }) => settlement.length === 0),
+      ),
+    ).toBe(true);
     const books = partition?.books ?? [];
     const k26 = books.find(
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes("kimi/kimi-k2.6"),

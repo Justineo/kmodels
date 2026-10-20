@@ -383,6 +383,11 @@ cannot. Canonical evidence references remain available when historical version m
 unavailable, but calculation export requires complete source records. Verified historical records
 may be recovered from the corresponding accepted catalog transaction without restamping prices.
 
+Compilation inputs follow the final composed price snapshot, rather than a collector's attempted
+transition. A retained snapshot keeps its previous accepted inputs, including when fresh pricing
+was assembled but composition retained the catalog. Rejected candidate inputs cannot replace those
+revisions. Without previous inputs, preserve the validated partition without inventing replay data.
+
 All model and source references are opaque identities from the bound catalog.
 Books, observations, and dispositions may reference only records owned by the
 same provider. Cross-provider price books are not supported.

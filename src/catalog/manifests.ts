@@ -4311,6 +4311,8 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "overlay",
+        optional: true,
+        retainOmittedFacts: true,
       },
       {
         id: "deepseek-api",
