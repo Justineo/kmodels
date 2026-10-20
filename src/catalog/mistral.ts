@@ -17,7 +17,7 @@ import {
 } from "./mistral-commercial-source.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
-import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate, rawPricingFact } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   type ParsedProviderModel as ProviderModel,
@@ -1018,9 +1018,45 @@ function publicPricing(
       const candidates = withExistingRate.length > 0 ? withExistingRate : possible;
       const candidate = candidates.length === 1 ? candidates[0] : undefined;
       if (candidate === undefined) {
+        const targetIndex = targets.length === 1 ? targets[0] : undefined;
+        const target = targetIndex === undefined ? undefined : models[targetIndex];
+        const preserveCachedQuote =
+          possible.length === 0 &&
+          target !== undefined &&
+          target.status !== "retired" &&
+          label.startsWith("Cached input (");
+        if (preserveCachedQuote) {
+          for (const [currency, amount] of [
+            ["USD", row.priceUsd],
+            ["EUR", row.priceEur],
+          ] as const)
+            if (amount !== undefined)
+              target.raw_price_facts.push(
+                rawPricingFact(
+                  input.source.id,
+                  `public_price:${label}`,
+                  "base_price",
+                  publicPriceSuffixes.has(label) ? "unknown_unit" : "unknown_meter",
+                  {
+                    label,
+                    amount,
+                    denomination: currency,
+                    unit: row.suffix ?? label,
+                  },
+                  { billing_currency: currency },
+                ),
+              );
+          observedModels.add(target.uid);
+        }
         input.onPricingReconciliation?.({
           disposition:
-            targets.length === 0 ? "unbound" : possible.length === 0 ? "unsupported" : "ambiguous",
+            targets.length === 0
+              ? "unbound"
+              : possible.length === 0
+                ? preserveCachedQuote
+                  ? "raw"
+                  : "unsupported"
+                : "ambiguous",
           reason_code:
             targets.length === 0
               ? "public_price_model_unbound"
