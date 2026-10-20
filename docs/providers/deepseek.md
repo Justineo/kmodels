@@ -208,6 +208,11 @@ This authority is limited to these documented token fields: example names, modal
 settings and other additive metadata cannot overwrite independently established catalog facts or
 create identities. The table remains the identity and served-version authority.
 
+The change log is an optional lifecycle overlay. A fetch or parse failure preserves previously
+verified dates and the overlay's original observation time, while independent catalog and pricing
+collection continues. The failure, streak and parser count guard remain visible for repair; a
+temporary empty page cannot erase release evidence or freeze otherwise valid prices.
+
 Service quotes use the same local raw fallback for unreadable amounts or units. Unreviewed service
 rows report a source pricing diagnostic. Missing or conflicting billing qualification, eligibility
 or transition evidence signals the responsible commercial dependency: collection retains the

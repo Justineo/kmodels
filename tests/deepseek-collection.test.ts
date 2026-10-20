@@ -4,7 +4,8 @@ import { htmlText } from "../src/catalog/html.ts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { collectProvider, pricingCompilationEntries } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
-import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
+import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
+import { sha256 } from "../src/catalog/io.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { createPricingCompilationSnapshot } from "../src/catalog/pricing-compilation.ts";
@@ -35,7 +36,107 @@ async function fixture(name: string): Promise<string> {
   return readFile(new URL(`./fixtures/deepseek/${name}.html`, import.meta.url), "utf8");
 }
 
+async function catalogBundle(source: SourceManifest) {
+  const bundle = {
+    index: { url: source.url, body: await fixture("catalog") },
+    documents: await Promise.all(
+      [
+        ["api/create-chat-completion", "chat"],
+        ["api/create-response", "responses"],
+        ["api/create-completion", "fim"],
+        ["guides/anthropic_api", "anthropic"],
+        ["guides/vision", "vision"],
+        ["api/list-models", "list-models"],
+        ["zh-cn/quick_start/pricing/", "catalog-cny"],
+      ].map(async ([path, name]) => {
+        if (path === undefined || name === undefined) throw new Error("Invalid fixture mapping");
+        return { url: `https://api-docs.deepseek.com/${path}`, body: await fixture(name) };
+      }),
+    ),
+  };
+  for (const [body, name, heading] of [
+    [bundle.index, "services-catalog", "Search & Fetch Pricing"],
+    [
+      bundle.documents.find((doc) => doc.url.includes("/zh-cn/")),
+      "services-cny",
+      "网页搜索与抓取价格",
+    ],
+  ] as const) {
+    if (body === undefined) throw new Error("Missing service pricing owner");
+    const $ = load(await fixture(name));
+    const title = $("h2").filter((_, node) => htmlText($(node).text()) === heading);
+    if (title.length !== 1) throw new Error("Missing native service heading");
+    const target = load(body.body);
+    target("article").append(title.toString() + title.nextUntil("h1,h2").toString());
+    body.body = target.html();
+  }
+  bundle.documents.push({
+    url: "https://api-docs.deepseek.com/guides/search/",
+    body: await fixture("search-billing"),
+  });
+  return bundle;
+}
+
 describe("DeepSeek commercial dependency isolation", () => {
+  it.each(["fetch", "parse"])(
+    "keeps lifecycle %s failure local to the optional update overlay",
+    async (failure) => {
+      const manifest = manifests.find(({ provider }) => provider.id === "deepseek");
+      const source = manifest?.sources.find(({ id }) => id === "deepseek-catalog");
+      const updates = manifest?.sources.find(({ id }) => id === "deepseek-updates");
+      if (manifest === undefined || source === undefined || updates === undefined)
+        throw new Error("Missing DeepSeek sources");
+      const selected: ProviderManifest = { ...manifest, sources: [source, updates] };
+      const bundle = await catalogBundle(source);
+      const updateBody = await fixture("updates");
+      let failed = false;
+      vi.mocked(fetchSource).mockImplementation(async (selected) => {
+        if (failed && selected.id === updates.id && failure === "fetch")
+          throw new Error("HTTP 503");
+        const body =
+          selected.id === updates.id
+            ? failed
+              ? "<article><h1>Change Log</h1></article>"
+              : updateBody
+            : JSON.stringify(bundle);
+        return {
+          body,
+          contentHash: sha256(body),
+          etag: undefined,
+          lastModified: undefined,
+          dependencies: [],
+        };
+      });
+      const prior = await collectProvider(selected, undefined, { sources: {} }, previousAt);
+      if (prior.pricing === undefined) throw new Error(JSON.stringify(prior.attempt));
+      const priorFlash = prior.models.find(({ model_id }) => model_id === "deepseek-v4-flash");
+      expect(priorFlash?.release_date).toBe("2026-04-24");
+      failed = true;
+      const next = await collectProvider(
+        selected,
+        core(prior, previousAt),
+        { sources: {} },
+        currentAt,
+      );
+      expect(next.coverage.status).toBe("fresh");
+      expect(next.attempt.pricing).toEqual({ outcome: "accepted" });
+      expect(next.pricing?.snapshot).toMatchObject({
+        publication: "fresh",
+        observed_at: currentAt,
+      });
+      expect(
+        next.models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.release_date,
+      ).toBe(priorFlash?.release_date);
+      expect(next.sources.find(({ id }) => id === updates.id)?.observed_at).toBe(previousAt);
+      expect(next.attempt.sources).toContainEqual(
+        expect.objectContaining({
+          source_id: updates.id,
+          outcome: `${failure}_failed`,
+          consecutive_failures: 1,
+        }),
+      );
+    },
+  );
   it.each([
     "Chinese time",
     "USD time",
@@ -52,46 +153,7 @@ describe("DeepSeek commercial dependency isolation", () => {
       if (manifest === undefined || source === undefined)
         throw new Error("Missing DeepSeek source");
       const singleSource: ProviderManifest = { ...manifest, sources: [source] };
-      const bundle = {
-        index: { url: source.url, body: await fixture("catalog") },
-        documents: await Promise.all(
-          [
-            ["api/create-chat-completion", "chat"],
-            ["api/create-response", "responses"],
-            ["api/create-completion", "fim"],
-            ["guides/anthropic_api", "anthropic"],
-            ["guides/vision", "vision"],
-            ["api/list-models", "list-models"],
-            ["zh-cn/quick_start/pricing/", "catalog-cny"],
-          ].map(async ([path, name]) => {
-            if (path === undefined || name === undefined)
-              throw new Error("Invalid fixture mapping");
-            return { url: `https://api-docs.deepseek.com/${path}`, body: await fixture(name) };
-          }),
-        ),
-      };
-      {
-        for (const [body, name, heading] of [
-          [bundle.index, "services-catalog", "Search & Fetch Pricing"],
-          [
-            bundle.documents.find((doc) => doc.url.includes("/zh-cn/")),
-            "services-cny",
-            "网页搜索与抓取价格",
-          ],
-        ] as const) {
-          if (body === undefined) throw new Error("Missing service pricing owner");
-          const $ = load(await fixture(name));
-          const title = $("h2").filter((_, node) => htmlText($(node).text()) === heading);
-          if (title.length !== 1) throw new Error("Missing native service heading");
-          const target = load(body.body);
-          target("article").append(title.toString() + title.nextUntil("h1,h2").toString());
-          body.body = target.html();
-        }
-        bundle.documents.push({
-          url: "https://api-docs.deepseek.com/guides/search/",
-          body: await fixture("search-billing"),
-        });
-      }
+      const bundle = await catalogBundle(source);
       const respond = (hash: string) =>
         vi.mocked(fetchSource).mockResolvedValue({
           body: JSON.stringify(bundle),
@@ -167,13 +229,7 @@ describe("DeepSeek commercial dependency isolation", () => {
         refresh_failure: { code: "source_schema_changed", attempted_at: currentAt },
       });
       const candidate = prepareCatalogPair(composed.catalog, composed.pricing);
-      const entries = pricingCompilationEntries(
-        candidate,
-        [next],
-        new Map([["deepseek", transition]]),
-        new Set(),
-        replay,
-      );
+      const entries = pricingCompilationEntries(candidate, [next], new Set(), replay);
       expect(entries).toEqual(replay.providers);
       expect(createPricingCompilationSnapshot(candidate, entries).providers).toEqual(
         replay.providers,

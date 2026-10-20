@@ -129,6 +129,7 @@ describe("repair execution evidence", () => {
     await writeFile(outputPath, "");
     vi.stubEnv("KMODELS_REFRESH_REPORT_PATH", reportPath);
     vi.stubEnv("KMODELS_REFRESH_EXECUTION_PATH", executionPath);
+    vi.stubEnv("KMODELS_REPAIR_ADMISSION", undefined);
     vi.stubEnv("KMODELS_CATALOG_REPAIR_CONTEXT", contextPath);
     vi.stubEnv("KMODELS_SEMANTIC_AUDIT_DIR", undefined);
     vi.stubEnv("GITHUB_STEP_SUMMARY", undefined);

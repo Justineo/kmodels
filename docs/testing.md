@@ -14,6 +14,8 @@ Status: implemented
   `tests/generated-data-context.ts`. They validate schemas, referential integrity, projection
   parity, security boundaries, and explicit resource budgets. They must not encode
   the current existence, price, status, or variant count of an otherwise volatile provider record.
+  Source-reference closure includes models, independent canonical pricing and accepted replay
+  dependencies; a service or accounting source need not be attached to a model row.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
 - Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source
@@ -73,6 +75,8 @@ after each test, including failures.
   does not require a live refresh during code validation. Generated tests require every published
   provider to remain configured, covered, and internally valid; fixture tests validate newly
   registered adapters and features before their first authorized collection.
+  A retained price snapshot is validated under its accepted evidence, rather than requiring features
+  of the current extractor. Compilation inputs must follow the final composed publication state.
 - Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
   applicability must remain normalized as deterministic bounded shards with complete observations;
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.

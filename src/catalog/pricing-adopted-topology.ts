@@ -21,7 +21,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["deepseek", ["resource", "binding"]],
   ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
-  ["kimi", ["resource", "relation", "binding", "settlement"]],
+  ["kimi", ["resource", "relation", "binding"]],
   ["llama", []],
   ["mistral", ["resource", "binding"]],
   ["ollama", ["binding"]],

@@ -94,7 +94,7 @@ describe("provider pricing validation", () => {
     await expect(validatePricingCatalogInParallel(pricing.data, catalog)).resolves.toBeUndefined();
   }, 90_000);
 
-  it("keeps the adopted commercial topology for every provider", async () => {
+  it("checks current topology for fresh partitions without reinterpreting retained evidence", async () => {
     const { catalog, pricing } = await generatedData();
     const modelProviders = new Map(
       catalog.models.map(({ uid, provider_id }) => [uid, provider_id]),
@@ -119,7 +119,8 @@ describe("provider pricing validation", () => {
             configured?.sources.find(({ id }) => id === source.id)?.extractorVersion !==
             source.extractor_version,
         );
-      if (!obsolete) validateAdoptedTopology(partition);
+      if (!obsolete && partition.snapshot.publication === "fresh")
+        validateAdoptedTopology(partition);
     }
   });
 
@@ -128,6 +129,20 @@ describe("provider pricing validation", () => {
     const current = prepareCatalogPair(catalog, pricing);
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
+
+    const referencedSourceIds = new Set([
+      ...catalog.models.flatMap((model) => model.source_refs),
+      ...pricing.data.books.flatMap((book) => book.source_refs),
+      ...pricing.data.model_dispositions.flatMap(({ observations }) =>
+        observations.map(({ source_ref }) => source_ref),
+      ),
+      ...pricing.data.provider_snapshots.flatMap(
+        ({ source_records }) => source_records?.map(({ id }) => id) ?? [],
+      ),
+      ...snapshot.providers.flatMap(({ sources }) => sources.map(({ source_id }) => source_id)),
+    ]);
+    for (const source of catalog.sources)
+      expect(referencedSourceIds.has(source.id), source.id).toBe(true);
 
     const compiled = await compilePricingSnapshot(current, snapshot);
     const rejected = new Set(compiled.replayFailures.map(({ provider_id }) => provider_id));

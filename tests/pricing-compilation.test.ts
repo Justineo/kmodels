@@ -20,7 +20,7 @@ import {
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { capturePricingSourceRecords } from "../src/catalog/pricing-source-records.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
-import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
+import { failedPricingTransition, providerPartition } from "../src/catalog/pricing-transition.ts";
 import type { PricingCatalog, ProviderAtomRegistryEntry } from "../src/catalog/pricing-schema.ts";
 import type {
   ParsedPricingModel,
@@ -432,34 +432,55 @@ describe("local canonical pricing compilation", () => {
     ).toThrow("Source atom peak has conflicting definitions");
   });
 
-  it("keeps rejected assembly inputs when the accepted core still supports replay", async () => {
-    const accepted = candidate("1");
-    const transition = failedPricingTransition(providerId, observedAt, "pricing_validation_failed");
-    const composed = composeCatalogPair(accepted.catalog, accepted.catalog, accepted.pricing.data, [
-      transition,
-    ]);
-    const current = prepareCatalogPair(composed.catalog, composed.pricing);
-    const provider = current.catalog.providers[0];
-    if (provider === undefined) throw new Error("Missing test provider");
-    const sources = [replaySource("2")];
-    const entries = pricingCompilationEntries(
-      current,
-      [{ provider, pricingReplaySources: sources }],
-      new Map([[providerId, transition]]),
-      new Set(),
-      createPricingCompilationSnapshot(accepted, [
+  it.each(["rejected pricing", "retained catalog"])(
+    "keeps accepted replay revisions after %s even when new pricing inputs exist",
+    async (failure) => {
+      const accepted = candidate("1");
+      const fresh = candidate("2");
+      const partition = providerPartition(fresh.pricing.data, providerId, () => providerId);
+      if (partition === undefined) throw new Error("Missing fresh partition");
+      const transition =
+        failure === "rejected pricing"
+          ? failedPricingTransition(providerId, observedAt, "pricing_validation_failed")
+          : { kind: "fresh" as const, partition };
+      const composed = composeCatalogPair(
+        accepted.catalog,
+        {
+          ...fresh.catalog,
+          coverage: fresh.catalog.coverage.map((coverage) => ({
+            ...coverage,
+            status: failure === "retained catalog" ? "stale" : "fresh",
+          })),
+        },
+        accepted.pricing.data,
+        [transition],
+      );
+      const current = prepareCatalogPair(composed.catalog, composed.pricing);
+      const provider = current.catalog.providers[0];
+      if (provider === undefined) throw new Error("Missing test provider");
+      const sources = [{ ...replaySource("2"), content_hash: "4".repeat(64) }];
+      const prior = createPricingCompilationSnapshot(accepted, [
         { provider_id: providerId, sources: [replaySource("1")] },
-      ]),
-    );
-    expect(entries).toEqual([{ provider_id: providerId, sources }]);
-    const compiled = await compilePricingSnapshot(
-      current,
-      createPricingCompilationSnapshot(current, entries),
-      [providerManifest],
-    );
-    expect(compiled.replayedProviders).toEqual([providerId]);
-    expect(compiled.candidate.pricing.data.books).toEqual(candidate("2").pricing.data.books);
-  });
+      ]);
+      const entries = pricingCompilationEntries(
+        current,
+        [{ provider, pricingReplaySources: sources }],
+        new Set(),
+        prior,
+      );
+      expect(entries).toEqual(prior.providers);
+      const compiled = await compilePricingSnapshot(
+        current,
+        createPricingCompilationSnapshot(current, entries),
+        [providerManifest],
+      );
+      expect(compiled.replayedProviders).toEqual([providerId]);
+      expect(compiled.candidate.pricing.data.books).toEqual(accepted.pricing.data.books);
+      expect(compiled.candidate.pricing.data.provider_snapshots).toEqual(
+        current.pricing.data.provider_snapshots,
+      );
+    },
+  );
 
   it.each([true, false])(
     "keeps replay inputs aligned with a rolled-back provider core (prior input: %s)",
@@ -513,7 +534,6 @@ describe("local canonical pricing compilation", () => {
             ],
           },
         ],
-        new Map([[providerId, transition]]),
         new Set(),
         hasPriorInput ? prior : undefined,
       );

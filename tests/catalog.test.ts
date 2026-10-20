@@ -48,7 +48,6 @@ describe("generated static catalog", () => {
       catalog.sources.map(({ id, provider_id }) => [id, provider_id]),
     );
     const sourceRoles = new Map(catalog.sources.map((source) => [source.id, source.role]));
-    const referencedSourceIds = new Set(catalog.models.flatMap((model) => model.source_refs));
     const modelIds = new Set<string>();
     const manifestsByProvider = new Map(
       manifests.map((manifest) => [manifest.provider.id, manifest.provider]),
@@ -95,7 +94,7 @@ describe("generated static catalog", () => {
       manifests.flatMap((manifest) => manifest.sources.map((source) => [source.id, source])),
     );
     for (const source of catalog.sources) {
-      expect(referencedSourceIds.has(source.id)).toBe(true);
+      expect(providerIds, source.id).toContain(source.provider_id);
       const configured = manifestsBySource.get(source.id);
       expect(configured?.allowedHosts).toContain(new URL(source.url).hostname);
       expect(source.source.length).toBeGreaterThan(0);

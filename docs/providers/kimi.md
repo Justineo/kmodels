@@ -75,6 +75,8 @@ numeric JSON pointer is invented for that conversion.
 
 Account balances, credits, payment methods and invoice eligibility are not established by these
 public rate pages. Offers therefore carry no inferred account-settlement declarations.
+Topology admission requires resources, offer relations and charge bindings; settlement is not an
+adopted source contract.
 
 The catalog marks K2.5 and every Moonshot V1 variant as retired on August 31, 2026. Their former
 price pages no longer publish rate tables, so they have no current offers.
