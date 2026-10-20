@@ -50,6 +50,8 @@ reviewing unrelated providers. For each affected claim, establish:
   similarly named SDK fields and neighboring tariffs do not supply missing semantics. Inspect
   first-party navigation as well as the currently configured source set: a missed page can omit a
   tariff without producing a parse error.
+  A counterpart linked from that navigation, including another language view, can replace a
+  broken source after its claim ownership and actual parser replay are verified.
 - **Independent facts:** distinguish identity/capability, numeric price, billable quantity,
   acquisition method and selector evidence, using [pricing coverage](pricing-coverage.md). Preserve
   known siblings and explicit unknowns. Validate fields actually consumed by those facts; do not
@@ -89,6 +91,9 @@ pricing or exported scope need proof in the actual built/packed consumer path as
 assembly. Run focused checks during editing and the required full gate after the final relevant edit;
 revalidate changes from upstream before delivering that exact tree. Workflow publication permissions
 and retry limits remain owned by [Automation](automation.md).
+Verify the published commit as well as the workflow result: refresh can pass collection, validation
+and build but safely skip publication after main advances. Source interpretation changes also need
+an extractor-version bump so accepted evidence and replay remain attributable.
 
 ## Diagnostic boundaries
 
