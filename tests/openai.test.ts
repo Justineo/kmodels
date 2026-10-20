@@ -1782,6 +1782,27 @@ describe("OpenAI adapters", () => {
     ]);
   });
 
+  it("reads abbreviated shutdown months and the current family/snapshot header", async () => {
+    const models = await parsed(
+      "openai",
+      "openai/deprecations-abbreviated.md",
+      "openai-deprecations",
+    );
+    expect(models.map(({ model_id, retired_at }) => ({ model_id, retired_at }))).toEqual([
+      { model_id: "gpt-5.3-codex", retired_at: "2027-04-01" },
+      { model_id: "gpt-realtime", retired_at: "2027-01-20" },
+      { model_id: "tts-1", retired_at: "2027-01-06" },
+      { model_id: "whisper-1", retired_at: "2027-02-26" },
+    ]);
+    const invalid = await parsed(
+      "openai",
+      "openai/deprecations-abbreviated.md",
+      "openai-deprecations",
+      (body) => body.replace("Apr 1, 2027", "Apr 31, 2027"),
+    );
+    expect(invalid.map(({ model_id }) => model_id)).toEqual(["gpt-realtime", "tts-1", "whisper-1"]);
+  });
+
   it("skips an irregular deprecation row without losing valid siblings", async () => {
     const models = await parsed("openai", "openai/deprecations.md", "openai-deprecations", (body) =>
       body.replace("| 2026-09-28", "| malformed |\n| 2026-09-28"),

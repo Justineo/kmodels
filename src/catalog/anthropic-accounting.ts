@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
+import { markdownSection } from "./markdown.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import type { SourceParseInput } from "./source-parse.ts";
@@ -79,6 +80,7 @@ function usageInput(
 
 interface Field {
   indent: number;
+  declaration: string;
   parent?: number;
   name?: string;
   type?: string;
@@ -87,9 +89,9 @@ interface Field {
 function returnedUsageFields(markdown: string): Map<string, string[]> {
   if (!/^#{1,2} Create a Message\r?\n\r?\n\*\*post\*\* `\/v1\/messages`/im.test(markdown))
     return new Map();
-  const sections = markdown.split(/^### Returns[ \t]*\r?$/m);
-  if (sections.length !== 2) return new Map();
-  const body = (sections[1] ?? "").split(/^#{1,3} /m)[0] ?? "";
+  const sections = [2, 3].flatMap((depth) => markdownSection(markdown, depth, "Returns") ?? []);
+  if (sections.length !== 1) return new Map();
+  const body = sections[0] ?? "";
   const fields: Field[] = [];
   const ancestors: number[] = [];
   let fence: string | undefined;
@@ -116,14 +118,24 @@ function returnedUsageFields(markdown: string): Map<string, string[]> {
     const declaration = bullet[2].match(/^`([a-z_]+): ([^`]+)`$/);
     fields.push({
       indent,
+      declaration: bullet[2],
       ...(parent === undefined ? {} : { parent }),
       ...(declaration?.[1] === undefined ? {} : { name: declaration[1] }),
       ...(declaration?.[2] === undefined ? {} : { type: declaration[2] }),
     });
     ancestors.push(fields.length - 1);
   }
+  const messages = fields.flatMap((field, index) =>
+    field.parent === undefined && field.declaration === "`Message object`" ? [index] : [],
+  );
+  if (messages.length > 1) return new Map();
+  const message = messages[0];
+  if (message !== undefined) {
+    const types = fields.filter((field) => field.parent === message && field.name === "type");
+    if (types.length !== 1 || types[0]?.type !== '"message"') return new Map();
+  }
   const roots = fields.flatMap((field, index) =>
-    field.parent === undefined && field.name === "usage" ? [index] : [],
+    field.parent === message && field.name === "usage" ? [index] : [],
   );
   const root = roots[0];
   if (roots.length !== 1 || root === undefined || fields[root]?.type !== "Usage") return new Map();

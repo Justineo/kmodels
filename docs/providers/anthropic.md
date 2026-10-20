@@ -116,6 +116,11 @@ one malformed inventory item is skipped without rejecting recognized sibling row
 - A newly published model is admitted mechanically from official IDs. Family names are not an
   allowlist, including in release notes. Release-date headings reset at other sections; a launch
   below an unrelated heading cannot inherit the previous date.
+- A dated retirement announcement can supply a missing display name when it directly pairs that
+  name with one already observed exact ID. Conflicting names remain unresolved; examples, quoted
+  text and undated sections cannot establish the pair. This permits historical price labels to
+  resolve without rearranging ID tokens or turning display names into invocation aliases.
+  `To be announced` is an explicit unknown retirement date, not a malformed date.
 
 ## Model rates and dimensions
 
@@ -187,7 +192,10 @@ each group binds only its explicitly named models through the exact identity res
 use model IDs internally, independently of display-name availability. An unbound override withholds
 the read policy instead of silently deriving the default read price; independent write factors
 survive. Fast-mode compatibility is checked against the union of all published Fast rows, not
-against each row in isolation.
+against each row in isolation. The feature guide's bounded `featureMetadata.supportedModels`
+list owns current compatibility; reviewed legacy explicit model bullets remain readable.
+Tool-overhead tables may use separate auto/none and any/tool columns. Their tokens remain
+included in returned model usage; column layout does not create an additional service charge.
 Conflicting facts are reported and the directly published row remains
 authoritative. Cache policy rows are validated independently across all reviewed policy tables;
 conflicting or unreadable operations withhold only their derived rates. Known sibling multipliers
@@ -212,6 +220,10 @@ The [Fast-mode contract](https://platform.claude.com/docs/en/build-with-claude/f
 `fast` and `standard` outcomes, including an Opus 4.6 request that asks for Fast but runs at standard
 speed. Request intent alone cannot establish the charged speed. Mapping drift withholds only that
 acquisition path, independently of published Fast rates.
+The Messages reference may use a `Returns` section at level two or three. Only direct legacy
+`usage: Usage` or the unique root `Message object` response branch establishes these counters.
+Stream event branches, nested lookalikes, examples and ambiguous response owners cannot supply
+non-stream usage fields. A response-layout change cannot erase independent numeric rates.
 
 ## Request services
 

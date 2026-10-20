@@ -338,6 +338,9 @@ The prepared admission defines this run's active batch: one error-driven provide
 independent periodic slot and workflow evidence items. Other providers' candidates remain in the
 deferred queue in the context and immutable admission. Do not expand investigation to that queue,
 dismiss its entries or describe the whole catalog as healthy after closing only this batch.
+Source-acquisition review is scoped to admitted providers; a periodic architecture review instead
+covers acquisition across the full catalog. Failures outside a provider batch remain in the full
+refresh report and cannot be declared resolved by this run.
 
 Read `design.md`, `AGENTS.md`, the review method in `docs/refresh-repair-audit.md`,
 `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest

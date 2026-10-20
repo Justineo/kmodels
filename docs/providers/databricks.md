@@ -46,7 +46,10 @@ remains account-specific and outside this public rate book.
 The deterministic public collector uses the supported-model page plus these fixed official
 companions:
 
-- Foundation Model overview and regional support;
+- [Model availability by region](https://docs.databricks.com/aws/en/unity-gateway/model-region-availability)
+  for the pay-per-token and AI Functions batch matrices. The former overview now links this
+  dedicated page; historical bundles may still own the same matrix on the old overview. A present
+  new matrix takes precedence, including its validation failure, without borrowing old support;
 - lifecycle policy;
 - open and proprietary Foundation Model Serving pricing pages;
 - Priority-mode support;

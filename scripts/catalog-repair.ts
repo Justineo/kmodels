@@ -22,7 +22,6 @@ const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
 const allCandidates = catalogRepairCandidates(report);
 if (process.env.KMODELS_PERIODIC_REVIEW === "true")
   allCandidates.push(scheduledCatalogReview(new Date()));
-const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(report);
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
   executionPath === undefined
@@ -68,6 +67,13 @@ if (auditDirectory !== undefined) {
 }
 
 const { selected: candidates, deferred } = catalogRepairBatch(allCandidates, new Date());
+const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
+  report,
+  candidates.length === 0 ||
+    candidates.some(({ trigger }) => trigger === "scheduled_architecture_review")
+    ? undefined
+    : new Set(candidates.map(({ provider_id }) => provider_id)),
+);
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;
 let reviewMarkdown = "";
 if (admissionPath !== undefined) {
@@ -81,7 +87,7 @@ if (admissionPath !== undefined) {
       id: "workflow/source-evidence",
       trigger: "provider_validation",
       description:
-        "Source acquisition or required commercial evidence is incomplete. Investigate the exact failed sources in the refresh report; unrelated successful candidates cannot establish a healthy no-op.",
+        "Source acquisition or required commercial evidence is incomplete within the admitted review scope. Investigate the exact failed sources in the refresh report; unrelated successful candidates cannot establish a healthy no-op for this batch.",
     });
   if (executionNeedsReview || executionIncomplete)
     required.push({
@@ -130,6 +136,8 @@ if (admissionPath !== undefined) {
 const markdown =
   [
     "## Catalog repair candidates",
+    "",
+    "Provider-batch conclusions cover only the admitted providers. Acquisition failures and deferred findings elsewhere remain unresolved in the full refresh report. An architecture review covers the full catalog.",
     "",
     ...(candidates.length === 0
       ? [

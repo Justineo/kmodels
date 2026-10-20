@@ -5665,6 +5665,30 @@ describe("Vertex AI adapters", () => {
 });
 
 describe("Databricks adapters", () => {
+  it("uses the relocated regional matrix without borrowing support from a legacy overview", async () => {
+    const url = "https://docs.databricks.com/aws/en/unity-gateway/model-region-availability";
+    const matrix = await fixture("databricks/overview.html");
+    const empty = await fixture("databricks/overview-without-matrix.html");
+    const current = await databricksCatalog({ "overview.html": empty }, undefined, [
+      { url, body: matrix },
+    ]);
+    const support = (models: ProviderModel[]) =>
+      models.map(({ model_id, capabilities }) => ({ model_id, batch: capabilities.batch }));
+    expect(support(current)).toEqual(support(await databricksCatalog()));
+    const findings: SourceContractEvidence[] = [];
+    const invalid = await databricksCatalog({}, undefined, [{ url, body: empty }], (finding) =>
+      findings.push(finding),
+    );
+    expect(new Set(invalid.map(({ capabilities }) => capabilities.batch))).toEqual(
+      new Set(["unknown"]),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        diagnostics: [expect.objectContaining({ path: "/regional-model-support" })],
+      }),
+    );
+  });
+
   it("keeps batch support unknown when the overview no longer publishes the regional matrix", async () => {
     const findings: SourceContractEvidence[] = [];
     const models = await databricksCatalog(
@@ -5710,7 +5734,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v17");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v18");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5722,6 +5746,11 @@ describe("Databricks adapters", () => {
     expect(companions.get("google-image-pricing")?.claimLocal).toBeUndefined();
     expect(companions.get("pricing-open")?.claimLocal).toBeUndefined();
     expect(companions.get("lifecycle")).toMatchObject({ optional: true, claimLocal: true });
+    expect(companions.get("regions")).toMatchObject({
+      url: "https://docs.databricks.com/aws/en/unity-gateway/model-region-availability",
+      optional: true,
+      claimLocal: true,
+    });
     expect(companions.get("api-reference")?.optional).toBeUndefined();
   });
 

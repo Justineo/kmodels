@@ -684,7 +684,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-deprecations" },
-        extractorVersion: "openai-deprecations-v4",
+        extractorVersion: "openai-deprecations-v5",
         fields: ["aliases", "status", "release_stage", "retired_at", "replacement_model_ids"],
         allowedHosts: ["developers.openai.com"],
         maxResponseBytes: mebibytes(24),
@@ -846,7 +846,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v26",
+        extractorVersion: "anthropic-catalog-v27",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -1464,7 +1464,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v17",
+        extractorVersion: "databricks-catalog-v18",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1497,8 +1497,8 @@ export const manifests = [
           concurrency: 4,
           documents: fixedDocuments([
             [
-              "overview",
-              "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
+              "regions",
+              "https://docs.databricks.com/aws/en/unity-gateway/model-region-availability",
               2,
             ],
             [

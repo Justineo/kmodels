@@ -449,10 +449,16 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
 }
 
 /** Transport failure is not a parser repair, but also cannot establish a healthy no-op. */
-export function catalogRepairEvidenceIncomplete(input: unknown): boolean {
+export function catalogRepairEvidenceIncomplete(
+  input: unknown,
+  providerIds?: ReadonlySet<string>,
+): boolean {
   return refreshSummarySchema
     .parse(input)
-    .providers.some(
+    .providers.filter(
+      ({ provider_id }) => providerIds === undefined || providerIds.has(provider_id),
+    )
+    .some(
       ({ attempt }) =>
         attempt?.sources.some(
           ({ outcome, dependency_failures, dependency_failures_omitted }) =>

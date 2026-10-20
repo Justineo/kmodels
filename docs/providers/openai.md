@@ -65,6 +65,9 @@ pricing-page partition.
   previous date so later entries cannot inherit it. An irregular deprecation row is signaled and
   skipped locally. Repeated shutdown notices retain the latest date and all observed aliases,
   independently of row order.
+  Shutdown tables accept full or three-letter English month names and the explicit
+  `Model family / snapshot` header. Calendar validation still rejects impossible dates; a family
+  row contributes only the exact IDs published in its cell, never inferred family members.
 - A missing, duplicated, or malformed card does not remove its indexed identity. The collector
   publishes the minimal indexed row, reports a contract signal, and continues with valid siblings.
 - Discovered card fetches are optional within the bundle for the same reason. A failed card becomes

@@ -1541,11 +1541,10 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
     requiredDocument(bundle, "/aws/en/machine-learning/model-serving/score-foundation-models"),
     apiReference,
   );
-  const overview = document(
-    bundle,
-    "/aws/en/machine-learning/model-serving/foundation-model-overview",
-  );
-  if (overview !== undefined) applyBatch(models, overview, input);
+  const regions =
+    document(bundle, "/aws/en/unity-gateway/model-region-availability") ??
+    document(bundle, "/aws/en/machine-learning/model-serving/foundation-model-overview");
+  if (regions !== undefined) applyBatch(models, regions, input);
   const lifecycle = document(bundle, "/aws/en/machine-learning/retired-models-policy");
   if (lifecycle !== undefined) applyLifecycle(models, lifecycle, input.observedAt);
   const limits = document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits");

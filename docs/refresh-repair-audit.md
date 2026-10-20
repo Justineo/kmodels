@@ -24,6 +24,9 @@ the independent periodic slot and workflow evidence items. Other candidates stay
 deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
 list. A continuously failing provider gets its own slot at least once per configured-provider cycle;
 same-day reruns select from the latest evidence. Closing a batch is not a whole-catalog health claim.
+Source-acquisition review follows the admitted providers too; an unrelated transport failure must
+not silently expand a bounded batch. Keep those failures visible in the full refresh report. The
+periodic architecture slot reviews acquisition globally, and execution failures remain workflow-wide.
 For a comprehensive review, define the provider queue and acceptance conditions first. Prioritize
 wrong prices or quantities, identity loss, misleading states and regressions; select further cleanup
 only for a concrete correctness or maintenance benefit. Complete provider rounds and a concentrated
