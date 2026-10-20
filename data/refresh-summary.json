@@ -1,8 +1,8 @@
 {
-  "catalog_version": "ff456e18b5d9a923a1115b744ec67fd7dc3aa7de0a8bd80dd1206e2714e10a7c",
-  "generated_at": "2026-10-20T04:04:36.702Z",
+  "catalog_version": "d6874b92483ea6e5804f6e4e5b72c8412f32a9861a863436f4709d694b9a999d",
+  "generated_at": "2026-10-20T05:32:07.281Z",
   "outcome": "changed",
-  "previous_catalog_version": "b555ce22f509745dd2f80fedab631ac8c142582c1c5c67b2d8c44fa0673ff6df",
+  "previous_catalog_version": "ff456e18b5d9a923a1115b744ec67fd7dc3aa7de0a8bd80dd1206e2714e10a7c",
   "providers": [
     {
       "attempt": {
@@ -574,7 +574,7 @@
       "attempt": {
         "failure": {
           "code": "retained_pricing_core_mismatch",
-          "message": "Retained pricing requires the previous catalog model: azure/claude-opus-4-6"
+          "message": "Retained pricing requires the previous catalog model: azure/gpt-image-2.5-sunburst@2026-09-08"
         },
         "models": {
           "added": 23,
@@ -603,7 +603,7 @@
             "azure/o4-mini",
             "azure/sora-2"
           ],
-          "changed": 107,
+          "changed": 106,
           "changed_fields": {
             "api_endpoints": 1,
             "availability": 59,
@@ -619,7 +619,7 @@
             "replacement_model_ids": 3,
             "retired_at": 9,
             "service_families": 1,
-            "source_refs": 27,
+            "source_refs": 26,
             "status": 10,
             "task_evidence": 5
           },
@@ -26053,26 +26053,6 @@
                   "path": "source_refs",
                   "previous": [
                     "azure-models",
-                    "azure-retail-prices",
-                    "azure-public-pricing"
-                  ]
-                }
-              ],
-              "fields": [
-                "source_refs"
-              ],
-              "model_ref": "azure/gpt-image-2.5-sunburst@2026-09-09"
-            },
-            {
-              "field_changes": [
-                {
-                  "current": [
-                    "azure-models",
-                    "azure-retail-prices"
-                  ],
-                  "path": "source_refs",
-                  "previous": [
-                    "azure-models",
                     "azure-public-pricing",
                     "azure-retail-prices"
                   ]
@@ -33775,9 +33755,9 @@
               "model_ref": "azure/text-embedding-3-small@1"
             }
           ],
-          "current": 279,
+          "current": 278,
           "previous": 289,
-          "removed": 33,
+          "removed": 34,
           "removed_model_refs": [
             "azure/FW-DeepSeek-V3.1@1",
             "azure/FW-DeepSeek-V3.2@1",
@@ -33809,6 +33789,7 @@
             "azure/gpt-4-32k@0613 Retired",
             "azure/gpt-4@0613",
             "azure/gpt-4@0613 Retired",
+            "azure/gpt-image-2.5-sunburst@2026-09-08",
             "azure/grok-4.6",
             "azure/model-router",
             "azure/sora"
@@ -33833,22 +33814,22 @@
             "content_changed": true,
             "extractor_changed": true,
             "outcome": "changed",
-            "parsed_models": 96,
+            "parsed_models": 95,
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 100,
+            "consecutive_failures": 101,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
                 "diagnostics": [
                   {
-                    "affected_items": 11243,
+                    "affected_items": 11118,
                     "expected": "at least 70.00% coverage",
                     "fingerprint": "2ad1566b9822d72a",
                     "kind": "coverage_below_threshold",
                     "observed": "array",
-                    "observed_value": "22373/33616",
+                    "observed_value": "22498/33616",
                     "path": "/prices"
                   }
                 ],
@@ -34550,270 +34531,7 @@
           },
           {
             "content_changed": true,
-            "contract_findings": [
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "03892531b05911b3",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-tts-api/tts.output_audio_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "042059ecb7f6e199",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.output_audio_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "076297d78490e87f",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/image-search/responses.stream.image_search_count"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "09dd2a65b9f04c2c",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.input_audio_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "0f60d2ed846ea7ad",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.stream.output_audio_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "15f6c02b268d0467",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/image-search/responses.image_search_count"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "16bba86cbea667b0",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.stream.input_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "18bea2142532e10f",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-openai-chat-completions/chat.cache_creation_5m_input_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "1c50088bc1b15e70",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.stream.output_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "256a395d9ac6a60d",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.stream.input_audio_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "26e5df5c03c997ce",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-openai-chat-completions/chat.output_text_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "27950430e9e3c929",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.stream.input_text_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "29326030d338622b",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/batch-interfaces-compatible-with-openai/batch.chat.reasoning_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "2e1be34f0b02398f",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-openai-responses/responses.stream.session_cache_creation_input_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "304dc8c560260853",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/batch-interfaces-compatible-with-openai/batch.chat.input_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "30c27c4556eaa08e",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/qwen-api-via-openai-chat-completions/chat.stream.input_video_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              }
-            ],
-            "contract_findings_omitted": 63,
-            "dependency_failures": [
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "dashscope-pricing/chat-accounting",
-                "http_status": 406,
-                "impact": "claim",
-                "last_success_at": "2026-10-20T03:38:48.251Z",
-                "message": "HTTP 406",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "dashscope-pricing/native-accounting",
-                "http_status": 406,
-                "impact": "claim",
-                "last_success_at": "2026-10-20T03:38:48.251Z",
-                "message": "HTTP 406",
-                "outcome": "fetch_failed"
-              }
-            ],
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 223,
             "pricing_extraction": {
@@ -34830,7 +34548,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 61,
+              "diagnostic_count": 60,
               "diagnostics": [
                 {
                   "disposition": "unsupported",
@@ -34877,9 +34595,9 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 2594,
+                "normalized": 2595,
                 "raw": 49,
-                "unbound": 37,
+                "unbound": 36,
                 "unresolved": 0,
                 "unsupported": 24
               },
@@ -34893,7 +34611,7 @@
                 "model_price_unbound": 24,
                 "price_fact_normalized": 1968,
                 "pricing_billing_item_unsupported": 24,
-                "pricing_input_contract_partial": 1,
+                "pricing_input_contract_bound": 1,
                 "web_search_image_rate_normalized": 6
               },
               "unit": "reviewed source pricing item"
@@ -34937,6 +34655,10 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
@@ -34945,7 +34667,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "US (Virginia)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -34953,21 +34675,13 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
@@ -34976,7 +34690,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -34984,7 +34698,11 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -35000,22 +34718,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35028,8 +34746,8 @@
           {
             "field_changes": [
               {
-                "current": [],
-                "path": "availability"
+                "path": "availability",
+                "previous": []
               }
             ],
             "fields": [
@@ -35051,7 +34769,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "US (Virginia)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35063,7 +34781,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   }
                 ],
                 "path": "availability",
@@ -35078,7 +34796,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35090,7 +34808,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -35106,22 +34824,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35137,15 +34855,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35156,15 +34874,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35184,11 +34902,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35196,30 +34914,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35227,11 +34937,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -35247,11 +34965,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35259,30 +34977,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35290,11 +35000,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -35310,22 +35028,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35341,22 +35059,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35372,22 +35090,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35403,22 +35121,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35434,11 +35152,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35446,7 +35164,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35457,11 +35175,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35469,7 +35187,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35489,22 +35207,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35520,15 +35238,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35539,15 +35257,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35567,15 +35285,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35586,15 +35304,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35614,22 +35332,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35645,11 +35363,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35657,7 +35375,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35668,11 +35386,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35680,7 +35398,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -35700,22 +35418,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35731,22 +35449,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35762,22 +35480,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35793,22 +35511,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -35826,9 +35544,9 @@
         "unchanged": 218
       },
       "pricing": {
-        "commercial_hash": "39223d33c2825367420d38a2d9ac82ce8ee67090ac357db7f2e4af3269ac8a7c",
+        "commercial_hash": "1ee2a86616fb14d5a997cdfedd3162c9f97e3761928997789b7aa5503da96604",
         "outcome": "commercial",
-        "previous_commercial_hash": "5ab7d5b8ea2471bf66a9e054cf3a89115cb15d7a6d83409064854f485a58b72a"
+        "previous_commercial_hash": "39223d33c2825367420d38a2d9ac82ce8ee67090ac357db7f2e4af3269ac8a7c"
       },
       "pricing_coverage": {
         "current_models": 240,
@@ -35866,9 +35584,7 @@
       "pricing_publication": "accepted",
       "provider_id": "dashscope",
       "publication": "accepted",
-      "signals": [
-        "partial_contract_mismatch"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -35876,7 +35592,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-pricing"
           },
@@ -35898,9 +35614,7 @@
         "catalog_api_set_mismatch": 1,
         "missing_field": 4,
         "scope_limited": 1,
-        "source_contract_drift": 16,
-        "source_partial": 1,
-        "source_partial_retention": 2
+        "source_partial_retention": 1
       }
     },
     {
@@ -36081,7 +35795,7 @@
             "source_id": "deepseek-catalog"
           },
           {
-            "consecutive_failures": 12,
+            "consecutive_failures": 13,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -36334,22 +36048,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1589,
+            "parsed_models": 1583,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1589,
+              "model_records": 1583,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1589
+              "unknown_models": 1583
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1812,
+              "diagnostic_count": 1806,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -36394,20 +36108,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6816,
+                "excluded": 6818,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1812,
+                "unbound": 1806,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8628,
+              "observed_items": 8624,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1455,
-                "partner_route_price_not_published": 357,
-                "single_partner_inventory_without_product_evidence": 6745
+                "hf_inference_compute_price_unbound": 1453,
+                "partner_route_price_not_published": 353,
+                "single_partner_inventory_without_product_evidence": 6747
               },
               "unit": "reviewed source pricing item"
             },
@@ -36417,22 +36131,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 133,
+            "parsed_models": 130,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 133,
+              "model_records": 130,
               "normalized_facts": 382,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 110,
-              "raw_facts": 103,
-              "raw_models": 94,
-              "unknown_models": 23
+              "numeric_models": 109,
+              "raw_facts": 102,
+              "raw_models": 92,
+              "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 104,
+              "diagnostic_count": 103,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -36481,17 +36195,17 @@
                 "explicit_non_numeric": 0,
                 "normalized": 192,
                 "raw": 0,
-                "unbound": 103,
+                "unbound": 102,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 297,
+              "observed_items": 296,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
                 "route_price_normalized": 191,
-                "route_price_not_published": 103
+                "route_price_not_published": 102
               },
               "unit": "reviewed source pricing item"
             },
@@ -36536,7 +36250,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 22217,
+                "excluded": 22218,
                 "explicit_non_numeric": 0,
                 "normalized": 68,
                 "raw": 0,
@@ -36544,9 +36258,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 22288,
+              "observed_items": 22289,
               "reason_counts": {
-                "featherless_model_not_hf_route": 22216,
+                "featherless_model_not_hf_route": 22217,
                 "featherless_price_normalized": 68,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
@@ -36574,17 +36288,12 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 10,
+              "diagnostic_count": 9,
               "diagnostics": [
                 {
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/aya-vision-32b:cohere:c4ai-aya-vision-32b"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "native_route_price_not_exactly_joinable",
-                  "sample": "CohereLabs/c4ai-command-r7b-arabic-02-2025:cohere:command-r7b-arabic-02-2025"
                 },
                 {
                   "disposition": "unresolved",
@@ -36615,6 +36324,11 @@
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/tiny-aya-water:cohere:tiny-aya-water"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "native_route_price_not_exactly_joinable",
+                  "sample": "openai/gpt-oss-safeguard-20b:groq:openai/gpt-oss-safeguard-20b"
                 }
               ],
               "disposition_counts": {
@@ -36624,53 +36338,94 @@
                 "normalized": 25,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 10,
+                "unresolved": 9,
                 "unsupported": 0
               },
-              "observed_items": 35,
+              "observed_items": 34,
               "reason_counts": {
                 "native_route_price_normalized": 25,
-                "native_route_price_not_exactly_joinable": 10
+                "native_route_price_not_exactly_joinable": 9
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1455,
+            "outcome": "changed",
+            "parsed_models": 1453,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "count_decreases": [
         {
-          "current": 1812,
+          "current": 1627,
+          "field": "models",
+          "previous": 1634
+        },
+        {
+          "current": 260,
+          "field": "api_endpoints",
+          "previous": 266
+        },
+        {
+          "current": 1806,
           "field": "routes",
-          "previous": 1813
+          "previous": 1812
         }
       ],
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/IlyaGusev/rut5_base_headline_gen_telegram",
-          "huggingface/Qwen/Qwen3-VL-235B-A22B-Instruct"
-        ],
-        "changed": 4,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 6,
         "changed_fields": {
-          "capabilities": 1,
-          "routes": 4
+          "capabilities": 3,
+          "routes": 5
         },
         "changed_models": [
           {
             "field_changes": [
               {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B"
+          },
+          {
+            "field_changes": [
+              {
                 "current": [
                   {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
                     "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -36678,6 +36433,123 @@
                 ],
                 "path": "routes",
                 "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "routes",
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro-0813"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4p1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
                   {
                     "provider": "baseten",
                     "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
@@ -36692,12 +36564,22 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               },
               {
-                "current": false,
+                "current": true,
                 "path": "capabilities.structured_output",
-                "previous": true
+                "previous": false
               }
             ],
             "fields": [
@@ -36723,17 +36605,17 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "google/gemma-4-31b-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
                 "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "google/gemma-4-31B-it",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "google/gemma-4-31B-it",
@@ -36773,23 +36655,6 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
                   },
                   {
                     "provider": "novita",
@@ -36805,6 +36670,23 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
@@ -36812,130 +36694,37 @@
               "routes"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-5.2"
           }
         ],
-        "current": 1634,
-        "previous": 1633,
-        "removed": 1,
+        "current": 1627,
+        "previous": 1634,
+        "removed": 7,
         "removed_model_refs": [
-          "huggingface/Tongyi-MAI/Z-Image"
+          "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025",
+          "huggingface/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "huggingface/facebook/mask2former-swin-tiny-cityscapes-panoptic",
+          "huggingface/microsoft/infoxlm-large",
+          "huggingface/stabilityai/stable-diffusion-3.5-large",
+          "huggingface/stabilityai/stable-diffusion-3.5-large-turbo",
+          "huggingface/zai-org/GLM-4.5"
         ],
-        "unchanged": 1628
+        "unchanged": 1621
       },
       "pricing": {
-        "commercial_hash": "de3221b7518fa69e016b8db06011bb36ece3560a9f7ffede9b138098fe9d35ce",
+        "commercial_hash": "957197881cb0f64b33ef7754b58b44c6d5a1bdcd0b195f0b8a5311d24026e6c8",
         "outcome": "commercial",
-        "previous_commercial_hash": "f9a88757cf1cf9f1c736ca22cd5f655361b3c08760b11b9ad544aedb65591235"
+        "previous_commercial_hash": "de3221b7518fa69e016b8db06011bb36ece3560a9f7ffede9b138098fe9d35ce"
       },
       "pricing_coverage": {
-        "current_models": 1634,
+        "current_models": 1627,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": 0
+          "resolved_models": -3,
+          "unknown_models": -4
         },
-        "normalized_rate_models": 128,
+        "normalized_rate_models": 126,
         "not_applicable_models": 0,
-        "offer_models": 137,
-        "raw_fact_models": 14,
+        "offer_models": 134,
+        "raw_fact_models": 13,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
           "huggingface/51la5/roberta-large-NER",
@@ -36958,8 +36747,8 @@
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh"
         ],
-        "unknown_model_refs_omitted": 1477,
-        "unknown_models": 1497
+        "unknown_model_refs_omitted": 1473,
+        "unknown_models": 1493
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -36970,7 +36759,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
@@ -36983,6 +36772,12 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -37001,7 +36796,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -38272,30 +38067,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "updated_date": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "2026-10-20",
-                "path": "updated_date",
-                "previous": "2026-10-19"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "ollama/qwen3-vl"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 267,
         "previous": 267,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 266
+        "unchanged": 267
       },
       "pricing": {
         "commercial_hash": "73306dcc71261869fbd1d6795547abab0dfae85c542b072760a2042f00fc6a58",
@@ -38443,9 +38222,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 101,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -38645,26 +38424,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -38779,7 +38552,7 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -39097,7 +38870,7 @@
             "contract_findings_omitted": 18,
             "dependency_failures": [
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -39105,7 +38878,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -39113,7 +38886,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -39121,7 +38894,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -39129,7 +38902,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -39137,7 +38910,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -39145,7 +38918,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -39153,7 +38926,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -39161,7 +38934,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -39169,7 +38942,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -39177,7 +38950,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -39185,7 +38958,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -39193,7 +38966,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -39201,7 +38974,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -39209,7 +38982,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -39217,7 +38990,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 3,
+                "consecutive_failures": 4,
                 "dependency_id": "vercel-models/endpoints/3dcf45255383b2e3f0d686a7c7818148528f54945b29400fbaebab5596cbe5aa",
                 "http_status": 404,
                 "impact": "claim",
@@ -39227,7 +39000,7 @@
             ],
             "dependency_failures_omitted": 34,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 477,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -39329,8 +39102,8 @@
         "unchanged": 477
       },
       "pricing": {
-        "commercial_hash": "4de34cf408b4e09fac23408bdfce1a8bb9f8c8e355403d36829237ee04239fad",
-        "outcome": "provenance_only",
+        "commercial_hash": "e159f9dcba4d1ad9448c7e47d4eab8e4cf7b7eae9dcc76010c99a3722c4efd88",
+        "outcome": "commercial",
         "previous_commercial_hash": "4de34cf408b4e09fac23408bdfce1a8bb9f8c8e355403d36829237ee04239fad"
       },
       "pricing_coverage": {
@@ -39362,13 +39135,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -39700,7 +39480,7 @@
                 "observed_items": 3
               }
             ],
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 24,
             "pricing_extraction": {
@@ -39711,22 +39491,16 @@
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 24,
-              "raw_facts": 1,
-              "raw_models": 1,
+              "raw_facts": 0,
+              "raw_models": 0,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1,
-              "diagnostics": [
-                {
-                  "disposition": "ambiguous",
-                  "reason_code": "imagine_summary_price_conflict",
-                  "sample": "grok-imagine-image-2.0"
-                }
-              ],
+              "diagnostic_count": 0,
+              "diagnostics": [],
               "disposition_counts": {
-                "ambiguous": 1,
+                "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
                 "normalized": 26,
@@ -39735,9 +39509,8 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 27,
+              "observed_items": 26,
               "reason_counts": {
-                "imagine_summary_price_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "public_price_set_bound": 16,
                 "redirect_price_set_bound": 8,
@@ -39845,7 +39618,7 @@
         "normalized_rate_models": 24,
         "not_applicable_models": 0,
         "offer_models": 24,
-        "raw_fact_models": 1,
+        "raw_fact_models": 0,
         "unknown_model_refs": [],
         "unknown_model_refs_omitted": 0,
         "unknown_models": 0
@@ -39863,7 +39636,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "xai-models"
           }
@@ -39887,18 +39660,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 2,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 27,
-    "changed_sources": 24,
-    "models": 4321,
+    "changed_models": 28,
+    "changed_sources": 25,
+    "models": 4314,
     "pricing_accepted": 17,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
     "pricing_retained": 2,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 1,
+    "removed_models": 7,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
