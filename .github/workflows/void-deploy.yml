@@ -58,4 +58,6 @@ jobs:
         run: vp run build
 
       - name: Deploy
-        run: vp run deploy
+        run: |
+          vp exec void connect "$VOID_API_URL" --no-login
+          vp run deploy

@@ -20,7 +20,9 @@ const observedAt = "2026-09-22T00:00:00.000Z";
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/typesafe/${name}`, import.meta.url), "utf8");
 
-async function parse(overrides: { models?: string; api?: string | null; index?: string } = {}) {
+async function parse(
+  overrides: { models?: string; api?: string | null; apiUrl?: string; index?: string } = {},
+) {
   const api = overrides.api === undefined ? await fixture("api.md") : overrides.api;
   const findings: SourceContractEvidence[] = [];
   const reconciliation: PricingReconciliationItem[] = [];
@@ -35,7 +37,9 @@ async function parse(overrides: { models?: string; api?: string | null; index?: 
           url: "https://docs.typesafe.ai/llms.txt",
           body: overrides.index ?? (await fixture("llms.txt")),
         },
-        ...(api === null ? [] : [{ url: "https://docs.typesafe.ai/api.md", body: api }]),
+        ...(api === null
+          ? []
+          : [{ url: overrides.apiUrl ?? "https://docs.typesafe.ai/api.md", body: api }]),
       ],
     }),
     onContractFinding: (finding) => findings.push(finding),
@@ -45,6 +49,63 @@ async function parse(overrides: { models?: string; api?: string | null; index?: 
 }
 
 describe("TypeSafe AI", () => {
+  it("follows the indexed System One OpenAPI operation for typed questions and usage", async () => {
+    const parsed = await parse({
+      api: await fixture("system-one.md"),
+      apiUrl: "https://docs.typesafe.ai/api/system-one.md",
+      index: (await fixture("llms.txt")).replace("/api.md", "/api/system-one.md"),
+    });
+    expect(parsed.models[0]).toMatchObject({
+      tasks: ["classification"],
+      capabilities: { structured_output: true },
+    });
+    expect(parsed.pricing_inputs?.map(({ locator }) => locator.value)).toEqual([
+      "/usage/input_tokens",
+      "/usage/output_tokens",
+    ]);
+    expect(parsed.findings).toEqual([]);
+    const spec = await fixture("system-one.md");
+    for (const body of [
+      spec.replace(
+        "input_tokens:\n          type: integer",
+        "input_tokens:\n          type: string",
+      ),
+      spec.replace("SystemOneResponse", "OtherResponse"),
+    ]) {
+      const result = await parse({ api: body });
+      expect(result.models[0]?.price_facts).toEqual(parsed.models[0]?.price_facts);
+      expect(
+        result.pricing_inputs?.some(({ locator }) => locator.value === "/usage/input_tokens"),
+      ).toBe(false);
+      expect(result.findings.length).toBeGreaterThan(0);
+    }
+    const wrongOwner = await parse({ api: spec.replace("SystemOneRequest", "OtherRequest") });
+    expect(wrongOwner.models[0]?.tasks).toEqual([]);
+    expect(wrongOwner.pricing_inputs).toEqual(parsed.pricing_inputs);
+    for (const api of [
+      spec.replace("const: choice", "const: choice\n          const: other"),
+      spec.replace(
+        "type: string\n          const: choice",
+        "type: integer\n          const: choice",
+      ),
+    ]) {
+      const invalidTag = await parse({ api });
+      expect(invalidTag.models[0]?.tasks).toEqual([]);
+      expect(invalidTag.pricing_inputs).toEqual(parsed.pricing_inputs);
+      expect(invalidTag.models[0]?.price_facts).toEqual(parsed.models[0]?.price_facts);
+    }
+    const nativeQuotes = await parse({ api: spec.replaceAll('"', "'") });
+    expect(nativeQuotes.pricing_inputs).toEqual(parsed.pricing_inputs);
+    expect(nativeQuotes.models[0]?.tasks).toEqual(parsed.models[0]?.tasks);
+    for (const api of [
+      spec.replace("## OpenAPI", "## Examples") + "\n## OpenAPI\nUnavailable.",
+      spec + "\n" + spec,
+    ]) {
+      const unowned = await parse({ api });
+      expect(unowned.pricing_inputs).toEqual([]);
+      expect(unowned.models[0]?.price_facts).toEqual(parsed.models[0]?.price_facts);
+    }
+  });
   it("accepts compact and aligned Markdown delimiters but rejects missing hyphens", async () => {
     const models = await fixture("models.md");
     const expected = await parse({ models });

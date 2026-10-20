@@ -569,7 +569,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
-        extractorVersion: "typesafe-catalog-v4",
+        extractorVersion: "typesafe-catalog-v5",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -598,7 +598,7 @@ export const manifests = [
           concurrency: 2,
           documents: fixedDocuments([
             ["index", "https://docs.typesafe.ai/llms.txt", 1, "markdown"],
-            ["api", "https://docs.typesafe.ai/api.md", 1, "markdown", true, true],
+            ["api", "https://docs.typesafe.ai/api/system-one.md", 1, "markdown", true, true],
           ]),
         },
       },
@@ -1149,7 +1149,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v37",
+        extractorVersion: "bedrock-catalog-v38",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",

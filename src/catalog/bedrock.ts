@@ -740,11 +740,12 @@ function modelCardRates(
 ): SourcePriceFact[] {
   if (
     content === undefined ||
+    !access.endpoints.has("bedrock-runtime") ||
     !/All prices are per 1 million tokens\. Pricing shown is for the Standard tier\./.test(content)
   )
     return [];
   const table = markdownTable(content, ["Inference option", "Input", "Output", "Cache read"]);
-  if (table === undefined || !access.endpoints.has("bedrock-runtime")) return [];
+  if (table === undefined) return [];
   const geographies = new Set(
     [...access.aliases].flatMap((alias) => alias.match(/^(us|eu|apac)\./)?.[1] ?? []),
   );

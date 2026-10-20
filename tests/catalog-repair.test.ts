@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseRepairOutcome } from "../scripts/catalog-repair-publication.ts";
 import {
   catalogRepairCandidates,
+  catalogRepairBatch,
   catalogRepairEvidenceIncomplete,
   catalogRepairEvidenceCommands,
   scheduledCatalogReview,
@@ -9,6 +10,46 @@ import {
 import { manifests } from "../src/catalog/manifests.ts";
 
 const assertCatalogRepairOutcome = (output: string) => parseRepairOutcome(output).type;
+
+it("bounds provider repair admission without dropping candidates or delaying the periodic slot", () => {
+  const candidates = manifests.flatMap(({ provider }) =>
+    ["source_parse_failure", "pricing_validation"].map((trigger) => ({
+      provider_id: provider.id,
+      scope: "provider" as const,
+      subject_id: trigger,
+      trigger:
+        trigger === "source_parse_failure"
+          ? ("source_parse_failure" as const)
+          : ("pricing_validation" as const),
+      message: "Observed failure",
+      diagnostics: [],
+    })),
+  );
+  const firstDay = Date.parse("2026-10-20T00:00:00Z");
+  const reviewed = new Set<string>();
+  for (let offset = 0; offset < manifests.length; offset++) {
+    const at = new Date(firstDay + offset * 86_400_000);
+    const periodic = scheduledCatalogReview(at);
+    const input = [...candidates, periodic];
+    const batch = catalogRepairBatch(input, at);
+    expect(batch.selected).toContain(periodic);
+    const active = batch.selected.filter((candidate) => candidate !== periodic);
+    expect(active).toHaveLength(2);
+    expect(new Set(active.map(({ provider_id }) => provider_id)).size).toBe(1);
+    active.forEach(({ provider_id }) => reviewed.add(provider_id));
+    expect([...batch.selected, ...batch.deferred]).toHaveLength(input.length);
+    expect(new Set([...batch.selected, ...batch.deferred])).toEqual(new Set(input));
+    expect(catalogRepairBatch(input, new Date(at.getTime() + 86_399_999))).toEqual(batch);
+    expect(
+      catalogRepairBatch(input.toReversed(), at)
+        .selected.filter((candidate) => candidate !== periodic)
+        .map(({ provider_id }) => provider_id),
+    ).toEqual(active.map(({ provider_id }) => provider_id));
+  }
+  expect([...reviewed].sort()).toEqual(manifests.map(({ provider }) => provider.id).sort());
+  expect(catalogRepairBatch([], new Date(firstDay))).toEqual({ selected: [], deferred: [] });
+  expect(() => catalogRepairBatch(candidates, new Date("invalid"))).toThrow("valid date");
+});
 
 it("fails incomplete repair outputs even when the agent exits successfully", () => {
   for (const type of ["missing_data", "missing_tool", "report_incomplete"])

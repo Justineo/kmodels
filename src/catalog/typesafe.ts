@@ -1,8 +1,11 @@
 import { load } from "cheerio";
 import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownSection } from "./markdown.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
+import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
+import { yamlBlock } from "./yaml.ts";
 import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-source.ts";
@@ -122,7 +125,7 @@ function reviewIndex(bundle: LinkedBundle): void {
       (match) => new URL(match[1] ?? "").pathname,
     ),
   );
-  if (!paths.has("/models.md") || !paths.has("/api.md"))
+  if (!paths.has("/models.md") || !(paths.has("/api.md") || paths.has("/api/system-one.md")))
     throw new Error("TypeSafe index omitted catalog or API documentation");
   for (const path of paths) {
     // SDK usage pages describe client mechanics; they are not commercial surfaces.
@@ -132,8 +135,129 @@ function reviewIndex(bundle: LinkedBundle): void {
   }
 }
 
-function accounting(input: Input, body: string | undefined): SourcePricingInputFact[] {
+function yamlPath(body: string, path: readonly string[]): string | undefined {
+  let block: string | undefined = body;
+  for (const [depth, label] of path.entries()) {
+    if (block === undefined) return;
+    const matches: string[] = [];
+    for (const key of [label, `'${label}'`, `"${label}"`]) {
+      const value = yamlBlock(block, key, depth * 2);
+      if (value !== undefined) matches.push(value);
+    }
+    block = matches.length === 1 ? matches[0] : undefined;
+  }
+  return block;
+}
+
+function schemaRefs(
+  block: string | undefined,
+  indentation: number,
+  sequence = false,
+): string[] | undefined {
+  const prefix = " ".repeat(indentation) + (sequence ? "- $ref:" : "$ref:");
+  const lines = block?.split(/\r?\n/).filter((line) => line.startsWith(prefix));
+  const refs = lines?.map(
+    (line) =>
+      line
+        .slice(prefix.length)
+        .trim()
+        .match(/^(['"])(#[^'"]+)\1$/)?.[2],
+  );
+  if (refs === undefined || refs.some((ref) => ref === undefined)) return;
+  return refs.filter((ref) => ref !== undefined);
+}
+
+function systemOneSpec(body: string): string | undefined {
+  const content = markdownSection(body, 2, "OpenAPI");
+  if (content === undefined) return;
+  const blocks = [
+    ...content.matchAll(
+      /^(`{3,})yaml https:\/\/api\.typesafe\.ai\/openapi\.json post \/v1\/systemone\r?\n([\s\S]*?)^\1[ \t]*$/gm,
+    ),
+  ];
+  return blocks.length === 1 ? blocks[0]?.[2] : undefined;
+}
+
+function operationSchema(spec: string, side: "request" | "response"): string | undefined {
+  const path = [
+    "paths",
+    "/v1/systemone",
+    "post",
+    ...(side === "request" ? ["requestBody"] : ["responses", "200"]),
+    "content",
+    "application/json",
+    "schema",
+  ];
+  const refs = schemaRefs(yamlPath(spec, path), path.length * 2);
+  return refs?.length === 1
+    ? refs[0]?.match(/^#\/components\/schemas\/([A-Za-z0-9_-]+)$/)?.[1]
+    : undefined;
+}
+
+function typedQuestions(spec: string): boolean {
+  const request = operationSchema(spec, "request");
+  const response = operationSchema(spec, "response");
+  if (request === undefined || response === undefined) return false;
+  const read = openApiYamlSchemaReader(spec);
+  const answers = read(response, ["answers"], "map_value");
+  if (answers.length !== 1 || answers[0] !== "object") return false;
+  const questions = yamlPath(spec, [
+    "components",
+    "schemas",
+    request,
+    "properties",
+    "questions",
+    "additionalProperties",
+  ]);
+  const requestRefs = schemaRefs(questions, 12);
+  if (requestRefs?.length !== 1 || requestRefs[0] !== "#/components/schemas/Question") return false;
+  const union = yamlPath(spec, ["components", "schemas", "Question", "oneOf"]);
+  const alternatives = schemaRefs(union, 8, true);
+  return ["Noul", "Choice", "Score"].every((name) => {
+    const type = yamlPath(spec, ["components", "schemas", `${name}Question`, "properties", "type"]);
+    const constants = type?.split(/\r?\n/).filter((line) => line.startsWith("          const:"));
+    const types = read(`${name}Question`, ["type"]);
+    return (
+      alternatives?.filter((ref) => ref === `#/components/schemas/${name}Question`).length === 1 &&
+      types.length === 1 &&
+      types[0] === "string" &&
+      constants?.length === 1 &&
+      constants[0] === `          const: ${name.toLowerCase()}`
+    );
+  });
+}
+
+function usageInput(
+  sourceRef: string,
+  key: "input_tokens" | "output_tokens",
+): SourcePricingInputFact {
+  return {
+    key: `systemone.${key}`,
+    channel: "response",
+    locator: { kind: "json_pointer", value: `/usage/${key}` },
+    availability: "conditional",
+    source_ref: sourceRef,
+  };
+}
+
+function accounting(
+  input: Input,
+  body: string | undefined,
+  spec: string | undefined,
+): SourcePricingInputFact[] {
   if (body === undefined) return [];
+  if (/^## OpenAPI\s*$/m.test(body)) {
+    const read = spec === undefined ? undefined : openApiYamlSchemaReader(spec);
+    const response = spec === undefined ? undefined : operationSchema(spec, "response");
+    return (["input_tokens", "output_tokens"] as const).flatMap((key) => {
+      const types = response === undefined ? undefined : read?.(response, ["usage", key]);
+      if (types?.length !== 1 || types[0] !== "integer") {
+        signal(input, `/api/usage/${key}`);
+        return [];
+      }
+      return [usageInput(input.source.id, key)];
+    });
+  }
   if (!/^## Response body\s*$/m.test(body)) {
     signal(input, "/api/response-body");
     return [];
@@ -151,15 +275,7 @@ function accounting(input: Input, body: string | undefined): SourcePricingInputF
       signal(input, `/api/usage/${key}`);
       return [];
     }
-    return [
-      {
-        key: `systemone.${key}`,
-        channel: "response" as const,
-        locator: { kind: "json_pointer" as const, value: `/usage/${key}` },
-        availability: "conditional" as const,
-        source_ref: input.source.id,
-      },
-    ];
+    return [usageInput(input.source.id, key)];
   });
 }
 
@@ -174,12 +290,20 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
     throw new Error("TypeSafe model endpoint contract changed");
   if (!/(?:Charged|You pay) per input token\. Output tokens are free\./.test(current))
     throw new Error("TypeSafe token billing contract changed");
-  const api = bundle.documents.find(({ url }) => url === "https://docs.typesafe.ai/api.md")?.body;
-  const pricingInputs = accounting(input, api);
+  const apiDocuments = bundle.documents.filter(
+    ({ url }) =>
+      url === "https://docs.typesafe.ai/api/system-one.md" ||
+      url === "https://docs.typesafe.ai/api.md",
+  );
+  const api = apiDocuments.length === 1 ? apiDocuments[0]?.body : undefined;
+  const spec = api === undefined ? undefined : systemOneSpec(api);
+  const pricingInputs = accounting(input, api, spec);
   const typed =
     api !== undefined &&
-    /Picks one option from a set you define\./.test(api) &&
-    ["noul", "choice", "score"].every((type) => api.includes(`type="&#x22;${type}&#x22;"`));
+    (/^## OpenAPI\s*$/m.test(api)
+      ? spec !== undefined && typedQuestions(spec)
+      : /Picks one option from a set you define\./.test(api) &&
+        ["noul", "choice", "score"].every((type) => api.includes(`type="&#x22;${type}&#x22;"`)));
   if (!typed) signal(input, "/api/question-types");
   const byId = new Map<string, ParsedProviderModel>();
   for (const table of tables(current)) {

@@ -84,6 +84,9 @@ never inferred from the provider name. Explicit, unqualified Priority/Flex multi
 card derive separate tier rates from its Standard amounts. A bad price cell removes only that
 component, retaining the other meters in its row. Runtime card evidence does not authorize a
 join to a Mantle SKU.
+Runtime-only tariff readers check the card's positive endpoint before interpreting its tables.
+Mantle-only commercial and GovCloud tables, such as Grok 4.3, cannot trigger Runtime duplicate-table
+failure or acquire Runtime prices; independently parsed model facts and native SKUs survive.
 The OpenAI Bedrock cards use separately owned Standard and Ultrafast tables. Each heading supplies
 its own exact short/long input-context bound; its model context window supplies none. Commercial
 rows are limited to the card's positive regional and endpoint availability. An explicit Geo CRIS

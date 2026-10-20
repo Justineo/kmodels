@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import {
   catalogRepairCandidates,
+  catalogRepairBatch,
   catalogRepairEvidenceIncomplete,
   catalogRepairEvidenceCommands,
   scheduledCatalogReview,
@@ -18,9 +19,9 @@ import {
 const configuredPath = process.env.KMODELS_REFRESH_REPORT_PATH;
 const reportPath = configuredPath ?? new URL("../data/refresh-summary.json", import.meta.url);
 const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
-const candidates = catalogRepairCandidates(report);
+const allCandidates = catalogRepairCandidates(report);
 if (process.env.KMODELS_PERIODIC_REVIEW === "true")
-  candidates.push(scheduledCatalogReview(new Date()));
+  allCandidates.push(scheduledCatalogReview(new Date()));
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(report);
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
@@ -49,12 +50,12 @@ if (auditDirectory !== undefined) {
     const additions = semanticRepairCandidates(audit, snapshot, decisions);
     for (const candidate of additions) {
       if (
-        !candidates.some(
+        !allCandidates.some(
           ({ provider_id, subject_id }) =>
             provider_id === candidate.provider_id && subject_id === candidate.subject_id,
         )
       )
-        candidates.push(candidate);
+        allCandidates.push(candidate);
     }
     semanticMarkdown =
       semanticAuditMarkdown(audit, decisions) +
@@ -66,6 +67,7 @@ if (auditDirectory !== undefined) {
   }
 }
 
+const { selected: candidates, deferred } = catalogRepairBatch(allCandidates, new Date());
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;
 let reviewMarkdown = "";
 if (admissionPath !== undefined) {
@@ -92,6 +94,11 @@ if (admissionPath !== undefined) {
     base_sha: process.env.REPAIR_BASE_SHA,
     investigation_deadline: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     candidates: required,
+    deferred_candidates: deferred.map(({ provider_id, subject_id, trigger, message }) => ({
+      id: `${provider_id}/${subject_id}`,
+      trigger,
+      description: message,
+    })),
   });
   await mkdir(dirname(admissionPath), { recursive: true });
   await writeFile(admissionPath, admission);
@@ -143,6 +150,18 @@ const markdown =
     "",
     ...catalogRepairEvidenceCommands(candidates).map((command) => `- \`${command}\``),
     "",
+    ...(deferred.length === 0
+      ? []
+      : [
+          `## Deferred repair queue (${deferred.length})`,
+          "",
+          "Preparation admits one error-driven provider per UTC day, plus the independent periodic review. These candidates remain unreviewed in the refresh evidence and prepared admission; they are not resolved or healthy. A repeated run uses the same daily rotation against the latest report.",
+          "",
+          ...deferred.map(
+            ({ provider_id, subject_id, trigger }) => `- ${provider_id}/${subject_id}: ${trigger}`,
+          ),
+          "",
+        ]),
     "These commands use source IDs, not provider IDs. A bad argument is a tooling mistake to correct, not unavailable source evidence.",
     "Fetch success and hash identity do not prove parser correctness. Replay the actual parser and inspect rejected rows or sections before deciding whether repair is possible.",
     "",
