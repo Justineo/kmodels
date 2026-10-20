@@ -36,7 +36,7 @@ import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
   offer: WebsitePricingOffer;
-  modelRef?: string;
+  modelRef?: string | undefined;
   explainCharges?: boolean;
 }>();
 

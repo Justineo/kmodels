@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
+import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
 import type {
   WebsitePricingOffer,
@@ -325,7 +326,48 @@ describe("provider pricing details", () => {
     expect(after).not.toContain("Pricing states");
   });
 
-  it("separates normalized resources from raw-only official rows", async () => {
+  it("uses the same service cards for model-linked and independent provider offers", async () => {
+    const independent = pricingOffer();
+    const linked = { ...independent, group: "optional_service" } satisfies WebsitePricingOffer;
+    const modelHtml = await renderComponent(PricingServiceOffer, {
+      offer: linked,
+      modelRef: "test/model",
+    });
+    const providerHtml = await renderComponent(PricingServiceOffer, { offer: independent });
+    for (const html of [modelHtml, providerHtml]) {
+      expect(html).toContain('class="rate-offer"');
+      expect(html).toContain('class="rate-offer-heading"');
+      expect(html).toContain('class="offer-breakdown"');
+      expect(html).toContain('aria-label="Pricing options"');
+      expect(html).not.toContain('class="provider-offer"');
+    }
+    expect(modelHtml).toContain("Service charge");
+    expect(providerHtml).toContain("Separate service");
+  });
+
+  it("keeps pending and failed offer details explicit in the common card", async () => {
+    const full = pricingOffer();
+    const summary = {
+      id: full.id,
+      title: full.title,
+      billing_mode: full.billing_mode,
+      state_summary: full.state_summary,
+      offer_refs: [[0, 0]],
+    } satisfies WebsiteProviderPricingOffer;
+    const pending = await renderComponent(PricingServiceOffer, { offer: summary });
+    expect(pending).toContain("Loading pricing…");
+    expect(pending).not.toContain('class="rate-grid fact-grid"');
+    const failed = await renderComponent(PricingServiceOffer, {
+      offer: summary,
+      error: "Pricing is temporarily unavailable.",
+    });
+    expect(failed).toContain('role="alert"');
+    expect(failed).toContain("Pricing is temporarily unavailable.");
+    expect(failed).toContain("Retry");
+    expect(failed).not.toContain('class="rate-grid fact-grid"');
+  });
+
+  it("keeps raw-only provider facts in the common service list", async () => {
     const provider = {
       id: "test",
       name: "Test",
@@ -357,7 +399,7 @@ describe("provider pricing details", () => {
           title: "Reviewed service",
           kind: "Service",
           raw_only: false,
-          offers: [summary],
+          offers: [{ ...summary, id: "e".repeat(64) }],
         },
         {
           id: "d".repeat(64),
@@ -374,14 +416,53 @@ describe("provider pricing details", () => {
       detail,
       loading: false,
       error: undefined,
+      active: false,
+      excludedOfferIds: [],
     });
 
-    expect(html).toContain("Services");
-    expect(html).toContain("Find a resource or offer");
-    expect(html).toContain('type="search"');
+    expect(html.match(/class="rate-offer"/g)).toHaveLength(2);
     expect(html).toContain("Reviewed service");
-    expect(html).toContain("Pricing needing clarification");
     expect(html).toContain("Unmapped source row");
-    expect(html.match(/\/pricing\/index\.json/gu)).toHaveLength(1);
+    expect(html).not.toContain('type="search"');
+    expect(html).not.toContain("Normalized resources");
+    expect(html).not.toContain("provider-offer-summary");
+
+    const excluded = await renderComponent(ProviderPricingDetails, {
+      provider,
+      detail,
+      loading: false,
+      error: undefined,
+      active: false,
+      excludedOfferIds: [summary.id],
+    });
+    expect(excluded.match(/class="rate-offer"/g)).toHaveLength(1);
+    expect(excluded).toContain("Reviewed service");
+    expect(excluded).not.toContain("Unmapped source row");
+
+    const many = {
+      ...detail,
+      resources: [
+        {
+          ...detail.resources[0]!,
+          offers: Array.from({ length: 15 }, (_, index) => ({
+            ...summary,
+            id: String(index).padStart(64, "0"),
+            title: `Service ${index}`,
+          })),
+        },
+      ],
+    } satisfies WebsiteProviderPricingDetail;
+    const bounded = await renderComponent(ProviderPricingDetails, {
+      provider,
+      detail: many,
+      loading: false,
+      error: undefined,
+      active: false,
+      excludedOfferIds: [],
+    });
+    expect(bounded.match(/class="rate-offer"/g)).toHaveLength(12);
+    expect(bounded).toContain("Show more services");
+    expect(bounded).toContain('type="search"');
+    expect(bounded).not.toContain("Service 14");
   });
 });

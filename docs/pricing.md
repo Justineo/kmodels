@@ -1078,6 +1078,9 @@ raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.
 
 Provider services use the same context controls and current/upcoming timeline as model offers.
+Model-associated and independent services occupy one `Other charges & services` disclosure and
+use one offer-card renderer. Independent scope is retained as context rather than a separate
+resource/offer browsing hierarchy. Exact IDs prevent an already linked offer from appearing twice.
 Context selection resolves the applicable published rates without configuring a request or
 calculating a total. Upcoming prices remain available before their effective time with an explicit
 future label and timestamp. Dates on individual terms participate even when the pricing state is
@@ -1085,7 +1088,8 @@ unchanged.
 Provider-owned meters
 and credits use reviewed vocabulary labels or native codes in visible copy;
 their namespace-qualified syntax remains audit-only. The provider inspector
-loads one resource chunk at a time and one offer only when expanded. Context controls resolve
+loads resource metadata on demand and at most 12 visible independent offer bodies per page. A
+service search may load further metadata without hydrating every offer. Context controls resolve
 conditional offer states, while exact validity is shown on the shared timeline. Simple applicability
 remains exact display copy; large DNF
 is factored into a deterministic summary no longer than 180 characters while

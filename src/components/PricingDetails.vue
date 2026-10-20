@@ -8,6 +8,7 @@ import type {
   WebsiteProvider,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import PricingServiceOffer from "./PricingServiceOffer.vue";
 import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiSelect from "./UiSelect.vue";
@@ -25,6 +26,7 @@ const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
+const otherChargesOpen = ref(false);
 const offers = computed(() => props.detail?.offers ?? []);
 interface CapacityGroup {
   key: string;
@@ -113,12 +115,9 @@ function offerState(offer: WebsitePricingOffer | undefined): string | undefined 
     : offer.state_summary;
 }
 
-function supplementaryOfferKind(offer: WebsitePricingOffer): string {
-  if (offer.group === "optional_service") {
-    return offer.state_summary === "Included" ? "Included feature" : "Service charge";
-  }
-  if (offer.group === "automatic_component") return "Automatic charge";
-  return "Separate service";
+function toggleOtherCharges(event: Event): void {
+  if (event.currentTarget instanceof HTMLDetailsElement)
+    otherChargesOpen.value = event.currentTarget.open;
 }
 </script>
 
@@ -253,38 +252,36 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
       >
         <strong>No model inference rate shown</strong>
       </div>
-
-      <details v-if="supplementaryOffers.length > 0" class="additional-costs">
-        <summary>
-          <strong>Other charges & services</strong>
-          <small>Separate from the rates above</small>
-        </summary>
-
-        <div class="supplementary-list">
-          <article
-            v-for="offer in supplementaryOffers"
-            :key="offer.id"
-            class="rate-offer"
-            :data-kind="offer.group"
-          >
-            <header class="rate-offer-heading">
-              <div>
-                <small class="rate-kind">{{ supplementaryOfferKind(offer) }}</small>
-                <h5>{{ offer.title }}</h5>
-              </div>
-              <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
-            </header>
-            <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
-          </article>
-        </div>
-      </details>
     </template>
-    <ProviderServices
-      v-if="provider && provider.pricing_coverage.standalone_resources > 0"
-      :key="provider.id"
-      :provider
-      :data-version
-    />
+    <details
+      v-if="
+        supplementaryOffers.length > 0 || (provider?.pricing_coverage.standalone_resources ?? 0) > 0
+      "
+      class="additional-costs"
+      @toggle="toggleOtherCharges"
+    >
+      <summary>
+        <strong>Other charges & services</strong>
+        <small>Separate from the rates above</small>
+      </summary>
+
+      <div class="supplementary-list">
+        <PricingServiceOffer
+          v-for="offer in supplementaryOffers"
+          :key="offer.id"
+          :offer
+          :model-ref="model.uid"
+        />
+        <ProviderServices
+          v-if="provider && provider.pricing_coverage.standalone_resources > 0"
+          :key="provider.id"
+          :provider
+          :data-version
+          :active="otherChargesOpen"
+          :excluded-offer-ids="offers.map(({ id }) => id)"
+        />
+      </div>
+    </details>
   </section>
 </template>
 
@@ -392,6 +389,7 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .additional-costs {
@@ -504,35 +502,13 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   text-align: right;
 }
 
-.rate-offer-heading {
-  gap: var(--space-3);
-}
-
 .rate-offer {
   min-width: 0;
-}
-
-.rate-offer-heading > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-0-5);
 }
 
 .rate-offer-heading h5 {
   color: var(--color-text-primary);
   font-size: var(--font-size-body);
-}
-
-.rate-kind {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-medium);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-}
-
-.rate-offer:not([data-kind="model_mechanism"]) .rate-kind {
-  color: var(--color-accent);
 }
 
 .no-base-offer {

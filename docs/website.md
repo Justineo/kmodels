@@ -197,13 +197,16 @@ Status: implemented core; provider pricing convergence is in progress
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
-- Model pricing exposes a collapsed provider-services section when the provider publishes standalone
-  resources. Opening it loads the first provider chunk; resource search and pagination load remaining
-  chunks as needed, and expanding an offer loads only its referenced offer fragments. The section
-  identifies these as separately billed provider resources whose listing establishes no model
-  compatibility. They share the model-offer context controls and current/upcoming rate timeline.
-  Their charge definitions explain what counts as billable usage. A service without exact model
-  applicability remains independent in the canonical pricing download and model rate books.
+- Model-associated charges and independently callable provider services share one collapsed
+  `Other charges & services` disclosure and one `PricingServiceOffer` card. Both use the same heading,
+  kind, context controls, current/upcoming timeline, rate grid, notes and charge definitions. Resource
+  scope affects applicability and the card's context, never a second service browser or provider-specific
+  presentation path. Provider services remain explicitly independent of model compatibility.
+  Opening the disclosure loads provider resource metadata and the first 12 visible offer bodies.
+  Pagination reveals another 12; a search can load remaining metadata chunks but hydrates only visible
+  matches. Small lists omit search and paging controls. Offers already available through the model
+  are excluded from the independent list by exact ID. Failed offer loads remain retryable individually
+  without reloading successful siblings. Canonical books retain their original scopes and evidence.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -367,7 +370,7 @@ Status: implemented core; provider pricing convergence is in progress
   explicit open can retry.
 - Provider pricing projections remain at `/ui/providers/<provider>/pricing/<chunk>.json`,
   in deterministic whole-resource chunks capped at 2 MiB uncompressed. The model-browser
-  loads them on demand through the provider-services disclosure in model pricing. Resources retain
+  loads them on demand through the shared other-charges disclosure in model pricing. Resources retain
   lightweight offer summaries and grouped offer references for data consumers.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
