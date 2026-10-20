@@ -71,6 +71,14 @@ it("exercises the same isolated repair bootstrap in CI, preparation, and publica
   expect(smoke).not.toContain("COPILOT_GITHUB_TOKEN");
 });
 
+it("permits JSON inspection without granting direct shell or Git mutations", async () => {
+  const agent = job(await readFile(compiled, "utf8"), "agent");
+  expect(agent).toContain("shell(jq:*)");
+  for (const command of ["mkdir", "rm", "cp", "git checkout", "git reset"])
+    expect(agent).not.toContain(`shell(${command}:*)`);
+  expect(agent).toContain("--allow-tool write");
+});
+
 function job(workflow: string, name: string): string {
   const body = workflow.match(new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  \\w+:\\n|$)`))?.[1];
   if (body === undefined) throw new Error(`Missing workflow job: ${name}`);

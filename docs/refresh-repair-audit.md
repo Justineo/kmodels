@@ -72,6 +72,10 @@ and required catalog context. Use a reduced fixture that retains the relevant ow
 types and scope, and demonstrate the old failure when practical. Passing neighboring fixtures or
 fallback behavior is not reproduction. Assertions should test the claim and its independent siblings,
 not mirror implementation structure. Do not add tests that merely assert this guide's wording.
+The evidence CLI's full `scope: source` body already has the collector's normalization and bundle
+envelope. Replay that body unchanged. Raw indexes and isolated companions support navigation or
+local diagnostics; a manually reconstructed bundle's decoding failure does not establish a source
+or parser defect. Inspect saved output when a tool preview is truncated.
 Preserve existing negative controls during repair. Do not delete a failing case or weaken its
 assertion to make a patch pass; first establish whether current owned evidence actually changes
 that contract. Verify an acquisition locator's complete parent/leaf path, not just nearby matching
