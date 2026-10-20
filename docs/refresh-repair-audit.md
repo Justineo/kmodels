@@ -13,6 +13,66 @@ establish that its published schema changed.
 [Automation](automation.md) owns the repair sandbox, trusted checks and delivery. Provider guides
 own exact identities, pricing policies, known source limits and reviewed fixtures.
 
+## Review method
+
+### Set a finite scope
+
+For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
+For a comprehensive review, define the provider queue and acceptance conditions first. Prioritize
+wrong prices or quantities, identity loss, misleading states and regressions; select further cleanup
+only for a concrete correctness or maintenance benefit. Complete provider rounds and a concentrated
+shared review, then freeze the closing list. Reopen accepted work for new concrete defects, not to
+exhaust every possible coverage improvement.
+
+A non-blocking hypothesis outside the admitted work gets a bounded source/local investigation and
+an explicit limitation if evidence remains insufficient. This does not waive the evidence or status
+requirements for an admitted candidate. Correct invocation errors and test an independent explanation
+before calling a source, contract or tool unavailable. Neither time spent nor a scheduled review slot
+establishes completion. Keep execution progress local; update guides with the current rule and reason.
+
+### Follow the claim through its owners
+
+Read the complete requested provider/module scope, including its discovery and transport dependencies,
+parser, commercial/accounting mapping and consumers. An ordinary localized repair does not require
+reviewing unrelated providers. For each affected claim, establish:
+
+- **Native authority:** the exact model, route, API family, table/section or typed field that owns the
+  claim. Visible labels and local headers establish meaning; internal DOM keys, quoted examples,
+  similarly named SDK fields and neighboring tariffs do not supply missing semantics. Inspect
+  first-party navigation as well as the currently configured source set: a missed page can omit a
+  tariff without producing a parse error.
+- **Independent facts:** distinguish identity/capability, numeric price, billable quantity,
+  acquisition method and selector evidence, using [pricing coverage](pricing-coverage.md). Preserve
+  known siblings and explicit unknowns. Validate fields actually consumed by those facts; do not
+  add audit-only fetches or make a service fact depend on an arbitrary model carrier.
+- **Consumer behavior:** follow parsed facts through canonical scope, retention, persisted revisions,
+  calculation exports and UI projection. Confirm the original defect disappears without changing
+  unrelated facts. When quantity or scope changes, exercise both a known calculation and a relevant
+  unknown/missing-input or disjoint-scope control. Use distinct quantities where totals overlap cache
+  or modalities so a superficially plausible total cannot hide a wrong mapping.
+
+Fix the owning parser or shared boundary. A UI exception, synthetic commercial state or raw-text
+control protocol must not compensate for an unresolved source contract. After a justified change,
+review the full requested scope for removable repetition, indirection and unconsumed dependencies;
+preserve observable contracts and leave already-clear code alone.
+
+### Verify the repair at the changed boundary
+
+Replay the actual affected parser/assembly on saved first-party evidence, with the reviewed manifest
+and required catalog context. Use a reduced fixture that retains the relevant ownership, labels,
+types and scope, and demonstrate the old failure when practical. Passing neighboring fixtures or
+fallback behavior is not reproduction. Assertions should test the claim and its independent siblings,
+not mirror implementation structure. Do not add tests that merely assert this guide's wording.
+
+Check whether a producer fix also affects accepted stored data; changing an extractor does not repair
+an older partition automatically. Use offline pricing compilation only with admitted inputs and
+current extractor/revision guards, and projection preparation only when the canonical pair is already
+correct. Do not force an obsolete replay to make a source fix appear adopted. Changes to executable
+pricing or exported scope need proof in the actual built/packed consumer path as well as in-memory
+assembly. Run focused checks during editing and the required full gate after the final relevant edit;
+revalidate changes from upstream before delivering that exact tree. Workflow publication permissions
+and retry limits remain owned by [Automation](automation.md).
+
 ## Diagnostic boundaries
 
 - Acquisition reports native HTTP status, bounded sanitized errors and independent dependency
@@ -77,6 +137,20 @@ times. Refresh retains hashes and sanitized diagnostics rather than original res
 A refetch establishes current state; only a matching hash establishes identical refresh evidence.
 Hash mismatch limits historical attribution, but does not invalidate an independently reproduced
 current defect. Authenticated bodies cannot become public evidence artifacts.
+
+An operator-authorized historical-data repair pins the accepted pair and original source revisions
+before mutation. Prove which interpretation is unsupported, and assert that literal source quotes,
+evidence revisions, observation clocks and unaffected facts survive. Without the original evidence needed to
+establish a replacement, withdraw the unsupported interpretation to raw/unknown; do not flip a label,
+add a new API contract or backdate a current observation into that snapshot. Publish through normal
+pair preparation/commit APIs so validation, projections and crash recovery remain intact.
+
+If upstream data advances, compare the common ancestor, local normalization repair and incoming
+facts. Keep new identities/quotes and their true revisions; carry local corrections only across
+unchanged claims, and investigate overlapping changes explicitly. Preserve retained price-source
+revisions separately from current catalog metadata and unaccepted candidate inputs. Pin the reviewed
+candidate again before publishing. Automatic repair still cannot edit generated data or bypass its
+admitted patch boundary.
 
 When discovery rejects a bundle, `fetch-catalog-evidence.ts SOURCE_ID --index` retrieves its reviewed
 root index. Examine first-party navigation and exact paths before concluding that commercial
