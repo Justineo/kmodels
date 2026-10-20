@@ -100,6 +100,11 @@ after each test, including failures.
   partial-scope variants must keep the selector unresolved. Component SSR tests cover the visible
   consequence: invariant rates render immediately, while price-changing context produces a focused
   prompt and no premature numeric answer.
+- A published service payload or an isolated component render does not prove website availability.
+  Changes to service discovery must also exercise the model inspector's real disclosure, deferred
+  resource and offer loading, currency selection and current/upcoming rates in the browser. Check
+  note grouping against complete offer coverage and partial or unknown scopes; keep canonical facts
+  intact. A completion claim distinguishes data/calculator support from a reachable UI flow.
 - Require the subject to exist before asserting that one of its optional fields is absent; optional
   chaining must not allow a missing subject to satisfy the assertion accidentally.
 - Prefer explicit structural assertions over large snapshots. A failure should identify the model,

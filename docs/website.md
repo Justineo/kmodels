@@ -184,13 +184,23 @@ Status: implemented core; provider pricing convergence is in progress
   Information priority is meter, amount, and unit; then rate-changing choices; then pricing notes on
   demand. Pricing notes translate unsupported normalized structures into a concise provider
   condition and user impact; internal reason codes, raw-impact names, and unconditional scope labels
-  are not UI copy. Time allowances use the largest exact readable unit. Fixed metadata, driver
+  are not UI copy. Identical note content with the same impact, reason and validity is displayed once,
+  with the union of its published scopes. A scope qualification is omitted only when that union covers
+  every current offer state; available selector values alone do not prove complete coverage. Unknown
+  scopes remain unknown, and different conditions or dates retain separate notes. Canonical facts and
+  evidence are preserved independently of this display grouping.
+  Time allowances use the largest exact readable unit. Fixed metadata, driver
   definitions, and invariant explanations stay out of model details.
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
-- Standalone service books remain available in the canonical pricing download. A service
-  without exact model applicability is not attached to all models to make it visible in the UI.
+- Model pricing exposes a collapsed provider-services section when the provider publishes standalone
+  resources. Opening it loads the first provider chunk; resource search and pagination load remaining
+  chunks as needed, and expanding an offer loads only its referenced offer fragments. The section
+  identifies these as separately billed provider resources whose listing establishes no model
+  compatibility. They share the model-offer context controls and current/upcoming rate timeline.
+  Their charge definitions explain what counts as billable usage. A service without exact model
+  applicability remains independent in the canonical pricing download and model rate books.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -354,8 +364,8 @@ Status: implemented core; provider pricing convergence is in progress
   explicit open can retry.
 - Provider pricing projections remain at `/ui/providers/<provider>/pricing/<chunk>.json`,
   in deterministic whole-resource chunks capped at 2 MiB uncompressed. The model-browser
-  UI does not load these standalone resources. Resources retain lightweight offer summaries
-  and grouped offer references for data consumers.
+  loads them on demand through the provider-services disclosure in model pricing. Resources retain
+  lightweight offer summaries and grouped offer references for data consumers.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.

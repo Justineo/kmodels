@@ -19,6 +19,7 @@ import {
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import { formatLocalDateTime } from "../catalog/presentation.ts";
 import {
+  projectWebsitePricingNotes,
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
 } from "../catalog/website-pricing-query.ts";
@@ -35,7 +36,8 @@ import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
   offer: WebsitePricingOffer;
-  modelRef: string;
+  modelRef?: string;
+  explainCharges?: boolean;
 }>();
 
 interface ScopeCopy {
@@ -84,11 +86,18 @@ const rateSelectors = computed(() => {
 const visibleRates = computed(() =>
   rateProjection.value.rates.map(({ row }) => ({ ...row, qualifier: validityNote(row.validity) })),
 );
+const chargeDrivers = computed(() => [
+  ...new Map(
+    displayOffer.value.rates.flatMap(({ driver }) =>
+      driver === undefined ? [] : [[canonicalJson(driver), driver] as const],
+    ),
+  ).values(),
+]);
 const visibleAllowances = computed(() => matchingRows(displayOffer.value.allowances));
 const visibleContributions = computed(() => matchingRows(displayOffer.value.contributions));
 const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const visibleUnnormalized = computed(() =>
-  displayOffer.value.unnormalized
+  projectWebsitePricingNotes(displayOffer.value)
     .filter(({ possible_scope }) => possible_scope === undefined || applies(possible_scope))
     .map((row) => ({
       ...row,
@@ -107,6 +116,7 @@ const showOfferStates = computed(
 const showPublishedStatus = computed(
   () =>
     displayOffer.value.rates.length === 0 &&
+    !showOfferStates.value &&
     displayOffer.value.state_summary !== "Metered pricing" &&
     displayOffer.value.state_summary !== "Incomplete" &&
     displayOffer.value.state_summary !== "Included",
@@ -166,7 +176,9 @@ function matches(applicability: WebsitePriceApplicability): boolean {
 }
 
 function evaluate(applicability: WebsitePriceApplicability) {
-  return evaluateModelApplicability(applicability, props.modelRef, selectionValues.value);
+  return props.modelRef === undefined
+    ? evaluateApplicability(applicability, selectionValues.value)
+    : evaluateModelApplicability(applicability, props.modelRef, selectionValues.value);
 }
 
 function matchingRows<
@@ -598,6 +610,13 @@ function showNoteScope(scope: ScopeCopy): boolean {
           <small v-if="fact.scope.secondary">{{ fact.scope.secondary }}</small>
         </div>
       </div>
+    </details>
+
+    <details v-if="explainCharges && chargeDrivers.length > 0" class="pricing-disclosure">
+      <summary>
+        <span><UiIcon name="chevron-right" />What this rate charges for</span>
+      </summary>
+      <ChargeDriverFacts v-for="(driver, index) in chargeDrivers" :key="index" :driver />
     </details>
   </div>
 </template>

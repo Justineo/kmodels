@@ -29,6 +29,19 @@ describe("model details", () => {
     const html = await renderComponent(ModelDetails, {
       model,
       providerName: "Test Provider",
+      provider: {
+        id: "test",
+        name: "Test Provider",
+        pricing_coverage: {
+          representative_models: 0,
+          offer_models: 1,
+          unknown_models: 0,
+          not_applicable_models: 0,
+          standalone_resources: 2,
+          detail_chunks: 1,
+        },
+      },
+      dataVersion: "a".repeat(64),
       detail,
       loading: false,
       error: undefined,
@@ -39,6 +52,9 @@ describe("model details", () => {
       html.indexOf("</header>"),
     );
     const content = html.slice(html.indexOf('<div class="details-content"'));
+    expect(content).toContain("Test Provider services");
+    expect(content).toContain("2 separately priced resources");
+    expect(content).toContain("does not establish compatibility with this model");
 
     expect(header).not.toContain("active");
     expect(header).not.toContain("regional catalog");

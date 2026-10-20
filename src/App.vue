@@ -52,6 +52,7 @@ type Theme = "light" | "dark";
 const root = document.documentElement;
 const initialRoute = parseRouteSearch(location.search);
 const props = defineProps<{ catalog: WebsiteCatalog }>();
+detailsState.dataVersion = props.catalog.data_version;
 
 const { providers, generated_at: generatedAt } = props.catalog;
 const catalogUpdateUrl = __KMODELS_CATALOG_UPDATE_URL__;
@@ -488,6 +489,7 @@ watch(
     if (detailsState.pricingTarget !== model?.uid) detailsState.pricingTarget = undefined;
     detailsState.model = model;
     detailsState.providerName = model === undefined ? "" : providerName(model.provider_id);
+    detailsState.provider = providers.find(({ id }) => id === model?.provider_id);
     void loadModelDetail(model);
   },
   { immediate: true },

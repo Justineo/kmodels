@@ -1,6 +1,14 @@
 import { canonicalJson } from "./canonical-value.ts";
-import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
-import { evaluateModelApplicability, type PricingSelection } from "./pricing-applicability.ts";
+import {
+  applicabilityContainedIn,
+  unconditionalApplicability,
+  unionApplicabilities,
+} from "./pricing-canonical.ts";
+import {
+  evaluateApplicability,
+  evaluateModelApplicability,
+  type PricingSelection,
+} from "./pricing-applicability.ts";
 import { publishedValidityStatus } from "./pricing-time.ts";
 import type {
   WebsitePriceApplicability,
@@ -29,7 +37,7 @@ export interface WebsiteRateQuery {
 
 export function projectWebsiteRateQuery(
   offer: WebsitePricingOffer,
-  modelRef: string,
+  modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): WebsiteRateQuery {
   const rates: WebsiteProjectedRate[] = [];
@@ -53,12 +61,47 @@ export function projectWebsiteRateQuery(
     }
     for (const dimension of missing) unresolved.set(canonicalJson(dimension), dimension);
   }
+  const states = offer.states.filter(
+    ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
+  );
+  if (new Set(states.map(({ state }) => state)).size > 1)
+    for (const dimension of missingDimensions(states, modelRef, selections))
+      unresolved.set(canonicalJson(dimension), dimension);
   return {
     rates,
     unresolved_dimensions: [...unresolved.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([, dimension]) => dimension),
   };
+}
+
+export function projectWebsitePricingNotes(
+  offer: WebsitePricingOffer,
+): WebsitePricingOffer["unnormalized"] {
+  const groups = new Map<string, WebsitePricingOffer["unnormalized"]>();
+  for (const row of offer.unnormalized) {
+    const { key: _key, possible_scope, ...content } = row;
+    const key = canonicalJson({ ...content, scoped: possible_scope !== undefined });
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()].flatMap((rows) => {
+    const first = rows[0];
+    if (first === undefined) return [];
+    if (first.possible_scope === undefined) return [first];
+    try {
+      const scope = unionApplicabilities(
+        rows.flatMap(({ possible_scope }) => possible_scope ?? []),
+      );
+      const coversOffer =
+        offer.states.length > 0 &&
+        offer.states.every(({ applicability }) => applicabilityContainedIn(applicability, scope));
+      return [{ ...first, possible_scope: coversOffer ? unconditionalApplicability : scope }];
+    } catch {
+      return rows;
+    }
+  });
 }
 
 export function projectWebsitePricingTimeline(
@@ -130,7 +173,7 @@ function uniqueRateValues(rows: WebsiteRateRow[]): WebsiteRateRow[] {
 function isInvariantRate(
   offer: WebsitePricingOffer,
   rows: WebsiteRateRow[],
-  modelRef: string,
+  modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): boolean {
   if (new Set(rows.map(rateValue)).size !== 1) return false;
@@ -155,7 +198,7 @@ function isInvariantRate(
 
 function remainingScope(
   applicability: WebsitePriceApplicability,
-  modelRef: string,
+  modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): WebsitePriceApplicability | undefined {
   const any_of = applicability.any_of.filter(
@@ -165,8 +208,8 @@ function remainingScope(
 }
 
 function missingDimensions(
-  rows: WebsiteRateRow[],
-  modelRef: string,
+  rows: Array<Pick<WebsiteRateRow, "applicability">>,
+  modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): WebsitePriceDimension[] {
   const dimensions = new Map<string, WebsitePriceDimension>();
@@ -193,10 +236,12 @@ function rateValue(row: WebsiteRateRow): string {
 
 function evaluate(
   applicability: WebsitePriceApplicability,
-  modelRef: string,
+  modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ) {
-  return evaluateModelApplicability(applicability, modelRef, selections);
+  return modelRef === undefined
+    ? evaluateApplicability(applicability, selections)
+    : evaluateModelApplicability(applicability, modelRef, selections);
 }
 
 function nextEffectiveAt(offer: WebsitePricingOffer, currentInstant: string): string | undefined {

@@ -253,8 +253,11 @@ Model details show one PAYG mechanism, billing-currency and Peak/Off-peak select
 the three applicable published rates, and their verified pricing-input methods. The categorical
 definitions preserve the holiday rule. They do not
 show balance, concurrency, settlement, routing, provisioning, training or storage. Provider details
-show the independent Search and Fetch resources, both invocation mechanisms and the shared
-current/upcoming validity timeline. The website presents rates rather than calculating a total or deciding the
+show the independent Search and Fetch resources under the model inspector's collapsed DeepSeek
+services section, both invocation mechanisms and the shared current/upcoming validity timeline.
+This is provider context, not an assertion of model compatibility. Identical USD/CNY policy notes
+appear once when their scopes cover the complete offer; distinct rates retain their currency
+selector. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by
 returned usage, and sum requests. Runtime collection, request lifecycle, ledgers, contract-price
 overrides, and invoice reconciliation remain consumer responsibilities rather than Pricebook data.
