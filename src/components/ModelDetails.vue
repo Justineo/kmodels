@@ -7,7 +7,11 @@ import {
   modelTaskList,
   primaryStatus,
 } from "../catalog/presentation.ts";
-import type { WebsiteModel, WebsiteModelDetail } from "../catalog/website-schema.ts";
+import type {
+  WebsiteModel,
+  WebsiteModelDetail,
+  WebsiteProvider,
+} from "../catalog/website-schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
@@ -17,6 +21,8 @@ import UiIcon from "./UiIcon.vue";
 const props = defineProps<{
   model: WebsiteModel | undefined;
   providerName: string;
+  provider: WebsiteProvider | undefined;
+  dataVersion: string;
   detail: WebsiteModelDetail | undefined;
   loading: boolean;
   error: string | undefined;
@@ -378,6 +384,8 @@ onUnmounted(() => {
             </section>
 
             <PricingDetails
+              :provider
+              :data-version
               :model="model"
               :detail="detail?.pricing"
               :loading="loading"

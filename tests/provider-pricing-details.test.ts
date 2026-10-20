@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
-import ProviderPricingOfferDetails from "../src/components/ProviderPricingOfferDetails.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
 import type {
   WebsitePricingOffer,
@@ -100,7 +99,14 @@ function pricingOffer(): WebsitePricingOffer {
     group: "standalone",
     billing_mode: { label: "Hybrid" },
     state_summary: "2 pricing states",
-    selectors: [],
+    selectors: [
+      {
+        key: '{"namespace":"kmodels","value":"promotion"}',
+        kind: "boolean",
+        label: "Promotion",
+        dimension: { namespace: "kmodels", value: "promotion" },
+      },
+    ],
     states: [
       {
         key: "state:0",
@@ -128,15 +134,105 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
-  it("renders every conditional pricing state", async () => {
-    const html = await renderComponent(ProviderPricingOfferDetails, { offer: pricingOffer() });
+  it("uses the shared context controls for conditional service pricing", async () => {
+    const html = await renderComponent(PricingOfferBreakdown, {
+      offer: pricingOffer(),
+      explainCharges: true,
+    });
 
-    expect(html).toContain('aria-label="Pricing states"');
-    expect(html).toContain("Free");
+    expect(html).toContain('aria-label="Pricing options"');
     expect(html).toContain("Promotion");
-    expect(html).toContain("Numeric");
-    expect(html).toContain("No promotion");
+    expect(html).toContain("Yes");
+    expect(html).toContain("No");
+    expect(html).toContain("2 pricing states");
     expect(html).not.toContain("/pricing/index.json");
+  });
+
+  it("uses the current and upcoming timeline for standalone services without a model reference", async () => {
+    vi.useFakeTimers();
+    const transition = "2026-10-31T16:00:00.000Z";
+    const offer = pricingOffer();
+    offer.selectors = [];
+    offer.states = [
+      {
+        key: "current",
+        state: "numeric",
+        label: "Metered pricing",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+        validity: { until: { value: transition, precision: "datetime", inclusive: false } },
+      },
+      {
+        key: "next",
+        state: "numeric",
+        label: "Metered pricing",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+        validity: { from: { value: transition, precision: "datetime", inclusive: true } },
+      },
+    ];
+    offer.rates = offer.states.map((state, index) => ({
+      ...state,
+      term_ref: "c".repeat(64),
+      label: "Search",
+      amount: index === 0 ? "$0" : "$0.75",
+      unit: "per 1K requests",
+      accessible_text: index === 0 ? "Free search" : "Paid search",
+      driver: {
+        label: "Search requests",
+        definition: index === 0 ? "Current billing qualification" : "Future billing qualification",
+        aggregation: "Request",
+        resolution_phase: "outcome",
+      },
+    }));
+    vi.setSystemTime(new Date("2026-10-20T00:00:00.000Z"));
+    const before = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
+    expect(before).toContain("$0<");
+    expect(before).toContain(`datetime="${transition}"`);
+    expect(before).not.toContain("$0.75");
+    expect(before).toContain("Current billing qualification");
+    expect(before).not.toContain("Future billing qualification");
+
+    vi.setSystemTime(new Date(transition));
+    const after = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
+    expect(after).toContain("$0.75");
+    expect(after).not.toContain("New rates");
+    expect(after).not.toContain("Validity-qualified");
+    expect(after).toContain("Future billing qualification");
+    expect(after).not.toContain("Current billing qualification");
+  });
+
+  it("renders one informational note for all supported billing currencies", async () => {
+    const offer = pricingOffer();
+    const dimension = { namespace: "kmodels" as const, value: "billing_currency" as const };
+    const scopes = ["USD", "CNY"].map((value) => ({
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical" as const,
+              dimension,
+              values: [{ namespace: "provider" as const, provider_id: "test", value }],
+            },
+          ],
+        },
+      ],
+    }));
+    offer.states = [
+      { ...offer.states[0]!, applicability: { any_of: scopes.flatMap((s) => s.any_of) } },
+    ];
+    offer.unnormalized = scopes.map((possible_scope, index) => ({
+      key: String(index),
+      label: "Billing period applicability",
+      reason: "Other",
+      impact: "informational",
+      details: ["Peak / Off-peak applicability"],
+      possible_scope,
+    }));
+    const html = await renderComponent(PricingOfferBreakdown, { offer, modelRef: "test/model" });
+    expect(html.match(/Billing period applicability/g)).toHaveLength(1);
+    expect(html).not.toContain("Applies when");
+    expect(html).not.toContain("Choose Billing currency");
   });
 
   it("shows a categorical billing-period selector with its daily rule", async () => {
@@ -279,11 +375,11 @@ describe("provider pricing details", () => {
       error: undefined,
     });
 
-    expect(html).toContain("Normalized resources");
+    expect(html).toContain("Services");
     expect(html).toContain("Find a resource or offer");
     expect(html).toContain('type="search"');
     expect(html).toContain("Reviewed service");
-    expect(html).toContain("Unresolved official rows");
+    expect(html).toContain("Pricing needing clarification");
     expect(html).toContain("Unmapped source row");
     expect(html.match(/\/pricing\/index\.json/gu)).toHaveLength(1);
   });

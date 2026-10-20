@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  projectWebsitePricingNotes,
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
 } from "../src/catalog/website-pricing-query.ts";
+import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
 import type {
   WebsitePriceApplicability,
   WebsitePricingOffer,
@@ -68,6 +70,72 @@ function offer(
 }
 
 describe("website pricing query", () => {
+  it("requires context that changes a standalone service's pricing state", () => {
+    const data = offer([]);
+    data.states = [
+      { ...data.states[0]!, state: "numeric", applicability: region("us") },
+      { ...data.states[0]!, state: "free", applicability: region("eu") },
+    ];
+    expect(projectWebsiteRateQuery(data, undefined, []).unresolved_dimensions).toEqual([
+      { namespace: "kmodels", value: "region" },
+    ]);
+    expect(
+      projectWebsiteRateQuery(data, undefined, [
+        {
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "region" },
+          value: { namespace: "provider", provider_id: "test", value: "eu" },
+        },
+      ]).unresolved_dimensions,
+    ).toEqual([]);
+  });
+
+  it("merges identical notes and omits scope only when it covers the complete offer", () => {
+    const data = offer([]);
+    data.unnormalized = ["us", "eu"].map((value) => ({
+      key: value,
+      label: "Published billing policy",
+      reason: "Other",
+      impact: "informational",
+      details: ["Same rule"],
+      possible_scope: region(value),
+    }));
+    const projected = projectWebsitePricingNotes(data);
+    expect(projected).toHaveLength(1);
+    expect(projected[0]?.possible_scope).toEqual(unconditionalApplicability);
+    expect(data.unnormalized).toHaveLength(2);
+
+    data.states[0]!.applicability = region("us", "eu", "apac");
+    const partial = projectWebsitePricingNotes(data);
+    expect(partial).toHaveLength(1);
+    expect(partial[0]?.possible_scope).not.toEqual(unconditionalApplicability);
+  });
+
+  it("retains different content, validity, impact and unknown scope as distinct notes", () => {
+    const data = offer([]);
+    const row = {
+      key: "original",
+      label: "Published billing policy",
+      reason: "Other",
+      impact: "informational" as const,
+      details: ["Rule"],
+      possible_scope: region("us"),
+    };
+    const { possible_scope: _scope, ...unknown } = row;
+    data.unnormalized = [
+      row,
+      { ...row, key: "different", details: ["Another rule"] },
+      {
+        ...row,
+        key: "dated",
+        validity: { from: { value: "2026-11-01", precision: "date" } },
+      },
+      { ...row, key: "impact", impact: "base_price" },
+      { ...unknown, key: "unknown" },
+    ];
+    expect(projectWebsitePricingNotes(data)).toHaveLength(5);
+  });
+
   it("shows a rate immediately when it is invariant across the available context", () => {
     const result = projectWebsiteRateQuery(
       offer([{ amount: "$2", scope: region("us", "eu") }]),

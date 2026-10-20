@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   loadWebsiteProviderPricingChunk,
   loadWebsiteProviderPricingOffer,
@@ -10,23 +10,17 @@ import type {
   WebsiteProviderPricingDetail,
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
-import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
-import ProviderIcon from "./ProviderIcon.vue";
-import ProviderPricingOfferDetails from "./ProviderPricingOfferDetails.vue";
+import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
-  provider: WebsiteProvider | undefined;
+  provider: WebsiteProvider;
   detail: WebsiteProviderPricingDetail | undefined;
   loading: boolean;
   error: string | undefined;
 }>();
-const emit = defineEmits<{ close: [] }>();
-const dialog = useTemplateRef<HTMLDialogElement>("dialog");
-const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
-const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
-const closing = ref(false);
+const emit = defineEmits<{ retry: [] }>();
 const resources = ref<WebsiteProviderPricingDetail["resources"]>([]);
 const nextChunk = ref(1);
 const loadingMore = ref(false);
@@ -38,7 +32,7 @@ const offerLoads = ref<
   Record<string, { offer?: WebsitePricingOffer; loading: boolean; error?: string }>
 >({});
 const hasMoreChunks = computed(
-  () => nextChunk.value < (props.provider?.pricing_coverage.detail_chunks ?? 0),
+  () => nextChunk.value < props.provider.pricing_coverage.detail_chunks,
 );
 const filteredResources = computed(() => {
   const normalized = query.value.trim().toLocaleLowerCase();
@@ -63,14 +57,14 @@ const resourceGroups = computed(() =>
     {
       id: "normalized",
       rawOnly: false,
-      title: "Normalized resources",
-      description: "Reviewed rates and commercial states.",
+      title: "Services",
+      description: "Published rates and billing conditions.",
     },
     {
       id: "raw-only",
       rawOnly: true,
-      title: "Unresolved official rows",
-      description: "Official pricing facts retained for audit without normalized terms.",
+      title: "Pricing needing clarification",
+      description: "Published prices with conditions that cannot yet be compared directly.",
     },
   ]
     .map((group) => ({
@@ -79,29 +73,6 @@ const resourceGroups = computed(() =>
     }))
     .filter(({ resources: groupedResources }) => groupedResources.length > 0),
 );
-const updateScrollbars = useOverlayScrollbars(() => ({
-  target: scrollHost.value,
-  viewport: scrollViewport.value,
-}));
-
-watch(
-  () => props.provider,
-  async (provider) => {
-    if (provider !== undefined) closing.value = false;
-    await nextTick();
-    const element = dialog.value;
-    if (element === null) return;
-    if (provider !== undefined) {
-      if (!element.open) element.show();
-      scrollViewport.value?.scrollTo({ top: 0 });
-    } else if (element.open) {
-      element.close();
-    }
-    updateScrollbars();
-  },
-  { immediate: true },
-);
-
 watch(
   () => props.detail,
   (detail) => {
@@ -126,15 +97,6 @@ watch([query, loadingMore], async ([value, alreadyLoading]) => {
     loadingAll.value = false;
   }
 });
-
-function requestClose(): void {
-  if (props.provider === undefined || closing.value) return;
-  closing.value = true;
-}
-
-function finishClose(): void {
-  if (closing.value) emit("close");
-}
 
 function loadedOffer(offerId: string): WebsitePricingOffer[] {
   const offer = offerLoads.value[offerId]?.offer;
@@ -169,14 +131,15 @@ async function toggleOffer(summary: WebsiteProviderPricingOffer, event: Event): 
       detail.provider_id,
       summary,
     );
+    if (props.detail !== detail) return;
     offerLoads.value = { ...offerLoads.value, [summary.id]: { offer, loading: false } };
   } catch {
+    if (props.detail !== detail) return;
     offerLoads.value = {
       ...offerLoads.value,
       [summary.id]: { loading: false, error: "Offer details are temporarily unavailable." },
     };
   }
-  updateScrollbars();
 }
 
 async function loadMoreResources(): Promise<void> {
@@ -190,163 +153,132 @@ async function loadMoreResources(): Promise<void> {
       detail.provider_id,
       nextChunk.value,
     );
+    if (props.detail !== detail) return;
     resources.value = [...resources.value, ...chunk.resources];
     nextChunk.value += 1;
   } catch {
+    if (props.detail !== detail) return;
     chunkError.value = "More resources are temporarily unavailable.";
   } finally {
-    loadingMore.value = false;
+    if (props.detail === detail) loadingMore.value = false;
   }
-  updateScrollbars();
 }
 </script>
 
 <template>
-  <dialog
-    ref="dialog"
-    class="details-dialog"
-    :data-closing="closing || undefined"
-    aria-labelledby="provider-pricing-title"
-    @cancel.prevent="requestClose"
-  >
-    <article v-if="provider" class="details-panel" @animationend.self="finishClose">
-      <header class="details-header">
-        <div>
-          <p class="eyebrow">
-            <ProviderIcon :provider-id="provider.id" :provider-name="provider.name" />
-            Service pricing
-          </p>
-          <h2 id="provider-pricing-title">{{ provider.name }}</h2>
-          <code>{{ provider.pricing_coverage.standalone_resources }} standalone resources</code>
-        </div>
-        <button
-          class="icon-button"
-          type="button"
-          aria-label="Close service pricing"
-          @click="requestClose"
-        >
-          <UiIcon name="x" />
-        </button>
-      </header>
+  <div class="provider-pricing-content">
+    <p v-if="loading" class="provider-pricing-status">Loading service pricing…</p>
+    <div v-else-if="error" class="unknown-note" role="alert">
+      <p>{{ error }}</p>
+      <button type="button" @click="emit('retry')">Retry</button>
+    </div>
+    <template v-else-if="detail">
+      <p v-if="detail.snapshot" class="provider-pricing-status">
+        <template v-if="detail.snapshot.publication === 'fresh'">Verified</template>
+        <template v-else>Retained snapshot verified</template>
+        <RelativeTime :value="detail.snapshot.observed_at" />
+      </p>
+      <p v-if="detail.snapshot?.publication === 'retained'" class="unknown-note" role="status">
+        Latest refresh
+        <RelativeTime :value="detail.snapshot.refresh_failure.attempted_at" />:
+        {{ detail.snapshot.refresh_failure.message }}
+      </p>
 
-      <div ref="scrollHost" class="details-scroll-host" data-overlayscrollbars-initialize>
-        <div ref="scrollViewport" class="details-scroll">
-          <div class="details-content provider-pricing-content">
-            <p v-if="loading" class="provider-pricing-status">Loading service pricing…</p>
-            <p v-else-if="error" class="unknown-note" role="alert">{{ error }}</p>
-            <template v-else-if="detail">
-              <p v-if="detail.snapshot" class="provider-pricing-status">
-                <template v-if="detail.snapshot.publication === 'fresh'">Verified</template>
-                <template v-else>Retained snapshot verified</template>
-                <RelativeTime :value="detail.snapshot.observed_at" />
+      <label class="provider-resource-search">
+        <span>Find a resource or offer</span>
+        <input v-model="query" type="search" placeholder="Search pricing…" />
+      </label>
+      <p v-if="query.trim() !== ''" class="provider-pricing-status" aria-live="polite">
+        {{ filteredResources.length }} matching resource{{
+          filteredResources.length === 1 ? "" : "s"
+        }}
+      </p>
+
+      <p
+        v-if="query.trim() !== '' && filteredResources.length === 0 && !loadingMore"
+        class="unknown-note"
+      >
+        No loaded pricing resource matches this search.
+      </p>
+
+      <section
+        v-for="group in resourceGroups"
+        :key="group.id"
+        class="provider-resource-group"
+        :aria-labelledby="`provider-resource-group-${group.id}`"
+      >
+        <header>
+          <h4 :id="`provider-resource-group-${group.id}`">{{ group.title }}</h4>
+          <p>{{ group.description }}</p>
+        </header>
+
+        <section v-for="resource in group.resources" :key="resource.id" class="provider-resource">
+          <header>
+            <div>
+              <span class="provider-resource-kind">{{ resource.kind }}</span>
+              <h5>{{ resource.title }}</h5>
+            </div>
+            <span
+              >{{ resource.offers.length }} offer{{ resource.offers.length === 1 ? "" : "s" }}</span
+            >
+          </header>
+
+          <details
+            v-for="summary in resource.offers"
+            :key="summary.id"
+            class="provider-offer"
+            @toggle="toggleOffer(summary, $event)"
+          >
+            <summary class="provider-offer-summary">
+              <div>
+                <h6>{{ summary.title }}</h6>
+                <small>{{ summary.billing_mode.label }} · {{ summary.state_summary }}</small>
+              </div>
+              <UiIcon name="chevron-right" />
+            </summary>
+
+            <template v-if="offerOpen(summary.id)">
+              <p v-if="offerLoading(summary.id)" class="provider-pricing-status">
+                Loading offer details…
               </p>
-              <p
-                v-if="detail.snapshot?.publication === 'retained'"
-                class="unknown-note"
-                role="status"
-              >
-                Latest refresh
-                <RelativeTime :value="detail.snapshot.refresh_failure.attempted_at" />:
-                {{ detail.snapshot.refresh_failure.message }}
+              <p v-else-if="offerError(summary.id)" class="unknown-note" role="alert">
+                {{ offerError(summary.id) }}
               </p>
-
-              <label class="provider-resource-search">
-                <span>Find a resource or offer</span>
-                <input v-model="query" type="search" placeholder="Search pricing…" />
-              </label>
-              <p v-if="query.trim() !== ''" class="provider-pricing-status" aria-live="polite">
-                {{ filteredResources.length }} matching resource{{
-                  filteredResources.length === 1 ? "" : "s"
-                }}
-              </p>
-
-              <p
-                v-if="query.trim() !== '' && filteredResources.length === 0 && !loadingMore"
-                class="unknown-note"
-              >
-                No loaded pricing resource matches this search.
-              </p>
-
-              <section
-                v-for="group in resourceGroups"
-                :key="group.id"
-                class="provider-resource-group"
-                :aria-labelledby="`provider-resource-group-${group.id}`"
-              >
-                <header>
-                  <h3 :id="`provider-resource-group-${group.id}`">{{ group.title }}</h3>
-                  <p>{{ group.description }}</p>
-                </header>
-
-                <section
-                  v-for="resource in group.resources"
-                  :key="resource.id"
-                  class="provider-resource"
-                >
-                  <header>
-                    <div>
-                      <span class="provider-resource-kind">{{ resource.kind }}</span>
-                      <h4>{{ resource.title }}</h4>
-                    </div>
-                    <span
-                      >{{ resource.offers.length }} offer{{
-                        resource.offers.length === 1 ? "" : "s"
-                      }}</span
-                    >
-                  </header>
-
-                  <details
-                    v-for="summary in resource.offers"
-                    :key="summary.id"
-                    class="provider-offer"
-                    @toggle="toggleOffer(summary, $event)"
-                  >
-                    <summary class="provider-offer-summary">
-                      <div>
-                        <h5>{{ summary.title }}</h5>
-                        <small
-                          >{{ summary.billing_mode.label }} · {{ summary.state_summary }}</small
-                        >
-                      </div>
-                    </summary>
-
-                    <template v-if="offerOpen(summary.id)">
-                      <p v-if="offerLoading(summary.id)" class="provider-pricing-status">
-                        Loading offer details…
-                      </p>
-                      <p v-else-if="offerError(summary.id)" class="unknown-note" role="alert">
-                        {{ offerError(summary.id) }}
-                      </p>
-                    </template>
-
-                    <ProviderPricingOfferDetails
-                      v-for="offer in offerOpen(summary.id) ? loadedOffer(summary.id) : []"
-                      :key="offer.id"
-                      :offer
-                    />
-                  </details>
-                </section>
-              </section>
-
-              <p v-if="chunkError" class="unknown-note" role="alert">{{ chunkError }}</p>
-              <button
-                v-if="hasMoreChunks"
-                class="provider-load-more"
-                type="button"
-                :disabled="loadingMore"
-                @click="loadMoreResources"
-              >
-                {{ loadingMore ? "Loading…" : "Load more resources" }}
-              </button>
-              <a class="provider-audit-link" href="/pricing/index.json">
-                Inspect the complete canonical pricing audit
-              </a>
             </template>
-          </div>
-        </div>
-      </div>
-    </article>
-  </dialog>
+
+            <div
+              v-for="offer in offerOpen(summary.id) ? loadedOffer(summary.id) : []"
+              :key="offer.id"
+              class="provider-offer-body"
+            >
+              <PricingOfferBreakdown :offer explain-charges />
+              <p
+                v-if="offer.unnormalized_count > offer.unnormalized.length"
+                class="provider-pricing-status"
+              >
+                Showing {{ offer.unnormalized.length }} of {{ offer.unnormalized_count }} pricing
+                facts. The complete pricing download contains every official fact.
+              </p>
+            </div>
+          </details>
+        </section>
+      </section>
+
+      <p v-if="chunkError" class="unknown-note" role="alert">{{ chunkError }}</p>
+      <button
+        v-if="hasMoreChunks"
+        class="provider-load-more"
+        type="button"
+        :disabled="loadingMore"
+        @click="loadMoreResources"
+      >
+        {{ loadingMore ? "Loading…" : "Load more resources" }}
+      </button>
+      <a class="provider-audit-link" href="/pricing/index.json">
+        Inspect the complete canonical pricing audit
+      </a>
+    </template>
+  </div>
 </template>
 
 <style scoped>
@@ -392,10 +324,10 @@ async function loadMoreResources(): Promise<void> {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.provider-resource-group > header h3,
+.provider-resource-group > header h4,
 .provider-resource-group > header p,
-.provider-resource h4,
-.provider-offer h5 {
+.provider-resource h5,
+.provider-offer h6 {
   margin: 0;
 }
 
@@ -404,12 +336,26 @@ async function loadMoreResources(): Promise<void> {
   font-size: var(--font-size-meta);
 }
 
+.provider-resource-group > header h4,
+.provider-resource h5,
+.provider-offer h6 {
+  font-size: var(--font-size-body);
+}
+
+.provider-offer[open] > summary > .ui-icon {
+  transform: rotate(90deg);
+}
+
 .provider-resource > header,
 .provider-offer-summary {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.provider-offer-body {
+  padding: 0 var(--space-3) var(--space-3);
 }
 
 .provider-resource-kind,

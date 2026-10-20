@@ -5,13 +5,17 @@ import type {
   WebsiteModel,
   WebsitePricingDetail,
   WebsitePricingOffer,
+  WebsiteProvider,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
   model: WebsiteModel;
+  provider: WebsiteProvider | undefined;
+  dataVersion: string;
   detail: WebsitePricingDetail | undefined;
   loading: boolean;
   error: string | undefined;
@@ -275,6 +279,12 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
         </div>
       </details>
     </template>
+    <ProviderServices
+      v-if="provider && provider.pricing_coverage.standalone_resources > 0"
+      :key="provider.id"
+      :provider
+      :data-version
+    />
   </section>
 </template>
 

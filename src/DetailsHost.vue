@@ -7,6 +7,8 @@ import ModelDetails from "./components/ModelDetails.vue";
   <ModelDetails
     :model="detailsState.model"
     :provider-name="detailsState.providerName"
+    :provider="detailsState.provider"
+    :data-version="detailsState.dataVersion"
     :detail="detailsState.detail"
     :loading="detailsState.loading"
     :error="detailsState.error"
