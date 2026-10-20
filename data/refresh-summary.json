@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b555ce22f509745dd2f80fedab631ac8c142582c1c5c67b2d8c44fa0673ff6df",
-  "generated_at": "2026-10-20T03:38:48.251Z",
+  "catalog_version": "ff456e18b5d9a923a1115b744ec67fd7dc3aa7de0a8bd80dd1206e2714e10a7c",
+  "generated_at": "2026-10-20T04:04:36.702Z",
   "outcome": "changed",
-  "previous_catalog_version": "d421dacdb12ec2b0dadd92fabc64d741d2296a85376e4a337bff6a31e6a25b15",
+  "previous_catalog_version": "b555ce22f509745dd2f80fedab631ac8c142582c1c5c67b2d8c44fa0673ff6df",
   "providers": [
     {
       "attempt": {
@@ -13,7 +13,7 @@
         "sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 142,
             "pricing_extraction": {
@@ -109,9 +109,9 @@
             "source_id": "bedrock-models"
           },
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -159,520 +159,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 11,
-        "changed_fields": {
-          "availability": 1,
-          "capabilities": 6,
-          "delivery_modes": 6,
-          "status": 4
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-3-haiku-20240307-v1:0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-5-20251101-v1:0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-6-v1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-opus-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "legacy",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "amazon-bedrock/twelvelabs.marengo-embed-3-0-v1:0",
-            "previous_status": "active",
-            "status": "legacy"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "legacy",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "amazon-bedrock/twelvelabs.pegasus-1-2-v1:0",
-            "previous_status": "active",
-            "status": "legacy"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "legacy",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "amazon-bedrock/writer.palmyra-x4-v1:0",
-            "previous_status": "active",
-            "status": "legacy"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "legacy",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "status"
-            ],
-            "model_ref": "amazon-bedrock/writer.palmyra-x5-v1:0",
-            "previous_status": "active",
-            "status": "legacy"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "ca-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "ca-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-gov-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-gov-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-west-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-south-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-south-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-4"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-5"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-7"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ca-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-central-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-north-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-south-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-south-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "il-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "me-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "sa-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-west-2"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "ca-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "ca-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/geo",
-                    "region": "us-west-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-northeast-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-south-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-south-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-4"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-5"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ap-southeast-7"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "ca-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-central-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-north-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-south-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-south-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "eu-west-3"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "il-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "me-central-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "sa-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-east-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-east-2"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-west-1"
-                  },
-                  {
-                    "deployment_type": "bedrock-runtime/global",
-                    "region": "us-west-2"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "amazon-bedrock/xai.grok-4.7"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 142,
         "previous": 142,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 131
+        "unchanged": 142
       },
       "pricing": {
         "commercial_hash": "a8783b8bac58a9e61ac3c0b19a485dcc3fbec1f1322a44d64235a1e77bf5734e",
-        "outcome": "commercial",
-        "previous_commercial_hash": "e6b3f42c1afa665f2022104ec16e1cc6cfe19097252a46f5678e50764e47a37e"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "a8783b8bac58a9e61ac3c0b19a485dcc3fbec1f1322a44d64235a1e77bf5734e"
       },
       "pricing_coverage": {
         "current_models": 133,
@@ -698,24 +197,22 @@
       "publication": "accepted",
       "signals": [],
       "sources": {
-        "added": 1,
-        "added_source_ids": [
-          "bedrock-accounting"
-        ],
+        "added": 0,
+        "added_source_ids": [],
         "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "bedrock-models"
           }
         ],
         "current": 3,
-        "previous": 2,
+        "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -900,8 +397,8 @@
         "sources": [
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 36,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1018,138 +515,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 7,
-        "changed_fields": {
-          "capabilities": 4,
-          "name": 7
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "Claude Haiku 3.5",
-                "path": "name",
-                "previous": "claude-3-5-haiku-20241022"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities"
-            ],
-            "model_ref": "anthropic/claude-3-5-haiku-20241022"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Sonnet 3.7",
-                "path": "name",
-                "previous": "claude-3-7-sonnet-20250219"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-7-sonnet-20250219"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Haiku 3",
-                "path": "name",
-                "previous": "claude-3-haiku-20240307"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-haiku-20240307"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 3",
-                "path": "name",
-                "previous": "claude-3-opus-20240229"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-opus-20240229"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 4.1",
-                "path": "name",
-                "previous": "claude-opus-4-1-20250805"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities"
-            ],
-            "model_ref": "anthropic/claude-opus-4-1-20250805"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 4",
-                "path": "name",
-                "previous": "claude-opus-4-20250514"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities"
-            ],
-            "model_ref": "anthropic/claude-opus-4-20250514"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Sonnet 4",
-                "path": "name",
-                "previous": "claude-sonnet-4-20250514"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities"
-            ],
-            "model_ref": "anthropic/claude-sonnet-4-20250514"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 36,
         "previous": 36,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 29
+        "unchanged": 36
       },
       "pricing": {
         "commercial_hash": "6fa8545d73d681f905e2bca02e21a061bb37eae7a52c0dba2f190ef5b89cb871",
-        "outcome": "commercial",
-        "previous_commercial_hash": "c6c0286389c07d3e73d0e1a78c8cc107bf46a8871d0eac124053cbb0affc4ab7"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "6fa8545d73d681f905e2bca02e21a061bb37eae7a52c0dba2f190ef5b89cb871"
       },
       "pricing_coverage": {
         "current_models": 17,
@@ -1176,20 +554,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -34466,7 +33837,7 @@
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 99,
+            "consecutive_failures": 100,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -35231,6 +34602,21 @@
                   {
                     "affected_items": 1,
                     "expected": "reviewed source contract",
+                    "fingerprint": "09dd2a65b9f04c2c",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/qwen-api-via-dashscope/native.input_audio_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
                     "fingerprint": "0f60d2ed846ea7ad",
                     "kind": "unknown_value",
                     "observed": "string",
@@ -35404,24 +34790,29 @@
                 ],
                 "disposition": "accept_with_signal",
                 "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "326905adbba63fb7",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/help/en/model-studio/batch-interfaces-compatible-with-openai/batch.chat.cached_input_tokens"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
               }
             ],
-            "contract_findings_omitted": 47,
+            "contract_findings_omitted": 63,
+            "dependency_failures": [
+              {
+                "consecutive_failures": 1,
+                "dependency_id": "dashscope-pricing/chat-accounting",
+                "http_status": 406,
+                "impact": "claim",
+                "last_success_at": "2026-10-20T03:38:48.251Z",
+                "message": "HTTP 406",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 1,
+                "dependency_id": "dashscope-pricing/native-accounting",
+                "http_status": 406,
+                "impact": "claim",
+                "last_success_at": "2026-10-20T03:38:48.251Z",
+                "message": "HTTP 406",
+                "outcome": "fetch_failed"
+              }
+            ],
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 223,
@@ -35535,18 +34926,908 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 22,
+        "changed_fields": {
+          "availability": 22
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/deepseek-v4.1-flash-1017"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/glm-5.2-fast-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "availability"
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/happyoyster-1.0-acting"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/kimi-k2.7-code"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-flash-2025-07-28"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-image-2.1-pro"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-image-2.1-turbo"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-mt-image-2.0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-01-25"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-04-28"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-07-14"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-12-01"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-latest"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr-2025-11-20"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-voice-enrollment"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3-vl-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.6-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.8-2.4t-a95b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.8-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v"
+          }
+        ],
         "current": 240,
         "previous": 240,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 240
+        "unchanged": 218
       },
       "pricing": {
-        "commercial_hash": "5ab7d5b8ea2471bf66a9e054cf3a89115cb15d7a6d83409064854f485a58b72a",
-        "outcome": "provenance_only",
+        "commercial_hash": "39223d33c2825367420d38a2d9ac82ce8ee67090ac357db7f2e4af3269ac8a7c",
+        "outcome": "commercial",
         "previous_commercial_hash": "5ab7d5b8ea2471bf66a9e054cf3a89115cb15d7a6d83409064854f485a58b72a"
       },
       "pricing_coverage": {
@@ -35618,7 +35899,8 @@
         "missing_field": 4,
         "scope_limited": 1,
         "source_contract_drift": 16,
-        "source_partial_retention": 1
+        "source_partial": 1,
+        "source_partial_retention": 2
       }
     },
     {
@@ -35630,7 +35912,7 @@
         "sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 67,
             "pricing_extraction": {
@@ -35685,1163 +35967,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 65,
-        "changed_fields": {
-          "capabilities": 65,
-          "delivery_modes": 28
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-fable-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-fable-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-haiku-4-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-haiku-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-4-8"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-opus-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-4-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-claude-sonnet-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-1-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-flash-0731"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-deepseek-v4-pro-0813"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-flash-image"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-1-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-5-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-7-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-8-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-3-pro-image"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemini-4-argon"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gemma-3-12b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-glm-5-3-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-3-codex"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-4-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-5-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-luna"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-sol"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-6-terra"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-5-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-1-sol"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-astra"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-luna"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-6-sol"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-oss-120b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gpt-oss-20b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-grok-4-6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-grok-4-7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-gte-large-en"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-inkling"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-kimi-k3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-llama-4-maverick"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-meta-llama-3-1-8b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-meta-llama-3-3-70b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-openjev-qwen35-4b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen3-embedding-0-6b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen3-next-80b-a3b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes",
-                "previous": [
-                  "streaming"
-                ]
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "delivery_modes",
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-qwen35-122b-a10b"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 67,
         "previous": 67,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 2
+        "unchanged": 67
       },
       "pricing": {
         "commercial_hash": "aa3971c525371a2aff4cee625a65946cb0cfb65491c2346e096e70931295667d",
@@ -36877,7 +36010,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "databricks-models"
           }
@@ -36948,7 +36081,7 @@
             "source_id": "deepseek-catalog"
           },
           {
-            "consecutive_failures": 11,
+            "consecutive_failures": 12,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -37216,7 +36349,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1813,
+              "diagnostic_count": 1812,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -37261,20 +36394,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6814,
+                "excluded": 6816,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1813,
+                "unbound": 1812,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8627,
+              "observed_items": 8628,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1454,
-                "partner_route_price_not_published": 359,
-                "single_partner_inventory_without_product_evidence": 6743
+                "hf_inference_compute_price_unbound": 1455,
+                "partner_route_price_not_published": 357,
+                "single_partner_inventory_without_product_evidence": 6745
               },
               "unit": "reviewed source pricing item"
             },
@@ -37284,15 +36417,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 132,
+            "parsed_models": 133,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 132,
-              "normalized_facts": 380,
+              "model_records": 133,
+              "normalized_facts": 382,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 109,
+              "numeric_models": 110,
               "raw_facts": 103,
               "raw_models": 94,
               "unknown_models": 23
@@ -37346,18 +36479,18 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 191,
+                "normalized": 192,
                 "raw": 0,
                 "unbound": 103,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 296,
+              "observed_items": 297,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 190,
+                "route_price_normalized": 191,
                 "route_price_not_published": 103
               },
               "unit": "reviewed source pricing item"
@@ -37504,9 +36637,9 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1455,
             "source_id": "huggingface-hub"
           }
@@ -37514,21 +36647,21 @@
       },
       "count_decreases": [
         {
-          "current": 1813,
+          "current": 1812,
           "field": "routes",
-          "previous": 1817
+          "previous": 1813
         }
       ],
       "models": {
-        "added": 1,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/facebook/xlm-v-base"
+          "huggingface/IlyaGusev/rut5_base_headline_gen_telegram",
+          "huggingface/Qwen/Qwen3-VL-235B-A22B-Instruct"
         ],
-        "changed": 8,
+        "changed": 4,
         "changed_fields": {
-          "routes": 8,
-          "source_refs": 3,
-          "task_evidence": 3
+          "capabilities": 1,
+          "routes": 4
         },
         "changed_models": [
           {
@@ -37536,177 +36669,54 @@
               {
                 "current": [
                   {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ],
-                "path": "task_evidence"
-              },
-              {
-                "current": [
-                  {
-                    "provider": "cohere",
-                    "provider_model_id": "c4ai-aya-vision-32b",
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ],
-                "path": "routes"
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
               },
               {
-                "current": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-router"
-                ]
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
               }
             ],
             "fields": [
-              "task_evidence",
               "routes",
-              "source_refs"
+              "capabilities"
             ],
-            "model_ref": "huggingface/CohereLabs/aya-vision-32b"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash-1017"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "qwen-3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
+                    "provider_model_id": "google/gemma-4-31B-it",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "cerebras",
-                    "provider_model_id": "qwen-3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.8-27B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.8-27b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.8-27B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-kontext/dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-kontext/dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-kontext-dev",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.1-Kontext-dev"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "google/gemma-4-31B-it",
@@ -37724,13 +36734,6 @@
                 ],
                 "path": "routes",
                 "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "google/gemma-4-31B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "google/gemma-4-31B-it",
@@ -37758,119 +36761,15 @@
               {
                 "current": [
                   {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ],
-                "path": "task_evidence"
-              },
-              {
-                "current": [
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.5",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes"
-              },
-              {
-                "current": [
-                  "huggingface-router",
-                  "huggingface-native-pricing",
-                  "huggingface-hf-inference"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-router",
-                  "huggingface-native-pricing"
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "routes",
-              "source_refs"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.5"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ]
-              },
-              {
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6v",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.6v-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
-              {
-                "current": [
-                  "huggingface-router"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
-                ]
-              }
-            ],
-            "fields": [
-              "task_evidence",
-              "routes",
-              "source_refs"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V-Flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -37880,28 +36779,28 @@
                 "previous": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-4.7",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "zai-org",
-                    "provider_model_id": "glm-4.7",
+                    "provider_model_id": "glm-4.7-flashx",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -37912,50 +36811,12 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.7"
+            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "baseten",
                     "provider_model_id": "zai-org/GLM-5.2",
@@ -38005,6 +36866,44 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "glm-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "zai-org/GLM-5.2",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
@@ -38014,28 +36913,28 @@
             "model_ref": "huggingface/zai-org/GLM-5.2"
           }
         ],
-        "current": 1633,
+        "current": 1634,
         "previous": 1633,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/IlyaGusev/rut5_base_headline_gen_telegram"
+          "huggingface/Tongyi-MAI/Z-Image"
         ],
-        "unchanged": 1624
+        "unchanged": 1628
       },
       "pricing": {
-        "commercial_hash": "f9a88757cf1cf9f1c736ca22cd5f655361b3c08760b11b9ad544aedb65591235",
+        "commercial_hash": "de3221b7518fa69e016b8db06011bb36ece3560a9f7ffede9b138098fe9d35ce",
         "outcome": "commercial",
-        "previous_commercial_hash": "5bbca438d5b7f984fefb407dd611a0f89117a838746ce93c2ff2a513494421ec"
+        "previous_commercial_hash": "f9a88757cf1cf9f1c736ca22cd5f655361b3c08760b11b9ad544aedb65591235"
       },
       "pricing_coverage": {
-        "current_models": 1633,
+        "current_models": 1634,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 127,
+        "normalized_rate_models": 128,
         "not_applicable_models": 0,
-        "offer_models": 136,
+        "offer_models": 137,
         "raw_fact_models": 14,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
@@ -38071,7 +36970,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
@@ -38084,12 +36983,6 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -38108,7 +37001,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -38354,7 +37247,7 @@
             "source_id": "kimi-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_findings": [
               {
                 "diagnostic_count": 3,
@@ -38398,7 +37291,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "kimi-api"
           },
@@ -38493,8 +37386,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -38512,7 +37411,7 @@
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -39373,14 +38272,30 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "updated_date": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "2026-10-20",
+                "path": "updated_date",
+                "previous": "2026-10-19"
+              }
+            ],
+            "fields": [
+              "updated_date"
+            ],
+            "model_ref": "ollama/qwen3-vl"
+          }
+        ],
         "current": 267,
         "previous": 267,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 267
+        "unchanged": 266
       },
       "pricing": {
         "commercial_hash": "73306dcc71261869fbd1d6795547abab0dfae85c542b072760a2042f00fc6a58",
@@ -39498,8 +38413,8 @@
                 "observed_items": 1
               }
             ],
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 68,
             "source_id": "openai-deprecations"
           },
@@ -39634,9 +38549,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -39682,1118 +38597,16 @@
         ]
       },
       "models": {
-        "added": 4,
-        "added_model_refs": [
-          "openai/gpt-4o-audio",
-          "openai/gpt-4o-mini-audio",
-          "openai/gpt-4o-mini-realtime",
-          "openai/gpt-4o-realtime"
-        ],
-        "changed": 25,
-        "changed_fields": {
-          "replacement_model_ids": 25,
-          "retired_at": 25,
-          "source_refs": 25,
-          "status": 13
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-image-2.5-sunburst",
-                  "gpt-image-2.5-flare"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/chatgpt-image-latest"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-20",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-live-transcribe",
-                  "gpt-transcribe",
-                  "gpt-4o-mini-transcribe-2025-12-15"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4o-mini-transcribe",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-06",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-realtime-2.1-mini"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4o-mini-tts",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-02-26",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-live-transcribe",
-                  "gpt-transcribe"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4o-transcribe",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-02-26",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-live-transcribe",
-                  "gpt-transcribe"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4o-transcribe-diarize",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-terra"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5-mini",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-luna"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5-nano",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5-pro",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-04-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5.1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-08-10",
-                "path": "retired_at"
-              },
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5.2-chat-latest",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-08-10",
-                "path": "retired_at"
-              },
-              {
-                "current": "retired",
-                "path": "status",
-                "previous": "deprecated"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5.3-chat-latest",
-            "previous_status": "deprecated",
-            "status": "retired"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-04-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5.3-codex"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-04-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-6-luna"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-5.4-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-20",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-audio-1.5"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-audio"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-20",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-audio-1.5"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-audio-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-image-2.5-sunburst",
-                  "gpt-image-2.5-flare"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-image-1-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-01",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-image-2.5-sunburst",
-                  "gpt-image-2.5-flare"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-image-1.5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-20",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-realtime-2.1"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-realtime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-20",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-realtime-2.1-mini"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-realtime-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/o3",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-12-11",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-5.6-sol"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/o3-pro",
-            "previous_status": "active",
-            "status": "deprecated"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-06",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-realtime-2.1-mini"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/tts-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-01-06",
-                "path": "retired_at"
-              },
-              {
-                "current": [
-                  "gpt-realtime-2.1-mini"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/tts-1-hd"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2027-02-26",
-                "path": "retired_at"
-              },
-              {
-                "current": "deprecated",
-                "path": "status",
-                "previous": "active"
-              },
-              {
-                "current": [
-                  "gpt-live-transcribe",
-                  "gpt-transcribe"
-                ],
-                "path": "replacement_model_ids",
-                "previous": []
-              },
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api",
-                  "openai-deprecations"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids",
-              "source_refs"
-            ],
-            "model_ref": "openai/whisper-1",
-            "previous_status": "active",
-            "status": "deprecated"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 109,
-        "previous": 105,
+        "previous": 109,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 80
+        "unchanged": 109
       },
       "pricing": {
         "commercial_hash": "a9a2945d58cac325e3de022e871363801559ef94661b2fa999e3e6a510fbb2c8",
@@ -40803,8 +38616,8 @@
       "pricing_coverage": {
         "current_models": 86,
         "delta": {
-          "resolved_models": -2,
-          "unknown_models": 4
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 75,
         "not_applicable_models": 2,
@@ -40832,25 +38645,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "openai-accounting"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "openai-deprecations"
           },
           {
             "content_changed": true,
@@ -40863,7 +38664,7 @@
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -40881,9 +38682,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -40959,20 +38760,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "typesafe-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {}
@@ -40985,7 +38779,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -41303,7 +39097,7 @@
             "contract_findings_omitted": 18,
             "dependency_failures": [
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -41311,7 +39105,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -41319,7 +39113,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -41327,7 +39121,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -41335,7 +39129,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -41343,7 +39137,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -41351,7 +39145,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -41359,7 +39153,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -41367,7 +39161,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -41375,7 +39169,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -41383,7 +39177,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -41391,7 +39185,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -41399,7 +39193,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -41407,7 +39201,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -41415,7 +39209,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -41423,7 +39217,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "vercel-models/endpoints/3dcf45255383b2e3f0d686a7c7818148528f54945b29400fbaebab5596cbe5aa",
                 "http_status": 404,
                 "impact": "claim",
@@ -41433,7 +39227,7 @@
             ],
             "dependency_failures_omitted": 34,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 477,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -41536,8 +39330,8 @@
       },
       "pricing": {
         "commercial_hash": "4de34cf408b4e09fac23408bdfce1a8bb9f8c8e355403d36829237ee04239fad",
-        "outcome": "commercial",
-        "previous_commercial_hash": "0b061d08a52fbed76e6d17360a779de5e8ddb86ce03eda7676a8a6c03d7c923f"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "4de34cf408b4e09fac23408bdfce1a8bb9f8c8e355403d36829237ee04239fad"
       },
       "pricing_coverage": {
         "current_models": 477,
@@ -41568,20 +39362,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -42100,11 +39887,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 5,
-    "added_sources": 1,
-    "changed_models": 116,
-    "changed_sources": 29,
-    "models": 4320,
+    "added_models": 2,
+    "added_sources": 0,
+    "changed_models": 27,
+    "changed_sources": 24,
+    "models": 4321,
     "pricing_accepted": 17,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
