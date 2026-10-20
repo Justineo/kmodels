@@ -9,6 +9,7 @@ import {
 } from "../src/catalog/catalog-repair.ts";
 import { dirname, join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
+import { periodicReviewAreas } from "./catalog-repair-review.ts";
 import {
   auditDecisionsSchema,
   semanticAuditMarkdown,
@@ -115,13 +116,23 @@ if (admissionPath !== undefined) {
     JSON.stringify(
       {
         admission_sha256: createHash("sha256").update(admission).digest("hex"),
-        candidates: required.map(({ id }) => ({
+        candidates: required.map(({ id, trigger }) => ({
           id,
           status: "pending",
           reason: "Not investigated yet",
           next_action: "Inspect source evidence and replay the actual parser",
           evidence: [],
           checks: [],
+          ...(["scheduled_provider_review", "scheduled_architecture_review"].includes(trigger)
+            ? {
+                coverage: periodicReviewAreas.map((area) => ({
+                  area,
+                  status: "pending",
+                  reason: "Not reviewed yet",
+                  evidence: [],
+                })),
+              }
+            : {}),
         })),
       },
       null,
@@ -172,6 +183,7 @@ const markdown =
         ]),
     "These commands use source IDs, not provider IDs. A bad argument is a tooling mistake to correct, not unavailable source evidence.",
     "Fetch success and hash identity do not prove parser correctness. Replay the actual parser and inspect rejected rows or sections before deciding whether repair is possible.",
+    "Use vp node scripts/replay-catalog-evidence.ts SOURCE_ID EVIDENCE_JSON with the exact fetched source ID/path. It verifies the complete body/hash and observation clock and fails on parser rejection. Optional parsed catalog context must be saved explicitly; it is never invented from current prices. Its stage is parse, not consumer or publication acceptance.",
     "",
     ...(sourceEvidenceIncomplete
       ? [

@@ -274,11 +274,10 @@ const endpointSchema = z
     provider_name: z.string().min(1),
     tags: z.array(z.string().min(1)).optional(),
     inference_regions: z.array(endpointRegionSchema).optional(),
-    quantization: z.union([z.null(), z.string().min(1)]),
     max_completion_tokens: z.number().int().nonnegative().optional(),
     max_prompt_tokens: z.number().int().nonnegative().nullable().optional(),
     supported_parameters: z.array(z.string().min(1)).optional(),
-    status: z.literal(0),
+    status: z.unknown().optional(),
     supports_implicit_caching: z.boolean(),
     deprecated_at: z.number().int().nonnegative().optional(),
   })
@@ -994,13 +993,15 @@ function modelPageDetailedRates(
 }
 
 function routes(item: Item, endpoints: readonly Endpoint[], sourceId: string): ModelRoute[] {
-  return endpoints.map((endpoint) => ({
-    source_ref: sourceId,
-    provider: endpoint.provider_name,
-    provider_model_id: item.id,
-    task: item.type,
-    status: "live",
-  }));
+  return endpoints
+    .filter(({ status }) => status === 0)
+    .map((endpoint) => ({
+      source_ref: sourceId,
+      provider: endpoint.provider_name,
+      provider_model_id: item.id,
+      task: item.type,
+      status: "live",
+    }));
 }
 
 function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFact[] {

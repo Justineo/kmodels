@@ -10,16 +10,25 @@ import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pr
 import {
   assertItemCount,
   contractExtensionEvidence,
-  type ZodContractObservation,
+  recognizeItems,
   zodContractEvidence,
 } from "./source-contract.ts";
-import { classifyModelTasks } from "./task.ts";
+import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
-const badgeSchema = z.enum(["audio", "cloud", "embedding", "thinking", "tools", "vision"]);
+const badgeSchema = z.enum([
+  "audio",
+  "cloud",
+  "decision",
+  "embedding",
+  "thinking",
+  "tools",
+  "vision",
+]);
 const capabilitySchema = z.enum([
   "audio",
   "completion",
+  "decision",
   "embedding",
   "image",
   "insert",
@@ -117,8 +126,12 @@ interface Retirement {
 const cloudFamily = "Ollama Cloud";
 const libraryFamily = "Ollama Library";
 
-function diagnostic(input: ParseInput, path: string): void {
-  input.onContractFinding?.(contractExtensionEvidence([path]));
+function diagnostic(
+  input: ParseInput,
+  path: string,
+  kind: "unknown_field" | "unknown_value" = "unknown_value",
+): void {
+  input.onContractFinding?.(contractExtensionEvidence([path], kind));
 }
 
 function recognizedRows<T>(
@@ -127,24 +140,14 @@ function recognizedRows<T>(
   schema: z.ZodType<T>,
   modelId: (item: unknown) => string | undefined,
 ): T[] {
-  const result: T[] = [];
-  const invalid: ZodContractObservation[] = [];
-  for (const [itemIndex, item] of items.entries()) {
-    const parsed = schema.safeParse(item);
-    if (parsed.success) result.push(parsed.data);
-    else {
-      const id = modelId(item);
-      invalid.push({
-        error: parsed.error,
-        input: item,
-        itemIndex,
-        ...(id === undefined ? {} : { modelId: id }),
-      });
-    }
-  }
-  if (invalid.length > 0)
-    input.onContractFinding?.(zodContractEvidence(invalid, items.length, "accept_with_signal"));
-  return result;
+  return recognizeItems({
+    label: "Ollama rows",
+    items,
+    schema,
+    modelId,
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
 }
 
 function rawModelId(value: unknown): string | undefined {
@@ -202,7 +205,8 @@ function libraryItems(body: string, input: ParseInput): LibraryItem[] {
     const updated = updateTitles.length === 1 ? exactDate(updateTitles[0] ?? "") : undefined;
     if (title !== id) diagnostic(input, `/library/cards/${index}/title`);
     if (description === "") diagnostic(input, `/library/cards/${index}/description`);
-    if (updated === undefined) diagnostic(input, `/library/cards/${index}/updated`);
+    if (updateTitles.length > 0 && updated === undefined)
+      diagnostic(input, `/library/cards/${index}/updated`);
     const item: LibraryItem = {
       id,
       badges: [...new Set(badges)],
@@ -223,28 +227,32 @@ function facts(
   Partial<Pick<ProviderModel, "description" | "updated_date">> {
   const badges = new Set(item.badges);
   const embedding = badges.has("embedding");
+  const decision = badges.has("decision");
   const input: Modality[] = ["text"];
   if (badges.has("vision")) input.push("image");
   if (badges.has("audio")) input.push("audio");
   const modalities: ProviderModel["modalities"] = {
     input,
-    output: embedding ? ["embedding"] : ["text"],
+    output: embedding ? ["embedding"] : decision ? [] : ["text"],
   };
   return {
     ...(item.description === undefined ? {} : { description: item.description }),
     service_families: [libraryFamily],
-    tasks: classifyModelTasks({
-      modelId: item.id,
-      name: item.id,
-      rawType: embedding ? "embedding" : "language",
-      modalities,
-      fallback: embedding ? "embeddings" : "text_generation",
-    }),
+    tasks: decision
+      ? orderedTasks(embedding ? ["embeddings", "classification"] : ["classification"])
+      : classifyModelTasks({
+          modelId: item.id,
+          name: item.id,
+          rawType: embedding ? "embedding" : "language",
+          modalities,
+          fallback: embedding ? "embeddings" : "text_generation",
+        }),
     modalities,
     capabilities: {
       ...unknownCapabilities(),
       reasoning: badges.has("thinking") ? true : "unknown",
       tool_call: badges.has("tools") ? true : "unknown",
+      structured_output: decision ? true : "unknown",
     },
     ...(item.updated === undefined ? {} : { updated_date: item.updated }),
   };
@@ -289,8 +297,10 @@ function listClaims(input: ParseInput, item: z.infer<typeof listItemSchema>): Li
     "size",
     "digest",
     "details",
+    "capabilities",
   ]);
-  for (const key of Object.keys(item)) if (!known.has(key)) diagnostic(input, `/list/${key}`);
+  for (const key of Object.keys(item))
+    if (!known.has(key)) diagnostic(input, `/list/${key}`, "unknown_field");
   const name = Reflect.get(item, "name");
   if (name !== undefined && name !== item.model) diagnostic(input, "/list/name");
   const modified = validDateTime(Reflect.get(item, "modified_at"));
@@ -315,7 +325,8 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
     "model_info",
     "retirement_on",
   ]);
-  for (const key of Object.keys(raw)) if (!known.has(key)) diagnostic(input, `/show/${key}`);
+  for (const key of Object.keys(raw))
+    if (!known.has(key)) diagnostic(input, `/show/${key}`, "unknown_field");
   const details = Reflect.get(raw, "details");
   const parent =
     details !== null && typeof details === "object"
@@ -335,7 +346,7 @@ function showClaims(input: ParseInput, id: string, raw: unknown): ShowClaims | u
       "quantization_level",
     ]);
     for (const key of Object.keys(details))
-      if (!knownDetails.has(key)) diagnostic(input, `/show/details/${key}`);
+      if (!knownDetails.has(key)) diagnostic(input, `/show/details/${key}`, "unknown_field");
   }
   const rawCapabilities = Reflect.get(raw, "capabilities");
   const capabilities = new Set<z.infer<typeof capabilitySchema>>();
@@ -376,11 +387,8 @@ function positiveInteger(info: Record<string, unknown>, key: string): number | u
 }
 
 function latestDate(...values: (string | undefined)[]): string | undefined {
-  return values
-    .filter((value): value is string => value !== undefined)
-    .sort()
-    .at(-1)
-    ?.slice(0, 10);
+  const times = values.filter((value): value is string => value !== undefined).map(Date.parse);
+  return times.length === 0 ? undefined : new Date(Math.max(...times)).toISOString().slice(0, 10);
 }
 
 function cloudModel(
@@ -391,12 +399,6 @@ function cloudModel(
   library: LibraryItem | undefined,
   retirement: Retirement | undefined,
 ): ProviderModel {
-  if (
-    listed?.modified !== undefined &&
-    show?.modified !== undefined &&
-    listed.modified !== show.modified
-  )
-    diagnostic(input, "/cloud/modified_at_conflict");
   const capabilities = show?.capabilities ?? new Set<z.infer<typeof capabilitySchema>>();
   const architecture = show?.modelInfo["general.architecture"];
   const context =
@@ -418,6 +420,7 @@ function cloudModel(
   if (capabilities.has("completion")) tasks.push("text_generation");
   if (capabilities.has("embedding")) tasks.push("embeddings");
   if (capabilities.has("image")) tasks.push("image_generation");
+  if (capabilities.has("decision")) tasks.push("classification");
   const libraryFacts = library === undefined ? undefined : facts(library);
   const retirementDate = show?.retirement ?? retirement?.date;
   const currentLibrary = library !== undefined;
@@ -430,6 +433,7 @@ function cloudModel(
         ]
       : []),
     ...(capabilities.has("embedding") ? [{ name: "Embed", path: "/api/embed" }] : []),
+    ...(capabilities.has("decision") ? [{ name: "System One", path: "/v1/systemone" }] : []),
   ];
   const updatedDate = latestDate(show?.modified, listed?.modified, library?.updated);
   return {
@@ -459,6 +463,7 @@ function cloudModel(
         ? true
         : (libraryFacts?.capabilities.tool_call ?? "unknown"),
       streaming: capabilities.has("completion") || capabilities.has("image") ? true : "unknown",
+      structured_output: capabilities.has("decision") ? true : "unknown",
     },
     limits: {
       ...(context === undefined ? {} : { context_tokens: context }),

@@ -66,9 +66,10 @@ service, model-list pricing, or the provider refresh. Malformed model rows are i
 identity disagreement, duplicate route ownership, truncated exhaustive list, unsafe count change,
 or invalid pricing partition still fails closed.
 
-Endpoint metadata may publish a quantization label such as `fp8` or `null`; that label is not part of
-the catalog identity or pricing contract, but either reviewed value must preserve the endpoint's
-route and rates.
+Endpoint quantization metadata is not consumed by identity or pricing and cannot reject a price
+document. Status zero positively establishes a live route. Other or missing health states withhold
+that live-route assertion while preserving independently published route prices; the price book
+does not claim real-time availability. Runtime health metadata cannot select a fallback amount.
 Unconsumed reasoning representation and privacy metadata do not validate or select prices; a new
 `interleaved` object cannot discard an otherwise valid model. An endpoint's nonzero search amount
 with an unreviewed denominator stays raw in its native-search service book, preserving the verified

@@ -78,6 +78,9 @@ pricing-page partition.
   support; a third matching row cannot erase the conflict. Equal peers retain the known support.
   The reviewed `Live` / `v1/live/sessions` pair supplies speech-to-speech session support;
   it does not replace separately declared backend Responses endpoints.
+  The owned `Decisions` / `v1/decisions` pair establishes classification and exact regional support;
+  it does not inherit Responses pricing or response accounting. Residency routes extend their own
+  table vocabulary; adding one cannot turn it into a required row on every model card.
 - The HTML price overlay binds only to an exact catalog ID. Missing, duplicate, unbound, or malformed
   HTML documents are skipped independently. Unrecognized price cells, units and tier-switch
   states preserve bounded raw quotes while readable sibling cells survive.

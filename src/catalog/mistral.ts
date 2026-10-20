@@ -348,7 +348,7 @@ function sourcePriceKind(direction: Direction, label: string | undefined): Sourc
   throw new Error(`Mistral published an unsupported pricing label: ${label}`);
 }
 
-function parseDraft(sourceSlug: string, body: string): Draft {
+function parseDraft(sourceSlug: string, body: string): Draft | undefined {
   const source = ts.createSourceFile(`${sourceSlug}.ts`, body, ts.ScriptTarget.Latest, false);
   let exported: ts.ObjectLiteralExpression | undefined;
   source.forEachChild((node) => {
@@ -359,6 +359,12 @@ function parseDraft(sourceSlug: string, body: string): Draft {
   });
   const object = exported;
   if (object === undefined) throw new Error(`Mistral ${sourceSlug} omitted its static export`);
+  const identifiers = objectValue(property(object, "identifiers"), "identifiers");
+  const apiNames = stringArray(property(identifiers, "apiNames"), "identifiers.apiNames").map(
+    (id) => modelIdSchema.parse(id),
+  );
+  // Weights-only definitions do not supply hosted API claims. Do not validate their unused facets.
+  if (apiNames.length === 0) return;
   const slug = requiredString(object, "slug");
   if (slug !== sourceSlug)
     throw new Error(`Mistral model path and slug disagree for ${sourceSlug}`);
@@ -381,12 +387,8 @@ function parseDraft(sourceSlug: string, body: string): Draft {
     default:
       status = "unknown";
   }
-  const identifiers = objectValue(property(object, "identifiers"), "identifiers");
   const capabilities = objectValue(property(object, "capabilities"), "capabilities");
   const metadata = objectValue(property(object, "metadata"), "metadata");
-  const apiNames = stringArray(property(identifiers, "apiNames"), "identifiers.apiNames").map(
-    (id) => modelIdSchema.parse(id),
-  );
   const modelDescription = description(object);
   const releaseDate = normalizeDate(stringValue(property(object, "releaseDate")));
   const version = stringValue(property(object, "version"));
@@ -900,14 +902,6 @@ function reconcileMany(reconcile: Reconcile, count: number, item: PricingReconci
 
 function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
   for (const draft of drafts) {
-    if (draft.apiNames.length === 0) {
-      reconcile?.({
-        disposition: "excluded",
-        reason_code: "definition_without_api_name",
-        sample: draft.sourceSlug,
-      });
-      continue;
-    }
     if (draft.status === "retired") {
       reconcileMany(reconcile, draft.pricing.prices.length + draft.pricing.unsupported, {
         disposition: "excluded",
@@ -1195,7 +1189,14 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   };
   const drafts = modelDocuments.flatMap(({ slug, body }): Draft[] => {
     try {
-      return [parseDraft(slug, body)];
+      const draft = parseDraft(slug, body);
+      if (draft !== undefined) return [draft];
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "definition_without_api_name",
+        sample: slug,
+      });
+      return [];
     } catch {
       signal(`/models/${slug}`);
       return [];
@@ -1284,6 +1285,8 @@ function pricingModel(
 }
 
 function catalogRates(target: NonNullable<Input["catalogModels"]>[number]): SourcePriceFact[] {
+  if (target.price_facts === undefined)
+    throw new Error("Mistral pricing requires parsed catalog-price context");
   return target.price_facts.map((rate) => ({ ...rate }));
 }
 
@@ -1358,6 +1361,8 @@ export function parseMistralPricing(input: Input): SourceParseResult {
     input.source.extractor.maxCards,
   );
   const models = input.catalogModels.map((target) => {
+    if (target.pricing_state === undefined)
+      throw new Error("Mistral pricing requires parsed catalog-price context");
     const model = pricingModel(input, target);
     model.pricing_state = target.pricing_state;
     model.price_facts = catalogRates(target);

@@ -10,6 +10,8 @@ on:
 
 jobs:
   repair-toolchain:
+    needs: verify
+    if: needs.verify.outputs.repair_toolchain == 'true'
     runs-on: ubuntu-latest
     env:
       VP_HOME: /tmp/kmodels-vite-plus
@@ -27,9 +29,14 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      repair_toolchain: ${{ steps.validate.outputs.repair_toolchain }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -43,17 +50,8 @@ jobs:
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
-      - name: Check
-        run: vp check
-
-      - name: Test
-        run: vp test --run
-
-      - name: Build
-        run: vp run build
-
-      - name: Build and verify portable pricing package
-        run: |
-          vp run package:build
-          git diff --exit-code -- packages/pricing
-          vp run package:check
+      - name: Validate affected contracts
+        id: validate
+        env:
+          VALIDATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: vp node scripts/validate-changes.ts "$VALIDATION_BASE"

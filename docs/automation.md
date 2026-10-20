@@ -82,7 +82,12 @@ Status: implemented
   inventory and scopes, quantity/selector acquisition, retention/replay, calculator/display parity
   and simplicity. The global slot examines shared model consistency and collection/repair feedback.
   Reviews use the existing serialized job and evidence artifacts; there is no second scheduler or
-  production semantic classifier. A failed slot is incomplete, visible in Actions, and revisited
+  production semantic classifier. Eight prepared coverage areas require concrete conclusions and
+  hashed evidence. Publication and consumer areas additionally require successful transition and
+  consumer receipts; parser counts cannot close either boundary. Blocked areas keep their next
+  action and prevent a healthy no-op, while an independent verified repair can still publish.
+  The trusted terminal summary exposes completed/blocked scope and deferred candidates; a delivered
+  patch does not establish a completed periodic review. A failed slot is incomplete, visible in Actions, and revisited
   on its next cycle; a manual dispatch can rerun that day's slot. Error-driven candidates continue
   to be investigated daily regardless of the selected review provider.
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
@@ -131,12 +136,12 @@ Status: implemented
   the candidate cannot edit that script. It binds the candidate artifact to its base commit and
   SHA-256 patch hash and rejects any change during validation.
   The publication job checks out latest `main`, applies that exact patch with Git's three-way
-  conflict check, repeats complete validation against current data, and commits only the exact
+  conflict check, validates the affected delta against current data, and commits only the exact
   validated tree. Credentials are not persisted during checkout or exposed to validation steps.
   Only the final push and deployment steps receive the workflow token. A normal, non-force push
   rejects any concurrent update after validation. On the first non-fast-forward rejection,
   publication fetches current main into its clean disposable checkout, reapplies the same admitted
-  patch, reinstalls frozen dependencies, and repeats full validation and exact-tree commit checks
+  patch, reinstalls frozen dependencies, and repeats affected validation and exact-tree commit checks
   before retrying once. Validation never receives the push credential. Conflicts, validation
   failures, other push failures, or a second race fail the run and retry from current evidence on
   the next daily schedule. Repair commits record the Actions run
@@ -188,10 +193,10 @@ Status: implemented
   `mkdir`/`rm`/`cp` and Git checkout/reset remain outside the allowlist. Correct a denied invocation instead of repeatedly
   requesting variants: the runner terminates after numerous permission denials. Receipt commands
   run individually, without output pipes or an extra `vp` prefix after the probe separator.
-  `vp node scripts/catalog-repair-publication.ts stage` runs the complete sequential check, test,
-  fixture, build, and portable-package suite before capturing the actual patch for framework
+  `vp node scripts/catalog-repair-publication.ts stage` selects checks for the changed contract
+  with the protected validation planner before capturing the actual patch for framework
   threat detection. A failed command returns control to the agent, which diagnoses and corrects
-  allowed changes and retries the complete gate, up to three attempts per run. Apparently
+  allowed changes and retries the affected gate, up to three attempts per run. Apparently
   transient failures get one diagnostic rerun; deterministic failures require a correction.
   Staging removes any stale detection patch first and rejects mutations during validation.
   Staging and publication admission also reject changes to manifest `min*`/`max*` limit
@@ -199,12 +204,13 @@ Status: implemented
   lowering a count floor or raising a resource ceiling. Operator-reviewed source-contract migrations
   happen outside automatic repair; URL and extractor-version updates remain eligible.
   The agent requests `commit_repair` only after staging succeeds. The post-execution gate verifies
-  that patch against the final working tree and uploads a separate validated candidate artifact
-  only after all checks pass. Staging, post-execution, and latest-main publication share the same
-  `validate` implementation; each independently runs the full suite. Repair infrastructure tests
+  that patch against the final working tree and uploads an admitted candidate artifact after
+  trusted evidence and path checks. It does not repeat the tests. Staging and latest-main
+  publication use the same impact planner; publication runs independently on the clean trusted
+  checkout, including changes from the repair base to latest main. Repair infrastructure tests
   also run before inference so a broken harness does not consume a model run. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
-  publication request. Automatic repair publication requires every repository validation command to pass.
+  publication request. Automatic repair publication requires every selected check to pass.
   Preparation supplies deduplicated fetch commands built from reviewed public source IDs and a
   runner-owned repair-admission output. Admission requires investigation; it does not assert that
   a defect already exists. An admitted `noop` requires every candidate to have independently checked
@@ -244,7 +250,7 @@ Status: implemented
   explanation to the review. `hash PATH` hashes a complete saved artifact, distinct from the source
   body hash inside public evidence files. `check` returns missing work to the agent while it can
   still investigate; `check-incomplete` permits only justified interrupted pending work. `stage`
-  calls `check-repair` before full validation. A separate post-execution gate restores the review
+  calls `check-repair` before affected validation. A separate post-execution gate restores the review
   checker from the original workflow commit and cross-checks the final record before outcome
   admission. Evidence stays inside the agent evidence directory, with symlink escapes rejected;
   the admission and public/sanitized investigation directory are retained for 30 days even on failure.
@@ -257,7 +263,7 @@ Status: implemented
   [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
   bounds inference and its tool calls; the job limit separately leaves time for setup,
   post-execution validation, and artifact upload. The agent budgets 20 minutes for evidence and
-  focused repairs, 20 for complete validation and corrections, and 5 for final reporting. It
+  focused repairs, 20 for affected validation and corrections, and 5 for final reporting. It
   completes candidate triage before staging and publishes promptly after a successful gate,
   without reopening independent work. Staging prints an explicit completion receipt only after
   saving the unchanged validated patch. An engine timeout or failure skips outcome capture,

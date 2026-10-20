@@ -13,7 +13,7 @@ export interface SourceParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
-  catalogModels?: readonly Pick<
+  catalogModels?: readonly (Pick<
     ProviderModel,
     | "aliases"
     | "api_endpoints"
@@ -21,8 +21,6 @@ export interface SourceParseInput {
     | "capabilities"
     | "model_id"
     | "name"
-    | "price_facts"
-    | "pricing_state"
     | "release_date"
     | "routes"
     | "service_families"
@@ -30,7 +28,8 @@ export interface SourceParseInput {
     | "tasks"
     | "uid"
     | "version"
-  >[];
+  > &
+    Partial<Pick<ProviderModel, "price_facts" | "pricing_state">>)[];
   onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
   // A mixed source may retain valid catalog facts while its commercial partition must fail.

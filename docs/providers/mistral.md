@@ -20,7 +20,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   and endpoint registry. Remote TypeScript is parsed, never executed.
 - Every imported definition document must be present exactly once. A malformed definition is
   isolated and signaled without hiding recognized siblings. The first API name is canonical, later
-  API names are aliases, and definitions without an API name do not create catalog rows.
+  API names are aliases. An explicitly empty API-name list excludes a weights-only definition before
+  hosted API facets are validated: its slug, modalities or price shape cannot create repair noise.
+  A missing or malformed API-name list remains a contract failure. Hosted definitions still require
+  exact path/slug agreement.
 - The official [API pricing page](https://docs.mistral.ai/inference/pricing) is the preferred current amount
   source. The repository remains the fallback amount source and owns model identity, lifecycle,
   capabilities, and routes. For the exact overlapping claim, a price-page amount supersedes a

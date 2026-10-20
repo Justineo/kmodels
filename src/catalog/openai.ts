@@ -467,6 +467,11 @@ const openAiRegionalProcessingRegions = [
   "United Arab Emirates",
 ] as const;
 const openAiRegionalProcessingRegionSet = new Set<string>(openAiRegionalProcessingRegions);
+// The residency table can establish routes outside the model-card endpoint matrix.
+const openAiResidencyEndpoints = new Map<string, { name: string; tasks: ModelTask[] }>([
+  ...openAiEndpointDefinitions,
+  ["v1/decisions", { name: "Decisions", tasks: ["classification"] }],
+]);
 
 export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
   const requiredHeaders = [
@@ -525,7 +530,7 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
       }
       const endpointDefinitions = endpointPaths.flatMap((path) => {
         if (path === "v1/batches" || path === "v1/fine_tuning/jobs") return [];
-        const definition = openAiEndpointDefinitions.get(path);
+        const definition = openAiResidencyEndpoints.get(path);
         if (definition === undefined) {
           input.onContractFinding?.(
             contractExtensionEvidence([`/data-residency/endpoints/${path}`]),
@@ -731,10 +736,8 @@ function addUniqueModelIndex<T extends { model_id: string }>(
   );
 }
 
-type OpenAiCommercialModel = Pick<
-  ProviderModel,
-  "api_endpoints" | "capabilities" | "pricing_state" | "uid"
->;
+type OpenAiCommercialModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "uid"> &
+  Partial<Pick<ProviderModel, "pricing_state">>;
 
 function openAiToolCommercialFacts(
   table: OpenAiPricingTable,
@@ -1212,7 +1215,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       for (const claim of claims) {
         const fact = claim.rate;
         if (fact !== undefined) {
-          const previous = target.price_facts.find(
+          const previous = target.price_facts?.find(
             (current) => sourcePriceFactKey(current) === sourcePriceFactKey(fact),
           );
           if (previous !== undefined && !decimalsEqual(previous.price, fact.price)) {

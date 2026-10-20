@@ -48,6 +48,7 @@ import {
 } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { normalizeModelTasks } from "../src/catalog/task.ts";
+import { publishedValidityStatus } from "../src/catalog/pricing-time.ts";
 import {
   providerCountDecreases,
   reconcileCatalog,
@@ -464,6 +465,7 @@ async function xaiCatalogResult(
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onContractFinding?: (item: SourceContractEvidence) => void,
   minModels = 4,
+  clock = observedAt,
 ): Promise<SourceParseResult> {
   const value = manifest("xai");
   const configured = value.sources[0];
@@ -483,7 +485,7 @@ async function xaiCatalogResult(
     provider: provider(value),
     source,
     body,
-    observedAt,
+    observedAt: clock,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
@@ -3615,7 +3617,20 @@ describe("Gemini adapters", () => {
         .map(({ key }) => key)
         .sort(),
     ).toEqual(["video.request.duration_seconds", "video.request.resolution"]);
-    expect(reconciliation).toContainEqual({
+    expect(
+      reconciliation.filter(({ sample }) => sample?.includes("video mappings unavailable")),
+    ).toEqual([]);
+    const missing: PricingReconciliationItem[] = [];
+    await geminiSource(
+      {
+        "video.html": (await fixture("gemini/veo-parameters.html")).replace(
+          "<code>resolution</code>",
+          "<code>renamedResolution</code>",
+        ),
+      },
+      (item) => missing.push(item),
+    );
+    expect(missing).toContainEqual({
       disposition: "unbound",
       reason_code: "pricing_input_contract_partial",
       sample: "1 video mappings unavailable",
@@ -3678,10 +3693,6 @@ describe("Gemini adapters", () => {
         }),
         expect.objectContaining({
           key: "video.request.resolution",
-          channel: "request",
-        }),
-        expect.objectContaining({
-          key: "video.request.generate_audio",
           channel: "request",
         }),
       ]),
@@ -7410,7 +7421,7 @@ describe("xAI adapter", () => {
     });
     expect(models.find(({ model_id }) => model_id === "grok-3")).toMatchObject({
       status: "legacy",
-      deprecated_at: "2026-05-15",
+      deprecated_at: "2026-05-15T19:00:00.000Z",
       tasks: ["text_generation"],
       replacement_model_ids: ["grok-4.3"],
       pricing_state: "numeric",
@@ -7418,7 +7429,7 @@ describe("xAI adapter", () => {
         expect.objectContaining({
           meter: "input_text",
           price: "1.25",
-          conditions: expect.objectContaining({ effective_from: "2026-05-15" }),
+          conditions: expect.objectContaining({ effective_from: "2026-05-15T19:00:00.000Z" }),
           derived: true,
           derivation: expect.stringContaining("Redirects to grok-4.3"),
         }),
@@ -7432,6 +7443,62 @@ describe("xAI adapter", () => {
       replacement_model_ids: ["grok-imagine-image-quality"],
       pricing_state: "numeric",
     });
+  });
+
+  it("activates legacy redirects at Pacific noon and exports exact canonical validity", async () => {
+    const parse = (clock: string) =>
+      xaiCatalogResult(
+        "xai/models-voice-services.txt",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        4,
+        clock,
+      );
+    const before = (await parse("2026-05-15T18:59:59.999Z")).models.find(
+      ({ model_id }) => model_id === "grok-3",
+    );
+    const result = await parse("2026-05-15T19:00:00.000Z");
+    expect(before?.status).toBe("deprecated");
+    expect(result.models.find(({ model_id }) => model_id === "grok-3")?.status).toBe("legacy");
+    const source = manifest("xai").sources[0];
+    if (source === undefined) throw new Error("Missing xAI source");
+    const partition = assembleParsedProviderPricing(
+      "xai",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const validity = partition?.books
+      .find(({ scope }) => scope.kind === "models" && scope.model_refs.includes("xai/grok-3"))
+      ?.offers.flatMap(({ terms }) => terms)
+      .find((term) => term.kind === "rate")?.variants[0]?.validity;
+    expect(validity?.from).toMatchObject({
+      value: "2026-05-15T19:00:00.000Z",
+      precision: "datetime",
+    });
+    expect(publishedValidityStatus(validity, "2026-05-15T18:59:59.999Z")).toBe("upcoming");
+    expect(publishedValidityStatus(validity, "2026-05-15T19:00:00.000Z")).toBe("current");
+  });
+
+  it("admits only owned transcription engine IDs without duplicating the provider STT tariff", async () => {
+    const selection =
+      "\n## Model Selection\n\nPass `model` on the REST form or as a WebSocket query parameter.\n\n| Model | Description |\n|-------|-------------|\n| `grok-voice-transcribe-2.0` | Our best transcription model. |\n\n## Other\n| `unrelated-model` | Not a selection. |\n";
+    const edit = (body: string) =>
+      body +
+      "\n\n===/developers/model-capabilities/audio/speech-to-text===\nhttps://api.x.ai/v1/stt\n" +
+      selection;
+    const result = await xaiCatalogResult("xai/models-voice-services.txt", undefined, edit);
+    expect(
+      result.models.find(({ model_id }) => model_id === "grok-voice-transcribe-2.0"),
+    ).toMatchObject({
+      tasks: ["transcription"],
+      modalities: { input: ["audio"], output: ["text"] },
+      price_facts: [],
+      pricing_state: "unknown",
+    });
+    expect(result.models.some(({ model_id }) => model_id === "unrelated-model")).toBe(false);
   });
 
   it("applies a documented dated voice-alias transition at observation time", async () => {
@@ -7955,7 +8022,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v23");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v24");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -8741,6 +8808,39 @@ describe("Vercel adapter", () => {
       raw: [],
       pricingState: "numeric",
     });
+    const changed = linkedBundle(body);
+    const endpointDocument = changed.documents.find(({ url }) => url.endsWith("/endpoints"));
+    if (endpointDocument === undefined) throw new Error("Missing endpoint document");
+    endpointDocument.body = JSON.stringify({
+      ...endpoint,
+      data: {
+        ...endpoint.data,
+        endpoints: endpoint.data.endpoints.map((value) => ({
+          ...value,
+          status: 1,
+          quantization: { future: true },
+          pricing: { ...value.pricing, prompt: "0.000003", completion: "0.000004" },
+        })),
+      },
+    });
+    const healthFindings: SourceContractEvidence[] = [];
+    const preserved = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify(changed),
+      onContractFinding: (finding) => healthFindings.push(finding),
+    }).models.find(({ model_id }) => model_id === "acme/text-1");
+    expect(preserved).toBeDefined();
+    expect(preserved?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "3",
+        conditions: expect.objectContaining({ route_provider: "acme" }),
+      }),
+    );
+    expect(preserved?.routes).toEqual([]);
+    expect(healthFindings).toEqual([]);
     expect(
       dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "unbound"]),
     ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 0, unbound: 2 });
@@ -15120,7 +15220,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v11",
+      extractorVersion: "ollama-cloud-v12",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });
@@ -15141,6 +15241,91 @@ describe("Ollama adapters", () => {
         label: "Off-peak",
       },
     ]);
+  });
+
+  it.each(["ollama-library", "ollama-cloud"] as const)(
+    "preserves Decision models without inventing text generation or date drift in %s",
+    (kind) => {
+      const value = manifest("ollama");
+      const findings: SourceContractEvidence[] = [];
+      const card =
+        '<a href="/library/decision-model"><div><h2>decision-model</h2><p>Typed judgments.</p><span class="bg-indigo-50">decision</span><span class="bg-indigo-50">vision</span></div></a>';
+      const body =
+        kind === "ollama-library"
+          ? card
+          : JSON.stringify({
+              list: {
+                models: [
+                  {
+                    model: "decision-model",
+                    capabilities: ["decision", "vision"],
+                    modified_at: "2026-10-19T18:30:00-07:00",
+                  },
+                ],
+              },
+              catalog: { url: "https://ollama.com/search?c=cloud", body: card },
+              details: [
+                {
+                  model: "decision-model",
+                  status: 200,
+                  body: {
+                    capabilities: ["decision", "vision"],
+                    modified_at: "2026-10-20T01:30:00Z",
+                  },
+                },
+              ],
+            });
+      const [model] = parseSource({
+        provider: provider(value),
+        source: ollamaSource(kind),
+        body,
+        observedAt,
+        onContractFinding: (finding) => findings.push(finding),
+      }).models;
+      expect(model).toMatchObject({
+        model_id: "decision-model",
+        tasks: ["classification"],
+        modalities: { input: ["text", "image"], output: [] },
+        capabilities: { structured_output: true },
+      });
+      if (kind === "ollama-cloud") {
+        expect(model?.api_endpoints).toEqual([{ name: "System One", path: "/v1/systemone" }]);
+        expect(model?.updated_date).toBe("2026-10-20");
+      }
+      expect(
+        findings
+          .flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path))
+          .filter((path) => /^\/(?:library|list|show\/capabilities|cloud\/modified_at)/.test(path)),
+      ).toEqual([]);
+    },
+  );
+
+  it("keeps new unused list properties informational and malformed owned dates diagnostic", () => {
+    const value = manifest("ollama");
+    const findings: SourceContractEvidence[] = [];
+    const body = JSON.stringify({
+      list: {
+        models: [{ model: "model", future: true, capabilities: "unused", modified_at: "bad-date" }],
+      },
+    });
+    parseSource({
+      provider: provider(value),
+      source: ollamaSource("ollama-cloud"),
+      body,
+      observedAt,
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(findings.flatMap(({ diagnostics }) => diagnostics)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/list/modified_at", kind: "unknown_value" }),
+        expect.objectContaining({ path: "/list/future", kind: "unknown_field" }),
+      ]),
+    );
+    expect(
+      findings
+        .flatMap(({ diagnostics }) => diagnostics)
+        .some(({ path }) => path === "/list/capabilities"),
+    ).toBe(false);
   });
 
   it("parses exact curated library IDs and family metadata", async () => {

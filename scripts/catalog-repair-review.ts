@@ -1,11 +1,22 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const evidenceDirectory = "/tmp/gh-aw/agent";
 const reviewPath = `${evidenceDirectory}/catalog-repair-review.json`;
+
+export const periodicReviewAreas = [
+  "discovery",
+  "identity_lifecycle",
+  "pricing",
+  "accounting",
+  "publication",
+  "consumers",
+  "diagnostics_repair",
+  "simplicity",
+] as const;
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -129,6 +140,37 @@ export async function validateRepairReview(
           (phase === undefined || check.phase === phase) &&
           (!success || check.exit_code === 0),
       );
+    if (
+      ["scheduled_provider_review", "scheduled_architecture_review"].includes(
+        text(candidate.trigger),
+      )
+    ) {
+      const coverage = records(row.coverage);
+      const areas = new Set<string>();
+      for (const area of coverage) {
+        const name = text(area.area);
+        if (!periodicReviewAreas.some((value) => value === name) || areas.has(name))
+          throw new Error(`Unknown or duplicate periodic review area: ${name}`);
+        areas.add(name);
+        text(area.reason);
+        const evidence = records(area.evidence);
+        if (evidence.length === 0) throw new Error(`Periodic review area needs evidence: ${name}`);
+        for (const ref of evidence) await proof(ref);
+        if (area.status === "blocked") {
+          text(area.next_action);
+          if (!has("alternative") || row.status === "not_a_defect")
+            throw new Error(`Blocked periodic area cannot establish a healthy review: ${name}`);
+        } else if (area.status === "reviewed") {
+          const kind =
+            name === "consumers" ? "consumer" : name === "publication" ? "transition" : undefined;
+          if (kind !== undefined && !has(kind, undefined, true))
+            throw new Error(`Periodic ${name} review needs a successful ${kind} check`);
+        } else throw new Error(`Invalid periodic review area status: ${name}`);
+      }
+      const missing = periodicReviewAreas.filter((area) => !areas.has(area));
+      if (missing.length > 0)
+        throw new Error(`Periodic review coverage missing: ${missing.join(", ")}`);
+    }
     switch (row.status) {
       case "repaired":
         if (
@@ -195,6 +237,44 @@ export async function validateRepairReview(
   return counts;
 }
 
+/** Render only after validateRepairReview succeeds; a repaired item is not complete catalog health. */
+export function repairScopeSummary(admissionText: string, reviewText: string): string {
+  const admission = record(JSON.parse(admissionText));
+  const rows = records(record(JSON.parse(reviewText)).candidates);
+  const periodic = new Set(
+    records(admission.candidates)
+      .filter((candidate) =>
+        ["scheduled_provider_review", "scheduled_architecture_review"].includes(
+          text(candidate.trigger),
+        ),
+      )
+      .map((candidate) => text(candidate.id)),
+  );
+  const summary = {
+    candidates: rows.map((row) => ({
+      id: text(row.id),
+      status: text(row.status),
+      ...(row.status === "blocked"
+        ? { next_action: text(record(row.blocker).next_action) }
+        : row.status === "pending"
+          ? { next_action: text(row.next_action) }
+          : {}),
+      ...(!periodic.has(text(row.id))
+        ? {}
+        : row.status === "pending"
+          ? { review_complete: false }
+          : {
+              review_complete: records(row.coverage).every((area) => area.status === "reviewed"),
+              blocked_areas: records(row.coverage)
+                .filter((area) => area.status === "blocked")
+                .map((area) => ({ area: text(area.area), next_action: text(area.next_action) })),
+            }),
+    })),
+    deferred: records(admission.deferred_candidates ?? []).map((candidate) => text(candidate.id)),
+  };
+  return `\n## Checked repair scope\n\nThese are admitted-scope evidence conclusions, not a whole-catalog health claim. Blocked areas and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
+}
+
 export async function readReviewEvidence(path: string, root = evidenceDirectory): Promise<string> {
   const canonical = await realpath(path);
   const local = relative(await realpath(root), canonical);
@@ -232,7 +312,16 @@ async function main(): Promise<void> {
     const phase = text(process.argv[4]);
     const args = process.argv.slice(6);
     if (
-      !["fetch", "parser", "navigation", "alternative", "regression", "execution"].includes(kind) ||
+      ![
+        "fetch",
+        "parser",
+        "navigation",
+        "alternative",
+        "regression",
+        "execution",
+        "consumer",
+        "transition",
+      ].includes(kind) ||
       !["before", "after", "investigation"].includes(phase) ||
       process.argv[5] !== "--" ||
       !["node", "test", "check", "run", "env"].includes(args[0] ?? "")
@@ -286,21 +375,23 @@ async function main(): Promise<void> {
     operation === "terminal"
       ? outputTypes(await readFile(text(process.env.GH_AW_SAFE_OUTPUTS), "utf8"))
       : [];
-  const summary = await validateRepairReview(
-    await readFile(admission, "utf8"),
-    await readReviewEvidence(reviewPath),
-    readReviewEvidence,
-    {
-      allowPending:
-        operation === "check-incomplete" ||
-        types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
-      requireRepair: operation === "check-repair" || types.includes("commit_repair"),
-      requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
-    },
-  );
+  const admissionText = await readFile(admission, "utf8");
+  const reviewText = await readReviewEvidence(reviewPath);
+  const summary = await validateRepairReview(admissionText, reviewText, readReviewEvidence, {
+    allowPending:
+      operation === "check-incomplete" ||
+      types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
+    requireRepair: operation === "check-repair" || types.includes("commit_repair"),
+    requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
+  });
   console.log(
     `Repair investigation evidence checked: ${JSON.stringify(summary)}. This checks evidence coverage, not semantic correctness.`,
   );
+  if (operation === "terminal" && process.env.GITHUB_STEP_SUMMARY !== undefined)
+    await appendFile(
+      process.env.GITHUB_STEP_SUMMARY,
+      repairScopeSummary(admissionText, reviewText),
+    );
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))

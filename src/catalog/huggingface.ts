@@ -1142,6 +1142,8 @@ function routePriceFacts(
   provider: NativePricingProvider,
   meter: "input_text" | "output_text",
 ): SourcePriceFact[] {
+  if (model.price_facts === undefined)
+    throw new Error("Hugging Face native pricing requires parsed route-price context");
   return model.price_facts.filter(
     (fact) => fact.meter === meter && fact.conditions.route_provider === provider,
   );

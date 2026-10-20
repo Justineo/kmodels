@@ -70,6 +70,13 @@ document order. Collection does not discover arbitrary commercial pages through 
   thinking metadata is isolated as a contract signal without discarding the model.
   Unknown additive fields and enum values produce bounded diagnostics and suppress only the affected
   claim.
+- A `decision` badge or Show capability establishes classification with structured output. A vision
+  badge adds image input; a typed judgment does not imply generated text output. Cloud Decision
+  models use the documented [System One endpoint](https://docs.ollama.com/api/systemone.md).
+  Generate/Chat usage contracts do not establish System One accounting. Library cards may omit
+  update dates. List/Show modification instants are compared in UTC and projected to the latest day;
+  differently formatted or independently updated observations are not contradictory lifecycle claims.
+  Unused additive list properties remain informational; malformed consumed fields stay actionable.
 - A Cloud retirement is applied globally only when the exact identity is absent from the current
   Library. Current Library evidence keeps the shared catalog identity active.
 

@@ -144,6 +144,26 @@ it("checks candidate coverage using trusted code before admitting an outcome and
   expect(artifact).toContain("${{ runner.temp }}/gh-aw/repair-admission.json");
 });
 
+it("keeps trusted publication validation without a redundant post-execution test pass", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  const publication = job(workflow, "commit_repair");
+  expect(agent).toContain('catalog-repair-publication.ts" capture');
+  expect(agent).toContain('catalog-repair-publication.ts" verify');
+  expect(agent).not.toContain('catalog-repair-publication.ts" validate');
+  expect(agent).toContain("name: admitted-catalog-repair");
+  expect(publication.indexOf('catalog-repair-publication.ts" validate')).toBeGreaterThan(
+    publication.indexOf('catalog-repair-publication.ts" apply'),
+  );
+  expect(publication.indexOf('catalog-repair-publication.ts" commit')).toBeGreaterThan(
+    publication.indexOf('catalog-repair-publication.ts" validate'),
+  );
+  const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  expect(ci).toContain('vp node scripts/validate-changes.ts "$VALIDATION_BASE"');
+  expect(ci).toContain("needs.verify.outputs.repair_toolchain == 'true'");
+  expect(ci).not.toContain("collect:fixtures");
+});
+
 it("keeps issue creation unavailable in both the source policy and generated workflow", async () => {
   const markdown = await readFile(source, "utf8");
   const workflow = await readFile(compiled, "utf8");
@@ -190,14 +210,14 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(agent).toContain("scripts/catalog-repair-publication.ts");
   expect(agent).toContain('git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts"');
   expect(agent).toContain("success() && steps.repair_outcome.outputs.outcome == 'commit_repair'");
-  expect(agent).toContain('catalog-repair-publication.ts" validate');
+  expect(agent).not.toContain('catalog-repair-publication.ts" validate');
   expect(commit).toContain('catalog-repair-publication.ts" validate');
   expect(agent.indexOf("Check repair infrastructure before inference")).toBeLessThan(
     agent.indexOf("Execute GitHub Copilot CLI"),
   );
-  expect(agent).toContain("validated-catalog-repair");
+  expect(agent).toContain("admitted-catalog-repair");
   expect(agent).toContain('catalog-repair-publication.ts" verify');
-  expect(commit).toContain("validated-catalog-repair");
+  expect(commit).toContain("admitted-catalog-repair");
   expect(commit).toContain("needs.safe_outputs.result == 'success'");
   expect(commit).toContain("needs.detection.outputs.detection_success == 'true'");
   expect(commit).toContain("persist-credentials: false");

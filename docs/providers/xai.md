@@ -75,8 +75,10 @@ Services whose applicability names models still require the exact admitted model
 Preserve the structured `version` as identity. Dated aliases are evaluated at the
 observation time. Exact retired IDs that still redirect remain separate legacy rows and
 derive the target rate from the documented redirect date. The model inventory admits the public
-Realtime identities. Internal service configuration labels alone do not establish additional
-TTS/STT model identities.
+Realtime identities and transcription engine IDs from the owned Speech to Text `Model Selection`
+table and REST route. The engine has no inferred model-specific rate: STT remains a separately
+metered provider resource, so admitting an engine cannot duplicate that tariff. Internal service
+configuration labels alone do not establish additional TTS/STT model identities.
 
 ## Resilient collection
 
@@ -208,8 +210,10 @@ formulas without executable expressions or a provider-specific calculation engin
 - The pre-generation usage-guideline fee lacks a stable documented response/error discriminator.
 - Serving region is a caller-supplied route/request fact. Missing terminal stream usage cannot be
   reconstructed from partial content.
-- Legacy redirect validity retains the extractor's day precision. Where an exact activation instant
-  is required, calculation reports unresolved validity rather than silently selecting a timezone.
+- The May retirement guide explicitly owns Pacific noon. The extractor resolves that local time
+  through `America/Los_Angeles` rules, compares observation instants, and publishes the same exact
+  activation instant on redirected prices. A missing or changed time declaration withholds that
+  interpretation rather than silently selecting midnight.
 - `cost_in_usd_ticks` is downstream verification evidence, rather than a quantity or selector for
   reconstructing a published rate. Invoice and account settlement remain outside the price book.
 

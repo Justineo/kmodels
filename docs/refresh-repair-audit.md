@@ -78,6 +78,14 @@ The evidence CLI's full `scope: source` body already has the collector's normali
 envelope. Replay that body unchanged. Raw indexes and isolated companions support navigation or
 local diagnostics; a manually reconstructed bundle's decoding failure does not establish a source
 or parser defect. Inspect saved output when a tool preview is truncated.
+Use `scripts/replay-catalog-evidence.ts` for a pinned complete-source parser replay. It validates
+the source ID/body hash, uses the saved observation time, and rejects with a nonzero exit status.
+Context-dependent parsers require explicitly saved parsed catalog models; no current prices or
+invented facts are filled into missing context. The output states `stage: parse`, which cannot
+establish assembly, calculator parity or adoption. A wrapper that prints a caught error and exits
+successfully is not successful replay evidence.
+Metadata-only context is sufficient only for adapters that consume metadata alone. Price overlays
+that depend on earlier parsed rate facts require that real context and reject its absence.
 Preserve existing negative controls during repair. Do not delete a failing case or weaken its
 assertion to make a patch pass; first establish whether current owned evidence actually changes
 that contract. Verify an acquisition locator's complete parent/leaf path, not just nearby matching
@@ -90,8 +98,9 @@ Use offline pricing compilation only with admitted inputs and
 current extractor/revision guards, and projection preparation only when the canonical pair is already
 correct. Do not force an obsolete replay to make a source fix appear adopted. Changes to executable
 pricing or exported scope need proof in the actual built/packed consumer path as well as in-memory
-assembly. Run focused checks during editing and the required full gate after the final relevant edit;
-revalidate changes from upstream before delivering that exact tree. Workflow publication permissions
+assembly. Run focused checks during editing and the affected checks after the final relevant edit,
+using the [validation planner](testing.md#required-validation). Revalidate changed upstream inputs
+before delivering that exact tree. Workflow publication permissions
 and retry limits remain owned by [Automation](automation.md).
 Verify the published commit as well as the workflow result: refresh can pass collection, validation
 and build but safely skip publication after main advances. Source interpretation changes also need
@@ -120,8 +129,16 @@ an extractor-version bump so accepted evidence and replay remain attributable.
 
 ## Investigation admission
 
-Repair investigates persistent consumed-contract drift even when bytes are unchanged. A purely
-additive field does not retrigger solely because it persists. Truncated evidence remains reviewable.
+Repair investigates persistent consumed-contract drift even when bytes are unchanged. Purely
+additive unused fields stay informational even when unrelated source bytes change; they do not
+demonstrate a broken consumed contract. Periodic discovery review assesses new semantics outside
+the current parser boundary. Truncated evidence remains reviewable because omitted diagnostics
+cannot establish that every finding was harmless.
+Expected contracts must also come from the exact product and API being consumed. Do not treat a
+parameter from a related product, optional card metadata, or an excluded weights-only definition
+as a missing billing contract. Preserve a negative control for a genuinely missing consumed field
+when removing a false expectation. New capabilities enter the shared task/price vocabulary from
+owned evidence; they do not inherit another protocol's prices or accounting.
 Known missing accounting, endpoint, identity, currency, owned tariff/API scope, tier and served-tier
 contracts can require investigation while publication succeeds. An unknown meter or unbound product alone is not proof
 of an implementation defect.
@@ -153,6 +170,12 @@ and simplicity against current first-party evidence.
 A calendar slot is an attempt, not proof of completed coverage. Failed or unfinished reviews remain
 incomplete. The workflow artifact retains conclusions and evidence limits. This complements
 targeted repair without introducing another scheduler.
+Periodic records cover discovery, identity/lifecycle, pricing, accounting, publication, consumers,
+diagnostics/repair and simplicity separately, with hashed evidence per area. Publication and
+consumer completion require their own successful transition/consumer receipts. A repair can be
+delivered while another area is blocked, but that does not complete the comprehensive review.
+The trusted terminal summary lists candidate status, incomplete areas and deferred work separately
+from the agent's prose. Review coverage and receipt integrity do not prove semantic correctness.
 
 ## Evidence and conclusions
 
