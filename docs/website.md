@@ -146,7 +146,10 @@ Status: implemented core; provider pricing convergence is in progress
   published rate plan.
   Model details resolve those exact boundaries against the viewer's clock, show only the current
   plan by default, render its absolute times in the viewer's current time zone, and expose the next
-  plan through one compact effective-time preview. The preview
+  plan through one compact effective-time preview explicitly labeled `Upcoming rates`. Previewing it
+  identifies it as future pricing and offers a return to current rates. Any dated offer fact,
+  including a rate, allowance, contribution or pricing note, can establish this transition; a change
+  to the overall pricing state is not required. The preview
   swaps the same rate surface rather than duplicating it. Imprecise year, month, or date validity
   remains unresolved and visible as source-published qualification.
   Price-query controls contain only dimensions that can change a rate or leave its numeric state

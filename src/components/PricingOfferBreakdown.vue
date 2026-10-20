@@ -412,13 +412,13 @@ function showNoteScope(scope: ScopeCopy): boolean {
     <div v-if="timeline.upcoming" class="pricing-change">
       <span class="pricing-change-icon"><UiIcon name="calendar-clock" /></span>
       <p>
-        <strong>{{ viewingUpcoming ? "Previewing new rates" : "New rates" }}</strong>
+        <strong>{{ viewingUpcoming ? "Previewing upcoming rates" : "Upcoming rates" }}</strong>
         <time :datetime="timeline.upcoming.effective_at">
           {{ formatLocalDateTime(timeline.upcoming.effective_at) }}
         </time>
       </p>
       <button type="button" @click="toggleUpcoming">
-        {{ viewingUpcoming ? "Current" : "Preview" }}
+        {{ viewingUpcoming ? "Current rates" : "Preview rates" }}
       </button>
     </div>
 

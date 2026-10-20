@@ -734,7 +734,10 @@ Kmodels does not turn collection time into validity or execute imprecise year,
 month, or date labels as a historical/current query. Model details default to
 the exact datetime version containing the current instant and offer one concise
 preview of the next version. The effective time belongs to the plan transition
-rather than every state and rate row. Provably empty or reversed intervals are
+rather than every state and rate row. A future exact start on any offer fact establishes a preview,
+even when the overall offer state stays numeric. The preview is explicitly labeled as upcoming
+and never changes which rate the calculator applies to an actual evaluation time.
+Provably empty or reversed intervals are
 not normalized.
 
 Validity does participate in conflict detection: unequal values conflict only
@@ -1074,14 +1077,17 @@ validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.
 
-Provider pricing uses the same display rows but remains read-only: every
-conditional rate and contribution row includes a human-readable applicability qualifier.
+Provider services use the same context controls and current/upcoming timeline as model offers.
+Context selection resolves the applicable published rates without configuring a request or
+calculating a total. Upcoming prices remain available before their effective time with an explicit
+future label and timestamp. Dates on individual terms participate even when the pricing state is
+unchanged.
 Provider-owned meters
 and credits use reviewed vocabulary labels or native codes in visible copy;
 their namespace-qualified syntax remains audit-only. The provider inspector
-loads one resource chunk at a time and one offer only when expanded. Conditional
-or validity-qualified offer states are rows in the inspector rather than only a
-count in the summary. Simple applicability remains exact display copy; large DNF
+loads one resource chunk at a time and one offer only when expanded. Context controls resolve
+conditional offer states, while exact validity is shown on the shared timeline. Simple applicability
+remains exact display copy; large DNF
 is factored into a deterministic summary no longer than 180 characters while
 the structured scope remains exact. Books whose offers contain only raw terms,
 `not_published` states, and no normalized relations
@@ -1102,10 +1108,9 @@ never contain provider- or value-specific label branches.
 
 When a categorical value carries a recurring daily or weekly schedule, the compact payload
 preserves the structured rule beside that selector value. Model details show a quiet UTC rule list
-directly below the selector and highlight the chosen row; the provider inspector includes the same
-rule in its read-only summary. Neither surface chooses Peak/Off-peak automatically from the viewer's
-clock. This remains independent from model-detail resolution of a one-time exact rate-plan validity
-boundary; the provider inspector continues to expose every reviewed validity-qualified row.
+directly below the selector and highlight the chosen row; provider services use the same control.
+Neither surface chooses Peak/Off-peak automatically from the viewer's clock. This remains
+independent from resolution of a one-time exact rate-plan validity boundary.
 
 Configured labels may outlive a volatile vocabulary value and remain dormant
 until that value reappears. Generated-data tests require every projected label
