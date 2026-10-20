@@ -85,7 +85,7 @@ export async function validateRepairReview(
     if (hash !== actual) throw new Error(`Review evidence changed: ${path}`);
   };
   const checkProof = async (check: Record<string, unknown>) => {
-    text(check.command);
+    const command = text(check.command);
     text(check.result);
     await proof(check.output);
     const output = record(check.output);
@@ -99,6 +99,13 @@ export async function validateRepairReview(
       (check.exit_code !== null && !Number.isInteger(check.exit_code))
     )
       throw new Error("Review check disagrees with its command receipt");
+    if (
+      (check.kind === "consumer" || check.kind === "transition") &&
+      /(?:fetch|replay)-catalog-evidence\.ts\b/u.test(command)
+    )
+      throw new Error(
+        "Source-only acquisition or parser replay cannot establish consumer or transition proof",
+      );
   };
   const counts: ReviewSummary = { repaired: 0, not_a_defect: 0, blocked: 0, pending: 0 };
   for (const row of rows) {

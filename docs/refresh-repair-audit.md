@@ -174,6 +174,9 @@ Periodic records cover discovery, identity/lifecycle, pricing, accounting, publi
 diagnostics/repair and simplicity separately, with hashed evidence per area. Publication and
 consumer completion require their own successful transition/consumer receipts. A repair can be
 delivered while another area is blocked, but that does not complete the comprehensive review.
+The checker rejects the source-fetch/parser-replay helpers when mislabeled as consumer or
+transition checks. A check kind is still a claim to inspect, not proof of what an arbitrary
+script actually exercised.
 The trusted terminal summary lists candidate status, incomplete areas and deferred work separately
 from the agent's prose. Review coverage and receipt integrity do not prove semantic correctness.
 
