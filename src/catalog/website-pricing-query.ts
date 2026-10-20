@@ -136,6 +136,17 @@ function isVisibleAt(row: TimedRow, instant: string): boolean {
 
 function nextChangeAt(offer: WebsitePricingOffer, currentInstant: string): string | undefined {
   const currentTime = Date.parse(currentInstant);
+  return timedRows(offer)
+    .flatMap(({ validity }) => [validity?.from, validity?.until])
+    .flatMap((boundary) =>
+      boundary?.precision === "datetime" && Date.parse(boundary.value) > currentTime
+        ? [boundary.value]
+        : [],
+    )
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+}
+
+function timedRows(offer: WebsitePricingOffer): TimedRow[] {
   return [
     ...offer.states,
     ...offer.rates,
@@ -144,14 +155,7 @@ function nextChangeAt(offer: WebsitePricingOffer, currentInstant: string): strin
     ...offer.enrollment,
     ...offer.settlement,
     ...offer.unnormalized,
-  ]
-    .flatMap(({ validity }) => [validity?.from, validity?.until])
-    .flatMap((boundary) =>
-      boundary?.precision === "datetime" && Date.parse(boundary.value) > currentTime
-        ? [boundary.value]
-        : [],
-    )
-    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  ];
 }
 
 function groupsByTerm(rows: readonly WebsiteRateRow[]): Map<string, WebsiteRateRow[]> {
@@ -245,7 +249,7 @@ function evaluate(
 }
 
 function nextEffectiveAt(offer: WebsitePricingOffer, currentInstant: string): string | undefined {
-  const boundaries = offer.states.flatMap(({ validity }) => {
+  const boundaries = timedRows(offer).flatMap(({ validity }) => {
     const from = validity?.from;
     return from?.precision === "datetime" &&
       publishedValidityStatus(validity, currentInstant) === "upcoming"

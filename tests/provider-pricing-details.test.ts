@@ -189,6 +189,7 @@ describe("provider pricing details", () => {
     const before = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
     expect(before).toContain("$0<");
     expect(before).toContain(`datetime="${transition}"`);
+    expect(before).toContain("Upcoming rates");
     expect(before).not.toContain("$0.75");
     expect(before).toContain("Current billing qualification");
     expect(before).not.toContain("Future billing qualification");
@@ -196,7 +197,7 @@ describe("provider pricing details", () => {
     vi.setSystemTime(new Date(transition));
     const after = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
     expect(after).toContain("$0.75");
-    expect(after).not.toContain("New rates");
+    expect(after).not.toContain("Upcoming rates");
     expect(after).not.toContain("Validity-qualified");
     expect(after).toContain("Future billing qualification");
     expect(after).not.toContain("Current billing qualification");
@@ -305,7 +306,7 @@ describe("provider pricing details", () => {
       offer,
       modelRef: "test/model",
     });
-    expect(before).toContain("New rates");
+    expect(before).toContain("Upcoming rates");
     expect(before).toContain(`datetime="${transition}"`);
     expect(before).toContain("$0.90");
     expect(before).not.toContain("Billing period");
@@ -317,7 +318,7 @@ describe("provider pricing details", () => {
       offer,
       modelRef: "test/model",
     });
-    expect(after).not.toContain("New rates");
+    expect(after).not.toContain("Upcoming rates");
     expect(after).not.toContain("$0.90");
     expect(after).toContain("Billing period");
     expect(after).toContain("Weekly rule · UTC");

@@ -254,6 +254,56 @@ describe("website pricing query", () => {
     expect(ended.current.state_summary).toBe("No matching state");
   });
 
+  it("previews future rates even when the offer remains metered throughout", () => {
+    const transition = "2026-11-01T00:00:00.000Z";
+    const data = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    data.rates[0]!.validity = {
+      until: { value: transition, precision: "datetime", inclusive: false },
+    };
+    data.rates.push(
+      ...offer([{ amount: "$3", scope: region("us", "eu") }], {
+        from: { value: transition, precision: "datetime", inclusive: true },
+      }).rates,
+    );
+
+    const before = projectWebsitePricingTimeline(data, "2026-10-20T00:00:00.000Z");
+    expect(before.current.rates.map(({ amount }) => amount)).toEqual(["$2"]);
+    expect(before.upcoming?.effective_at).toBe(transition);
+    expect(before.upcoming?.offer.rates.map(({ amount }) => amount)).toEqual(["$3"]);
+    expect(projectWebsitePricingTimeline(data, transition).upcoming).toBeUndefined();
+  });
+
+  it.each(["allowances", "contributions", "unnormalized"] as const)(
+    "exposes a future %s change without requiring a dated offer state",
+    (kind) => {
+      const data = offer([{ amount: "$2", scope: region("us", "eu") }]);
+      const timed = {
+        key: "future",
+        applicability: region("us", "eu"),
+        applicability_label: "US or EU",
+        validity: {
+          from: { value: "2026-11-01T00:00:00.000Z", precision: "datetime" as const },
+        },
+      };
+      if (kind === "allowances")
+        data.allowances = [{ ...timed, value: "100 requests", target: "Search", reset: "Monthly" }];
+      else if (kind === "contributions")
+        data.contributions = [
+          { ...timed, label: "Additional usage", target: "Search", drivers: [] },
+        ];
+      else
+        data.unnormalized = [
+          { ...timed, label: "Published condition", reason: "Other", impact: "informational" },
+        ];
+
+      const before = projectWebsitePricingTimeline(data, "2026-10-20T00:00:00.000Z");
+      expect(before.current[kind]).toEqual([]);
+      expect(before.upcoming?.offer[kind]).toHaveLength(1);
+      expect(before.upcoming?.offer.rates).toEqual(before.current.rates);
+      expect(before.next_change_at).toBe(timed.validity.from.value);
+    },
+  );
+
   it("preserves an incomplete summary while a raw base price is visible", () => {
     const incomplete = offer([{ amount: "$2", scope: region("us", "eu") }]);
     incomplete.state_summary = "Incomplete";
