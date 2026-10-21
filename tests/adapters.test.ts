@@ -13684,7 +13684,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v12",
+      extractorVersion: "kimi-pricing-v13",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -13932,6 +13932,96 @@ describe("Kimi adapters", () => {
       ).toBe(false);
     },
   );
+
+  it("recovers Kimi pricing rows from the rendered page when the Markdown export drops them", async () => {
+    const rendered = await fixture("kimi/pricing-cn-rendered.html");
+    const batch = await fixture("kimi/pricing-cn-batch-rendered.html");
+    const models = await pricing({
+      indexBody: rendered,
+      overrides: {
+        "pricing-k27": rendered,
+        "pricing-k26": rendered,
+        "pricing-overview": rendered,
+        "pricing-k25": "# Retired",
+        "pricing-v1": "# Retired",
+        "pricing-batch": batch,
+      },
+    });
+    expect(models.map(({ model_id }) => model_id).sort()).toEqual([
+      "kimi-k2.6",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-k3",
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "kimi-k3")
+        ?.price_facts.map(({ meter, price, conditions }) => [
+          meter,
+          price,
+          conditions.cache_ttl_seconds ?? null,
+        ]),
+    ).toEqual([
+      ["cache_read_text", "2.00", null],
+      ["cache_write_text", "20.00", 300],
+      ["cache_write_text", "40.00", 3600],
+      ["input_text", "20.00", null],
+      ["output_text", "100.00", null],
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "kimi-k2.7-code")
+        ?.price_facts.filter(({ meter }) => meter === "input_text")
+        .map(({ price, conditions }) => [price, conditions.service_tier ?? "standard"]),
+    ).toEqual([
+      ["3.90", "batch"],
+      ["6.50", "standard"],
+    ]);
+  });
+
+  it("decodes fragment cells from the rendered Kimi price book", async () => {
+    const rendered = await fixture("kimi/pricing-global-rendered.html");
+    const models = await pricing({
+      sourceId: "kimi-international-pricing",
+      indexBody: rendered,
+      overrides: {
+        "pricing-k27": rendered,
+        "pricing-k26": rendered,
+        "pricing-overview": rendered,
+        "pricing-k25": "# Retired",
+        "pricing-v1": "# Retired",
+        "pricing-batch": "# No batch rates in this fixture",
+      },
+    });
+    expect(
+      models
+        .find(({ model_id }) => model_id === "kimi-k3")
+        ?.price_facts.map(({ meter, price, currency }) => [meter, price, currency]),
+    ).toEqual([
+      ["cache_read_text", "0.30", "USD"],
+      ["cache_write_text", "3.00", "USD"],
+      ["cache_write_text", "6.00", "USD"],
+      ["input_text", "3.00", "USD"],
+      ["output_text", "15.00", "USD"],
+    ]);
+  });
+
+  it("rejects the Kimi Markdown export that no longer carries pricing rows", async () => {
+    const empty = await fixture("kimi/pricing-empty-export.md");
+    await expect(
+      pricing({
+        indexBody: empty,
+        overrides: {
+          "pricing-k27": empty,
+          "pricing-k26": empty,
+          "pricing-overview": empty,
+          "pricing-k25": empty,
+          "pricing-v1": empty,
+          "pricing-batch": empty,
+        },
+      }),
+    ).rejects.toThrow(/count_outside_bounds/);
+  });
 
   async function releases(currentResearch = false): Promise<ProviderModel[]> {
     const configured = source("kimi-releases");

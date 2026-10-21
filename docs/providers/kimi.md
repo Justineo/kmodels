@@ -34,7 +34,12 @@ are fact-local: drift removes only that endpoint and its dependent calculation m
 Each regional pricing collector fetches its K3 price page plus 18 fixed companions in one bounded
 bundle. The reviewed current price set contains K2.7, K2.6, and web-search prices; the remaining
 documents cover the model-pricing overview, Files operations, built-in web search, Formula official
-tools, and the regional `llms.txt` index. Current K3, K2.7 and K2.6 price URLs resolve to the same
+tools, and the regional `llms.txt` index. The regional price pages are requested as rendered HTML:
+the published Markdown export now replaces each pricing component with an empty table, while the
+rendered page still carries the same tables in its React Server Component payload. Extraction reads
+the payload's labeled `DocTable` rows, deduplicates the repeated hydration copy of each table, and
+uses the rendered article text for display names and capability prose. The Markdown export remains
+only for companions whose payload is authoritative Markdown. Current K3, K2.7 and K2.6 price URLs resolve to the same
 combined overview: extraction deduplicates identical documents and reads each labeled table
 independently. Retired K2.5 and Moonshot V1 redirects to the model catalog are rejected as pricing
 claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
