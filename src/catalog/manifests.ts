@@ -493,10 +493,10 @@ const kimiPricingSource = (
   url: `${origin}/docs/pricing/chat-k3`,
   type: "website",
   access: "public",
-  format: "markdown",
+  format: "html",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v12",
+  extractorVersion: "kimi-pricing-v13",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -515,7 +515,7 @@ const kimiPricingSource = (
   exhaustive: false,
   role: "catalog",
   linkedDocuments: {
-    indexFormat: "markdown",
+    indexFormat: "html",
     path: /^$/,
     minDocuments: 0,
     maxDocuments: 0,
@@ -545,6 +545,10 @@ const kimiPricingSource = (
     ).map(([id, path]) => ({
       id,
       url: `${origin}${path}`,
+      format:
+        id === "k27" || id === "k26" || id === "pricing" || id === "batch"
+          ? ("html" as const)
+          : ("markdown" as const),
       maxResponseBytes: mebibytes(1),
     })),
   },

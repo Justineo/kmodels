@@ -688,6 +688,148 @@ function withoutTrailingCommas(value: string): string {
   return result;
 }
 
+const renderedTableMarker = "_jsx(DocTable,";
+
+function renderedText(body: string): string {
+  const $ = load(body);
+  const content = $("#content");
+  const root = content.length === 0 ? $("main") : content;
+  const lines: string[] = [];
+  for (const node of root.find("h1, h2, h3, p, li, td").toArray()) {
+    const text = $(node).text().replace(/\s+/g, " ").trim();
+    if (text.length === 0 || lines.includes(text)) continue;
+    lines.push(/^(?:H[123])$/.test(node.tagName.toUpperCase()) ? `# ${text}` : text);
+  }
+  return lines.join("\n");
+}
+
+function renderedValue(text: string, start: number): { value: unknown; end: number } | undefined {
+  const skip = (index: number): number => {
+    let cursor = index;
+    while (cursor < text.length && /\s/.test(text[cursor] ?? "")) cursor += 1;
+    return cursor;
+  };
+  let index = skip(start);
+  const character = text[index];
+  const call = text.slice(index).match(/^[A-Za-z_$][\w$.]*\s*\(/)?.[0];
+  if (call !== undefined) {
+    const open = index + call.length - 1;
+    let depth = 0;
+    let cursor = open;
+    let quote: string | undefined;
+    for (; cursor < text.length; cursor += 1) {
+      const current = text[cursor] ?? "";
+      if (quote !== undefined) {
+        if (current === "\\") cursor += 1;
+        else if (current === quote) quote = undefined;
+        continue;
+      }
+      if (current === "`" || current === '"') quote = current;
+      else if (current === "(" || current === "[" || current === "{") depth += 1;
+      else if (current === ")" || current === "]" || current === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) return undefined;
+    const literals = [
+      ...text.slice(open + 1, cursor).matchAll(/(?:`((?:[^`\\]|\\.)*)`|"((?:[^"\\]|\\.)*)")/g),
+    ].map((match) => (match[1] ?? match[2] ?? "").replace(/\\(.)/g, "$1"));
+    return { value: literals.join(""), end: cursor + 1 };
+  }
+  if (character === "`" || character === '"') {
+    let value = "";
+    index += 1;
+    while (index < text.length) {
+      const current = text[index] ?? "";
+      if (current === "\\") {
+        const next = text[index + 1] ?? "";
+        value += next === "n" ? "\n" : next === "t" ? "\t" : next === "r" ? "\r" : next;
+        index += 2;
+        continue;
+      }
+      if (character === "`" && current === "$" && text[index + 1] === "{") return undefined;
+      if (current === character) return { value, end: index + 1 };
+      value += current;
+      index += 1;
+    }
+    return undefined;
+  }
+  if (character === "[" || character === "{") {
+    const closing = character === "[" ? "]" : "}";
+    const items: unknown[] = [];
+    const object: Record<string, unknown> = {};
+    index += 1;
+    for (;;) {
+      index = skip(index);
+      if (text[index] === closing)
+        return { value: character === "[" ? items : object, end: index + 1 };
+      const item = renderedValue(text, index);
+      if (character === "{") {
+        const name =
+          item !== undefined && typeof item.value === "string"
+            ? item.value
+            : text.slice(index).match(/^[A-Za-z_$][\w$]*/)?.[0];
+        if (name === undefined) return undefined;
+        index = skip(
+          item !== undefined && typeof item.value === "string" ? item.end : index + name.length,
+        );
+        if (text[index] !== ":") return undefined;
+        const value = renderedValue(text, index + 1);
+        if (value === undefined) return undefined;
+        object[name] = value.value;
+        index = value.end;
+      } else {
+        if (item === undefined) return undefined;
+        items.push(item.value);
+        index = item.end;
+      }
+      index = skip(index);
+      if (text[index] === ",") {
+        index += 1;
+        continue;
+      }
+      if (text[index] === closing)
+        return { value: character === "[" ? items : object, end: index + 1 };
+      return undefined;
+    }
+  }
+  const rest = text.slice(index);
+  const number = rest.match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?/)?.[0];
+  if (number !== undefined) return { value: Number(number), end: index + number.length };
+  const keyword = rest.match(/^(?:true|false|null)/)?.[0];
+  if (keyword !== undefined) return { value: JSON.parse(keyword), end: index + keyword.length };
+  return undefined;
+}
+
+/** The Markdown export replaces MDX components with empty tables, so recover rows from the rendered page. */
+function renderedTables(body: string): string[] {
+  const tables: string[] = [];
+  let index = body.indexOf(renderedTableMarker);
+  while (index !== -1) {
+    const parsed = renderedValue(body, index + renderedTableMarker.length);
+    index = body.indexOf(renderedTableMarker, index + renderedTableMarker.length);
+    if (parsed === undefined || typeof parsed.value !== "object" || parsed.value === null) continue;
+    const { columns, rows } = parsed.value as Record<string, unknown>;
+    if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) continue;
+    const titles = columns.map((column) =>
+      typeof column === "object" &&
+      column !== null &&
+      typeof (column as { title?: unknown }).title === "string"
+        ? (column as { title: string }).title
+        : undefined,
+    );
+    const cells = rows.every(
+      (row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"),
+    );
+    if (!cells || titles.some((title) => title === undefined)) continue;
+    const definition = titles.map((title) => `{ title: ${JSON.stringify(title)} }`).join(", ");
+    const table = `<DocTable columns={[${definition}]} rows={${JSON.stringify(rows)}} />`;
+    if (!tables.includes(table)) tables.push(table);
+  }
+  return tables;
+}
+
 function pricingColumns(body: string): PriceColumn[] {
   const rows = body.indexOf("rows={");
   const start = body.lastIndexOf("<DocTable", rows);
@@ -1393,16 +1535,25 @@ export function parseKimiPricing(input: Input): SourceParseResult {
     "/docs/pricing/chat-v1",
     "/docs/pricing/batch",
   ]);
+  const renderedBodies = new Map<string, string>();
+  for (const document of documents) {
+    const path = new URL(document.url).pathname;
+    if (!renderedBodies.has(path) && document.body.includes(renderedTableMarker))
+      renderedBodies.set(path, renderedText(document.body));
+  }
   for (const document of documents) {
     const path = new URL(document.url).pathname;
     if (!modelPricingPaths.has(path)) continue;
-    if (seenDocuments.has(document.body)) continue;
-    seenDocuments.add(document.body);
-    const tables = document.body
-      .split(/(?=<DocTable\b)/)
-      .filter((part) => part.startsWith("<DocTable"));
-    if (path === "/docs/pricing/chat" && tables.length === 0) continue;
-    for (const table of tables.length === 0 ? [document.body] : tables) {
+    const rendered = document.body.includes(renderedTableMarker);
+    const body = (rendered ? renderedBodies.get(path) : undefined) ?? document.body;
+    const tables = rendered
+      ? renderedTables(document.body)
+      : document.body.split(/(?=<DocTable\b)/).filter((part) => part.startsWith("<DocTable"));
+    const seenKey = rendered ? `rendered\0${tables.join("\0")}` : document.body;
+    if (seenDocuments.has(seenKey)) continue;
+    seenDocuments.add(seenKey);
+    if (tables.length === 0) continue;
+    for (const table of tables) {
       try {
         const rows = z.array(z.unknown()).min(1).parse(jsonArrayAfter(table, "rows={"));
         const batch = path === "/docs/pricing/batch";
@@ -1418,14 +1569,7 @@ export function parseKimiPricing(input: Input): SourceParseResult {
             continue;
           }
           try {
-            const incoming = pricingModel(
-              input,
-              extractor,
-              document.body,
-              parsed.data,
-              batch,
-              columns,
-            );
+            const incoming = pricingModel(input, extractor, body, parsed.data, batch, columns);
             const current = models.get(incoming.model_id);
             models.set(
               incoming.model_id,
