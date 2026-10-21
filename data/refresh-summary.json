@@ -1,8 +1,8 @@
 {
-  "catalog_version": "16b1b6223dd9ddfa49a182832052b902f3afac3746a0907adf6001ac2a35c24b",
-  "generated_at": "2026-10-21T15:04:26.215Z",
+  "catalog_version": "998ab51bfb6078dcd1428e7302cd38665c0d1026587dea7831dacc662e5e5da0",
+  "generated_at": "2026-10-21T16:04:12.408Z",
   "outcome": "changed",
-  "previous_catalog_version": "0c09cd4729e7d32c543503a7948d98f3bf8a7781bce9c582a444fd9ac26c4901",
+  "previous_catalog_version": "16b1b6223dd9ddfa49a182832052b902f3afac3746a0907adf6001ac2a35c24b",
   "providers": [
     {
       "attempt": {
@@ -603,7 +603,7 @@
             "azure/o4-mini",
             "azure/sora-2"
           ],
-          "changed": 126,
+          "changed": 125,
           "changed_fields": {
             "api_endpoints": 3,
             "availability": 81,
@@ -611,15 +611,15 @@
             "delivery_mode_evidence": 1,
             "delivery_modes": 2,
             "deprecated_at": 1,
-            "description": 2,
+            "description": 1,
             "limits": 34,
-            "modalities": 2,
-            "name": 2,
+            "modalities": 1,
+            "name": 1,
             "raw_type": 7,
             "replacement_model_ids": 8,
             "retired_at": 15,
             "service_families": 1,
-            "source_refs": 31,
+            "source_refs": 30,
             "status": 10,
             "task_evidence": 7
           },
@@ -33999,50 +33999,6 @@
             {
               "field_changes": [
                 {
-                  "current": "gpt-image-1-mini",
-                  "path": "name",
-                  "previous": "GPT-image-1-mini"
-                },
-                {
-                  "path": "description",
-                  "previous": "An efficient AI solution for diverse text and image tasks, including high quality, cheap text to image generation"
-                },
-                {
-                  "current": [],
-                  "path": "modalities.input",
-                  "previous": [
-                    "text",
-                    "image"
-                  ]
-                },
-                {
-                  "current": [
-                    "azure-models",
-                    "azure-retail-prices",
-                    "azure-public-pricing",
-                    "azure-api"
-                  ],
-                  "path": "source_refs",
-                  "previous": [
-                    "azure-models",
-                    "azure-portal-models",
-                    "azure-retail-prices",
-                    "azure-public-pricing",
-                    "azure-api"
-                  ]
-                }
-              ],
-              "fields": [
-                "name",
-                "description",
-                "modalities",
-                "source_refs"
-              ],
-              "model_ref": "azure/gpt-image-1-mini@2025-10-06"
-            },
-            {
-              "field_changes": [
-                {
                   "current": [
                     {
                       "deployment_type": "Global Standard",
@@ -46366,7 +46322,7 @@
             "azure/model-router",
             "azure/sora"
           ],
-          "unchanged": 129
+          "unchanged": 130
         },
         "outcome": "rejected",
         "pricing": {
@@ -46386,11 +46342,11 @@
             "content_changed": true,
             "extractor_changed": true,
             "outcome": "changed",
-            "parsed_models": 95,
+            "parsed_models": 96,
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 135,
+            "consecutive_failures": 136,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -46877,9 +46833,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -46939,13 +46895,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -46962,9 +46925,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 48,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -47088,14 +47051,14 @@
       },
       "pricing": {
         "commercial_hash": "b5338ec2b9fcb4c1b7c6ad158f18ff66acf664502ab7c82a14e1e2ea49cee879",
-        "outcome": "commercial",
-        "previous_commercial_hash": "1e883962db92aa223fd25eef10fb1219919f0b7cf37b5ef8bfb7de843879aca8"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "b5338ec2b9fcb4c1b7c6ad158f18ff66acf664502ab7c82a14e1e2ea49cee879"
       },
       "pricing_coverage": {
         "current_models": 41,
         "delta": {
-          "resolved_models": -2,
-          "unknown_models": 2
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 12,
         "not_applicable_models": 0,
@@ -47133,14 +47096,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cohere-models"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -47152,7 +47109,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -47211,9 +47168,9 @@
             "source_id": "dashscope-asr"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 10,
             "source_id": "dashscope-tts"
           },
@@ -47351,28 +47308,26 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "dashscope/qwen-audio-3.1-tts-plus"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 243,
-        "previous": 242,
+        "previous": 243,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 242
+        "unchanged": 243
       },
       "pricing": {
         "commercial_hash": "a33077d279fa7518efe41a84a2db552e1b9e2042029a7ff09a02a8596a1ce276",
-        "outcome": "commercial",
-        "previous_commercial_hash": "566b9e6387838f7ad325308b2e85f0593367593cf59d7837449313a877178278"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "a33077d279fa7518efe41a84a2db552e1b9e2042029a7ff09a02a8596a1ce276"
       },
       "pricing_coverage": {
         "current_models": 243,
         "delta": {
-          "resolved_models": 1,
+          "resolved_models": 0,
           "unknown_models": 0
         },
         "normalized_rate_models": 219,
@@ -47411,7 +47366,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
@@ -47430,19 +47385,13 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-releases"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-tts"
           }
         ],
         "current": 13,
         "previous": 13,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 9
+        "unchanged": 10
       },
       "status": "fresh",
       "warning_codes": {
@@ -47854,18 +47803,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1586,
+            "parsed_models": 1585,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1586,
+              "model_records": 1585,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1586
+              "unknown_models": 1585
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -47914,7 +47863,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6816,
+                "excluded": 6818,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
@@ -47922,12 +47871,12 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8625,
+              "observed_items": 8627,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1456,
-                "partner_route_price_not_published": 353,
-                "single_partner_inventory_without_product_evidence": 6745
+                "hf_inference_compute_price_unbound": 1455,
+                "partner_route_price_not_published": 354,
+                "single_partner_inventory_without_product_evidence": 6747
               },
               "unit": "reviewed source pricing item"
             },
@@ -47937,22 +47886,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 135,
+            "parsed_models": 138,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 135,
-              "normalized_facts": 386,
+              "model_records": 138,
+              "normalized_facts": 390,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 113,
-              "raw_facts": 102,
-              "raw_models": 93,
-              "unknown_models": 22
+              "numeric_models": 114,
+              "raw_facts": 105,
+              "raw_models": 96,
+              "unknown_models": 24
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 103,
+              "diagnostic_count": 106,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -47999,19 +47948,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 194,
+                "normalized": 196,
                 "raw": 0,
-                "unbound": 102,
+                "unbound": 105,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 298,
+              "observed_items": 303,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 193,
-                "route_price_not_published": 102
+                "route_price_normalized": 195,
+                "route_price_not_published": 105
               },
               "unit": "reviewed source pricing item"
             },
@@ -48084,15 +48033,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 21,
+            "parsed_models": 23,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 21,
-              "normalized_facts": 46,
+              "model_records": 23,
+              "normalized_facts": 50,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 21,
+              "numeric_models": 23,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -48146,15 +48095,15 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 23,
+                "normalized": 25,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 11,
                 "unsupported": 0
               },
-              "observed_items": 34,
+              "observed_items": 36,
               "reason_counts": {
-                "native_route_price_normalized": 23,
+                "native_route_price_normalized": 25,
                 "native_route_price_not_exactly_joinable": 11
               },
               "unit": "reviewed source pricing item"
@@ -48165,38 +48114,33 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1456,
+            "parsed_models": 1455,
             "source_id": "huggingface-hub"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 270,
-          "field": "api_endpoints",
-          "previous": 274
-        }
-      ],
       "models": {
         "added": 3,
         "added_model_refs": [
-          "huggingface/mrm8488/bert-mini2bert-mini-finetuned-cnn_daily_mail-summarization",
-          "huggingface/mrm8488/bert-small2bert-small-finetuned-cnn_daily_mail-summarization",
-          "huggingface/openai/privacy-filter"
+          "huggingface/deepseek-ai/DeepSeek-V3.2",
+          "huggingface/zai-org/GLM-4.5",
+          "huggingface/zai-org/GLM-5.1-FP8"
         ],
-        "changed": 4,
+        "changed": 6,
         "changed_fields": {
-          "capabilities": 3,
-          "routes": 3,
+          "api_endpoints": 1,
+          "capabilities": 4,
+          "delivery_modes": 1,
+          "modalities": 1,
+          "routes": 6,
           "source_refs": 2,
-          "task_evidence": 2
+          "task_evidence": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "path": "task_evidence",
-                "previous": [
+                "current": [
                   {
                     "kind": "provider_task",
                     "namespace": "huggingface.task",
@@ -48204,11 +48148,11 @@
                     "source_ref": "huggingface-hf-inference",
                     "task": "text_generation"
                   }
-                ]
+                ],
+                "path": "task_evidence"
               },
               {
-                "path": "routes",
-                "previous": [
+                "current": [
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "Qwen/Qwen3.5-35B-A3B",
@@ -48223,21 +48167,22 @@
                     "status": "live",
                     "task": "conversational"
                   }
-                ]
+                ],
+                "path": "routes"
               },
               {
-                "current": false,
+                "current": true,
                 "path": "capabilities.structured_output",
-                "previous": true
+                "previous": false
               },
               {
                 "current": [
-                  "huggingface-router"
+                  "huggingface-router",
+                  "huggingface-hf-inference"
                 ],
                 "path": "source_refs",
                 "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
+                  "huggingface-router"
                 ]
               }
             ],
@@ -48254,22 +48199,22 @@
               {
                 "current": [
                   {
-                    "provider": "deepinfra",
-                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "xiaomimimo/mimo-v2.5",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -48278,54 +48223,29 @@
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "deepinfra",
-                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "XiaomiMiMo/MiMo-V2.5",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/XiaomiMiMo/MiMo-V2.5"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ]
-              },
-              {
-                "path": "routes",
-                "previous": [
-                  {
                     "provider": "deepinfra",
-                    "provider_model_id": "inclusionAI/Ling-3.0-flash",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "inclusionai/ling-3.0-flash",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -48336,63 +48256,306 @@
                 "current": false,
                 "path": "capabilities.structured_output",
                 "previous": true
-              },
-              {
-                "current": [
-                  "huggingface-router"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
-                ]
               }
             ],
             "fields": [
-              "task_evidence",
               "routes",
-              "capabilities",
-              "source_refs"
+              "capabilities"
             ],
-            "model_ref": "huggingface/inclusionAI/Ling-3.0-flash"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro-0813"
           },
           {
             "field_changes": [
               {
+                "current": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4.1-flash-1017",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
                 "current": true,
                 "path": "capabilities.structured_output",
-                "previous": "unknown"
+                "previous": false
               }
             ],
             "fields": [
+              "routes",
               "capabilities"
             ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash-1017"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes"
+              },
+              {
+                "current": [
+                  {
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
+                  },
+                  {
+                    "name": "Responses",
+                    "path": "/v1/responses"
+                  }
+                ],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "swiss-ai/Apertus-v1.5-70B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "publicai",
+                    "provider_model_id": "swiss-ai/apertus-v1.5-70b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "swiss-ai/Apertus-v1.5-70B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.streaming",
+                "previous": "unknown"
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              },
+              {
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": "unknown"
+              },
+              {
+                "current": [
+                  "huggingface-hf-inference",
+                  "huggingface-featherless",
+                  "huggingface-router"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-hf-inference",
+                  "huggingface-featherless"
+                ]
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "api_endpoints",
+              "routes",
+              "modalities",
+              "capabilities",
+              "source_refs"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
             "model_ref": "huggingface/zai-org/GLM-4.6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-4.7-flashx",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
           }
         ],
         "current": 1638,
-        "previous": 1637,
-        "removed": 2,
+        "previous": 1638,
+        "removed": 3,
         "removed_model_refs": [
-          "huggingface/deepseek-ai/DeepSeek-V3.2",
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/BSC-LT/ALIA-40b-instruct-2606",
+          "huggingface/black-forest-labs/FLUX.2-klein-4B",
+          "huggingface/openai/privacy-filter"
         ],
-        "unchanged": 1631
+        "unchanged": 1629
       },
       "pricing": {
-        "commercial_hash": "ff0b2ec595e6290458de818a4663f9eabc91e6ecac575eb84d1aeb4a15e13126",
+        "commercial_hash": "71deae9ddcbe4c77def8d86ebfa2a1c029c6c2ee7f69ec8a3358b0cc495172cb",
         "outcome": "commercial",
-        "previous_commercial_hash": "85f670da5ea2d25b48307dbd75b4d81e3f7e4e113e2735387a5bb428a74b760b"
+        "previous_commercial_hash": "ff0b2ec595e6290458de818a4663f9eabc91e6ecac575eb84d1aeb4a15e13126"
       },
       "pricing_coverage": {
         "current_models": 1638,
         "delta": {
-          "resolved_models": -2,
-          "unknown_models": 3
+          "resolved_models": 2,
+          "unknown_models": -2
         },
-        "normalized_rate_models": 130,
+        "normalized_rate_models": 132,
         "not_applicable_models": 0,
-        "offer_models": 140,
+        "offer_models": 142,
         "raw_fact_models": 16,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
@@ -48416,15 +48579,13 @@
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh"
         ],
-        "unknown_model_refs_omitted": 1478,
-        "unknown_models": 1498
+        "unknown_model_refs_omitted": 1476,
+        "unknown_models": 1496
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -48700,9 +48861,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -48756,7 +48917,7 @@
             "source_id": "kimi-api"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 3,
@@ -48800,7 +48961,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "kimi-china-api"
           }
@@ -48846,32 +49007,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-china-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 8
       },
       "status": "fresh",
       "warning_codes": {
@@ -49457,9 +49606,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 101,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -49691,26 +49840,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -49828,7 +49971,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -49836,7 +49979,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -49844,7 +49987,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -49852,7 +49995,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -49860,7 +50003,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -49868,7 +50011,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -49876,7 +50019,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -49884,7 +50027,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -49892,7 +50035,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -49900,7 +50043,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -49908,7 +50051,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -49916,7 +50059,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -49924,7 +50067,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -49932,7 +50075,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -49940,7 +50083,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -49948,7 +50091,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 38,
+                "consecutive_failures": 39,
                 "dependency_id": "vercel-models/endpoints/3dcf45255383b2e3f0d686a7c7818148528f54945b29400fbaebab5596cbe5aa",
                 "http_status": 404,
                 "impact": "claim",
@@ -50060,9 +50203,9 @@
         "unchanged": 482
       },
       "pricing": {
-        "commercial_hash": "5c8f4c4745e0fb18384bb3c525f20eb7aaefdec352036878cd634a7239c24515",
+        "commercial_hash": "c3e082201e76cbb9dac29bb33fe244747d24801b17370aef5abaeba114f30adf",
         "outcome": "commercial",
-        "previous_commercial_hash": "b071bf474b1874c19fda0920afc6103a1c277e6d0f376587ae39485063b8b21e"
+        "previous_commercial_hash": "5c8f4c4745e0fb18384bb3c525f20eb7aaefdec352036878cd634a7239c24515"
       },
       "pricing_coverage": {
         "current_models": 482,
@@ -50112,60 +50255,945 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Linked document vertex-partner-models/opus-4 failed: HTTP 404"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Linked document vertex-partner-models/opus-4 failed: HTTP 404",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 54,
+            "parsed_models": 55,
             "source_id": "vertex-google-models"
           },
           {
-            "consecutive_failures": 17,
-            "http_status": 404,
-            "last_success_at": "2026-10-20T22:04:12.510Z",
-            "message": "Linked document vertex-partner-models/opus-4 failed: HTTP 404",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 34,
             "source_id": "vertex-partner-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 20,
+            "source_id": "vertex-open-models"
+          },
+          {
+            "content_changed": true,
+            "contract_findings": [
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "043b7d807708da16",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/vertex-ai/generative-ai/docs/model-reference/veo-video-generation/videos"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "7e37bc129f72d297",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/$discovery/rest/contracts/generate.grounding.agent_search_result"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "a9e37aa46ac34c2f",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/$discovery/rest/contracts/generate.grounding.google_search_result"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "b72063f99a6a9f7b",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/$discovery/rest/contracts/generate.grounding.google_maps_result"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              }
+            ],
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 87,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 87,
+              "normalized_facts": 1730,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 73,
+              "raw_facts": 1215,
+              "raw_models": 32,
+              "unknown_models": 14
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 709,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Gemini 2.5 Pro Computer Use-Preview"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Gemini 2.5 Pro Computer Use-Preview"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Gemini 2.5 Pro Computer Use-Preview"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Gemini 2.0 Flash Image Generation"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Gemini Nano Banana 2.1 [4]"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "pricing_context_scope_unresolved",
+                  "sample": "claude-haiku-5-5: input_text: Price (/1M tokens) =< 100K input tokens **; Input; $0.10"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "pricing_context_scope_unresolved",
+                  "sample": "claude-haiku-5-5: input_text: Price (/1M tokens) > 100K input tokens **; Input; $0.50"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "pricing_context_scope_unresolved",
+                  "sample": "claude-haiku-5-5: output_text: Price (/1M tokens) =< 100K input tokens **; Output; $0.50"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 17,
+                "explicit_non_numeric": 281,
+                "normalized": 1854,
+                "raw": 560,
+                "unbound": 9,
+                "unresolved": 700,
+                "unsupported": 0
+              },
+              "observed_items": 3421,
+              "reason_counts": {
+                "account_credit_effective_price": 492,
+                "duplicate_pricing_binding": 12,
+                "grounding_allowance": 1,
+                "grounding_allowance_bound": 42,
+                "grounding_billing_note": 39,
+                "grounding_generation_outside_current_catalog": 5,
+                "pricing_cell_not_available": 281,
+                "pricing_context_scope_unresolved": 697,
+                "pricing_input_contract_partial": 1,
+                "pricing_model_scope_unresolved": 3,
+                "pricing_model_unbound": 8,
+                "pricing_rate_bound": 1812,
+                "pricing_unknown_unit": 12,
+                "unparsed_base_rate": 16
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "vertex-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 51,
+            "source_id": "vertex-model-garden-api"
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 93,
+          "field": "api_endpoints",
+          "previous": 95
+        },
+        {
+          "current": 256,
+          "field": "availability",
+          "previous": 258
+        }
+      ],
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 112,
+        "added": 1,
+        "added_model_refs": [
+          "vertex/veo-2.0-generate-001"
+        ],
+        "changed": 32,
+        "changed_fields": {
+          "api_endpoints": 2,
+          "availability": 2,
+          "capabilities": 2,
+          "delivery_mode_evidence": 2,
+          "delivery_modes": 2,
+          "description": 14,
+          "modalities": 2,
+          "name": 16,
+          "release_stage": 2,
+          "status": 16,
+          "tasks": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Fable 5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Fable 5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Fable 5 on Google Cloud is a model from Anthropic that's designed for autonomous knowledge work and coding, built for complex, multi-day projects.",
+                "path": "description",
+                "previous": "Claude Fable 5 on Google Cloud is a model from Anthropic that's designed for autonomous knowledge work and coding, built for complex, multi-day projects."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-fable-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Fable 5.1 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Fable 5.1 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Fable 5.1 on Google Cloud is optimized for autonomous knowledge work and coding, handling long-running, complex, and asynchronous tasks.",
+                "path": "description",
+                "previous": "Claude Fable 5.1 on Google Cloud is optimized for autonomous knowledge work and coding, handling long-running, complex, and asynchronous tasks."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-fable-5-1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Haiku 4.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Haiku 4.5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Haiku 4.5 on Google Cloud is a high-performance model for a wide range of use cases and coding tasks, with the speed and cost efficiency to power free products and high-volume user experiences.",
+                "path": "description",
+                "previous": "Claude Haiku 4.5 on Google Cloud is a high-performance model for a wide range of use cases and coding tasks, with the speed and cost efficiency to power free products and high-volume user experiences."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-haiku-4-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Haiku 5.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Haiku 5.5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Haiku 5.5 on Google Cloud is a high-performance, cost-effective model built for coding, sub-agents, and latency-sensitive experiences at scale.",
+                "path": "description",
+                "previous": "Claude Haiku 5.5 on Google Cloud is a high-performance, cost-effective model built for coding, sub-agents, and latency-sensitive experiences at scale."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-haiku-5-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 4.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 4.5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Opus 4.5 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows.",
+                "path": "description",
+                "previous": "Claude Opus 4.5 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-4-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 4.6 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 4.6 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Opus 4.6 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows.",
+                "path": "description",
+                "previous": "Claude Opus 4.6 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-4-6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 4.7 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 4.7 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Opus 4.7 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows.",
+                "path": "description",
+                "previous": "Claude Opus 4.7 on Google Cloud is a high-intelligence model from Anthropic and an industry leader across coding, agents, computer use, and enterprise workflows."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-4-7"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 4.8 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 4.8 on Google Cloud"
+              }
+            ],
+            "fields": [
+              "name"
+            ],
+            "model_ref": "vertex/claude-opus-4-8"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Opus 5 on Google Cloud is a high-intelligence model from Anthropic, built for coding, agents, and professional work.",
+                "path": "description",
+                "previous": "Claude Opus 5 on Google Cloud is a high-intelligence model from Anthropic, built for coding, agents, and professional work."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Opus 5.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Opus 5.5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Opus 5.5 on Google Cloud is Anthropic's most advanced Opus model, powering long-running agents while delivering improvements in coding and professional work.",
+                "path": "description",
+                "previous": "Claude Opus 5.5 on Google Cloud is Anthropic's most advanced Opus model, powering long-running agents while delivering improvements in coding and professional work."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-opus-5-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Sonnet 4.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Sonnet 4.5 on Google Cloud"
+              }
+            ],
+            "fields": [
+              "name"
+            ],
+            "model_ref": "vertex/claude-sonnet-4-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Sonnet 4.6 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Sonnet 4.6 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Sonnet 4.6 on Google Cloud delivers frontier intelligence at scale—built for coding, agents, and enterprise workflows.",
+                "path": "description",
+                "previous": "Claude Sonnet 4.6 on Google Cloud delivers frontier intelligence at scale—built for coding, agents, and enterprise workflows."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-sonnet-4-6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Sonnet 5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Sonnet 5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Sonnet 5 on Google Cloud is built for coding, agents, and professional work at scale.",
+                "path": "description",
+                "previous": "Claude Sonnet 5 on Google Cloud is built for coding, agents, and professional work at scale."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-sonnet-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Anthropic's Claude Sonnet 5.5 on Google Cloud",
+                "path": "name",
+                "previous": "Claude Sonnet 5.5 on Google Cloud"
+              },
+              {
+                "current": "Anthropic's Claude Sonnet 5.5 on Google Cloud is built for coding, agents, and professional work at scale.",
+                "path": "description",
+                "previous": "Claude Sonnet 5.5 on Google Cloud is built for coding, agents, and professional work at scale."
+              }
+            ],
+            "fields": [
+              "name",
+              "description"
+            ],
+            "model_ref": "vertex/claude-sonnet-5-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/deepseek-ocr-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/deepseek-r1-0528-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/deepseek-v3.1-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/deepseek-v3.2-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/glm-4.7-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/glm-5-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/gpt-oss-20b-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/kimi-k2-thinking-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/llama-3.3-70b-instruct-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/minimax-m2-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/multilingual-e5-large-instruct-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/multilingual-e5-small-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/qwen3-235b-a22b-instruct-2507-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/qwen3-coder-480b-a35b-instruct-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/qwen3-next-80b-a3b-instruct-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "retired",
+                "path": "status",
+                "previous": "deprecated"
+              }
+            ],
+            "fields": [
+              "status"
+            ],
+            "model_ref": "vertex/qwen3-next-80b-a3b-thinking-maas",
+            "previous_status": "deprecated",
+            "status": "retired"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "veo-3.0-fast-generate-001",
+                "path": "name",
+                "previous": "Veo 3.0 Fast Generate 001"
+              },
+              {
+                "path": "description",
+                "previous": "Try in Agent Studio Pricing"
+              },
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "async"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "endpoint",
+                    "mode": "async",
+                    "namespace": "vertex.endpoint",
+                    "raw_value": "predictLongRunning",
+                    "source_ref": "vertex-google-models"
+                  }
+                ]
+              },
+              {
+                "path": "api_endpoints",
+                "previous": [
+                  {
+                    "name": "predictLongRunning",
+                    "path": "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predictLongRunning"
+                  }
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": false
+              },
+              {
+                "current": "unknown",
+                "path": "release_stage",
+                "previous": "stable"
+              },
+              {
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "managed_api",
+                    "region": "us-central1"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "name",
+              "description",
+              "tasks",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "api_endpoints",
+              "modalities",
+              "capabilities",
+              "release_stage",
+              "availability"
+            ],
+            "model_ref": "vertex/veo-3.0-fast-generate-001",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": "veo-3.0-generate-001",
+                "path": "name",
+                "previous": "Veo 3.0 Generate 001"
+              },
+              {
+                "path": "description",
+                "previous": "Try in Agent Studio Pricing"
+              },
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "async"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "endpoint",
+                    "mode": "async",
+                    "namespace": "vertex.endpoint",
+                    "raw_value": "predictLongRunning",
+                    "source_ref": "vertex-google-models"
+                  }
+                ]
+              },
+              {
+                "path": "api_endpoints",
+                "previous": [
+                  {
+                    "name": "predictLongRunning",
+                    "path": "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predictLongRunning"
+                  }
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": false
+              },
+              {
+                "current": "unknown",
+                "path": "release_stage",
+                "previous": "stable"
+              },
+              {
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "managed_api",
+                    "region": "us-central1"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "name",
+              "description",
+              "tasks",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "api_endpoints",
+              "modalities",
+              "capabilities",
+              "release_stage",
+              "availability"
+            ],
+            "model_ref": "vertex/veo-3.0-generate-001",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          }
+        ],
+        "current": 113,
         "previous": 112,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 112
+        "unchanged": 80
       },
       "pricing": {
-        "commercial_hash": "37f6afc858627394d562689aa795f27b9ae79e08e2bdb30b64f621c79522bf0e",
-        "outcome": "provenance_only",
+        "commercial_hash": "13cba845675d9f5c0d978b97613606c5c33ea17f2cf67ac55770538f58e6b76e",
+        "outcome": "commercial",
         "previous_commercial_hash": "37f6afc858627394d562689aa795f27b9ae79e08e2bdb30b64f621c79522bf0e"
       },
       "pricing_coverage": {
-        "current_models": 83,
+        "current_models": 67,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": -16,
           "unknown_models": 0
         },
-        "normalized_rate_models": 54,
+        "normalized_rate_models": 38,
         "not_applicable_models": 0,
-        "offer_models": 76,
+        "offer_models": 60,
         "raw_fact_models": 26,
         "unknown_model_refs": [
           "vertex/claude-opus-4",
@@ -50179,33 +51207,55 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 7
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "vertex",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [
-        "persistent_source_failure"
+        "catalog_count_decrease",
+        "partial_contract_mismatch"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "vertex-google-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-open-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-partner-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-pricing"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 1
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "catalog_api_set_mismatch": 1,
+        "missing_field": 3,
+        "scope_limited": 1,
+        "source_contract_drift": 4
       }
     },
     {
@@ -50438,21 +51488,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 18,
+    "accepted": 19,
     "added_models": 4,
     "added_sources": 0,
-    "changed_models": 4,
-    "changed_sources": 27,
-    "models": 4340,
-    "pricing_accepted": 16,
+    "changed_models": 38,
+    "changed_sources": 26,
+    "models": 4341,
+    "pricing_accepted": 17,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
-    "pricing_retained": 3,
+    "pricing_retained": 2,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 2,
+    "removed_models": 3,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 1,
     "withheld": 0
   }
 }
