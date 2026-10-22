@@ -1,8 +1,8 @@
 {
-  "catalog_version": "292c8e78714deb88437de50f23fd455169048f55da9581a82794a6716d374223",
-  "generated_at": "2026-10-22T04:04:50.195Z",
+  "catalog_version": "1205f538808520896b681043638f58d7b9f004e1d30c33bc6b86b0cca5cdedae",
+  "generated_at": "2026-10-22T05:04:31.260Z",
   "outcome": "changed",
-  "previous_catalog_version": "6d5ab35940928f5bc0721a3eeafeab7b4135b132018c70b4c97133c86525f5af",
+  "previous_catalog_version": "292c8e78714deb88437de50f23fd455169048f55da9581a82794a6716d374223",
   "providers": [
     {
       "attempt": {
@@ -46514,7 +46514,7 @@
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 148,
+            "consecutive_failures": 149,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -47143,9 +47143,9 @@
             "source_id": "cohere-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 20,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -47264,20 +47264,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cohere-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -47365,24 +47358,157 @@
           },
           {
             "content_changed": true,
+            "contract_findings": [
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "05895475b61c3fe2",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.stream.cached_input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "1f2fcc52347e6062",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "42c97d3cbf753307",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.stream.cache_creation_input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "74e7ffbf093212b6",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.stream.output_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "7c7ecf5d50ca147c",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.stream.input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "9e2b2585c55bbf54",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.cached_input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "ab4bc0b776d778c2",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.output_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "f4bd0102e3667f7c",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/documents/help/en/model-studio/anthropic-api-messages/anthropic.cache_creation_input_tokens"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              }
+            ],
+            "dependency_failures": [
+              {
+                "consecutive_failures": 1,
+                "dependency_id": "dashscope-pricing/anthropic-accounting",
+                "http_status": 406,
+                "impact": "claim",
+                "last_success_at": "2026-10-22T04:04:50.195Z",
+                "message": "HTTP 406",
+                "outcome": "fetch_failed"
+              }
+            ],
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 225,
+            "parsed_models": 229,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 225,
-              "normalized_facts": 2682,
+              "model_records": 229,
+              "normalized_facts": 2716,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 220,
+              "numeric_models": 224,
               "raw_facts": 73,
               "raw_models": 8,
               "unknown_models": 5
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 60,
+              "diagnostic_count": 61,
               "diagnostics": [
                 {
                   "disposition": "unsupported",
@@ -47429,13 +47555,13 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 2695,
+                "normalized": 2728,
                 "raw": 49,
-                "unbound": 36,
+                "unbound": 37,
                 "unresolved": 0,
                 "unsupported": 24
               },
-              "observed_items": 2804,
+              "observed_items": 2838,
               "reason_counts": {
                 "cache_base_price_not_bound": 12,
                 "cache_rate_normalized": 712,
@@ -47443,9 +47569,9 @@
                 "image_search_rate_normalized": 6,
                 "implicit_cache_price_not_public": 27,
                 "model_price_unbound": 24,
-                "price_fact_normalized": 1970,
+                "price_fact_normalized": 2004,
                 "pricing_billing_item_unsupported": 24,
-                "pricing_input_contract_bound": 1,
+                "pricing_input_contract_partial": 1,
                 "web_search_image_rate_normalized": 6
               },
               "unit": "reviewed source pricing item"
@@ -47476,11 +47602,16 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 1,
+        "added": 4,
+        "added_model_refs": [
+          "dashscope/pixverse/pixverse-v6-it2v",
+          "dashscope/pixverse/pixverse-v6-kf2v",
+          "dashscope/pixverse/pixverse-v6-r2v",
+          "dashscope/pixverse/pixverse-v6-t2v"
+        ],
+        "changed": 24,
         "changed_fields": {
-          "availability": 1
+          "availability": 24
         },
         "changed_models": [
           {
@@ -47489,11 +47620,164 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
                     "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/deepseek-v4.1-flash-1017"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/glm-5.2-fast-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/glm-5.3-prime"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "availability"
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/happyoyster-1.0-acting"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ],
                 "path": "availability",
@@ -47504,7 +47788,23 @@
                   },
                   {
                     "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
                   }
                 ]
               }
@@ -47512,29 +47812,774 @@
             "fields": [
               "availability"
             ],
-            "model_ref": "dashscope/glm-5.3-prime"
+            "model_ref": "dashscope/kimi-k2.7-code"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-next"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-flash-2025-07-28"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-image-2.1-pro"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-image-2.1-turbo"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-mt-image-2.0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-01-25"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-04-28"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-07-14"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-12-01"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-plus-latest"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr-2025-11-20"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-voice-enrollment"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3-vl-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.6-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.8-2.4t-a95b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3.8-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v"
           }
         ],
-        "current": 243,
+        "current": 247,
         "previous": 243,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 242
+        "unchanged": 219
       },
       "pricing": {
-        "commercial_hash": "1da1ab20bb5fed451a93189ed1eb5258401d709f3d17349e2ef7524e35e215da",
+        "commercial_hash": "d6ec36843de6e5c26c6c6799a13417118e8605823c11808ec806c7ad176be6e0",
         "outcome": "commercial",
-        "previous_commercial_hash": "a33077d279fa7518efe41a84a2db552e1b9e2042029a7ff09a02a8596a1ce276"
+        "previous_commercial_hash": "1da1ab20bb5fed451a93189ed1eb5258401d709f3d17349e2ef7524e35e215da"
       },
       "pricing_coverage": {
-        "current_models": 243,
+        "current_models": 247,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": -1
+          "resolved_models": 4,
+          "unknown_models": 0
         },
-        "normalized_rate_models": 220,
+        "normalized_rate_models": 224,
         "not_applicable_models": 0,
-        "offer_models": 223,
+        "offer_models": 227,
         "raw_fact_models": 8,
         "unknown_model_refs": [
           "dashscope/MiniMax-M2.7",
@@ -47564,7 +48609,9 @@
       "pricing_publication": "accepted",
       "provider_id": "dashscope",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "partial_contract_mismatch"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -47600,7 +48647,9 @@
         "catalog_api_set_mismatch": 1,
         "missing_field": 4,
         "scope_limited": 1,
-        "source_partial_retention": 1
+        "source_contract_drift": 8,
+        "source_partial": 1,
+        "source_partial_retention": 2
       }
     },
     {
@@ -48005,22 +49054,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1585,
+            "parsed_models": 1587,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1585,
+              "model_records": 1587,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1585
+              "unknown_models": 1587
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1810,
+              "diagnostic_count": 1814,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -48065,20 +49114,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6816,
+                "excluded": 6813,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1810,
+                "unbound": 1814,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8626,
+              "observed_items": 8627,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1456,
-                "partner_route_price_not_published": 354,
-                "single_partner_inventory_without_product_evidence": 6745
+                "partner_route_price_not_published": 358,
+                "single_partner_inventory_without_product_evidence": 6742
               },
               "unit": "reviewed source pricing item"
             },
@@ -48088,15 +49137,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 129,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 130,
+              "model_records": 129,
               "normalized_facts": 344,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 108,
+              "numeric_models": 107,
               "raw_facts": 98,
               "raw_models": 90,
               "unknown_models": 22
@@ -48118,17 +49167,17 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
+                  "sample": "meta-llama/Llama-3.1-8B-Instruct:featherless-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
                   "sample": "zai-org/GLM-5.3:featherless-ai"
                 },
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "zai-org/GLM-5.3:zai-org"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "route_price_not_published",
-                  "sample": "meta-llama/Llama-3.1-8B-Instruct:featherless-ai"
                 },
                 {
                   "disposition": "unbound",
@@ -48324,44 +49373,264 @@
       },
       "count_decreases": [
         {
-          "current": 1631,
-          "field": "models",
-          "previous": 1632
-        },
-        {
-          "current": 260,
+          "current": 258,
           "field": "api_endpoints",
-          "previous": 262
+          "previous": 260
         }
       ],
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/Tongyi-MAI/Z-Image"
+        ],
+        "changed": 5,
+        "changed_fields": {
+          "capabilities": 4,
+          "routes": 3,
+          "source_refs": 1,
+          "task_evidence": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_task",
+                    "namespace": "huggingface.task",
+                    "raw_value": "conversational",
+                    "source_ref": "huggingface-hf-inference",
+                    "task": "text_generation"
+                  }
+                ],
+                "path": "task_evidence"
+              },
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "inclusionAI/Ling-3.0-flash-VL",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "inclusionai/ling-3.0-flash-vl",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes"
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              },
+              {
+                "current": [
+                  "huggingface-router",
+                  "huggingface-hf-inference"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "huggingface-router"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "routes",
+              "capabilities",
+              "source_refs"
+            ],
+            "model_ref": "huggingface/inclusionAI/Ling-3.0-flash-VL"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Meta-Llama-3_3-70B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "llama-3.3-70b-instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "meta-llama/llama-3.3-70b-instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Meta-Llama-3_3-70B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "llama-3.3-70b-instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/meta-llama/Llama-3.3-70B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.6",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "routes",
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.6"
+          }
+        ],
         "current": 1631,
-        "previous": 1632,
+        "previous": 1631,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/deepseek-ai/DeepSeek-V3.2"
         ],
-        "unchanged": 1631
+        "unchanged": 1625
       },
       "pricing": {
-        "commercial_hash": "36ab12830b5365c8cadc7499c947be0490f13a966ad8ea2a57029a5232e787f4",
+        "commercial_hash": "73b87c2ba814752baf3366bd0bc842478d77973dc9581c61419137dd42708810",
         "outcome": "commercial",
-        "previous_commercial_hash": "c2ce7c8c1ff5796ba6d5be9c6282d52d9a9c869ed7b063e28809827b94d44899"
+        "previous_commercial_hash": "36ab12830b5365c8cadc7499c947be0490f13a966ad8ea2a57029a5232e787f4"
       },
       "pricing_coverage": {
         "current_models": 1631,
         "delta": {
           "resolved_models": -1,
-          "unknown_models": 0
+          "unknown_models": 1
         },
-        "normalized_rate_models": 124,
+        "normalized_rate_models": 123,
         "not_applicable_models": 0,
-        "offer_models": 134,
+        "offer_models": 133,
         "raw_fact_models": 16,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
@@ -48385,8 +49654,8 @@
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh"
         ],
-        "unknown_model_refs_omitted": 1477,
-        "unknown_models": 1497
+        "unknown_model_refs_omitted": 1478,
+        "unknown_models": 1498
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -48663,9 +49932,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -48809,7 +50078,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
@@ -48822,19 +50091,13 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-china-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -49782,10 +51045,10 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -49793,7 +51056,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -49801,7 +51064,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -49809,7 +51072,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -49817,7 +51080,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -49825,7 +51088,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -49833,7 +51096,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -49841,7 +51104,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -49849,7 +51112,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -49857,7 +51120,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -49865,7 +51128,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -49873,7 +51136,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -49881,7 +51144,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -49889,7 +51152,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -49897,7 +51160,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -49905,7 +51168,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 51,
+                "consecutive_failures": 52,
                 "dependency_id": "vercel-models/endpoints/3dcf45255383b2e3f0d686a7c7818148528f54945b29400fbaebab5596cbe5aa",
                 "http_status": 404,
                 "impact": "claim",
@@ -49915,7 +51178,7 @@
             ],
             "dependency_failures_omitted": 34,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 486,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -50017,8 +51280,8 @@
         "unchanged": 486
       },
       "pricing": {
-        "commercial_hash": "f595a620038207f51dcb95134c273e8b19e8d7c887cb39bda3872ab637d4577b",
-        "outcome": "provenance_only",
+        "commercial_hash": "f9132f7b7151ab08c023fd17ebcdfc1a6496494fd18e2be32546551f8a045795",
+        "outcome": "commercial",
         "previous_commercial_hash": "f595a620038207f51dcb95134c273e8b19e8d7c887cb39bda3872ab637d4577b"
       },
       "pricing_coverage": {
@@ -50046,13 +51309,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -50572,11 +51842,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 0,
+    "added_models": 5,
     "added_sources": 0,
-    "changed_models": 1,
-    "changed_sources": 26,
-    "models": 4339,
+    "changed_models": 29,
+    "changed_sources": 25,
+    "models": 4343,
     "pricing_accepted": 17,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
