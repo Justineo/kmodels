@@ -24,10 +24,20 @@ both first-party source sets:
   but cannot create or remove public catalog identities.
 
 The OpenAPI parser cross-checks the Chat discriminator, each referenced request model enum, the
-Token Estimate enum, and the reviewed List Models shape. The current callable Chat set is
-`kimi-k2.6`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, and `kimi-k3`. The same OpenAPI documents
-also establish Responses and Anthropic-compatible Messages for `kimi-k3`. These two endpoint claims
-are fact-local: drift removes only that endpoint and its dependent calculation methods.
+Token Estimate enum, and the reviewed List Models shape. A request base may be a nested `allOf`
+composing a shared common schema, so properties are resolved through refs, `allOf` and inline
+`properties` rather than from one direct `properties` object; inherited `reasoning_effort` and
+`thinking` remain owned by the composed schema that declares them. The current callable Chat set is
+`kimi-k2.6`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, `kimi-k3`, `kimi-k3.1-pro`, and
+`kimi-k3.1-pro-highspeed`. The same OpenAPI documents also establish Responses and
+Anthropic-compatible Messages for `kimi-k3`, `kimi-k3.1-pro`, and `kimi-k3.1-pro-highspeed`: the
+endpoint scope comes from the documented model list in `model`'s description, and Messages must
+agree with its published enum. Those endpoint claims are fact-local: drift removes only that
+endpoint and its dependent calculation methods.
+
+Grouped output-limit clauses bind only the model IDs they name. A shared `max_completion_tokens`
+description that states one limit for a named series contributes that limit to each named model and
+leaves unnamed models without an inferred maximum.
 
 ## Deterministic source graph
 

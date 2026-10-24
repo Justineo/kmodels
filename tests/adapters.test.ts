@@ -13627,6 +13627,10 @@ describe("Kimi adapters", () => {
     body
       .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
       .replace(
+        "If set, an additional chunk will be streamed before the data: [DONE] message. The usage field on this chunk shows the token usage statistics for the entire request, and the choices field will always be an empty array. All other chunks will also include a usage field, but with a null value. NOTE: If the stream is interrupted, you may not receive the final usage chunk which contains the total token usage for the request",
+        "如果设置，将在 data: [DONE] 消息之前额外发送一个 chunk。该 chunk 的 usage 字段显示整个请求的 Token 使用统计，choices 字段为空数组。其他所有 chunk 也会包含 usage 字段，但值为 null。注意：如果流中断，可能无法收到包含总 Token 用量的最终 chunk",
+      )
+      .replace(
         "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
         "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
       )
@@ -13635,8 +13639,16 @@ describe("Kimi adapters", () => {
         "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
       )
       .replace(
+        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3-series models (kimi-k3.1-pro, kimi-k3.1-pro-highspeed, kimi-k3) it defaults to 131072 and can be set up to 1048576.",
+        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 系列（kimi-k3.1-pro、kimi-k3.1-pro-highspeed、kimi-k3）默认为 131072，最大可设置为 1048576。",
+      )
+      .replace(
         "ID of the model to use. This endpoint currently supports `kimi-k3`.",
         "使用的模型 ID。本接口当前支持 `kimi-k3`。",
+      )
+      .replace(
+        "ID of the model to use. This endpoint currently supports `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, and `kimi-k3`.",
+        "使用的模型 ID。本接口当前支持 `kimi-k3.1-pro`、`kimi-k3.1-pro-highspeed` 和 `kimi-k3`。",
       )
       .replace(
         "Number of input tokens, including cached tokens.",
@@ -13668,7 +13680,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v8",
+      extractorVersion: "kimi-openapi-v9",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({
@@ -14195,6 +14207,116 @@ describe("Kimi adapters", () => {
         expect.objectContaining({ key: "request.api_origin.china" }),
         expect.objectContaining({ key: "responses.input_tokens" }),
         expect.objectContaining({ key: "messages.uncached_input_tokens.excludes_cache_writes" }),
+      ]),
+    );
+  });
+
+  it("resolves a nested OpenAPI request base and grouped output-limit labels", async () => {
+    const body = await fixture("kimi/openapi-k3-1.json");
+    const result = parseResult(source("kimi-openapi"), body);
+    expect(result.models.map(({ model_id }) => model_id)).toEqual([
+      "kimi-k2.6",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-k3",
+      "kimi-k3.1-pro",
+      "kimi-k3.1-pro-highspeed",
+    ]);
+    for (const model_id of ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3"]) {
+      expect(result.models.find((model) => model.model_id === model_id)).toMatchObject({
+        limits: { max_output_tokens: 1_048_576 },
+        capabilities: { reasoning: true, effort_control: true },
+        api_endpoints: [
+          { name: "Chat Completions", path: "/v1/chat/completions" },
+          { name: "Responses", path: "/v1/responses" },
+          { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
+        ],
+      });
+    }
+    expect(result.models.find(({ model_id }) => model_id === "kimi-k2.6")).toMatchObject({
+      capabilities: { reasoning: true, effort_control: "unknown" },
+      limits: {},
+    });
+    expect(result.pricing_inputs).toHaveLength(21);
+    expect(() =>
+      parse(
+        source("kimi-openapi"),
+        body.replace(
+          "(kimi-k3.1-pro, kimi-k3.1-pro-highspeed, kimi-k3) it defaults",
+          "(kimi-k3.1-pro, ghost-model) it defaults",
+        ),
+      ),
+    ).toThrow("output limit identity");
+    const narrowed = parseResult(
+      source("kimi-openapi"),
+      body.replaceAll(
+        "(kimi-k3.1-pro, kimi-k3.1-pro-highspeed, kimi-k3) it defaults",
+        "(kimi-k3.1-pro) it defaults",
+      ),
+    );
+    expect(
+      narrowed.models.find(({ model_id }) => model_id === "kimi-k3.1-pro")?.limits
+        .max_output_tokens,
+    ).toBe(1_048_576);
+    expect(
+      narrowed.models.find(({ model_id }) => model_id === "kimi-k3.1-pro-highspeed")?.limits
+        .max_output_tokens,
+    ).toBeUndefined();
+    const scopeDrift = parseResult(
+      source("kimi-openapi"),
+      body.replace(
+        '"enum": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3"]',
+        '"enum": ["kimi-k3"]',
+      ),
+    );
+    expect(
+      scopeDrift.models.find(({ model_id }) => model_id === "kimi-k3.1-pro")?.api_endpoints,
+    ).toEqual([
+      { name: "Chat Completions", path: "/v1/chat/completions" },
+      { name: "Responses", path: "/v1/responses" },
+    ]);
+    expect(
+      scopeDrift.models.find(({ model_id }) => model_id === "kimi-k3")?.api_endpoints,
+    ).toHaveLength(2);
+    const streamDrift = parseResult(
+      source("kimi-openapi"),
+      body.replace(
+        "If the stream is interrupted, you may not receive",
+        "Eventualities aside, you may not receive",
+      ),
+    );
+    expect(streamDrift.pricing_inputs?.filter(({ key }) => key.startsWith("chat.stream."))).toEqual(
+      [],
+    );
+    expect(() =>
+      parse(
+        source("kimi-openapi"),
+        body.replace(
+          '"$ref": "#/components/schemas/ChatRequestCommon"',
+          '"$ref": "#/components/schemas/GhostCommon"',
+        ),
+      ),
+    ).toThrow();
+    expect(() =>
+      parse(
+        source("kimi-openapi"),
+        body.replace(
+          '"enum": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed"],',
+          '"enum": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "ghost-model"],',
+        ),
+      ),
+    ).toThrow("mapping disagrees");
+    const china = chinaOpenApi(body);
+    const chinaResult = parseResult(source("kimi-china-openapi"), china);
+    expect(chinaResult.models).toHaveLength(6);
+    expect(chinaResult.models.find(({ model_id }) => model_id === "kimi-k3.1-pro")).toMatchObject({
+      limits: { max_output_tokens: 1_048_576 },
+      capabilities: { reasoning: true, effort_control: true },
+    });
+    expect(chinaResult.pricing_inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "request.api_origin.china" }),
+        expect.objectContaining({ key: "responses.input_tokens" }),
       ]),
     );
   });

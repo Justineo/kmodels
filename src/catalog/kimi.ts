@@ -165,6 +165,37 @@ function properties(value: unknown): Record<string, unknown> {
   return propertiesSchema.parse(value).properties;
 }
 
+function resolvedProperties(
+  ref: string,
+  schemas: Record<string, unknown>,
+  seen: ReadonlySet<string> = new Set(),
+): Record<string, unknown> {
+  const name = componentName(ref);
+  if (seen.has(name)) throw new Error(`Kimi OpenAPI schema ${name} has a reference cycle`);
+  const component = schemas[name];
+  if (component === undefined) throw new Error(`Kimi OpenAPI omitted schema ${name}`);
+  const nested = new Set(seen).add(name);
+  const merged: Record<string, unknown> = {};
+  const allOf = allOfSchema.safeParse(component);
+  if (allOf.success) {
+    for (const part of allOf.data.allOf) {
+      const reference = referenceSchema.safeParse(part);
+      if (reference.success) {
+        Object.assign(merged, resolvedProperties(reference.data.$ref, schemas, nested));
+        continue;
+      }
+      const direct = propertiesSchema.safeParse(part);
+      if (direct.success) Object.assign(merged, direct.data.properties);
+      else throw new Error(`Kimi OpenAPI schema ${name} has an unreadable part`);
+    }
+  }
+  const direct = propertiesSchema.safeParse(component);
+  if (direct.success) Object.assign(merged, direct.data.properties);
+  if (Object.keys(merged).length === 0)
+    throw new Error(`Kimi OpenAPI omitted properties for ${name}`);
+  return merged;
+}
+
 function componentName(ref: string): string {
   const name = ref.split("/").at(-1);
   if (name === undefined) throw new Error("Kimi OpenAPI schema reference omitted a name");
@@ -219,32 +250,43 @@ function estimateModelIds(spec: z.infer<typeof openApiSchema>): string[] {
     .enum;
 }
 
-function outputLimits(value: unknown): { name: string; max: number }[] {
+function outputLimits(value: unknown): { names: string[]; max: number }[] {
   const { description } = maxCompletionSchema.parse(value);
   const matches = [
     ...description.matchAll(
       /(?:^|[.;:]\s+)for (.+?) it defaults to ([\d,]+) and can be set up to ([\d,]+)/gi,
     ),
     ...description.matchAll(
-      /(?:^|[。；：]\s*)([A-Za-z][A-Za-z0-9 ._-]+?)\s+默认为\s*([\d,]+)，最大可设置为\s*([\d,]+)/g,
+      /(?:^|[。；：]\s*)([A-Za-z\u4e00-\u9fff][A-Za-z0-9 ._（）()、,\u4e00-\u9fff-]+?)\s*默认为\s*([\d,]+)，最大可设置为\s*([\d,]+)/g,
     ),
   ];
   if (matches.length === 0) throw new Error("Kimi OpenAPI changed output limit descriptions");
   return matches.map((match) => {
-    const name = match[1]?.trim();
+    const label = match[1]?.trim();
     const initial = Number(match[2]?.replaceAll(",", ""));
     const max = Number(match[3]?.replaceAll(",", ""));
     if (
-      name === undefined ||
-      name === "" ||
+      label === undefined ||
+      label === "" ||
       !Number.isSafeInteger(initial) ||
       !Number.isSafeInteger(max) ||
       initial <= 0 ||
       max < initial
     )
       throw new Error("Kimi OpenAPI published an invalid output limit");
-    return { name, max };
+    return { names: limitModelNames(label), max };
   });
+}
+
+function limitModelNames(label: string): string[] {
+  const grouped = label.match(/[（(]([^（()）]+)[)）]$/);
+  if (grouped === null) return [label];
+  const ids = (grouped[1] ?? "")
+    .split(/[,、]/)
+    .map((value) => value.trim())
+    .filter((value) => value !== "");
+  if (ids.length === 0 || !ids.every((id) => modelIdSchema.safeParse(id).success)) return [label];
+  return ids;
 }
 
 function requestFacts(
@@ -254,7 +296,7 @@ function requestFacts(
   ids: string[];
   reasoning: boolean;
   effort: boolean;
-  outputLimits: { name: string; max: number }[];
+  outputLimits: { names: string[]; max: number }[];
 } {
   const component = schemas[componentName(ref)];
   const parts = allOfSchema.parse(component).allOf;
@@ -274,7 +316,7 @@ function requestFacts(
   if (commonRefs.length !== 1) throw new Error(`Kimi OpenAPI request ${ref} omitted its base`);
   const commonRef = commonRefs[0];
   if (commonRef === undefined) throw new Error(`Kimi OpenAPI request ${ref} omitted its base`);
-  const common = properties(schemas[componentName(commonRef)]);
+  const common = resolvedProperties(commonRef, schemas);
   const responseFormat = properties(common.response_format);
   const formats = enumSchema.parse(responseFormat.type).enum;
   if (!["text", "json_object", "json_schema"].every((value) => formats.includes(value)))
@@ -292,17 +334,16 @@ function requestFacts(
     throw new Error("Kimi OpenAPI request base omitted tool_choice");
   if (z.object({ type: z.literal("string") }).safeParse(common.prompt_cache_key).success === false)
     throw new Error("Kimi OpenAPI changed prompt cache schema");
-  const efforts =
-    ownProperties.reasoning_effort === undefined
-      ? undefined
-      : enumSchema.parse(ownProperties.reasoning_effort).enum;
+  const effortClaim = ownProperties.reasoning_effort ?? common.reasoning_effort;
+  const efforts = effortClaim === undefined ? undefined : enumSchema.parse(effortClaim).enum;
   if (efforts !== undefined && !["low", "high", "max"].every((value) => efforts.includes(value)))
     throw new Error(`Kimi OpenAPI request ${ref} changed reasoning effort`);
+  const thinkingClaim = ownProperties.thinking ?? common.thinking;
   const reasoning =
-    ownProperties.thinking === undefined
+    thinkingClaim === undefined
       ? efforts !== undefined
-      : enumSchema.parse(properties(ownProperties.thinking).type).enum.includes("enabled");
-  if (ownProperties.thinking !== undefined && !reasoning)
+      : enumSchema.parse(properties(thinkingClaim).type).enum.includes("enabled");
+  if (thinkingClaim !== undefined && !reasoning)
     throw new Error(`Kimi OpenAPI request ${ref} changed thinking schema`);
   return {
     ids,
@@ -349,11 +390,13 @@ export function parseKimiOpenApi(input: Input): SourceParseResult {
   const describedLimits = new Map<string, { name: string; max: number }>();
   for (const observed of facts.values()) {
     for (const limit of observed.outputLimits) {
-      const key = identity(limit.name);
-      const current = describedLimits.get(key);
-      if (current !== undefined && current.max !== limit.max)
-        throw new Error(`Kimi OpenAPI output limits disagree for ${limit.name}`);
-      describedLimits.set(key, limit);
+      for (const name of limit.names) {
+        const key = identity(name);
+        const current = describedLimits.get(key);
+        if (current !== undefined && current.max !== limit.max)
+          throw new Error(`Kimi OpenAPI output limits disagree for ${name}`);
+        describedLimits.set(key, { name, max: limit.max });
+      }
     }
   }
   const maxOutputs = new Map<string, number>();
