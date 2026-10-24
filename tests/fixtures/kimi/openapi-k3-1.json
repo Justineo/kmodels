@@ -1,0 +1,511 @@
+{
+  "servers": [{ "url": "https://api.moonshot.ai" }],
+  "paths": {
+    "/v1/models": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": { "type": "string", "example": "list" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "object": { "type": "string", "example": "model" },
+                          "created": { "type": "integer" },
+                          "owned_by": { "type": "string" },
+                          "context_length": { "type": "integer" },
+                          "supports_image_in": { "type": "boolean" },
+                          "supports_video_in": { "type": "boolean" },
+                          "supports_reasoning": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "propertyName": "model",
+                  "mapping": {
+                    "kimi-k3.1-pro": "#/components/schemas/KimiK31ProChatRequest",
+                    "kimi-k3.1-pro-highspeed": "#/components/schemas/KimiK31ProChatRequest",
+                    "kimi-k3": "#/components/schemas/KimiK3ChatRequest",
+                    "kimi-k2.7-code": "#/components/schemas/KimiK27CodeChatRequest",
+                    "kimi-k2.7-code-highspeed": "#/components/schemas/KimiK27CodeChatRequest",
+                    "kimi-k2.6": "#/components/schemas/KimiK26ChatRequest"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/ChatCompletionChunk" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/responses": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResponsesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResponsesResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/ResponsesStreamEvent" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/anthropic/v1/messages": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MessagesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessagesResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/MessagesStreamEvent" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tokenizers/estimate-token-count": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EstimateTokenRequest" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EstimateTokenRequest": {
+        "properties": {
+          "model": {
+            "enum": [
+              "kimi-k3.1-pro",
+              "kimi-k3.1-pro-highspeed",
+              "kimi-k3",
+              "kimi-k2.7-code",
+              "kimi-k2.7-code-highspeed",
+              "kimi-k2.6"
+            ]
+          }
+        }
+      },
+      "ToolDefinition": {
+        "properties": {
+          "type": { "enum": ["function"] }
+        }
+      },
+      "ChatRequestCommon": {
+        "type": "object",
+        "properties": {
+          "logprobs": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to return log probabilities of the output tokens."
+          },
+          "top_logprobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "description": "An integer between 0 and 20 specifying the number of most likely tokens to return at each token position."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "deprecated": true,
+            "description": "Deprecated, please refer to max_completion_tokens"
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3-series models (kimi-k3.1-pro, kimi-k3.1-pro-highspeed, kimi-k3) it defaults to 131072 and can be set up to 1048576."
+          },
+          "response_format": {
+            "type": "object",
+            "properties": {
+              "type": { "enum": ["text", "json_object", "json_schema"] }
+            }
+          },
+          "stop": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
+            ],
+            "default": null
+          },
+          "stream": { "type": "boolean", "default": false },
+          "stream_options": {
+            "type": "object",
+            "properties": {
+              "include_usage": {
+                "type": "boolean",
+                "default": false,
+                "description": "If set, an additional chunk will be streamed before the data: [DONE] message. The usage field on this chunk shows the token usage statistics for the entire request, and the choices field will always be an empty array. All other chunks will also include a usage field, but with a null value. NOTE: If the stream is interrupted, you may not receive the final usage chunk which contains the total token usage for the request"
+              }
+            }
+          },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/ToolDefinition" }
+          },
+          "tool_choice": {},
+          "prompt_cache_key": { "type": "string" },
+          "prompt_cache_options": { "type": "object" },
+          "safety_identifier": { "type": "string" }
+        }
+      },
+      "ChatRequestBase": {
+        "type": "object",
+        "properties": {
+          "messages": { "type": "array" },
+          "response_format": {
+            "properties": {
+              "type": { "enum": ["text", "json_object", "json_schema"] }
+            }
+          },
+          "stream": { "type": "boolean" },
+          "stream_options": {
+            "properties": {
+              "include_usage": {
+                "type": "boolean",
+                "default": false,
+                "description": "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive."
+              }
+            }
+          },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/ToolDefinition" }
+          },
+          "tool_choice": {},
+          "prompt_cache_key": { "type": "string" },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3-series models (kimi-k3.1-pro, kimi-k3.1-pro-highspeed, kimi-k3) it defaults to 131072 and can be set up to 1048576."
+          }
+        }
+      },
+      "KimiK3ChatRequestBase": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ChatRequestCommon" },
+          {
+            "type": "object",
+            "properties": {
+              "messages": { "type": "array" },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": ["low", "high", "max"],
+                "default": "max",
+                "description": "Kimi K3-series models always enable thinking with Preserved Thinking. Reasoning effort supports low, high, and max, with max as the default."
+              }
+            },
+            "required": ["messages"]
+          }
+        ]
+      },
+      "KimiK31ProChatRequest": {
+        "title": "kimi-k3.1-pro series",
+        "allOf": [
+          { "$ref": "#/components/schemas/KimiK3ChatRequestBase" },
+          {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "Model ID",
+                "enum": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed"],
+                "default": "kimi-k3.1-pro"
+              }
+            },
+            "required": ["model"]
+          }
+        ]
+      },
+      "KimiK3ChatRequest": {
+        "title": "kimi-k3",
+        "allOf": [
+          { "$ref": "#/components/schemas/KimiK3ChatRequestBase" },
+          {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "Model ID",
+                "enum": ["kimi-k3"],
+                "default": "kimi-k3"
+              }
+            },
+            "required": ["model"]
+          }
+        ]
+      },
+      "KimiK27CodeChatRequest": {
+        "title": "kimi-k2.7-code",
+        "allOf": [
+          { "$ref": "#/components/schemas/ChatRequestBase" },
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k2.7-code", "kimi-k2.7-code-highspeed"] },
+              "thinking": {
+                "properties": {
+                  "type": { "enum": ["enabled"] }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "KimiK26ChatRequest": {
+        "title": "kimi-k2.6",
+        "allOf": [
+          { "$ref": "#/components/schemas/ChatRequestBase" },
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k2.6"] },
+              "thinking": {
+                "properties": {
+                  "type": { "enum": ["enabled", "disabled"] }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ChatCompletionResponse": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "prompt_tokens": { "type": "integer" },
+              "completion_tokens": { "type": "integer" },
+              "total_tokens": { "type": "integer" },
+              "cached_tokens": { "type": "integer" },
+              "prompt_tokens_details": {
+                "type": "object",
+                "description": "Breakdown of prompt tokens. cached_tokens, cache_write_tokens and the uncached remainder are mutually exclusive and sum to prompt_tokens",
+                "properties": {
+                  "cached_tokens": {
+                    "type": "integer",
+                    "description": "Number of tokens served from cache"
+                  },
+                  "cache_write_tokens": {
+                    "type": "integer",
+                    "description": "Number of tokens written to the cache by this request. Billed according to the TTL at write time; see prompt_cache_options"
+                  }
+                },
+                "required": ["cached_tokens", "cache_write_tokens"]
+              }
+            }
+          }
+        }
+      },
+      "ChatCompletionChunk": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "prompt_tokens": { "type": "integer" },
+              "completion_tokens": { "type": "integer" },
+              "total_tokens": { "type": "integer" },
+              "cached_tokens": { "type": "integer" },
+              "prompt_tokens_details": {
+                "type": "object",
+                "description": "Breakdown of prompt tokens. cached_tokens, cache_write_tokens and the uncached remainder are mutually exclusive and sum to prompt_tokens",
+                "properties": {
+                  "cached_tokens": {
+                    "type": "integer",
+                    "description": "Number of tokens served from cache"
+                  },
+                  "cache_write_tokens": {
+                    "type": "integer",
+                    "description": "Number of tokens written to the cache by this request. Billed according to the TTL at write time; see prompt_cache_options"
+                  }
+                },
+                "required": ["cached_tokens", "cache_write_tokens"]
+              }
+            }
+          }
+        }
+      },
+      "ResponsesRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "ID of the model to use. This endpoint currently supports `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, and `kimi-k3`.",
+            "example": "kimi-k3.1-pro"
+          }
+        }
+      },
+      "ResponsesUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Number of input tokens, including cached tokens."
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of tokens served from the context cache."
+              },
+              "cache_write_tokens": {
+                "type": "integer",
+                "description": "Number of tokens written to the context cache."
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Number of output tokens, including reasoning tokens."
+          },
+          "total_tokens": { "type": "integer" }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "usage": {
+            "oneOf": [{ "$ref": "#/components/schemas/ResponsesUsage" }, { "type": "null" }]
+          }
+        }
+      },
+      "ResponsesStreamEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["response.completed", "response.incomplete", "response.failed"]
+          },
+          "sequence_number": { "type": "integer" }
+        }
+      },
+      "MessagesRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "ID of the model to use. This endpoint currently supports `kimi-k3.1-pro`, `kimi-k3.1-pro-highspeed`, and `kimi-k3`.",
+            "enum": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3"],
+            "default": "kimi-k3.1-pro"
+          }
+        }
+      },
+      "MessagesResponse": {
+        "type": "object",
+        "properties": {
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "Input tokens (excluding cache hits and cache writes). Total input = input_tokens + cache_read_input_tokens + cache_creation_input_tokens"
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "Output tokens (including reasoning tokens)"
+              },
+              "cache_read_input_tokens": {
+                "type": "integer",
+                "description": "Input tokens served from cache"
+              },
+              "cache_creation_input_tokens": {
+                "type": "integer",
+                "description": "Input tokens written to cache"
+              }
+            }
+          }
+        }
+      },
+      "MessagesStreamEvent": {
+        "oneOf": [
+          {
+            "title": "message_delta",
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["message_delta"] },
+              "delta": { "type": "object" },
+              "usage": {
+                "type": "object",
+                "properties": {
+                  "input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens (excluding cache hits and cache writes). Total input = input_tokens + cache_read_input_tokens + cache_creation_input_tokens"
+                  },
+                  "output_tokens": {
+                    "type": "integer",
+                    "description": "Output tokens (including reasoning tokens)"
+                  },
+                  "cache_read_input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens served from cache"
+                  },
+                  "cache_creation_input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens written to cache"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "title": "message_stop",
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["message_stop"] }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

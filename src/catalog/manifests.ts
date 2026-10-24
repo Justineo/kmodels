@@ -4367,7 +4367,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v8",
+        extractorVersion: "kimi-openapi-v9",
         fields: [
           "model_id",
           "tasks",
@@ -4396,7 +4396,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v8",
+        extractorVersion: "kimi-openapi-v9",
         fields: [
           "model_id",
           "tasks",

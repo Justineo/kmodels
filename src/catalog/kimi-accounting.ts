@@ -412,25 +412,43 @@ function batchUsageExample(body: string, field: string): boolean {
 function responsesEndpoint(spec: JsonSpec): KimiEndpointClaim {
   const request = dereference(spec, requestSchema(spec, responsesPath));
   const model = object(schemaAt(spec, request, ["model"]));
+  const modelIds = documentedModelIds(model);
   if (
-    model.example !== "kimi-k3" ||
-    !/currently supports `kimi-k3`|当前支持 `kimi-k3`/i.test(String(model.description))
+    typeof model.example !== "string" ||
+    modelIds === undefined ||
+    !modelIds.includes(model.example)
   )
     throw new Error("Kimi Responses model scope changed");
   responseSchema(spec, responsesPath, "application/json");
   responseSchema(spec, responsesPath, "text/event-stream");
-  return { name: "Responses", path: responsesPath, modelIds: ["kimi-k3"] };
+  return { name: "Responses", path: responsesPath, modelIds };
 }
 
 function messagesEndpoint(spec: JsonSpec): KimiEndpointClaim {
   const request = dereference(spec, requestSchema(spec, messagesPath));
   const model = object(schemaAt(spec, request, ["model"]));
-  const values = z.array(z.string()).parse(model.enum);
-  if (values.length !== 1 || values[0] !== "kimi-k3")
+  const values = z.array(modelIdSchema).parse(model.enum);
+  const documented = documentedModelIds(model);
+  if (
+    documented !== undefined &&
+    (values.length !== documented.length || values.some((value) => !documented.includes(value)))
+  )
     throw new Error("Kimi Messages model scope changed");
   responseSchema(spec, messagesPath, "application/json");
   responseSchema(spec, messagesPath, "text/event-stream");
   return { name: "Anthropic Messages", path: messagesPath, modelIds: values };
+}
+
+function documentedModelIds(model: Record<string, unknown>): string[] | undefined {
+  const description = typeof model.description === "string" ? model.description : "";
+  const clause = description.match(/(?:currently supports|当前支持)(.+)$/s)?.[1];
+  if (clause === undefined) return undefined;
+  const ids = [...clause.matchAll(/`([^`]+)`/g)].flatMap((match) => {
+    const parsed = modelIdSchema.safeParse(match[1]);
+    return parsed.success ? [parsed.data] : [];
+  });
+  if (ids.length === 0) throw new Error("Kimi endpoint documented no model IDs");
+  return ids;
 }
 
 function reviewEndpoint(
@@ -480,20 +498,10 @@ function chatStreamingUsage(spec: JsonSpec): void {
     ...new Set(Object.values(mapping).map((value) => referenceSchema.parse({ $ref: value }).$ref)),
   ];
   for (const ref of refs) {
-    const requestComponent = object(dereference(spec, { $ref: ref }));
-    const parts = z.array(z.unknown()).parse(requestComponent.allOf);
-    const includeUsage = parts.flatMap((part) => {
-      const reference = referenceSchema.safeParse(part);
-      if (!reference.success) return [];
-      const base = dereference(spec, reference.data);
-      try {
-        return [schemaAt(spec, base, ["stream_options", "include_usage"])];
-      } catch {
-        return [];
-      }
-    });
-    if (includeUsage.length !== 1) throw new Error("Kimi Chat stream omitted include_usage");
-    const field = object(includeUsage[0]);
+    const properties = inheritedProperties(spec, { $ref: ref });
+    const streamOptions = properties.stream_options;
+    if (streamOptions === undefined) throw new Error("Kimi Chat stream omitted include_usage");
+    const field = object(schemaAt(spec, streamOptions, ["include_usage"]));
     const description = String(field.description);
     if (
       field.type !== "boolean" ||
@@ -502,6 +510,27 @@ function chatStreamingUsage(spec: JsonSpec): void {
     )
       throw new Error("Kimi Chat stream usage scope changed");
   }
+}
+
+function inheritedProperties(
+  spec: JsonSpec,
+  schema: unknown,
+  seen: ReadonlySet<string> = new Set(),
+): Record<string, unknown> {
+  const reference = referenceSchema.safeParse(schema);
+  if (reference.success) {
+    const ref = reference.data.$ref;
+    if (seen.has(ref)) throw new Error("Kimi schema inheritance cycles");
+    return inheritedProperties(spec, dereference(spec, { $ref: ref }), new Set([...seen, ref]));
+  }
+  const value = object(schema);
+  const merged: Record<string, unknown> = {};
+  const parts = value.allOf === undefined ? [] : z.array(z.unknown()).parse(value.allOf);
+  for (const part of parts) Object.assign(merged, inheritedProperties(spec, part, seen));
+  if (value.properties !== undefined) Object.assign(merged, object(value.properties));
+  if (Object.keys(merged).length === 0)
+    throw new Error("Kimi schema published no inherited properties");
+  return merged;
 }
 
 function integerField(
