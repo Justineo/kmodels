@@ -102,7 +102,7 @@ const typedArraySchema = z.object({ type: z.literal("array"), items: z.unknown()
 const typedStringSchema = z.object({ type: z.literal("string") });
 const typedIntegerSchema = z.object({ type: z.literal("integer") });
 const typedBooleanSchema = z.object({ type: z.literal("boolean") });
-const priceRowSchema = z.array(z.string()).min(5).max(8);
+const priceRowSchema = z.array(z.string()).min(4).max(8);
 type PriceColumn =
   | "model"
   | "unit"
@@ -120,16 +120,26 @@ const priceColumns = new Map<string, PriceColumn>([
   ["输入价格（缓存命中）", "cache"],
   ["Input Price (Cache Hit)", "cache"],
   ["Cached Input Price", "cache"],
+  ["缓存命中", "cache"],
+  ["Cache Hit", "cache"],
   ["缓存写入（TTL 5min）", "write5m"],
   ["缓存写入（TTL 1h）", "write1h"],
+  ["缓存写入（5min）", "write5m"],
+  ["缓存写入（1h）", "write1h"],
   ["Cache Write Price (TTL 5min)", "write5m"],
   ["Cache Write Price (TTL 1h)", "write1h"],
+  ["Cache Write (5min)", "write5m"],
+  ["Cache Write (1h)", "write1h"],
   ["输入价格（缓存未命中）", "input"],
   ["Input Price (Cache Miss)", "input"],
   ["输入价格", "input"],
   ["Input Price", "input"],
+  ["输入", "input"],
+  ["Input", "input"],
   ["输出价格", "output"],
   ["Output Price", "output"],
+  ["输出", "output"],
+  ["Output", "output"],
   ["上下文窗口", "context"],
   ["Context Window", "context"],
 ]);
@@ -775,6 +785,14 @@ function renderedValue(text: string, start: number): { value: unknown; end: numb
       }
     }
     if (depth !== 0) return undefined;
+    // A rendered JSX element displays its children, not attribute literals like href or tooltip text.
+    const inner = text.slice(open + 1, cursor);
+    const children = inner.match(/children:\s*/);
+    if (children?.index !== undefined) {
+      const child = renderedValue(text, open + 1 + children.index + children[0].length);
+      if (child !== undefined && typeof child.value === "string")
+        return { value: child.value, end: cursor + 1 };
+    }
     const literals = [
       ...text.slice(open + 1, cursor).matchAll(/(?:`((?:[^`\\]|\\.)*)`|"((?:[^"\\]|\\.)*)")/g),
     ].map((match) => (match[1] ?? match[2] ?? "").replace(/\\(.)/g, "$1"));
@@ -888,6 +906,8 @@ function pricingColumns(body: string): PriceColumn[] {
       "model,unit,cache,input,output,context",
       "model,unit,input,output,context",
       "model,unit,write5m,write1h,cache,input,output,context",
+      "model,input,output,cache,write5m,write1h",
+      "model,input,output,cache",
     ].includes(signature)
   )
     return columns;
@@ -898,8 +918,9 @@ type PricingExtractor = Extract<SourceManifest["extractor"], { kind: "kimi-prici
 
 function decimalPrice(value: string, symbol: PricingExtractor["symbol"]): string {
   const amount = value.startsWith(symbol) ? value.slice(symbol.length) : "";
-  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount)) throw new Error(`Invalid Kimi price: ${value}`);
-  return amount;
+  const numeric = amount.replace(/\s*\/\s*MTok$/, "");
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(numeric)) throw new Error(`Invalid Kimi price: ${value}`);
+  return numeric;
 }
 
 function priceRate(
@@ -954,17 +975,20 @@ function pricingModel(
   columns: PriceColumn[],
 ): ProviderModel {
   const rawId = row[0];
-  const rawUnit = row[1];
-  if (rawId === undefined || rawUnit !== "1M tokens")
+  if (rawId === undefined) throw new Error("Kimi pricing row omitted its model");
+  const unitColumn = columns.indexOf("unit");
+  if (unitColumn !== -1 && row[unitColumn] !== "1M tokens")
     throw new Error("Kimi pricing row omitted its model or unit");
   const suffix = rawId.match(/\s*[（(]Batch[）)]$/)?.[0];
   if (batch !== (suffix !== undefined)) throw new Error("Kimi Batch label disagrees with its page");
   const id = modelIdSchema.parse(suffix === undefined ? rawId : rawId.slice(0, -suffix.length));
   if (row.length !== columns.length)
     throw new Error(`Kimi pricing columns disagree with the row for ${id}`);
-  const context = row.at(-1);
+  const contextColumn = columns.indexOf("context");
+  const context = contextColumn === -1 ? undefined : row[contextColumn];
   const contextTokens = context === undefined ? undefined : tokenCount(context);
-  if (contextTokens === undefined) throw new Error(`Kimi pricing omitted context for ${id}`);
+  if (contextColumn !== -1 && contextTokens === undefined)
+    throw new Error(`Kimi pricing omitted context for ${id}`);
   const conditions: SourcePriceFact["conditions"] = {
     region: extractor.region,
     ...(batch ? { service_tier: "batch" } : {}),
@@ -1022,7 +1046,7 @@ function pricingModel(
       structured_output: /JSON Mode|结构化输出/.test(body) ? true : "unknown",
       batch: batch ? true : "unknown",
     },
-    limits: { context_tokens: contextTokens },
+    limits: contextTokens === undefined ? {} : { context_tokens: contextTokens },
     pricing_state: "numeric",
     price_facts: prices,
   };
@@ -1044,7 +1068,12 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
     current.name !== incoming.name
   )
     throw new Error(`Kimi pricing documents disagree on the name of ${current.model_id}`);
-  if (current.limits.context_tokens !== incoming.limits.context_tokens)
+  const contextTokens = current.limits.context_tokens ?? incoming.limits.context_tokens;
+  if (
+    current.limits.context_tokens !== undefined &&
+    incoming.limits.context_tokens !== undefined &&
+    current.limits.context_tokens !== incoming.limits.context_tokens
+  )
     throw new Error(`Kimi pricing documents disagree on the context of ${current.model_id}`);
   const rates = [...current.price_facts, ...incoming.price_facts];
   const keys = rates.map(
@@ -1060,6 +1089,7 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
       output: [...new Set([...current.modalities.output, ...incoming.modalities.output])],
     },
     api_endpoints: current.api_endpoints ?? incoming.api_endpoints,
+    limits: contextTokens === undefined ? {} : { context_tokens: contextTokens },
     capabilities: {
       ...current.capabilities,
       reasoning: mergeTruth(current.capabilities.reasoning, incoming.capabilities.reasoning),

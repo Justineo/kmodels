@@ -13696,7 +13696,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v13",
+      extractorVersion: "kimi-pricing-v14",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -13989,6 +13989,54 @@ describe("Kimi adapters", () => {
       ["3.90", "batch"],
       ["6.50", "standard"],
     ]);
+  });
+
+  it("parses the rendered price book with short column labels and linked model names", async () => {
+    const rendered = await fixture("kimi/pricing-cn-rendered-short-labels.html");
+    const models = await pricing({
+      indexBody: rendered,
+      overrides: {
+        "pricing-k27": rendered,
+        "pricing-k26": rendered,
+        "pricing-overview": rendered,
+        "pricing-k25": "# Retired",
+        "pricing-v1": "# Retired",
+        "pricing-batch": "# No batch rates in this fixture",
+      },
+    });
+    expect(models.map(({ model_id }) => model_id).sort()).toEqual([
+      "kimi-k2.6",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-k3.1-pro",
+      "kimi-k3.1-pro-highspeed",
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "kimi-k3.1-pro")
+        ?.price_facts.map(({ meter, price, raw_price, conditions }) => [
+          meter,
+          price,
+          raw_price,
+          conditions.cache_ttl_seconds ?? null,
+        ]),
+    ).toEqual([
+      ["cache_read_text", "1.30", "¥1.30 / MTok", null],
+      ["cache_write_text", "13.00", "¥13.00 / MTok", 300],
+      ["cache_write_text", "26.00", "¥26.00 / MTok", 3600],
+      ["input_text", "13.00", "¥13.00 / MTok", null],
+      ["output_text", "68.00", "¥68.00 / MTok", null],
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "kimi-k2.6")
+        ?.price_facts.map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["cache_read_text", "1.10"],
+      ["input_text", "6.50"],
+      ["output_text", "27.00"],
+    ]);
+    expect(models.find(({ model_id }) => model_id === "kimi-k3.1-pro")?.limits).toEqual({});
   });
 
   it("decodes fragment cells from the rendered Kimi price book", async () => {
