@@ -49,7 +49,14 @@ the published Markdown export now replaces each pricing component with an empty 
 rendered page still carries the same tables in its React Server Component payload. Extraction reads
 the payload's labeled `DocTable` rows, deduplicates the repeated hydration copy of each table, and
 uses the rendered article text for display names and capability prose. The Markdown export remains
-only for companions whose payload is authoritative Markdown. Current K3, K2.7 and K2.6 price URLs resolve to the same
+only for companions whose payload is authoritative Markdown. A rendered table's labels are its
+visible element text: when a header or cell is an element, extraction reads that element's
+`children` text rather than its attribute literals, so a tooltip label such as `缓存命中` is the
+column label and a linked model cell is the model ID. The current overview publishes the short
+labels `输入` / `输出` / `缓存命中` / `缓存写入（5min）` / `缓存写入（1h）` and no per-row unit or
+context column, so those tables omit `context_tokens` instead of inventing a value; the ` / MTok`
+suffix on a price cell supplies the reviewed `1M tokens` unit. Tables that still carry `计费单位`
+and `上下文窗口` keep their explicit unit and context validation. Current K3, K2.7 and K2.6 price URLs resolve to the same
 combined overview: extraction deduplicates identical documents and reads each labeled table
 independently. Retired K2.5 and Moonshot V1 redirects to the model catalog are rejected as pricing
 claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
@@ -76,12 +83,15 @@ Standard rates per one million tokens are:
 
 | Model                      | China cache / input / output | International cache / input / output |
 | -------------------------- | ---------------------------- | ------------------------------------ |
+| `kimi-k3.1-pro`            | CNY 1.30 / 13 / 68           | not reviewed in this change          |
+| `kimi-k3.1-pro-highspeed`  | CNY 1.30 / 26 / 136          | not reviewed in this change          |
 | `kimi-k3`                  | CNY 2 / 20 / 100             | USD 0.30 / 3 / 15                    |
 | `kimi-k2.7-code`           | CNY 1.30 / 6.50 / 27         | USD 0.19 / 0.95 / 4                  |
 | `kimi-k2.7-code-highspeed` | CNY 2.60 / 13 / 54           | USD 0.38 / 1.90 / 8                  |
 | `kimi-k2.6`                | CNY 1.10 / 6.50 / 27         | USD 0.16 / 0.95 / 4                  |
 
-K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
+K3.1 Pro additionally charges CNY 13 for a 300-second write TTL and CNY 26 for a 3,600-second TTL;
+K3.1 Pro Highspeed charges CNY 26 and CNY 52. K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
 CNY 40 / USD 6 for a 3,600-second TTL. Cache hits do not incur another write charge. These are
 separate `cache_write_text` rates with `cache_ttl_seconds` applicability; callers supply the write
 quantity through the documented protocol counters below. The applicable TTL remains caller-owned:

@@ -496,7 +496,7 @@ const kimiPricingSource = (
   format: "html",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v13",
+  extractorVersion: "kimi-pricing-v14",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
