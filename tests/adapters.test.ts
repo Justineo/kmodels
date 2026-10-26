@@ -3161,7 +3161,7 @@ describe("HTTP transport boundary", () => {
     if (source?.linkedDocuments === undefined) throw new Error("Missing Mistral link policy");
     const urls = linkedDocumentUrls(await fixture("mistral/index.ts"), {
       ...source,
-      linkedDocuments: { ...source.linkedDocuments, minDocuments: 6, maxDocuments: 6 },
+      linkedDocuments: { ...source.linkedDocuments, minDocuments: 7, maxDocuments: 7 },
     });
     expect(urls.map((url) => url.pathname)).toEqual([
       "/mistralai/platform-docs-public/main/src/schema/models/models/codestral-embed-25-05.ts",
@@ -3169,6 +3169,7 @@ describe("HTTP transport boundary", () => {
       "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-large-3-25-12.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-medium-3-5-26-04.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/ocr-4-0.ts",
+      "/mistralai/platform-docs-public/main/src/schema/models/models/voxtral-small-25-07.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/voxtral-tts-26-03.ts",
     ]);
   });

@@ -46,6 +46,9 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   unit survive as raw evidence alongside ordinary page, minute, and character rates. An ambiguous
   identity cannot assign that quote to multiple models. Raw cached prices do not borrow token-cache
   counters, establish an uncached/total partition, or become a free offer when their amount is zero.
+  A row may mix units, as `Voxtral Small` does: per-minute audio input cells beside a `$0.4 /M
+  Tokens` output cell. Each cell's own suffix owns its meter and quantity, so the output cell
+  becomes an ordinary `output_text`/million-token rate instead of an unsupported price shape.
   The page's model tables
   alone do not establish current request-service rates or prove those rates were withdrawn.
   A missing service section requires first-party successor evidence before a source repair;
