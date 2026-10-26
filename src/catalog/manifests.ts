@@ -3023,7 +3023,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v9",
+        extractorVersion: "mistral-pricing-v10",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],

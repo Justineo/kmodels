@@ -63,8 +63,8 @@ async function mistralSource(
     ...configured,
     extractor: {
       kind: "mistral-catalog",
-      minModels: 6,
-      maxModels: 6,
+      minModels: 7,
+      maxModels: 7,
     },
   };
   const slugs = [
@@ -72,6 +72,7 @@ async function mistralSource(
     "codestral-embed-25-05",
     "ocr-4-0",
     "voxtral-tts-26-03",
+    "voxtral-small-25-07",
     "mistral-large-2-0-24-07",
     "mistral-large-3-25-12",
   ];
@@ -507,6 +508,24 @@ describe("Mistral adapters", () => {
         ],
       }),
     ).toThrowError(expect.objectContaining({ code: "INVALID_REQUEST" }));
+  });
+
+  it("reads a per-million-token output cell published beside per-minute audio rates", async () => {
+    const result = await mistralSource({
+      pricing: await fixture("mistral/pricing-table.html"),
+    });
+    const small = result.models.find(({ model_id }) => model_id === "voxtral-small-2507");
+    if (small === undefined) throw new Error("Missing Voxtral Small");
+    expect(small.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "output_text",
+          unit: "million_tokens",
+          price: "0.4",
+          raw_price: "0.4",
+        }),
+      ]),
+    );
   });
 
   it("counts only the currencies published for a library retrieval price", () => {
@@ -1112,7 +1131,7 @@ describe("Mistral adapters", () => {
         price_count: retired?.price_facts.length,
       },
     }).toEqual({
-      count: 6,
+      count: 7,
       medium: {
         name: "Mistral Medium 3.5",
         version: "26.04",
@@ -1872,7 +1891,7 @@ describe("Mistral adapters", () => {
     const openapiItems: PricingReconciliationItem[] = [];
     const result = await mistralSource({ openapi }, (item) => openapiItems.push(item));
     const retained = result.models;
-    expect(retained).toHaveLength(6);
+    expect(retained).toHaveLength(7);
     const retainedInputs = result.pricing_inputs ?? [];
     expect(retainedInputs).toHaveLength(18);
     expect(retainedInputs.some(({ key }) => key.endsWith(".cached_tokens"))).toBe(false);
@@ -1933,10 +1952,10 @@ describe("Mistral adapters", () => {
       "list_models_v1_models_get",
       "list_available_models",
     );
-    await expect(mistralCatalog({ openapi: modelList })).resolves.toHaveLength(6);
+    await expect(mistralCatalog({ openapi: modelList })).resolves.toHaveLength(7);
 
     const misleadingUsage = `${openapi}\n    UnrelatedCacheShape:\n      properties:\n        cached_tokens:\n          type: integer`;
-    await expect(mistralCatalog({ openapi: misleadingUsage })).resolves.toHaveLength(6);
+    await expect(mistralCatalog({ openapi: misleadingUsage })).resolves.toHaveLength(7);
   });
 
   it("isolates feature, endpoint, and pricing drift", async () => {
@@ -1947,7 +1966,7 @@ describe("Mistral adapters", () => {
       undefined,
       (finding) => findings.push(finding),
     );
-    expect(featureModels).toHaveLength(6);
+    expect(featureModels).toHaveLength(7);
     expect(findings).toContainEqual(expect.objectContaining({ disposition: "accept_with_signal" }));
 
     const schema = await fixture("mistral/schema.ts");
@@ -1958,7 +1977,7 @@ describe("Mistral adapters", () => {
           '"chat-completions": { endpoints: ["responses"] }',
         ),
       }),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
 
     const endpoints = await fixture("mistral/endpoints.ts");
     const endpointModels = await mistralCatalog({
@@ -1967,7 +1986,7 @@ describe("Mistral adapters", () => {
         'path: "https://api.mistral.ai/v1/chat/completions"',
       ),
     });
-    expect(endpointModels).toHaveLength(6);
+    expect(endpointModels).toHaveLength(7);
     expect(
       endpointModels
         .find(({ model_id }) => model_id === "mistral-medium-3-5")
@@ -1977,7 +1996,7 @@ describe("Mistral adapters", () => {
     const invalidFree = await mistralCatalog({
       medium: medium.replace("free: false", "free: true"),
     });
-    expect(invalidFree).toHaveLength(6);
+    expect(invalidFree).toHaveLength(7);
     expect(
       invalidFree.find(({ model_id }) => model_id === "mistral-medium-3-5")?.pricing_state,
     ).toBe("numeric");
@@ -1987,7 +2006,7 @@ describe("Mistral adapters", () => {
         medium: withoutMistralPrices(medium),
         pricing: withoutMistralPublicMedium(await fixture("mistral/pricing.html")),
       }),
-    ).resolves.toHaveLength(6);
+    ).resolves.toHaveLength(7);
 
     expect(
       (
@@ -2009,7 +2028,7 @@ describe("Mistral adapters", () => {
       (item) => reconciliation.push(item),
       (finding) => findings.push(finding),
     );
-    expect(models).toHaveLength(5);
+    expect(models).toHaveLength(6);
     expect(findings).toEqual([]);
     expect(reconciliation).toContainEqual({
       disposition: "excluded",
@@ -2040,7 +2059,7 @@ describe("Mistral adapters", () => {
       undefined,
       (finding) => findings.push(finding),
     );
-    expect(models).toHaveLength(5);
+    expect(models).toHaveLength(6);
     expect(models.some(({ model_id }) => model_id === "mistral-medium-3-5")).toBe(false);
     expect(findings).toContainEqual(
       expect.objectContaining({
@@ -2190,7 +2209,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v9",
+        extractorVersion: "mistral-pricing-v10",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

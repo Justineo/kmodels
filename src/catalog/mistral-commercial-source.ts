@@ -167,7 +167,7 @@ export function parseMistralPricingCards(
           const value = compact(content.text());
           if (value === "—" || value.toLowerCase() === "free") return [];
           const match = value.match(
-            /^\$(\d+(?:\.\d+)?)(?:\s*(\/\s*1000\s*pages|\/\s*min|\/\s*m\s*chars))?$/iu,
+            /^\$(\d+(?:\.\d+)?)(?:\s*(\/\s*1000\s*pages|\/\s*min|\/\s*m\s*chars|\/\s*m\s*tokens))?$/iu,
           );
           if (match?.[1] === undefined) {
             reconcile?.({
