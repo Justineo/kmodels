@@ -721,6 +721,34 @@ describe("Mistral adapters", () => {
     expect(medium).toMatchObject({ pricing_state: "unknown", price_facts: [] });
   });
 
+  it("reads the table section unit when a row omits its own denominator", () => {
+    const table = (unit: string, cells: readonly string[]) =>
+      `<section><div><span>${unit}</span></div><table><tr><th>Model</th><th>Input</th><th>Cached input</th><th>Output</th></tr><tr><td><a href="/models/ocr-4-1">OCR 4.1</a></td>${cells
+        .map((cell) => `<td>${cell}</td>`)
+        .join("")}</tr></table></section>`;
+    const pageRows = parseMistralPricingCards(table("Prices /1000 Pages", ["$4", "$0.4", "—"]));
+    expect(pageRows[0]?.rows).toEqual([
+      { label: "OCR", priceUsd: "4", prefix: null, suffix: "/ 1000 pages" },
+      {
+        label: "Cached input (/1000 pages)",
+        priceUsd: "0.4",
+        prefix: null,
+        suffix: "/ 1000 pages",
+      },
+    ]);
+    const tokenRows = parseMistralPricingCards(table("Prices /M Tokens", ["$4", "$0.4", "$8"]));
+    expect(tokenRows[0]?.rows.map(({ label }) => label)).toEqual([
+      "Input (/M tokens)",
+      "Cached input (/M tokens)",
+      "Output (/M tokens)",
+    ]);
+    const mixed = parseMistralPricingCards(table("Prices /1000 Pages", ["$4 /Min", "$0.4", "—"]));
+    expect(mixed[0]?.rows.map(({ label, suffix }) => ({ label, suffix }))).toEqual([
+      { label: "Audio Input/min", suffix: null },
+      { label: "Cached input (/1000 pages)", suffix: "/ 1000 pages" },
+    ]);
+  });
+
   it("reads current sale amounts and keeps cached OCR cells separate from ordinary pages", async () => {
     const value = manifest("mistral");
     const configured = value.sources.find(({ id }) => id === "mistral-pricing");

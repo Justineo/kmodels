@@ -139,6 +139,15 @@ export function parseMistralPricingCards(
         )
       )
         continue;
+      // The current page declares the row unit in the table's section heading instead of in
+      // every cell, so a bare amount would otherwise inherit the token default.
+      const sectionUnit = $(table)
+        .closest("section")
+        .find("span")
+        .toArray()
+        .map((node) => compact($(node).text()))
+        .find((text) => /^Prices\b/u.test(text));
+      const sectionSuffix = sectionUnit === "Prices /1000 Pages" ? "/ 1000 pages" : undefined;
       for (const row of $(table).find("tr").slice(1).toArray()) {
         const cells = $(row).find("td").toArray();
         if (cells.length !== 4) continue;
@@ -178,9 +187,11 @@ export function parseMistralPricingCards(
             return [];
           }
           const suffix = match[2]
-            ?.toLowerCase()
-            .replace(/^\/\s*/u, "/ ")
-            .replace(/\s+/g, " ");
+            ? match[2]
+                .toLowerCase()
+                .replace(/^\/\s*/u, "/ ")
+                .replace(/\s+/g, " ")
+            : sectionSuffix;
           const column = headers[index + 1];
           if (column === undefined) return [];
           const label =
