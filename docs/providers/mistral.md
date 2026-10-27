@@ -32,7 +32,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   tables instead of the former model-card elements. Table links provide navigation only; each
   row still binds through its unique exact active catalog title. Dollar-prefixed cells establish
   USD; EUR requires the separately verified source-owned conversion described below. Explicit page units remain scoped to
-  their row: tokens, OCR pages, audio minutes, or speech characters.
+  their row: tokens, OCR pages, audio minutes, or speech characters. A table's `Prices …` section
+  heading owns the unit of every cell that omits its own denominator, so a bare OCR amount under
+  `Prices /1000 Pages` stays a per-page rate instead of inheriting the token default; a cell
+  suffix always wins over the section heading.
   The manifest uses the canonical documentation URL directly. Relative model-card links resolve
   on `docs.mistral.ai`; resolving them against the former `mistral.ai/pricing/api/` entry point
   silently lost every discovered companion after its cross-host redirect. The Markdown view has
