@@ -458,10 +458,10 @@ const dashscopeCatalogSource = (
   url: `https://www.alibabacloud.com/help/en/model-studio/${path.replace(/\/$/, "")}.md`,
   type: "website",
   access: "public",
-  format: "markdown",
+  format: "html",
   stability: "documented",
   extractor: { kind: "dashscope-catalog", category, maxModels },
-  extractorVersion: "dashscope-catalog-v6",
+  extractorVersion: "dashscope-catalog-v7",
   fields: [
     "model_id",
     "description",
@@ -4157,7 +4157,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v12",
+        extractorVersion: "ollama-cloud-v13",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

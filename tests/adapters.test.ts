@@ -1463,6 +1463,7 @@ async function ollamaLibrary(
 }
 
 interface OllamaCloudOptions {
+  catalog?: string;
   documents?: Readonly<Record<string, string>>;
   pages?: Readonly<Record<string, string>>;
   transform?: (body: string) => string;
@@ -1497,7 +1498,7 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
     ...bundle,
     catalog: {
       url: "https://ollama.com/search?c=cloud",
-      body: await fixture("ollama/cloud-catalog.html"),
+      body: options.catalog ?? (await fixture("ollama/cloud-catalog.html")),
     },
     pages: await Promise.all(
       pages.map(async ([model, path]) => ({
@@ -12087,6 +12088,37 @@ describe("DashScope adapters", () => {
     });
   });
 
+  it("reads flat official HTML task tables whose headings are page siblings", () => {
+    const models = parse(
+      source("dashscope-text"),
+      `<article class="markdown-body">
+        <h2>Recommended models</h2>
+        <table>
+          <tr><th>Model ID</th><th>Context</th></tr>
+          <tr><td>qwen3.8-max</td><td>1M</td></tr>
+        </table>
+        <h2>Legacy models</h2>
+        <h3>Qwen-Long</h3>
+        <table>
+          <tr><th>Model ID</th><th>Context</th></tr>
+          <tr><td>qwen-long</td><td>10M</td></tr>
+        </table>
+      </article>`,
+    );
+    expect(models.map(({ model_id }) => model_id)).toEqual(["qwen-long", "qwen3.8-max"]);
+    expect(models.find(({ model_id }) => model_id === "qwen-long")).toMatchObject({
+      limits: { context_tokens: 10_000_000 },
+    });
+    expect(() =>
+      parse(
+        source("dashscope-text"),
+        `<article class="markdown-body"><h2>Migrate from closed-source models</h2><table>
+          <tr><th>Model ID</th><th>Context</th></tr>
+          <tr><td>qwen3.8-max</td><td>1M</td></tr></table></article>`,
+      ),
+    ).toThrow("count_outside_bounds");
+  });
+
   it("validates current task-table coverage independently of historical inventory size", () => {
     const configured = manifest("dashscope").sources.find(({ id }) => id === "dashscope-tts");
     if (configured === undefined) throw new Error("Missing TTS source");
@@ -13521,8 +13553,20 @@ describe("DashScope adapters", () => {
   it("uses canonical public documents and bounded API pagination", () => {
     const value = manifest("dashscope");
     const htmlSources = new Set(["dashscope-pricing", "dashscope-lifecycle", "dashscope-releases"]);
+    const catalogSources = value.sources.filter(
+      ({ extractor }) => extractor.kind === "dashscope-catalog",
+    );
+    expect(catalogSources.length).toBeGreaterThan(0);
+    expect(
+      catalogSources.every(({ format, extractorVersion }) => {
+        return format === "html" && extractorVersion === "dashscope-catalog-v7";
+      }),
+    ).toBe(true);
     const markdownSources = value.sources.filter(
-      ({ id }) => id !== "dashscope-deployable-api" && !htmlSources.has(id),
+      ({ id, extractor }) =>
+        id !== "dashscope-deployable-api" &&
+        extractor.kind !== "dashscope-catalog" &&
+        !htmlSources.has(id),
     );
     expect(
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
@@ -15504,7 +15548,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v12",
+      extractorVersion: "ollama-cloud-v13",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });
@@ -15583,6 +15627,30 @@ describe("Ollama adapters", () => {
       ).toEqual([]);
     },
   );
+
+  it("reads cloud cards that place the description directly under the card link", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const result = await ollamaCloudResult(
+      { catalog: await fixture("ollama/cloud-catalog-flat-cards.html") },
+      undefined,
+      (evidence) => findings.push(evidence),
+    );
+    expect(result.models.map(({ model_id }) => model_id)).toContain("gpt-oss");
+    expect(result.models.map(({ model_id }) => model_id)).toContain("kimi-k3");
+    expect(
+      result.models.flatMap(({ model_id, description }) =>
+        model_id === "gpt-oss" || model_id === "kimi-k3" ? [{ model_id, description }] : [],
+      ),
+    ).toEqual([
+      { model_id: "gpt-oss", description: "Open-weight reasoning models." },
+      { model_id: "kimi-k3", description: "A frontier multimodal agentic model." },
+    ]);
+    expect(
+      findings
+        .flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path))
+        .filter((path) => path.endsWith("/description")),
+    ).toEqual([]);
+  });
 
   it("keeps new unused list properties informational and malformed owned dates diagnostic", () => {
     const value = manifest("ollama");

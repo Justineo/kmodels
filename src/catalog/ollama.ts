@@ -186,7 +186,9 @@ function libraryItems(body: string, input: ParseInput): LibraryItem[] {
     const id = parsedId.data;
     const intro = anchor.children("div").first();
     const title = intro.find("h2").first().text().replace(/\s+/g, " ").trim();
-    const description = intro.children("p").first().text().replace(/\s+/g, " ").trim();
+    const description = (intro.children("p").first().text() || anchor.children("p").first().text())
+      .replace(/\s+/g, " ")
+      .trim();
     const badgeValues = anchor
       .find('span[class*="bg-indigo"], span[class*="bg-cyan"]')
       .map((_badgeIndex, badge) => $(badge).text().trim())
