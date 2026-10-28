@@ -86,7 +86,45 @@ function headings($: Document, table: Selection): string[] {
   return result;
 }
 
-export function htmlTables(body: string): HtmlTable[] {
+/**
+ * Resolve the heading outline of a flat document whose tables are not wrapped in sections by
+ * replaying the preceding headings of each ancestor level in document order.
+ */
+function precedingHeadings($: Document, table: Selection): string[] {
+  const groups: { level: number; text: string }[][] = [];
+  for (const selection of [
+    table,
+    ...table
+      .parents()
+      .toArray()
+      .map((element) => $(element)),
+  ]) {
+    groups.unshift(
+      selection
+        .prevAll("h1,h2,h3,h4,h5,h6")
+        .toArray()
+        .reverse()
+        .map((element) => ({
+          level: Number(element.tagName.slice(1)) || 6,
+          text: htmlText($(element).text()),
+        }))
+        .filter(({ text }) => text !== ""),
+    );
+  }
+  const result: { level: number; text: string }[] = [];
+  for (const group of groups) {
+    for (const { level, text } of group) {
+      while ((result.at(-1)?.level ?? 0) >= level) result.pop();
+      result.push({ level, text });
+    }
+  }
+  return result.map(({ text }) => text);
+}
+
+export function htmlTables(
+  body: string,
+  options: { precedingHeadings?: boolean } = {},
+): HtmlTable[] {
   const $ = load(body);
   return $("main table, table")
     .toArray()
@@ -107,7 +145,12 @@ export function htmlTables(body: string): HtmlTable[] {
             .filter(Boolean),
         ).join(" / "),
       );
-      return { headers, rows: tableRows.slice(headerDepth), headings: headings($, selection) };
+      const sectionHeadings = headings($, selection);
+      const tableHeadings =
+        sectionHeadings.length > 0 || options.precedingHeadings !== true
+          ? sectionHeadings
+          : precedingHeadings($, selection);
+      return { headers, rows: tableRows.slice(headerDepth), headings: tableHeadings };
     });
 }
 

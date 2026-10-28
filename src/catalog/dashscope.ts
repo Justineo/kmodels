@@ -92,8 +92,8 @@ function markdownSections(body: string): string {
   return result.join("\n");
 }
 
-function tables(body: string): Table[] {
-  return htmlTables(/^#{1,6}\s+/m.test(body) ? markdownSections(body) : body);
+function tables(body: string, options: { precedingHeadings?: boolean } = {}): Table[] {
+  return htmlTables(/^#{1,6}\s+/m.test(body) ? markdownSections(body) : body, options);
 }
 
 function markdownCell(cell: Cell): Cell {
@@ -628,7 +628,7 @@ export function parseDashscopeCatalog(input: ParseInput): SourceParseResult {
   let catalogTables = 0;
   // The Markdown endpoint also publishes JSX numeric span attributes in raw tables.
   const body = input.body.replace(/\b(rowSpan|colSpan)=\{(\d+)\}/g, '$1="$2"');
-  for (const [tableIndex, table] of tables(body).entries()) {
+  for (const [tableIndex, table] of tables(body, { precedingHeadings: true }).entries()) {
     if (
       !table.headings.some((heading) =>
         /^(?:Recommended models|All models|Legacy models)$/.test(heading),

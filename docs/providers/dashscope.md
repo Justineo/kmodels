@@ -51,7 +51,13 @@ still reject empty or truncated source inventories.
 Production collection uses only Alibaba Cloud first-party sources:
 
 - the official [recommended-model page](https://www.alibabacloud.com/help/en/model-studio/models.md)
-  and nine task catalogs discover public model identities and capabilities;
+  and nine task catalogs discover public model identities and capabilities. The task catalogs now
+  answer with the rendered HTML page even when the manifest requests the `.md` representation, so
+  each one is fetched as `format: "html"` and its tables are read from the document itself. Their
+  `Recommended models`/`All models`/`Legacy models` ownership is declared by heading elements that
+  are page siblings of the tables rather than enclosing sections, so catalog extraction resolves
+  each table's heading outline from its preceding siblings before applying the reviewed section
+  filter;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit

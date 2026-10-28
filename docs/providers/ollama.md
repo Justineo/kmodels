@@ -77,6 +77,11 @@ document order. Collection does not discover arbitrary commercial pages through 
   update dates. List/Show modification instants are compared in UTC and projected to the latest day;
   differently formatted or independently updated observations are not contradictory lifecycle claims.
   Unused additive list properties remain informational; malformed consumed fields stay actionable.
+- Library cards describe a model with a paragraph inside the card's intro block; Cloud-filtered
+  cards place the same paragraph directly under the card link, beside an inline `Updated` timestamp
+  span. Card extraction accepts either position and reports a missing description only when both are
+  empty. The `Updated` span label is relative ("1w"), so Cloud cards take lifecycle dates from
+  List/Show modification instants rather than that label.
 - A Cloud retirement is applied globally only when the exact identity is absent from the current
   Library. Current Library evidence keeps the shared catalog identity active.
 
