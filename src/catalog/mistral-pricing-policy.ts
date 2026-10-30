@@ -83,100 +83,102 @@ function bundledCurrencyPolicy(bundle: LinkedBundle): CurrencyPolicy | undefined
       continue;
     const source = ts.createSourceFile("currency.js", document.body, ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node): void => {
-      if (
-        ts.isFunctionDeclaration(node) &&
-        node.parameters.length === 2 &&
-        node.body?.statements.length === 1
-      ) {
-        const [amount, currency] = node.parameters;
-        const statement = node.body.statements[0];
-        const expression =
-          statement !== undefined && ts.isReturnStatement(statement)
-            ? statement.expression
-            : undefined;
-        if (
-          amount !== undefined &&
-          currency !== undefined &&
-          ts.isIdentifier(amount.name) &&
-          ts.isIdentifier(currency.name) &&
-          currency.initializer !== undefined &&
-          ts.isStringLiteral(currency.initializer) &&
-          currency.initializer.text === "usd" &&
-          expression !== undefined &&
-          ts.isCallExpression(expression) &&
-          expression.arguments.length === 2 &&
-          expression.arguments[0]?.getText(source) === "/\\.?0+$/" &&
-          expression.arguments[1] !== undefined &&
-          ts.isStringLiteral(expression.arguments[1]) &&
-          expression.arguments[1].text === "" &&
-          ts.isPropertyAccessExpression(expression.expression) &&
-          expression.expression.name.text === "replace"
-        ) {
-          const rounded = expression.expression.expression;
-          if (
-            ts.isCallExpression(rounded) &&
-            ts.isPropertyAccessExpression(rounded.expression) &&
-            rounded.expression.name.text === "toFixed"
-          ) {
-            const value = rounded.expression.expression;
-            const precision = rounded.arguments[0];
-            const conditional = ts.isParenthesizedExpression(value) ? value.expression : value;
-            if (
-              ts.isConditionalExpression(conditional) &&
-              ts.isBinaryExpression(conditional.condition) &&
-              conditional.condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-              ts.isStringLiteral(conditional.condition.left) &&
-              conditional.condition.left.text === "eur" &&
-              identifier(conditional.condition.right, currency.name.text) &&
-              ts.isBinaryExpression(conditional.whenTrue) &&
-              conditional.whenTrue.operatorToken.kind === ts.SyntaxKind.AsteriskToken &&
-              ts.isNumericLiteral(conditional.whenTrue.left) &&
-              identifier(conditional.whenTrue.right, amount.name.text) &&
-              identifier(conditional.whenFalse, amount.name.text) &&
-              precision !== undefined &&
-              ts.isElementAccessExpression(precision) &&
-              ts.isIdentifier(precision.expression) &&
-              identifier(precision.argumentExpression, currency.name.text) &&
-              ts.isBlock(node.parent)
-            ) {
-              const bindingName = precision.expression.text;
-              const declarations = node.parent.statements
-                .flatMap((s) =>
-                  ts.isVariableStatement(s) ? [...s.declarationList.declarations] : [],
-                )
-                .filter((declaration) => identifier(declaration.name, bindingName));
-              const binding = declarations.length === 1 ? declarations[0]?.initializer : undefined;
-              const precisions =
-                binding !== undefined && ts.isObjectLiteralExpression(binding)
-                  ? binding.properties.flatMap((p) =>
-                      ts.isPropertyAssignment(p) &&
-                      identifier(p.name, "eur") &&
-                      ts.isNumericLiteral(p.initializer)
-                        ? [Number(p.initializer.text)]
-                        : [],
-                    )
-                  : [];
-              const decimals = precisions[0];
-              const factor = conditional.whenTrue.left.text.replace(/^\./, "0.");
-              if (
-                precisions.length === 1 &&
-                decimals !== undefined &&
-                Number.isInteger(decimals) &&
-                decimals >= 0 &&
-                decimals <= 18 &&
-                /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(factor) &&
-                /[1-9]/.test(factor)
-              )
-                policies.push({ factor, decimals });
-            }
-          }
-        }
-      }
+      const policy = formatterCurrencyPolicy(node, source);
+      if (policy !== undefined) policies.push(policy);
       ts.forEachChild(node, visit);
     };
     visit(source);
   }
   return policies.length === 1 ? policies[0] : undefined;
+}
+
+function formatterCurrencyPolicy(node: ts.Node, source: ts.SourceFile): CurrencyPolicy | undefined {
+  if (
+    !ts.isFunctionDeclaration(node) ||
+    node.parameters.length !== 2 ||
+    node.body?.statements.length !== 1
+  )
+    return;
+  const [amount, currency] = node.parameters;
+  const statement = node.body.statements[0];
+  const expression =
+    statement !== undefined && ts.isReturnStatement(statement) ? statement.expression : undefined;
+  if (
+    amount === undefined ||
+    currency === undefined ||
+    !ts.isIdentifier(amount.name) ||
+    !ts.isIdentifier(currency.name) ||
+    currency.initializer === undefined ||
+    !ts.isStringLiteral(currency.initializer) ||
+    currency.initializer.text !== "usd" ||
+    expression === undefined ||
+    !ts.isCallExpression(expression) ||
+    expression.arguments.length !== 2 ||
+    expression.arguments[0]?.getText(source) !== "/\\.?0+$/" ||
+    expression.arguments[1] === undefined ||
+    !ts.isStringLiteral(expression.arguments[1]) ||
+    expression.arguments[1].text !== "" ||
+    !ts.isPropertyAccessExpression(expression.expression) ||
+    expression.expression.name.text !== "replace"
+  )
+    return;
+  const rounded = expression.expression.expression;
+  if (
+    !ts.isCallExpression(rounded) ||
+    !ts.isPropertyAccessExpression(rounded.expression) ||
+    rounded.expression.name.text !== "toFixed"
+  )
+    return;
+  const value = rounded.expression.expression;
+  const precision = rounded.arguments[0];
+  const conditional = ts.isParenthesizedExpression(value) ? value.expression : value;
+  if (
+    !ts.isConditionalExpression(conditional) ||
+    !ts.isBinaryExpression(conditional.condition) ||
+    conditional.condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    !ts.isStringLiteral(conditional.condition.left) ||
+    conditional.condition.left.text !== "eur" ||
+    !identifier(conditional.condition.right, currency.name.text) ||
+    !ts.isBinaryExpression(conditional.whenTrue) ||
+    conditional.whenTrue.operatorToken.kind !== ts.SyntaxKind.AsteriskToken ||
+    !ts.isNumericLiteral(conditional.whenTrue.left) ||
+    !identifier(conditional.whenTrue.right, amount.name.text) ||
+    !identifier(conditional.whenFalse, amount.name.text) ||
+    precision === undefined ||
+    !ts.isElementAccessExpression(precision) ||
+    !ts.isIdentifier(precision.expression) ||
+    !identifier(precision.argumentExpression, currency.name.text) ||
+    !ts.isBlock(node.parent)
+  )
+    return;
+  const bindingName = precision.expression.text;
+  const declarations = node.parent.statements
+    .flatMap((s) => (ts.isVariableStatement(s) ? [...s.declarationList.declarations] : []))
+    .filter((declaration) => identifier(declaration.name, bindingName));
+  const binding = declarations.length === 1 ? declarations[0]?.initializer : undefined;
+  const precisions =
+    binding !== undefined && ts.isObjectLiteralExpression(binding)
+      ? binding.properties.flatMap((p) =>
+          ts.isPropertyAssignment(p) &&
+          identifier(p.name, "eur") &&
+          ts.isNumericLiteral(p.initializer)
+            ? [Number(p.initializer.text)]
+            : [],
+        )
+      : [];
+  const decimals = precisions[0];
+  const factor = conditional.whenTrue.left.text.replace(/^\./, "0.");
+  if (
+    precisions.length !== 1 ||
+    decimals === undefined ||
+    !Number.isInteger(decimals) ||
+    decimals < 0 ||
+    decimals > 18 ||
+    !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(factor) ||
+    !/[1-9]/.test(factor)
+  )
+    return;
+  return { factor, decimals };
 }
 
 export function applyMistralPricingPolicy(
