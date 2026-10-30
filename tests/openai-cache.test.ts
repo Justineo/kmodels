@@ -6,6 +6,7 @@ import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts
 import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
+import { websitePublication } from "../src/catalog/website-data.ts";
 import { createCalculator, type Quantity, type Selector } from "../src/pricing/index.ts";
 
 const at = "2026-10-30T01:00:00.000Z";
@@ -67,28 +68,39 @@ function compiled(batch: boolean) {
       }),
     ),
   );
-  const exported = calculationExport(
+  const pricing = createPricingCatalogEnvelope(
+    {
+      books: partition.books,
+      provider_vocabularies: [partition.vocabulary],
+      provider_snapshots: [partition.snapshot],
+      model_dispositions: partition.model_dispositions,
+    },
     core,
-    createPricingCatalogEnvelope(
-      {
-        books: partition.books,
-        provider_vocabularies: [partition.vocabulary],
-        provider_snapshots: [partition.snapshot],
-        model_dispositions: partition.model_dispositions,
-      },
-      core,
-    ),
   );
+  const exported = calculationExport(core, pricing);
   const calculator = createCalculator(exported);
   const offer = exported.providers[0]?.books[0]?.offers.find(
     ({ offer_key }) => offer_key === (batch ? "batch" : "sync"),
   );
   if (offer === undefined) throw new Error("Missing offer");
-  return { calculator, offer };
+  const websiteOffer = websitePublication(core, pricing.data, "b".repeat(64))
+    .offers.flatMap(({ offers }) => offers)
+    .find(({ id }) => id === offer.id);
+  if (websiteOffer === undefined) throw new Error("Missing website offer");
+  return { calculator, offer, websiteOffer };
 }
 
 it.each([false, true])("prices mixed cache lifetimes once at the %s Batch boundary", (batch) => {
-  const { calculator, offer } = compiled(batch);
+  const { calculator, offer, websiteOffer } = compiled(batch);
+  expect(new Set(websiteOffer.rates.map(({ label }) => label))).toEqual(
+    new Set([
+      "Input text",
+      "Output text",
+      "Cache read text",
+      "Cache write 30m tokens",
+      "Cache write 12h tokens",
+    ]),
+  );
   const quantity = (signal: Quantity["signal"], value: string): Quantity => ({
     signal,
     value: { numerator: value, denominator: "1" },
