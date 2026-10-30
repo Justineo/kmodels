@@ -1,4 +1,4 @@
-# Portable pricing contract 1.0
+# Portable pricing contract 2.0
 
 Status: implemented. This document, `schema.json`, `request.schema.json`, and `conformance.json` define the language-neutral contract. JSON Schema describes structure; the semantic checks and evaluator rules below are also mandatory. Another implementation need not use TypeScript or Zod.
 
@@ -6,11 +6,11 @@ Status: implemented. This document, `schema.json`, `request.schema.json`, and `c
 
 The runtime contains no real price data, performs no I/O, reads no environment or wall clock, and retains no usage. Initialization validates and clones a caller-supplied JSON value into an immutable private snapshot. Each call uses only that snapshot and its arguments. Results and discovery outputs are isolated copies. Replacing an instance is the refresh mechanism; existing instances continue to use their original data.
 
-The envelope has `schemaVersion: "1.0"`, `snapshot`, and a nonempty `providers` array. This release accepts exactly version `1.0`; unsupported versions produce `UNSUPPORTED_SCHEMA`. Data updates with that schema do not require a package release. Changes to wire or evaluator semantics require a declared compatible package version and an explicit schema-version decision. Do not silently reinterpret an unknown version.
+The envelope has `schemaVersion: "2.0"`, `snapshot`, and a nonempty `providers` array. The default entry accepts exactly version `2.0`; unsupported versions produce `UNSUPPORTED_SCHEMA`. Data updates with that schema do not require a package release. Changes to wire or evaluator semantics require a declared compatible package version and an explicit schema-version decision. Do not silently reinterpret an unknown version.
 
-Package `0.2.0` keeps data/request schema `1.0` and the exact calculation rules. It adds discovery and charge metadata and corrects validation of selector acquisition contracts. Valid `1.0` data and requests remain compatible; malformed selector mappings previously accepted by mistake now fail with `INVALID_DATA`. The minor version reflects pre-1.0 TypeScript API changes: `CalculationComponent` describes input with optional defaulted arrays, `CalculationResult` is a status-discriminated union, and charge requirements are discriminated by kind. Consumers constructing result mocks or extending the former result interface must update their types; code reading component arrays should handle absence. Strict output decoders and exact output snapshots must admit the added metadata. Input shapes and method names are unchanged.
+Package `1.0.0` introduces schema `2.0` at its default entry. Initialization is asynchronous; calculation remains synchronous. Existing schema `1.0` consumers use the explicit `@kmodels/pricing/v1` entry and its unchanged synchronous API, schemas and [contract](v1/CONTRACT.md). The two readers reject each other's envelopes. To migrate, obtain a v2 export, await initialization, and select a target/case for every offer that has invocation bindings. Do not manufacture a v2 envelope by relabeling a legacy export. Strict result decoders must admit the additional snapshot hashes and `invocationSelections`.
 
-`snapshot` contains the canonical `pricingDataVersion`, `coreCatalogVersion`, and `generatedAt`. A provider partition contains its publication/observation metadata, complete vocabulary, model dispositions, source identity/URL/hash/extractor metadata, and complete books. Preserve book → offer → logical term → qualified variant identity. Preserve states, enrollment and settlement metadata, resource edges, relations, rate/allowance/contribution/raw terms, selector mappings, bindings, applicability, validity, and evidence locators. Omit observation fragments and copied upstream bodies. Enrollment/settlement describe access and billing context; they do not discount a public list rate.
+`snapshot` contains the canonical `pricingDataVersion`, `coreCatalogVersion`, `generatedAt`, `coreDataSha256`, and `pricingAssetSha256`. The latter hashes identify complete v2 catalog data and the exact canonical v2 pricing response. Provider subsets retain their parent snapshot metadata. A provider partition contains its publication/observation metadata, complete vocabulary, model dispositions, source identity/URL/hash/extractor metadata, and complete books. Preserve book → offer → logical term → qualified variant identity. Preserve states, enrollment and settlement metadata, resource edges, relations, rate/allowance/contribution/raw terms, selector mappings, bindings, applicability, validity, and evidence locators. Omit observation fragments and copied upstream bodies. Enrollment/settlement describe access and billing context; they do not discount a public list rate.
 
 All references must resolve inside the supplied provider partition. Provider-owned vocabulary must belong to that provider, including categorical values under their exact dimension. Book, offer, and term IDs are globally unique; sources and model IDs are unique within a provider. Model `offers` dispositions agree with the books. Input mappings may cover a subset of their quantity method's required signals, but may never introduce unrelated signals. Unmapped signals still require authoritative caller quantities; missing values never default to zero. Coverage reports an acquisition path only when it covers every required signal of at least one method. Units, applicability, rational values, and calculation graphs must be canonical and coherent. A partition is an export of the complete provider, not an arbitrary offer filter. Validation verifies structure and reference closure, not source authenticity or a cryptographic signature. Snapshot version fields identify the canonical source pair, not a digest of the reduced export.
 
@@ -24,10 +24,10 @@ snapshot contains freshness metadata; canonical captured source revisions appear
 
 ## API and normalized input
 
-- `validatePriceData(data)` returns a validated independent data value or throws a stable error.
-- `createCalculator(data)` returns an immutable calculator instance.
+- `await validatePriceData(data)` returns a validated independent data value or rejects with a stable error.
+- `await createCalculator(data)` returns an immutable calculator instance. Initialization uses standard Web Crypto for observed-input reference verification; it performs no transport or storage access.
 - `listOffers({ modelRef?, providerId? })` returns exact matching offers and book/provider/model references. Empty filters list all offers. There is no default, ranking, cheapest-price choice, alias inference, or cross-provider name matching.
-- `requirements({ offerRef, selectors? })` returns potentially applicable charge contracts, selectors still needed, full alternative signal sets, validity, states, aggregation boundaries, related offers/resource edges, and known gaps. It does not choose an offer or assume input values. Contribution requirements include referenced rate IDs and their selectors.
+- `requirements({ offerRef, selectors?, invocation? })` returns potentially applicable charge contracts, selectors still needed, full alternative signal sets, validity, states, aggregation boundaries, related offers/resource edges, and known gaps. It does not choose an offer or assume input values. Contribution requirements include referenced rate IDs and their selectors.
 - `calculate({ evaluatedAt, components })` evaluates one or more billing components. `evaluatedAt` is an explicit RFC 3339 instant used for published validity. It is canonicalized to UTC without discarding sub-millisecond precision.
 
 Each rate requirement includes `selectorSources`, retaining locators, availability, normalization, defaults and evidence within that requirement's applicability and validity. Contributions include `referencedRates`, each with `rateTermRef`, applicability, optional validity and `selectorSources`; the parent contribution's scope also applies. Discovery filters out scopes excluded by supplied selectors but does not assume a time or merge conditional mappings into an unconditional mapping. Allowance requirements expose `benefit`, `target` and `reset`; known unsupported resets and rate substitutions appear in `gaps` before usage is collected. Allocation-dependent gaps still require calculation. An empty discovery gap list does not guarantee a complete calculation.
@@ -43,6 +43,60 @@ Acquisition locators are metadata, never executable extraction programs. The cal
 An assumption is either `{kind: "quantity", quantity, explanation}` or `{kind: "selector", selector, explanation}`. Explanations must contain non-whitespace text. An assumption may only fill an absent value. Conflicts with another assumption or a measurement are errors, including equal-value attempts to overwrite one. Every supplied assumption is returned and makes an otherwise complete result `estimated`.
 
 Components are billing aggregation instances, not logs to deduplicate. The caller owns request, attempt, item, job, resource, and session correlation. A single unambiguous applicable binding boundary may be inferred. Otherwise supply `aggregation`. If an offer has multiple boundaries, represent them as explicitly linked components with the appropriate boundaries. Two components are linked when either lists the other in `relatedComponents`; links are symmetric for relations, aggregation hand-off, and duplicate charging. A charge belonging to another boundary is resolved there only when such a linked component prices the same rate term at the same unit price; otherwise it remains unresolved. Never sum durations across independent instances before applying an increment or minimum.
+
+## Invocation selection
+
+Each provider includes an `invocation` graph, `invocation_sources`, and `invocation_bindings`.
+The graph retains surfaces, targets, joint support cases, typed identifiers, scoped facts, evidence,
+and explicit target coverage. All model, source, surface, target, case, evidence and offer references
+must close within the provider. Invocation sources have explicit public global/region scope and
+remain separate from potentially older price source revisions. Private account/runtime inventories
+cannot establish public invocation facts. Bindings require a documented supported case and offers
+for the same resolved model; duplicate target/case bindings and foreign evidence are invalid.
+
+`listInvocationBindings()` returns isolated copies of the exact target/case/offer joins. An offer
+with bindings requires explicit `invocation: { targetRef, caseRef, inputs?, observed? }` in selection
+requests and calculation components. Offers without bindings permit ordinary explicit offer
+calculation; that does not establish callability. `bindInvocation(selection)` returns derived
+`selectors`, the selected `binding` where present, and `missingInputs` with context/observed kind and
+input reference. It does not choose a default target or case.
+
+Fixed selectors come from the published binding. Context values use their declared input names;
+observed values use their declared acquisition-contract references. Both maps contain normalized
+categorical values. Callers collect and normalize observations according to the offer's acquisition
+contract; a requested region/tier is not evidence of the actual served region/tier. An observed
+reference is `selector:` followed by the SHA-256 of RFC 8785 JSON containing `offer_ref` and the
+selector source `contract` with evidence/observations removed. It must resolve in every linked offer.
+Ordinary selectors cannot bypass missing inputs or contradict derived values. Undeclared input keys,
+unknown cases and unrelated offers fail with `INVALID_REQUEST`; duplicate selector dimensions retain
+`DUPLICATE_SELECTOR`. Requirements and calculation reject incomplete invocation pricing inputs.
+
+Results retain the complete v2 snapshot and `invocationSelections` records with `componentId`,
+`targetRef`, and `caseRef`. These are conditional pricing selections, not evidence of account access,
+runtime configuration, lifecycle eligibility or successful execution. `resolveInvocation(graph,
+query)` separately reports identity, documented support, configuration and context diagnostics;
+account access remains unknown and request verification remains untested.
+
+`assessInvocations(graph, query, policy?)` retains every resolver diagnostic, adds scoped fact and
+eligibility assessments, and exposes an optional `request` addressing template. Default policy allows
+active/stable targets. Explicit policies may permit legacy/deprecated lifecycle or preview/experimental
+release stages; unknown values remain unknown. Required capabilities, minimum token limits and
+embedding dimensions use only the case's referenced facts. Missing or conflicting required evidence
+does not qualify. An observed model different from a pinned target is conflicting; other unresolved
+alias changes cannot silently rewrite model or price identity.
+
+Caller `resource_binding` confirmations name the exact target, case, resolved model, consumed input
+values, scope context, and confirmed deployment/installation/runtime requirements. Deployment and
+endpoint roles always require model binding. Stale confirmations become conflicting when the tuple
+changes. These objects are local caller context, never public inventory or proof of account access.
+
+Templates require supported documentation, matched scope, complete consistent configuration and
+eligible policy. Unknown geography stays unknown; explicit target selection resolves an otherwise
+ambiguous identity choice. Templates contain a URL, method, transport, noncredential headers and
+JSON-pointer body field assignments, not a complete task payload or credentials. Path parameters are
+encoded as single segments; conflicting assignments and invalid origin/protocol values fail closed.
+The package never sends a template. Its account access and actual request verification stay unknown
+and untested. Conditional price calculations remain distinct from these invocation conclusions.
 
 ## Exact quantity evaluation
 

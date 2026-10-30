@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { invocationCatalogSchema } from "./invocation-schema.ts";
+import { invocationPricingBindingSchema } from "./invocation-pricing-schema.ts";
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import {
   deliveryModes,
@@ -17,6 +19,8 @@ import {
   standardPriceDimensions,
 } from "./pricing-vocabulary.ts";
 import { recurringTimeScheduleSchema } from "./pricing-temporal.ts";
+
+export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const nonEmpty = z.string().min(1);
@@ -449,8 +453,18 @@ export const websiteProviderPricingChunkSchema = z.strictObject({
   ),
 });
 
+export const websiteInvocationDetailSchema = z.strictObject({
+  graph: invocationCatalogSchema,
+  models: z.array(z.strictObject({ uid: nonEmpty, provider_id: nonEmpty })),
+  sources: z.array(
+    z.strictObject({ id: nonEmpty, provider_id: nonEmpty, scope: z.enum(["global", "region"]) }),
+  ),
+  bindings: z.array(invocationPricingBindingSchema),
+});
+
 const websiteModelDetailShape = {
   model_ref: nonEmpty,
+  invocation: websiteInvocationDetailSchema.optional(),
   updated_date: modelDate.optional(),
   description: z.string().optional(),
   model_card: modelCardSchema.optional(),
@@ -510,7 +524,7 @@ const websiteStoredModelDetailSchema = z.strictObject({
 });
 
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(6),
+  schema_version: z.union([z.literal(6), z.literal(7)]),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
@@ -545,6 +559,7 @@ export type WebsiteCatalog = Omit<WebsiteCatalogIndex, "models" | "schema_versio
   models: WebsiteModel[];
 };
 export type WebsiteModelDetail = z.infer<typeof websiteModelDetailSchema>;
+export type WebsiteInvocationDetail = z.infer<typeof websiteInvocationDetailSchema>;
 export type WebsiteStoredModelDetail = z.infer<typeof websiteStoredModelDetailSchema>;
 export type WebsitePricingDetail = z.infer<typeof websitePricingDetailSchema>;
 export type WebsiteProviderPricingChunk = z.infer<typeof websiteProviderPricingChunkSchema>;

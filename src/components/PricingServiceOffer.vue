@@ -5,12 +5,14 @@ import type {
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer | WebsiteProviderPricingOffer;
   modelRef?: string | undefined;
   resourceTitle?: string;
   error?: string | undefined;
+  boundSelectors?: readonly PricingSelection[] | undefined;
 }>();
 const emit = defineEmits<{ retry: [] }>();
 const pricing = computed(() => ("rates" in props.offer ? props.offer : undefined));
@@ -38,7 +40,13 @@ const state = computed(() =>
       </div>
       <small v-if="state" class="offer-state">{{ state }}</small>
     </header>
-    <PricingOfferBreakdown v-if="pricing" :offer="pricing" :model-ref explain-charges />
+    <PricingOfferBreakdown
+      v-if="pricing"
+      :offer="pricing"
+      :model-ref
+      :bound-selectors
+      explain-charges
+    />
     <p v-else-if="error" class="service-status" role="alert">
       {{ error }} <button type="button" @click="emit('retry')">Retry</button>
     </p>

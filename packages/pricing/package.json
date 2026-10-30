@@ -1,6 +1,6 @@
 {
   "name": "@kmodels/pricing",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Exact request pricing with caller-owned price data",
   "repository": {
     "type": "git",
@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "v1",
     "schema.json",
     "request.schema.json",
     "conformance.json",
@@ -23,6 +24,14 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./v1": {
+      "types": "./v1/dist/index.d.ts",
+      "import": "./v1/dist/index.js",
+      "default": "./v1/dist/index.js"
+    },
+    "./v1/schema.json": "./v1/schema.json",
+    "./v1/request.schema.json": "./v1/request.schema.json",
+    "./v1/conformance.json": "./v1/conformance.json",
     "./schema.json": "./schema.json",
     "./request.schema.json": "./request.schema.json",
     "./conformance.json": "./conformance.json",

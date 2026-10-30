@@ -1,4 +1,4 @@
-<!-- Reviewed excerpt of https://docs.typesafe.ai/api/system-one.md, observed 2026-10-20. Schema owners and reference paths retained; examples and unrelated fields omitted. -->
+<!-- Reviewed excerpt of https://docs.typesafe.ai/api/system-one.md, observed 2026-10-30. Schema owners, request origin, model field, authentication and reference paths retained; examples and unrelated fields omitted. -->
 
 # System One
 
@@ -6,6 +6,8 @@
 
 ```yaml https://api.typesafe.ai/openapi.json post /v1/systemone
 openapi: 3.1.0
+servers:
+  - url: https://api.typesafe.ai
 paths:
   /v1/systemone:
     post:
@@ -20,10 +22,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemOneResponse"
+      security:
+        - HTTPBearer: []
 components:
   schemas:
     SystemOneRequest:
       properties:
+        model:
+          type: string
         questions:
           additionalProperties:
             $ref: "#/components/schemas/Question"
@@ -81,4 +87,8 @@ components:
           type: string
           const: score
       type: object
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
 ```

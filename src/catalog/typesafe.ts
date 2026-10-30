@@ -16,6 +16,8 @@ import {
   type SourceContractEvidence,
 } from "./source-contract.ts";
 import type { SourceParseResult } from "./source-parse.ts";
+import { typesafeInvocation } from "./typesafe-invocation.ts";
+import { typesafeOfferKey } from "./typesafe-commercial.ts";
 
 interface Input {
   provider: Provider;
@@ -227,6 +229,25 @@ function typedQuestions(spec: string): boolean {
   });
 }
 
+function invocationWire(spec: string | undefined): boolean {
+  if (spec === undefined) return false;
+  const request = operationSchema(spec, "request");
+  if (request === undefined) return false;
+  const types = openApiYamlSchemaReader(spec)(request, ["model"]);
+  const servers = yamlPath(spec, ["servers"]);
+  const security = yamlPath(spec, ["paths", "/v1/systemone", "post", "security"]);
+  const bearer = yamlPath(spec, ["components", "securitySchemes", "HTTPBearer"]);
+  return (
+    types.length === 1 &&
+    types[0] === "string" &&
+    servers?.trim() === "servers:\n  - url: https://api.typesafe.ai" &&
+    security?.trim() === "security:\n        - HTTPBearer: []" &&
+    bearer?.trim() === "HTTPBearer:\n      type: http\n      scheme: bearer" &&
+    yamlPath(spec, ["paths", "/v1/systemone", "servers"]) === undefined &&
+    yamlPath(spec, ["paths", "/v1/systemone", "post", "servers"]) === undefined
+  );
+}
+
 function usageInput(
   sourceRef: string,
   key: "input_tokens" | "output_tokens",
@@ -402,6 +423,7 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
   if (aliases.length !== 1 || aliases[0]?.header.join("|") !== "Alias|Points to|Meaning")
     throw new Error("TypeSafe alias table changed");
   const aliasIds = new Set<string>();
+  const rollingAliases = new Set<string>();
   for (const [aliasCell, targetCell, meaning] of aliases[0].rows) {
     const alias = codeId(aliasCell);
     const target = byId.get(codeId(targetCell));
@@ -409,6 +431,7 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
       throw new Error("TypeSafe alias is ambiguous or unbound");
     aliasIds.add(alias);
     target.aliases.push(alias);
+    if (meaning?.startsWith("The most recent")) rollingAliases.add(alias);
     if (meaning?.startsWith("The most recent stable, official release."))
       target.release_stage = "stable";
   }
@@ -419,8 +442,35 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
     input.source.extractor.minModels,
     input.source.extractor.maxModels,
   );
+  const models = [...byId.values()].sort((left, right) =>
+    left.model_id.localeCompare(right.model_id),
+  );
+  const wireVerified = invocationWire(spec);
+  if (api !== undefined && /^## OpenAPI\s*$/m.test(api) && !wireVerified)
+    signal(input, "/api/invocation-wire");
+  const invocation = typesafeInvocation({
+    models,
+    sourceId: input.source.id,
+    observedAt: input.observedAt,
+    catalog: bundle.index,
+    ...(apiDocuments[0] === undefined || apiDocuments.length !== 1 ? {} : { api: apiDocuments[0] }),
+    wireVerified,
+    rollingAliases,
+  });
   return {
-    models: [...byId.values()].sort((left, right) => left.model_id.localeCompare(right.model_id)),
+    models,
+    invocation,
+    invocation_pricing: invocation.invocation_targets.flatMap((target) =>
+      target.cases.map((entry) => ({
+        target_ref: target.id,
+        case_ref: entry.id,
+        model_ref: target.resolved_model_ref ?? target.model_ref,
+        source_ref: input.source.id,
+        offer_key: typesafeOfferKey,
+        selectors: [],
+        evidence_refs: target.evidence_refs,
+      })),
+    ),
     pricing_inputs: pricingInputs,
   };
 }

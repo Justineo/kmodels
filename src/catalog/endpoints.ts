@@ -4,6 +4,7 @@ import { catalogIdentifiers, catalogIds, catalogModels, catalogSummary } from ".
 import { catalogProvidersSchema } from "./publication-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
 import type { Catalog, CatalogEnvelope } from "./schema.ts";
+import type { InvocationPricingBinding } from "./invocation-pricing-schema.ts";
 import { websitePublication, type WebsitePublication } from "./website-data.ts";
 import { websiteCoreAssets } from "./website-core.ts";
 
@@ -100,8 +101,11 @@ export function websiteAssets(
   catalog: Catalog,
   pricing: PricingCatalog,
   dataVersion: string,
+  invocationBindings: readonly InvocationPricingBinding[] = [],
 ): AssetSource[] {
-  return websitePublicationAssets(websitePublication(catalog, pricing, dataVersion));
+  return websitePublicationAssets(
+    websitePublication(catalog, pricing, dataVersion, invocationBindings),
+  );
 }
 
 export function websitePublicationAssets(website: WebsitePublication): AssetSource[] {

@@ -48,6 +48,7 @@ async function paths(): Promise<CatalogPairPaths> {
     stateDirectory: join(directory, "state"),
     catalogMirror: join(directory, "catalog.json"),
     pricingMirrorGzip: join(directory, "pricing.json.gz"),
+    pricingV2MirrorGzip: join(directory, "pricing-v2.json.gz"),
     projections: {
       uiManifest: join(directory, "website-assets.json"),
       uiPack: join(directory, "website-assets.pack"),

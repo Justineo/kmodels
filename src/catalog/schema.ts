@@ -10,6 +10,7 @@ import {
 } from "./catalog-vocabulary.ts";
 import { sourcePricingEvidenceSchema } from "./source-pricing-policy.ts";
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
+import { invocationCatalogSchema } from "./invocation-schema.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -192,6 +193,7 @@ export const catalogSchema = z.object({
   sources: z.array(sourceRecordSchema),
   coverage: z.array(coverageSchema),
   warnings: z.array(catalogWarningSchema),
+  invocation: invocationCatalogSchema.optional(),
 });
 
 export const catalogEnvelopeSchema = z.object({

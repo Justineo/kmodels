@@ -167,6 +167,7 @@ export type SourceField =
   | "updated_date"
   | "pricing"
   | "pricing_inputs"
+  | "invocation"
   | "availability"
   | "status"
   | "release_stage"
@@ -574,7 +575,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
-        extractorVersion: "typesafe-catalog-v5",
+        extractorVersion: "typesafe-catalog-v6",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -590,6 +591,7 @@ export const manifests = [
           "release_stage",
           "pricing",
           "pricing_inputs",
+          "invocation",
         ],
         allowedHosts: ["docs.typesafe.ai"],
         maxResponseBytes: mebibytes(2),

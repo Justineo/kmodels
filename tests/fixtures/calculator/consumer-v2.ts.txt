@@ -1,0 +1,23 @@
+import { createCalculator, validatePriceData, type Calculator, type CalculationComponent, type CalculationRequest, type CalculationResult, type InvocationSelection } from "@kmodels/pricing";
+
+declare const input: unknown;
+const data = await validatePriceData(input);
+const calculator: Calculator = await createCalculator(data);
+const invocation: InvocationSelection = { targetRef: "target", caseRef: "case" };
+const component: CalculationComponent = { id: "request", offerRef: "0".repeat(64), invocation, quantities: [] };
+const request: CalculationRequest = { evaluatedAt: "2026-10-30T00:00:00Z", components: [component] };
+const result: CalculationResult = calculator.calculate(request);
+const hash: string = result.snapshot.pricingAssetSha256;
+const bound = calculator.bindInvocation({ offerRef: component.offerRef, invocation });
+for (const missing of bound.missingInputs) {
+  const kind: "context" | "observed" = missing.kind;
+  void kind;
+}
+if (result.status === "calculated" || result.status === "estimated") result.totals;
+// @ts-expect-error Initialization is asynchronous in the v2 entry.
+const synchronous: Calculator = createCalculator(data);
+// @ts-expect-error Complete results must include totals.
+const invalidComplete: CalculationResult = { ...result, status: "calculated", totals: undefined };
+// @ts-expect-error Partial results cannot include totals.
+const invalidPartial: CalculationResult = { ...result, status: "partial", totals: [] };
+void [hash, synchronous, invalidComplete, invalidPartial];

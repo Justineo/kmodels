@@ -38,6 +38,7 @@ const props = defineProps<{
   offer: WebsitePricingOffer;
   modelRef?: string | undefined;
   explainCharges?: boolean;
+  boundSelectors?: readonly PricingSelection[] | undefined;
 }>();
 
 interface ScopeCopy {
@@ -54,14 +55,22 @@ const displayOffer = computed(() =>
     ? timeline.value.upcoming.offer
     : timeline.value.current,
 );
-const selectors = computed(() => displayOffer.value.selectors);
+const selectors = computed(() => {
+  const bound = new Set(
+    (props.boundSelectors ?? []).map(({ dimension }) => canonicalJson(dimension)),
+  );
+  return displayOffer.value.selectors.filter(
+    ({ dimension }) => !bound.has(canonicalJson(dimension)),
+  );
+});
 type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
-const fixedSelectionValues = computed(() =>
-  selectors.value.filter(isFixedSelector).map(fixedSelection),
-);
+const fixedSelectionValues = computed(() => [
+  ...selectors.value.filter(isFixedSelector).map(fixedSelection),
+  ...(props.boundSelectors ?? []),
+]);
 const selectionValues = computed(() => [
   ...configurableSelectors.value.flatMap((selector) => {
     const value = selection(selector);

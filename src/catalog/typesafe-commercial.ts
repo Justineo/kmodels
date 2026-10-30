@@ -15,6 +15,8 @@ import {
 import type { ChargeBinding, PriceMeter } from "./pricing-schema.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 
+export const typesafeOfferKey = "systemone";
+
 export function applyTypesafeCommercialTopology(
   input: AtomicProviderPricing,
   pricingInputs: readonly SourcePricingInputFact[],
@@ -27,7 +29,7 @@ export function applyTypesafeCommercialTopology(
         ...book,
         offers: book.offers.map((offer) => ({
           ...offer,
-          offer_key: "systemone",
+          offer_key: typesafeOfferKey,
           name: "System One evaluation",
           terms: offer.terms.map((term) =>
             bindRateTerm(term, (meter, variant) => tokenBinding(meter, variant, index)),

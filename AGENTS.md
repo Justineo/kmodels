@@ -51,6 +51,7 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 
 ## Engineering constraints
 
+- Write project-authored documentation, code comments, UI copy, and examples in English. Preserve provider-owned identifiers and quoted source evidence verbatim.
 - Use one strict TypeScript ESM project targeting ES2023. Keep `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, unused checks, and switch fallthrough checks enabled.
 - Keep code small and concrete; avoid speculative abstractions.
 - Never use `any` or unchecked assertions. Parse external `unknown` values at boundaries, normally with Zod or explicit type guards.

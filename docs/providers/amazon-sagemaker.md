@@ -214,10 +214,9 @@ Pricing references: [SageMaker AI pricing](https://aws.amazon.com/sagemaker/ai/p
 
 Runtime calls use SigV4 and an account-created endpoint name. The serving container owns the
 request/response schema. `InvokeEndpointWithResponseStream` is not evidence that every listed
-model supports streaming. A JumpStart ID cannot automatically become a usable Kong target;
-downstream configuration still needs an endpoint, Region and any routing selectors.
-See [InvokeEndpoint](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_runtime_InvokeEndpoint.html)
-and the [Kong provider reference](https://developer.konghq.com/ai-gateway/ai-providers/sagemaker/).
+model supports streaming. A JumpStart ID does not identify an invocable endpoint;
+runtime configuration still needs an endpoint name, Region and any routing selectors.
+See [InvokeEndpoint](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_runtime_InvokeEndpoint.html).
 
 Registration, fixture validation and read-only live probes do not refresh the accepted `data/`
 snapshot. The normal authorized collection publishes the provider and its static projections

@@ -1,4 +1,5 @@
 import type { SourceManifest } from "./manifests.ts";
+import type { InvocationCatalog } from "./invocation-schema.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePricingFacts } from "./pricing-source.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { Provider } from "./schema.ts";
@@ -6,6 +7,7 @@ import type { SourceContractEvidence } from "./source-contract.ts";
 
 export interface SourceParseResult extends SourcePricingFacts {
   models: ProviderModel[];
+  invocation?: InvocationCatalog;
 }
 
 export interface SourceParseInput {

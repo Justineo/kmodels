@@ -6,9 +6,11 @@ Kmodels supplies model evidence to Kong AI Gateway 2.0. It is not a Kong model a
 
 This document is design guidance for a downstream compatibility projection.
 The canonical catalog and price book contain no Kong-specific source dependency,
-field, allowlist, configuration shape, or compatibility decision. Kong's product
-direction may inform review of Kmodels' provider-neutral workload ontology, but
-it never establishes or removes a provider model or price fact.
+field, allowlist, configuration shape, or compatibility decision. Kong's model
+catalog API and model-name comparison requirements do not define Kmodels' schema,
+identifier semantics, pricing model, or UI behavior. Any compatibility projection
+adapts to Kmodels' provider-neutral contracts without changing those contracts to
+match a downstream consumer.
 
 ## Compatibility
 

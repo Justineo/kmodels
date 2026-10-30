@@ -17,6 +17,8 @@ import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
 import ModelMetadata from "./ModelMetadata.vue";
 import UiIcon from "./UiIcon.vue";
+import InvocationDetails from "./InvocationDetails.vue";
+import type { WebsiteInvocationSelection } from "../catalog/website-invocation-context.ts";
 
 const props = defineProps<{
   model: WebsiteModel | undefined;
@@ -40,6 +42,14 @@ const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
 const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
 const closing = ref(false);
+const invocation = ref<WebsiteInvocationSelection>();
+watch(
+  () => props.model?.uid,
+  () => {
+    invocation.value = undefined;
+  },
+  { flush: "sync" },
+);
 const copiedIdentifier = ref<string>();
 const copyAnnouncement = ref("");
 let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -233,11 +243,12 @@ onUnmounted(() => {
           </p>
           <h2 id="details-title">{{ model.name }}</h2>
           <div class="model-identifier-line">
+            <span>Catalog ID</span>
             <button
               class="identifier-copy"
               type="button"
               :data-copied="copiedIdentifier === model.model_id || undefined"
-              :aria-label="`Copy model ID ${model.model_id}`"
+              :aria-label="`Copy catalog ID ${model.model_id}`"
               @click="copyIdentifier(model.model_id)"
             >
               <code>{{ model.model_id }}</code>
@@ -298,8 +309,19 @@ onUnmounted(() => {
               </div>
             </details>
 
+            <InvocationDetails
+              v-if="detail?.invocation"
+              :key="`${model.uid}:${dataVersion}`"
+              :model
+              :detail="detail.invocation"
+              @select="invocation = $event"
+            />
+
             <section class="detail-section" aria-labelledby="overview-heading">
               <h3 id="overview-heading">Overview</h3>
+              <p v-if="detail?.invocation" class="unknown-note">
+                Catalog facts below are not scoped to the selected invocation.
+              </p>
               <dl class="fact-grid">
                 <div>
                   <dt>Tasks</dt>
@@ -384,12 +406,15 @@ onUnmounted(() => {
             </section>
 
             <PricingDetails
+              :key="`${model.uid}:${invocation?.key ?? ''}`"
               :provider
               :data-version
               :model="model"
               :detail="detail?.pricing"
               :loading="loading"
               :error="error"
+              :invocation
+              :invocation-required="(detail?.invocation?.graph.invocation_targets.length ?? 0) > 0"
               @retry="emit('retry')"
             />
           </div>
