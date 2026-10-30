@@ -3162,7 +3162,15 @@ describe("HTTP transport boundary", () => {
     if (source?.linkedDocuments === undefined) throw new Error("Missing Mistral link policy");
     const urls = linkedDocumentUrls(await fixture("mistral/index.ts"), {
       ...source,
-      linkedDocuments: { ...source.linkedDocuments, minDocuments: 7, maxDocuments: 7 },
+      url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/models/index.ts",
+      linkedDocuments: {
+        ...source.linkedDocuments,
+        indexFormat: "typescript",
+        path: /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/[a-z0-9-]+$/,
+        requestSuffix: ".ts",
+        minDocuments: 7,
+        maxDocuments: 7,
+      },
     });
     expect(urls.map((url) => url.pathname)).toEqual([
       "/mistralai/platform-docs-public/main/src/schema/models/models/codestral-embed-25-05.ts",
@@ -9077,6 +9085,33 @@ describe("Vercel adapter", () => {
       }),
     ]);
   });
+  it.each(["hr", "sec"])(
+    "binds transcription model-page prices per %s to audio duration",
+    async (unit) => {
+      const models = await vercelCatalog("vercel/unpriced-transcription.json", (body) =>
+        body.replace(
+          '\\"AzureLegal:Terms•Privacy\\",\\"\\"',
+          `\\"AzureLegal:Terms•Privacy\\",\\"$0.39/${unit}\\"`,
+        ),
+      );
+      const streaming = models.find(
+        ({ model_id }) => model_id === "microsoft/mai-transcribe-2-streaming",
+      );
+      expect(streaming?.price_facts).toEqual([
+        expect.objectContaining({
+          meter: "input_audio",
+          price: "0.39",
+          unit: unit === "hr" ? "hour" : "second",
+        }),
+      ]);
+      expect(streaming?.price_facts.some(({ meter }) => meter === "input_text")).toBe(false);
+      expect(
+        models.find(({ model_id }) => model_id === "microsoft/mai-transcribe-2")?.price_facts,
+      ).toEqual([
+        expect.objectContaining({ meter: "input_audio", price: "0.00002778", unit: "second" }),
+      ]);
+    },
+  );
 
   it("preserves pricing tiers and normalizes token units", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
@@ -9820,6 +9855,19 @@ describe("Cerebras adapter", () => {
     ).rejects.toThrow("count_outside_bounds");
   });
 
+  it("binds absolute first-party Markdown model links without trusting another host", async () => {
+    const body = (await fixture("cerebras/catalog.md")).replace(
+      /\]\((\/models\/[^)]+)\)/g,
+      "](https://inference-docs.cerebras.ai$1.md)",
+    );
+    expect(await catalog({ overrides: { index: body } })).toEqual(await catalog());
+    await expect(
+      catalog({
+        overrides: { index: body.replaceAll("inference-docs.cerebras.ai", "example.test") },
+      }),
+    ).rejects.toThrow("count_outside_bounds");
+  });
+
   it("normalizes native public rates", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await parse("cerebras-models", "cerebras/public.json", (item) =>
@@ -10023,7 +10071,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v17",
+      extractorVersion: "cerebras-catalog-v18",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -13764,7 +13812,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v14",
+      extractorVersion: "kimi-pricing-v15",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -14107,32 +14155,41 @@ describe("Kimi adapters", () => {
     expect(models.find(({ model_id }) => model_id === "kimi-k3.1-pro")?.limits).toEqual({});
   });
 
-  it("decodes fragment cells from the rendered Kimi price book", async () => {
-    const rendered = await fixture("kimi/pricing-global-rendered.html");
-    const models = await pricing({
-      sourceId: "kimi-international-pricing",
-      indexBody: rendered,
-      overrides: {
-        "pricing-k27": rendered,
-        "pricing-k26": rendered,
-        "pricing-overview": rendered,
-        "pricing-k25": "# Retired",
-        "pricing-v1": "# Retired",
-        "pricing-batch": "# No batch rates in this fixture",
-      },
-    });
-    expect(
-      models
-        .find(({ model_id }) => model_id === "kimi-k3")
-        ?.price_facts.map(({ meter, price, currency }) => [meter, price, currency]),
-    ).toEqual([
-      ["cache_read_text", "0.30", "USD"],
-      ["cache_write_text", "3.00", "USD"],
-      ["cache_write_text", "6.00", "USD"],
-      ["input_text", "3.00", "USD"],
-      ["output_text", "15.00", "USD"],
-    ]);
-  });
+  it.each([false, true])(
+    "decodes rendered Kimi prices with short English labels (%s)",
+    async (shortLabels) => {
+      const original = await fixture("kimi/pricing-global-rendered.html");
+      const rendered = shortLabels
+        ? original
+            .replaceAll("Cache Write Price (TTL 5min)", "5m writes")
+            .replaceAll("Cache Write Price (TTL 1h)", "1h writes")
+            .replaceAll("Cached Input Price", "Cached Input")
+        : original;
+      const models = await pricing({
+        sourceId: "kimi-international-pricing",
+        indexBody: rendered,
+        overrides: {
+          "pricing-k27": rendered,
+          "pricing-k26": rendered,
+          "pricing-overview": rendered,
+          "pricing-k25": "# Retired",
+          "pricing-v1": "# Retired",
+          "pricing-batch": "# No batch rates in this fixture",
+        },
+      });
+      expect(
+        models
+          .find(({ model_id }) => model_id === "kimi-k3")
+          ?.price_facts.map(({ meter, price, currency }) => [meter, price, currency]),
+      ).toEqual([
+        ["cache_read_text", "0.30", "USD"],
+        ["cache_write_text", "3.00", "USD"],
+        ["cache_write_text", "6.00", "USD"],
+        ["input_text", "3.00", "USD"],
+        ["output_text", "15.00", "USD"],
+      ]);
+    },
+  );
 
   it("rejects the Kimi Markdown export that no longer carries pricing rows", async () => {
     const empty = await fixture("kimi/pricing-empty-export.md");

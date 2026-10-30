@@ -120,8 +120,12 @@ export function repairPatchHash(patch: string): string {
 
 /** Also runs inside the agent so failed checks can be repaired before final output. */
 export function validateRepair(): void {
+  // The sandbox inherits the runner's output path, but cannot access that host file.
+  // This child only validates; the trusted publication step owns workflow outputs.
+  const { GITHUB_OUTPUT: _output, ...env } = process.env;
   const result = spawnSync("vp", ["node", "scripts/validate-changes.ts", baseSha()], {
     stdio: "inherit",
+    env,
   });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0)

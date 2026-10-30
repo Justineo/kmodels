@@ -2210,25 +2210,21 @@ describe("Mistral adapters", () => {
           minModels: 50,
           maxModels: 90,
         },
-        type: "repository",
+        type: "website",
         source: ["repository", "website"],
         fields: expect.arrayContaining(["api_endpoints"]),
         linkedDocuments: {
-          indexFormat: "typescript",
+          indexFormat: "markdown",
           minDocuments: 55,
           maxDocuments: 90,
           documents: expect.arrayContaining([
-            expect.objectContaining({ id: "model-schema" }),
-            expect.objectContaining({ id: "model-endpoints" }),
             expect.objectContaining({
               id: "prompt-caching",
-              url: expect.stringMatching(
-                /\/studio\/conversations\/advanced\/prompt-caching\/page\.mdx$/,
-              ),
+              url: expect.stringMatching(/\/studio\/conversations\/advanced\/prompt-caching\.md$/),
             }),
             expect.objectContaining({
               id: "batch-processing",
-              url: expect.stringMatching(/\/studio\/batch-processing\/page\.mdx$/),
+              url: expect.stringMatching(/\/studio\/batch-processing\.md$/),
             }),
           ]),
         },
@@ -2237,7 +2233,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v10",
+        extractorVersion: "mistral-pricing-v11",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
@@ -2248,14 +2244,8 @@ describe("Mistral adapters", () => {
           documents: expect.arrayContaining([
             expect.objectContaining({ id: "api-schema", optional: true, claimLocal: true }),
             expect.objectContaining({
-              id: "pricing-currency",
-              url: mistralCurrencyUrl,
-              optional: true,
-              claimLocal: false,
-            }),
-            expect.objectContaining({
               id: "priority-tier",
-              url: mistralPriorityUrl,
+              url: "https://docs.mistral.ai/inference/priority-tier.md",
               optional: true,
               claimLocal: false,
             }),
@@ -2267,7 +2257,7 @@ describe("Mistral adapters", () => {
               id: "libraries",
               optional: true,
               claimLocal: true,
-              url: expect.stringMatching(/\/studio\/search\/libraries\/page\.mdx$/),
+              url: expect.stringMatching(/\/studio\/search\/libraries\.md$/),
             }),
           ]),
         },

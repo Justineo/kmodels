@@ -1166,7 +1166,10 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       if (cells === undefined) {
         items.push({
           disposition: "unsupported",
-          reason_code: "unreviewed_pricing_table",
+          reason_code:
+            target === undefined || target === null
+              ? "unreviewed_pricing_table"
+              : "public_price_shape_unsupported",
           sample: table.headers.join(" | ").slice(0, 256),
         });
         continue;

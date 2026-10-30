@@ -420,6 +420,14 @@ function parseDraft(sourceSlug: string, body: string): Draft | undefined {
 }
 
 function indexSlugs(body: string): Set<string> {
+  if (body.startsWith("# Models Overview")) {
+    const slugs = [...body.matchAll(/^\|\s*\[[^\]]+\]\(\/models\/([a-z0-9-]+)\)\s*\|/gm)].flatMap(
+      (match) => match[1] ?? [],
+    );
+    if (slugs.length === 0 || new Set(slugs).size !== slugs.length)
+      throw new Error("Mistral model inventory has missing or duplicate identities");
+    return new Set(slugs);
+  }
   const source = ts.createSourceFile("index.ts", body, ts.ScriptTarget.Latest, false);
   const imports = new Map<string, string>();
   let modelArray: ts.ArrayLiteralExpression | undefined;
@@ -450,6 +458,133 @@ function indexSlugs(body: string): Set<string> {
   if (slugs.length !== imports.size || new Set(slugs).size !== slugs.length)
     throw new Error("Mistral imports and MODELS array disagree");
   return new Set(slugs);
+}
+
+function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
+  const fields = new Map<string, string>();
+  for (const match of body.matchAll(/^- ([^:\n]+): ?(.*)$/gm)) {
+    const key = match[1];
+    const value = match[2];
+    if (key === undefined || value === undefined || fields.has(key))
+      throw new Error("Mistral model card has duplicate fields");
+    fields.set(key, value);
+  }
+  const required = (key: string): string => {
+    const value = fields.get(key);
+    if (value === undefined) throw new Error(`Mistral model card omits ${key}`);
+    return value;
+  };
+  const apiNames = required("API names")
+    .split(",")
+    .filter((value) => value.trim() !== "")
+    .map((value) => modelIdSchema.parse(value.trim().replace(/^`([^`]+)`$/, "$1")));
+  if (apiNames.length === 0) return;
+  const name = body.match(/^# ([^\n]+)\n/)?.[1];
+  if (name === undefined) throw new Error("Mistral model card omits title");
+  const statuses = new Map<string, Draft["status"]>([
+    ["GA", "active"],
+    ["Public Preview", "preview"],
+    ["PublicPreview", "preview"],
+    ["Deprecated", "deprecated"],
+    ["Retired", "retired"],
+  ]);
+  const list = (key: string): string[] =>
+    required(key)
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  const prices: SourcePrice[] = [];
+  let unsupported = 0;
+  const priceText = fields.get("Pricing");
+  for (const part of priceText?.split(";") ?? []) {
+    if (
+      part.trim() === "Free" ||
+      (priceText === "Free; $0 /M Tokens" && part.trim() === "$0 /M Tokens")
+    )
+      continue;
+    const match = part.trim().match(/^(Input|Cached input|Output) \$(\d+(?:\.\d+)?) (\/[^;]+)$/);
+    if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+      unsupported += 1;
+      continue;
+    }
+    prices.push({
+      kind: match[1] === "Input" ? "input" : match[1] === "Output" ? "output" : "cached_input",
+      price: match[2],
+      denominator: match[3],
+    });
+  }
+  const releaseDate = normalizeDate(fields.get("Release date"));
+  const deprecatedAt = normalizeDate(fields.get("Deprecation date"));
+  const retiredAt = normalizeDate(fields.get("Retirement date"));
+  const contextTokens = tokens(fields.get("Context length"));
+  const maxOutputTokens = tokens(fields.get("Output token limit"));
+  const version = fields.get("Version");
+  const replacement = fields
+    .get("Replacement")
+    ?.match(/^\[([^\]]+)\]\(\/models\/[a-z0-9-]+\)$/)?.[1];
+  return {
+    sourceSlug,
+    name,
+    apiNames,
+    catalogType: required("Type"),
+    description: body.split("\n\n")[1] ?? name,
+    status: statuses.get(required("Status")) ?? "unknown",
+    input: list("Input"),
+    output: list("Output"),
+    features: fields.has("Features")
+      ? list("Features")
+      : ["Retired", "Deprecated"].includes(required("Status"))
+        ? []
+        : list("Features"),
+    ...(version === undefined ? {} : { version }),
+    ...(releaseDate === undefined ? {} : { releaseDate }),
+    ...(contextTokens === undefined ? {} : { contextTokens }),
+    ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+    ...(deprecatedAt === undefined ? {} : { deprecatedAt }),
+    ...(retiredAt === undefined ? {} : { retiredAt }),
+    ...(replacement === undefined ? {} : { replacement }),
+    pricing: {
+      free: priceText === "Free" || priceText === "Free; $0 /M Tokens",
+      prices,
+      unsupported,
+      valid: priceText !== undefined,
+    },
+  };
+}
+
+// Reviewed feature routes displayed on the official model cards. New feature names stay
+// unresolved; a card's feature declaration is still required for every published endpoint.
+function markdownFeatureEndpoints(): Map<string, ApiEndpoint[]> {
+  const chat = { name: "Chat / Completions", path: "/v1/chat/completions" };
+  const conversation = { name: "Conversations", path: "/v1/conversations" };
+  const agents = { name: "Agents", path: "/v1/agents" };
+  const ocr = { name: "OCR", path: "/v1/ocr" };
+  const audio = { name: "Audio Transcriptions", path: "/v1/audio/transcriptions" };
+  const speech = { name: "Audio Speech", path: "/v1/audio/speech" };
+  return new Map<string, ApiEndpoint[]>([
+    ["chat-completions", [chat]],
+    ...[
+      "function-calling",
+      "structured-outputs",
+      "predicted-outputs",
+      "prefix",
+      "document-qna",
+    ].map((feature): [string, ApiEndpoint[]] => [feature, [chat, conversation]]),
+    ["agents-conversations", [agents, conversation]],
+    ["connectors", [agents, conversation]],
+    ...["ocr", "annotations-structured-ocr", "bbox-extraction"].map(
+      (feature): [string, ApiEndpoint[]] => [feature, [ocr]],
+    ),
+    ["fim", [{ name: "Fim / Completions", path: "/v1/fim/completions" }]],
+    ["embeddings", [{ name: "Embeddings", path: "/v1/embeddings" }]],
+    ["moderations", [{ name: "Moderations", path: "/v1/moderations" }]],
+    ["chat-moderations", [{ name: "Chat / Moderations", path: "/v1/chat/moderations" }]],
+    ["transcriptions", [audio]],
+    ["timestamps", [audio]],
+    ["tts", [speech]],
+    ["voice-cloning", [speech]],
+    ["batching", [{ name: "Batch", path: "/v1/batch" }]],
+  ]);
 }
 
 function exportedObject(body: string, file: string, name: string): ts.ObjectLiteralExpression {
@@ -1199,9 +1334,21 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     throw new Error("Wrong Mistral catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const expected = indexSlugs(bundle.index.body);
+  const markdown = bundle.index.body.startsWith("# Models Overview");
+  const inventoryIds = new Map(
+    [
+      ...bundle.index.body.matchAll(/^\|\s*\[[^\]]+\]\(\/models\/([a-z0-9-]+)\)\s*\|([^|]*)\|/gm),
+    ].flatMap((match): [string, string][] =>
+      match[1] === undefined || match[2] === undefined
+        ? []
+        : [[match[1], match[2].trim().replace(/^`([^`]+)`$/, "$1")]],
+    ),
+  );
   const modelDocuments = bundle.documents.flatMap((document) => {
     const match = new URL(document.url).pathname.match(
-      /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/([a-z0-9-]+)\.ts$/,
+      markdown
+        ? /^\/models\/([a-z0-9-]+)\.md$/
+        : /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/([a-z0-9-]+)\.ts$/,
     );
     return match?.[1] === undefined ? [] : [{ slug: match[1], body: document.body }];
   });
@@ -1225,7 +1372,13 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   };
   const drafts = modelDocuments.flatMap(({ slug, body }): Draft[] => {
     try {
-      const draft = parseDraft(slug, body);
+      const draft = markdown
+        ? inventoryIds.get(slug) === ""
+          ? undefined
+          : markdownDraft(slug, body)
+        : parseDraft(slug, body);
+      if (markdown && draft !== undefined && draft.apiNames[0] !== inventoryIds.get(slug))
+        throw new Error("Mistral model card and inventory API identity disagree");
       if (draft !== undefined) return [draft];
       input.onPricingReconciliation?.({
         disposition: "excluded",
@@ -1238,12 +1391,23 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
       return [];
     }
   });
-  const endpointsByFeature = featureEndpoints(
-    document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
-    document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
-    signal,
-  );
-  const companion = (path: string): string => (optionalDocument(path) ?? "").replace(/\s+/g, " ");
+  const endpointsByFeature = markdown
+    ? markdownFeatureEndpoints()
+    : featureEndpoints(
+        document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
+        document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
+        signal,
+      );
+  const companion = (path: string): string =>
+    (
+      optionalDocument(
+        markdown
+          ? path
+              .replace("/mistralai/platform-docs-public/main/src/content/en/docs", "")
+              .replace(/\/page\.mdx$/, ".md")
+          : path,
+      ) ?? ""
+    ).replace(/\s+/g, " ");
   const discounts = {
     cache: companion(
       "/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
@@ -1435,6 +1599,7 @@ export function parseMistralPricing(input: Input): SourceParseResult {
     {
       models,
       sourceId: input.source.id,
+      documents: bundle.documents,
       ...(input.onPricingReconciliation === undefined
         ? {}
         : { reconcile: input.onPricingReconciliation }),

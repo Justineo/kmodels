@@ -1235,6 +1235,20 @@ function pricing(
     if (kind === undefined) continue;
     for (const values of [...table.rows, ...table.irregular]) {
       const nativeLabel = values[0] ?? "";
+      // These rows explicitly describe surviving partner-platform offers after direct API
+      // retirement. They neither price the direct Claude API nor require a direct model join.
+      if (
+        /^Claude [\w. -]+ \(retired, except on (?:Bedrock and )?Claude Models on Google Cloud \(Google managed\)\)$/.test(
+          nativeLabel,
+        )
+      ) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "retired_partner_only_price",
+          sample: nativeLabel.slice(0, 256),
+        });
+        continue;
+      }
       const names = kind === "fast" ? nativeLabel.split(" / ").filter(Boolean) : [nativeLabel];
       const scope = rowScope(nativeLabel);
       const conditions = {

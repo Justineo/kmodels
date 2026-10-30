@@ -21,6 +21,27 @@ afterEach(() => {
   transport.calls.length = 0;
 });
 
+it("applies a linked-document request suffix once and deduplicates both public spellings", () => {
+  const source = manifests
+    .find(({ provider }) => provider.id === "cerebras")
+    ?.sources.find(({ id }) => id === "cerebras-catalog");
+  if (source === undefined) throw new Error("Missing Cerebras source");
+  expect(
+    linkedDocumentUrls(
+      [
+        "[Native](/models/qwen-3.8-27b.md)",
+        "[HTML](/models/qwen-3.8-27b)",
+        "[Other](/models/gpt-oss-120b)",
+        "[Untrusted](https://example.test/models/qwen-3.8-27b.md)",
+      ].join("\n"),
+      source,
+    ).map(({ href }) => href),
+  ).toEqual([
+    "https://inference-docs.cerebras.ai/models/gpt-oss-120b.md",
+    "https://inference-docs.cerebras.ai/models/qwen-3.8-27b.md",
+  ]);
+});
+
 vi.mock("node:timers/promises", () => ({
   setTimeout: (delay: number) => new Promise<void>((resolve) => setTimeout(resolve, delay)),
 }));

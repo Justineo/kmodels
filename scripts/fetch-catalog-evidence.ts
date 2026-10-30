@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { fetchSource, fetchStateSchema } from "../src/catalog/fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
@@ -72,24 +73,25 @@ const attemptOutcome =
       : undefined;
 const refresh = publicEvidenceBaseline(stateKey, hash, state, report.generated_at, attemptOutcome);
 await mkdir(directory, { recursive: true });
-const path = join(directory, `${source.id}-${scope}-${hash.slice(0, 16)}.json`);
-await writeFile(
-  path,
-  JSON.stringify({
-    source_id: source.id,
-    scope,
-    source_url: source.url,
-    observed_at: new Date().toISOString(),
-    source_hash: hash,
-    ...(linkedFrom === undefined ? {} : { linked_from: linkedFrom }),
-    refresh,
-    ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
-    body: fetched.body,
-  }),
-);
+// Equal source bytes can have different observation/refresh metadata. Never overwrite a receipt
+// already referenced by an investigation's whole-file hash.
+const path = join(directory, `${source.id}-${scope}-${hash.slice(0, 16)}-${randomUUID()}.json`);
+const receipt = JSON.stringify({
+  source_id: source.id,
+  scope,
+  source_url: source.url,
+  observed_at: new Date().toISOString(),
+  source_hash: hash,
+  ...(linkedFrom === undefined ? {} : { linked_from: linkedFrom }),
+  refresh,
+  ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
+  body: fetched.body,
+});
+await writeFile(path, receipt, { flag: "wx" });
 console.log(
   JSON.stringify({
     path,
+    sha256: sha256(receipt),
     source_id: source.id,
     scope,
     source_url: source.url,

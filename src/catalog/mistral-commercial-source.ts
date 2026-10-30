@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { commercialResource, publishedRate } from "./pricing.ts";
+import { commercialResource, publishedRate, rawPricingFact } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel,
@@ -12,6 +12,7 @@ interface Input {
   models: readonly Pick<ParsedProviderModel, "api_endpoints" | "status" | "uid">[];
   reconcile?: (item: PricingReconciliationItem) => void;
   sourceId: string;
+  documents?: readonly { url: string; body: string }[];
 }
 
 export interface MistralPricingRow {
@@ -252,6 +253,61 @@ export function extractMistralCommercialFacts(
     .map(({ uid }) => uid)
     .sort();
   for (const card of cards) addCard(input, facts, card, agentModels);
+  // The successor price page omits tool prices, while current tool guides still establish
+  // the services. Preserve that independent uncertainty instead of retaining obsolete model
+  // prices for the entire provider or claiming that a missing service tariff is free/withdrawn.
+  const services = [
+    ["code-execution", "Code execution", "agents/agent-tools/code_interpreter", "code_interpreter"],
+    ["web-search", "Web search", "agents/agent-tools/websearch", "web_search"],
+    ["premium-news", "Premium news", "agents/agent-tools/websearch", "web_search_premium"],
+    [
+      "image-generation",
+      "Image generation",
+      "agents/agent-tools/image_generation",
+      "image_generation",
+    ],
+    ["library-retrieval", "Document Library retrieval", "search/libraries", "document_library"],
+  ];
+  for (const [key, name, path, marker] of services) {
+    if (key === undefined || name === undefined || path === undefined || marker === undefined)
+      continue;
+    if (facts.some((fact) => fact.resource_key === key)) continue;
+    const documents =
+      input.documents?.filter(({ url }) => url === `https://docs.mistral.ai/studio/${path}.md`) ??
+      [];
+    if (documents.length !== 1 || !documents[0]?.body.includes(marker)) continue;
+    facts.push({
+      ...commercialResource(
+        input.sourceId,
+        `service:${key}`,
+        name,
+        "service",
+        key,
+        agentModels,
+        "usage",
+      ),
+      offer_key: "usage",
+      offer_name: name,
+      pricing_state: "unknown",
+      price_facts: [],
+      raw_price_facts: [
+        rawPricingFact(
+          input.sourceId,
+          `service:${key}:unresolved`,
+          "base_price",
+          "unsupported_structure",
+          {
+            label: `Current ${name} documentation establishes the service but the current price page does not establish its tariff`,
+          },
+        ),
+      ],
+    });
+    input.reconcile?.({
+      disposition: "unbound",
+      reason_code: "pricing_policy_unavailable",
+      sample: `service:${key}`,
+    });
+  }
   return facts;
 }
 

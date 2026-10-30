@@ -44,6 +44,7 @@ import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { preferOpenAiPricingPage } from "./openai-price-authority.ts";
 import type { ProviderModel } from "./schema.ts";
 import { openAiTextQuantity, openAiTokenUnit } from "./openai-commercial-source.ts";
+import { openAiCacheLifetime, withoutOpenAiCacheLifetime } from "./openai-cache.ts";
 
 type PublishedModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "tasks" | "uid">;
 
@@ -222,6 +223,34 @@ function partitionTerm(
     const possible_scope = partitionApplicability(variant.possible_scope, partition);
     return possible_scope === undefined ? [] : [{ ...variant, possible_scope }];
   });
+  if (mapped.meter.namespace === "kmodels" && mapped.meter.value === "cache_write_text") {
+    const terms: AtomicPricingTerm[] = [];
+    for (const lifetime of ["30m", "12h"] as const) {
+      const bucket = variants
+        .filter(({ applicability }) => openAiCacheLifetime(applicability) === lifetime)
+        .map((variant) => {
+          const applicability = withoutOpenAiCacheLifetime(variant.applicability);
+          return {
+            ...variant,
+            applicability,
+            observation: withApplicability(variant.observation, applicability),
+          };
+        });
+      if (bucket.length > 0)
+        terms.push({
+          ...mapped,
+          term_key: `${mapped.term_key}:${lifetime}`,
+          variants: bucket,
+          raw_variants: [],
+        });
+    }
+    const remaining = variants.filter(
+      ({ applicability }) => openAiCacheLifetime(applicability) === undefined,
+    );
+    if (remaining.length + raw_variants.length > 0)
+      terms.push({ ...mapped, variants: remaining, raw_variants });
+    return terms;
+  }
   return variants.length + raw_variants.length === 0 ? [] : [{ ...mapped, variants, raw_variants }];
 }
 
@@ -273,14 +302,26 @@ function modelChargeBinding(
   inputIndex: PricingInputIndex,
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
-  const spec = modelSignal(
-    meter,
-    variant.price.per,
-    model,
-    input,
-    rateMeters,
-    variant.charge_binding?.signal,
-  );
+  const lifetime =
+    meter.namespace === "kmodels" && meter.value === "cache_write_text"
+      ? openAiCacheLifetime(variant.applicability)
+      : undefined;
+  const spec =
+    lifetime === undefined
+      ? modelSignal(
+          meter,
+          variant.price.per,
+          model,
+          input,
+          rateMeters,
+          variant.charge_binding?.signal,
+        )
+      : providerModelSignal(
+          input,
+          `cache_write_${lifetime}_tokens`,
+          `Billable cache-write input tokens with ${lifetime} minimum lifetime; excludes the other lifetime partition`,
+          [],
+        );
   if (spec === undefined) return;
   const unownedOperation =
     supportsApi(model, "Realtime", "v1/realtime") &&

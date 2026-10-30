@@ -15,19 +15,23 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 
 ## Sources and identity
 
-- The exhaustive public catalog statically parses the official
-  `mistralai/platform-docs-public` model index, every imported model definition, the feature schema,
-  and endpoint registry. Remote TypeScript is parsed, never executed.
-- Every imported definition document must be present exactly once. A malformed definition is
+- The exhaustive public catalog follows the official [Markdown inventory](https://docs.mistral.ai/models.md)
+  to every linked Markdown model card. Each card's first API name must agree with the inventory;
+  later API names are aliases. Empty inventory API cells exclude weights-only models. The current
+  cards declare lifecycle, modalities, features, context and USD prices. Reviewed feature-to-route
+  mappings follow the endpoints displayed on the corresponding HTML cards; unknown features remain
+  signaled. Retired/deprecated cards can omit current features and prices without losing identity.
+  Historical repository bundles remain replayable through the static TypeScript parser.
+- Every indexed definition document must be present exactly once. A malformed definition is
   isolated and signaled without hiding recognized siblings. The first API name is canonical, later
   API names are aliases. An explicitly empty API-name list excludes a weights-only definition before
   hosted API facets are validated: its slug, modalities or price shape cannot create repair noise.
   A missing or malformed API-name list remains a contract failure. Hosted definitions still require
   exact path/slug agreement.
 - The official [API pricing page](https://docs.mistral.ai/inference/pricing) is the preferred current amount
-  source. The repository remains the fallback amount source and owns model identity, lifecycle,
+  source. The model cards remain the fallback amount source and own model identity, lifecycle,
   capabilities, and routes. For the exact overlapping claim, a price-page amount supersedes a
-  conflicting repository amount; the losing observation remains local conflict evidence.
+  conflicting model-card amount; the losing observation remains local conflict evidence.
 - The current pricing page renders four reviewed `Model`/`Input`/`Cached input`/`Output` HTML
   tables instead of the former model-card elements. Table links provide navigation only; each
   row still binds through its unique exact active catalog title. Dollar-prefixed cells establish
@@ -54,21 +58,28 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   becomes an ordinary `output_text`/million-token rate instead of an unsupported price shape.
   The page's model tables
   alone do not establish current request-service rates or prove those rates were withdrawn.
-  A missing service section requires first-party successor evidence before a source repair;
-  until then the topology guard retains the accepted partition.
+  Current first-party tool guides establish the five independent request services even though the
+  successor price page omits their tariffs. Those service books carry explicit unknown amounts and
+  raw missing-policy evidence. Omission is neither withdrawal nor free usage. Historical service
+  amounts are not carried forward as current prices, and these local unknowns do not prevent
+  independently verified model prices from refreshing.
 - Prompt-caching and Batch guides are claim-local catalog companions. The central price page and
   its optional OpenAPI, built-in-tool, currency and Priority companions form a separate pricing overlay. This
-  lets catalog identity advance when pricing acquisition fails; the last accepted pricing
-  partition is retained and marked stale because the accepted partition also includes
-  request-service amounts and EUR prices from the previously reviewed central page.
-  Currency and Priority documents carry numeric price policy: they are optional for acquisition but
-  are not claim-local. Failure to acquire either retains the accepted pricing partition; acquired
-  content whose policy cannot be interpreted produces scoped raw fallback. Accounting-only
+  lets catalog identity advance when pricing acquisition fails. The public documentation OpenAPI
+  and Markdown guides replace the unavailable repository companions. Priority carries numeric
+  price policy and remains a non-claim-local companion. EUR conversion is read from the pricing
+  page's linked JavaScript chunks, bounded to the same documentation host and static chunk path.
+  Downloaded JavaScript is parsed, never executed. An uninterpretable currency policy produces
+  scoped raw fallback; recognized USD rates survive. Accounting-only
   companions remain claim-local, so their failure withholds only the affected mappings.
 - Optional authenticated `/v1/models` confirms only exact existing public base models or aliases.
   Private fine-tunes never create rows or enter durable data. Enable it with `MISTRAL_API_KEY`.
 
 ## Model pricing
+
+The official [documentation index](https://docs.mistral.ai/llms.txt) links the current inventory,
+model cards, pricing page and accounting guides. The retired repository URL is retained only for
+historical replay and provenance, not as a live dependency.
 
 - Lifecycle is read directly from the official definitions: `GA` is active/stable,
   `PublicPreview` is active/preview, and `Deprecated` and `Retired` retain their meanings. Retired
@@ -102,12 +113,11 @@ sibling rates survive. An unreadable published rate is `unknown`, not a claim th
 published. A valid empty price definition also remains unknown; an explicit `free` declaration can
 establish free usage independently. An empty array cannot establish non-publication.
 
-The current
-[pricing component](<https://github.com/mistralai/platform-docs-public/blob/main/src/app/%5Blocale%5D/(docs)/inference/pricing/_components/pricing-table.tsx>)
-has Priority and regional controls. Its
-[currency module](https://github.com/mistralai/platform-docs-public/blob/main/src/schema/models/pricing-currency.ts)
-defines the EUR factor (`0.85`) and display precision. The adapter statically verifies the unique
-constant, precision and conversion function without executing remote code. It derives exact EUR
+The current pricing page has Priority, currency and regional controls. Its linked runtime defines
+the EUR factor (`0.85`) and display precision (seven decimal places). The adapter statically
+verifies the unique currency formatter's conditional multiplication and lexical precision binding,
+without executing remote code. The former repository currency module remains supported for replay.
+The adapter derives exact EUR
 rates for the current table, including Batch, and withholds a derived EUR amount that would require
 display rounding. Direct EUR amounts on legacy cards take precedence over conversion for the same
 rate, even when the current currency module is available. An uninterpretable currency contract or
@@ -146,8 +156,9 @@ amount from the same page merely because it was encountered later. Valid sibling
 
 ## Request services
 
-The accepted partition contains five admitted request-attributable service books from the
-previously reviewed pricing cards:
+The partition contains five admitted request-attributable service books established by current
+tool guides and previously reviewed pricing cards. Current missing tariffs are unknown, with
+repairable `pricing_policy_unavailable` evidence; numeric legacy cards remain supported for replay:
 
 - code execution, per completed `code_interpreter` execution;
 - web search, per completed `web_search` execution;

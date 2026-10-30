@@ -121,9 +121,9 @@ Boolean audio and voice-control conditions require their own published values; a
 not become false because a sibling is true. Unresolved overlaps use the shared conflict fallback.
 Video model pages may publish a flat `$N/video` output rate instead of a duration rate; retain its
 provider-published `video` unit rather than treating it as seconds. A transcription model page may
-publish its input as `$N/hr`. That is a published hourly audio rate: it becomes an `input_audio`
-quote with the `hour` unit, which the shared adapter scales to processed audio seconds, and it is
-never a token or per-second page amount. The denominator is read from the cell itself, so a priced
+publish its input as `$N/hr` or `$N/sec`. These become `input_audio` quotes with the `hour` or
+`second` unit respectively; the shared adapter scales hourly rates to processed audio seconds.
+The denominator is read from the cell itself, so a priced
 sibling keeps its own published unit; an unrecognized denominator still rejects the page rather than
 silently dropping the model.
 `capabilities.pricing.image_input_cost_per_image_usd` and

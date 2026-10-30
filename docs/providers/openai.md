@@ -118,11 +118,25 @@ quote, or an explicit free schedule.
 An unreviewed table or a row containing only missing amounts cannot create an identity or make an
 otherwise empty pricing response pass admission. Valid sibling rows remain independent.
 
+Reviewed table columns bind by their labels, including when Output precedes Cached input;
+column order cannot discard known prices. An unsupported price cell on an exact model remains
+raw and emits `unsupported_pricing_cell_preserved`, which enters repair admission.
+
 The pricing page's Short and Long context columns mean at most 272,000 and more than 272,000
 input tokens respectively. The native HTML tooltips establish this definition; the Markdown
 rendering retains the column names but omits those tooltips. Each column carries its own bound
 even when every quote in the opposite column is absent. Neither a peer quote nor the model's
 maximum context window establishes a tariff boundary.
+
+The explicit 30-minute and 12-hour cache-write columns form independent additive terms. The
+[prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) permits both
+lifetimes in one request, so a global TTL selector cannot choose only one charge. Each term consumes
+its own provider signal (`cache_write_30m_tokens` or `cache_write_12h_tokens`); its source observation
+retains the literal TTL and its context/tier/region scope. These are complete write rates, not
+surcharges on ordinary input. The current reviewed OpenAPI lacks the per-TTL counters, so callers
+must supply those quantities; the aggregate write counter is used only to subtract writes from
+ordinary input. The pricing page's TTL schedule supersedes an unqualified model-card write quote
+in overlapping scope, including equal amounts, to avoid charging the same writes twice.
 
 Alias prices are derived only while the pricing page declares exact, unique target IDs. The current
 [Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak) says `latest` resolution

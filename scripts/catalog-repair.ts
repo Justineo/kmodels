@@ -21,8 +21,9 @@ const configuredPath = process.env.KMODELS_REFRESH_REPORT_PATH;
 const reportPath = configuredPath ?? new URL("../data/refresh-summary.json", import.meta.url);
 const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
 const allCandidates = catalogRepairCandidates(report);
-if (process.env.KMODELS_PERIODIC_REVIEW === "true")
-  allCandidates.push(scheduledCatalogReview(new Date()));
+const preparedAt = new Date();
+if (process.env.KMODELS_PERIODIC_REVIEW === "true" && preparedAt.getUTCHours() < 6)
+  allCandidates.push(scheduledCatalogReview(preparedAt));
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
   executionPath === undefined
@@ -67,7 +68,7 @@ if (auditDirectory !== undefined) {
   }
 }
 
-const { selected: candidates, deferred } = catalogRepairBatch(allCandidates, new Date());
+const { selected: candidates, deferred } = catalogRepairBatch(allCandidates, preparedAt);
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
   report,
   candidates.length === 0 ||
@@ -174,7 +175,7 @@ const markdown =
       : [
           `## Deferred repair queue (${deferred.length})`,
           "",
-          "Preparation admits one error-driven provider per UTC day, plus the independent periodic review. These candidates remain unreviewed in the refresh evidence and prepared admission; they are not resolved or healthy. A repeated run uses the same daily rotation against the latest report.",
+          "Preparation admits one error-driven provider per six-hour UTC slot, plus a daily periodic review in the first slot. These candidates remain unreviewed in the refresh evidence and prepared admission; they are not resolved or healthy. A repeated run uses the same slot rotation against the latest report.",
           "",
           ...deferred.map(
             ({ provider_id, subject_id, trigger }) => `- ${provider_id}/${subject_id}: ${trigger}`,

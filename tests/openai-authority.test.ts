@@ -95,6 +95,29 @@ function assemble(cards: SourcePriceFact[], prices: SourcePriceFact[]) {
   return { term, offer };
 }
 
+it("replaces an unqualified card write quote with independent lifetime charges without billing it twice", () => {
+  const write = (price: string, ttl?: number): SourcePriceFact => ({
+    ...rate(price, ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
+    meter: "cache_write_text",
+  });
+  const { offer } = assemble([write("2.50")], [write("2.50", 1800), write("5.00", 43200)]);
+  expect(offer).toBeDefined();
+  const rates = offer?.terms.filter((term) => term.kind === "rate" && term.variants.length > 0);
+  expect(rates?.map((term) => term.term_key).sort()).toEqual([
+    "cache_write_text:12h",
+    "cache_write_text:30m",
+  ]);
+  expect(
+    rates
+      ?.flatMap((term) => (term.kind === "rate" ? term.variants : []))
+      .map((variant) => variant.charge_binding?.signal.value)
+      .sort(),
+  ).toEqual(["cache_write_12h_tokens", "cache_write_30m_tokens"]);
+  expect(
+    offer?.terms.flatMap((term) => (term.kind === "raw" ? term.variants : term.raw_variants)),
+  ).toEqual([expect.objectContaining({ impact: "informational", reason: "superseded_value" })]);
+});
+
 const tier: PricingSelection = {
   dimension: { namespace: "kmodels", value: "served_service_tier" },
   kind: "categorical",

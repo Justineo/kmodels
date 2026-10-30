@@ -1152,7 +1152,10 @@ describe("Azure adapters", () => {
       );
       expect(partition?.books.length).toBeGreaterThan(0);
       expect(partition?.vocabulary.atoms).not.toContainEqual(
-        expect.objectContaining({ key: "standard" }),
+        expect.objectContaining({
+          key: "standard",
+          dimension: { namespace: "kmodels", value: "context_tier" },
+        }),
       );
     },
   );
@@ -1184,7 +1187,7 @@ describe("Azure adapters", () => {
         meter: "input_text",
         price: "0.0022",
         unit: "thousand_tokens",
-        conditions: { region: "eastus", deployment_scope: "Standard" },
+        conditions: { region: "eastus", deployment_scope: "Standard", service_tier: "standard" },
         raw_validity: "2025-11-01T00:00:00Z",
       }),
       expect.objectContaining({ meter: "output_text", price: "0.0088" }),
@@ -1196,6 +1199,7 @@ describe("Azure adapters", () => {
         conditions: {
           region: "eastus2",
           deployment_scope: "GlobalStandard",
+          service_tier: "standard",
           context_tier: "short_context",
         },
         raw_validity: "2026-07-01T00:00:00Z – 2026-08-31T23:59:00Z",
@@ -1227,6 +1231,85 @@ describe("Azure adapters", () => {
       ],
     });
     expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
+  });
+
+  it("binds compact GPT identities and keeps Standard, Flex and Priority tariffs disjoint", () => {
+    const source = azureRetailSource(1, 1, 1);
+    const catalog = azurePricingModel("gpt-6.1-terra", "2026-10-26");
+    const prices = [
+      { skuName: "61 terra ShortCo Inp std Gl", retailPrice: 2 },
+      { skuName: "61 terra ShCo Inp Fl Gl", retailPrice: 1 },
+      { skuName: "61 terra ShortCo Inp PP Gl", retailPrice: 3 },
+    ].map((row, index) => ({
+      ...row,
+      currencyCode: "USD",
+      armRegionName: "eastus2",
+      meterId: `tier-${index}`,
+      meterName: `${row.skuName} 1M Tokens`,
+      productName: "Azure OpenAI GPT6",
+      serviceName: "Foundry Models",
+      unitOfMeasure: "1M",
+      type: "Consumption",
+    }));
+    const result = parseSource({
+      provider: provider(manifest("azure")),
+      source,
+      observedAt,
+      body: JSON.stringify({ prices }),
+      catalogModels: [catalog],
+    });
+    expect(result.models[0]?.price_facts.map(({ conditions }) => conditions.service_tier)).toEqual([
+      "standard",
+      "flex",
+      "priority",
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source, models: result.models }],
+      [catalog],
+    );
+    validateParsedPricing(manifest("azure"), source, [catalog], partition);
+    const terms =
+      partition?.books.flatMap(({ offers }) => offers.flatMap(({ terms }) => terms)) ?? [];
+    expect(terms).toHaveLength(1);
+    const term = terms[0];
+    if (term?.kind !== "rate") throw new Error("Missing input rate");
+    expect(term.raw_variants).toEqual([]);
+    expect(term.variants).toHaveLength(3);
+    expect(partition?.vocabulary.atoms).toContainEqual(
+      expect.objectContaining({
+        key: "flex",
+        label: "Flex",
+        dimension: { namespace: "kmodels", value: "served_service_tier" },
+      }),
+    );
+    for (const variant of term.variants) {
+      expect(variant.applicability.any_of[0]?.all_of).toContainEqual(
+        expect.objectContaining({
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "served_service_tier" },
+        }),
+      );
+      expect(
+        evaluateRateCost(variant, [
+          {
+            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+            value: { numerator: "1000", denominator: "1" },
+          },
+        ]).kind,
+      ).toBe("resolved");
+    }
+    const unknown = parseSource({
+      provider: provider(manifest("azure")),
+      source: azureRetailSource(0, 1, 0),
+      observedAt,
+      body: JSON.stringify({
+        prices: prices.map((price) => ({ ...price, productName: "Azure BFL Flux Models" })),
+      }),
+      catalogModels: [catalog],
+    });
+    expect(unknown.models).toEqual([]);
   });
 
   it("uses public Microsoft price pages at their published version scope", async () => {
@@ -1745,6 +1828,46 @@ describe("Azure adapters", () => {
         sample: "Azure OpenAI Media / Sora 2 glbl / Sora 2 glbl Second",
       },
     ]);
+  });
+
+  it("recognizes scoped Mistral and Llama SKU spellings without resolving competing base identities", () => {
+    const source = azureRetailSource(0, 2, 0);
+    const llama = {
+      ...azurePricingModel("Llama-3.3-70B-Instruct"),
+      service_families: ["Foundry Models sold by Azure"],
+    };
+    const medium = {
+      ...azurePricingModel("mistral-medium-3-5", "1"),
+      service_families: ["Foundry Models sold by Azure"],
+    };
+    const prices = [
+      { productName: "Azure Llama Models", skuName: "Llama 3.3 70B Inp glbl" },
+      { productName: "Azure Mistral Models", skuName: "MM3.5 Inp glbl" },
+    ].map((row, index) => ({
+      ...row,
+      meterName: `${row.skuName} Tokens`,
+      currencyCode: "USD",
+      retailPrice: 1,
+      armRegionName: "eastus2",
+      meterId: `native-${index}`,
+      serviceName: "Foundry Models",
+      unitOfMeasure: "1M",
+      type: "Consumption",
+    }));
+    const parse = (catalogModels: ProviderModel[]) =>
+      parseSource({
+        provider: provider(manifest("azure")),
+        source,
+        observedAt,
+        body: JSON.stringify({ prices }),
+        catalogModels,
+      }).models;
+    expect(parse([llama, medium]).map(({ uid }) => uid)).toEqual([llama.uid, medium.uid]);
+    const base = {
+      ...azurePricingModel("Llama-3.3-70B"),
+      service_families: ["Foundry Models sold by Azure"],
+    };
+    expect(parse([llama, medium, base]).map(({ uid }) => uid)).toEqual([medium.uid]);
   });
 
   it("classifies unmatched public retail rows without guessing a catalog binding", async () => {

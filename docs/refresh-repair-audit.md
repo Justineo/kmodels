@@ -18,12 +18,13 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 ### Set a finite scope
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
-Preparation selects one error-driven provider per UTC day against the stable configured-provider
+Preparation selects one error-driven provider per six-hour UTC slot against the stable configured-provider
 rotation, keeping all of that provider's source and validation candidates together. It also admits
 the independent periodic slot and workflow evidence items. Other candidates stay in the prepared
 deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
-list. A continuously failing provider gets its own slot at least once per configured-provider cycle;
-same-day reruns select from the latest evidence. Closing a batch is not a whole-catalog health claim.
+list. A continuously failing provider gets its own slot at least once per configured-provider cycle
+(five days for 20 providers); same-slot reruns select from the latest evidence. The independent
+periodic review runs only in the first daily slot. Closing a batch is not a whole-catalog health claim.
 Source-acquisition review follows the admitted providers too; an unrelated transport failure must
 not silently expand a bounded batch. Keep those failures visible in the full refresh report. The
 periodic architecture slot reviews acquisition globally, and execution failures remain workflow-wide.
@@ -151,9 +152,16 @@ This includes a previously consumed card input/output amount, public API price f
 billing policy becoming unreadable. The native reconciliation reason and bounded sample survive
 even when accepted source bytes and a retained commercial partition are unchanged. Generic usage
 envelopes and unused SDK/promotion types are not monitored as pricing contracts.
+`unsupported_pricing_cell_preserved` identifies an owned published price cell retained as raw
+evidence and enters admission even when its canonical fallback is `unknown_meter`. Generic unknown
+meters without this source-owned diagnostic remain insufficient to establish a parser defect.
 
 A public source or dependency with two consecutive HTTP 404/410 failures enters relocation review.
 Native status is authoritative; prose matching exists only for older reports without that field.
+Other public acquisition failures also enter investigation when pricing remains failed, the source
+or commercial bundle dependency has failed at least three consecutive times, and its last successful
+fetch was at least 24 hours ago. Admission establishes a persistent stale-price problem, not a
+presumption that every outage has a safe code fix.
 A source move requires an independent first-party index or link and verified replacement content.
 Transient acquisition and authentication failures remain incomplete evidence, rather than parser
 repair instructions. Missing optional credentials remain normal configured scope.
@@ -165,7 +173,7 @@ published fallback is valid.
 
 ## Periodic review
 
-The existing daily serialized repair job also rotates one provider review per UTC day, followed by
+The serialized repair job also rotates one provider review per UTC day, followed by
 a global architecture review. The current 20 providers therefore form a nominal 21-day cycle.
 This review is independent of error-triggered candidates and examines discovery, identity,
 lifecycle, pricing inventory and scopes, accounting, retention, replay, calculator/display behavior

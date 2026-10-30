@@ -908,6 +908,19 @@ function modelPageRates(
       continue;
     }
     const conditions = { route_provider: page.provider };
+    if (item.type === "transcription" && header === "Input" && (unit === "hr" || unit === "sec")) {
+      rates.push(
+        publishedRate(
+          "input_audio",
+          amount,
+          unit === "hr" ? "hour" : "second",
+          sourceId,
+          unit,
+          conditions,
+        ),
+      );
+      continue;
+    }
     if (item.type === "reranking" && header === "Input" && unit === "K") {
       if (!titles.get(header)?.includes("Per 1,000 queries"))
         throw new Error(`Vercel rerank unit lost its query disclosure for ${item.id}`);
@@ -947,10 +960,6 @@ function modelPageRates(
           conditions,
         ),
       );
-      continue;
-    }
-    if (item.type === "transcription" && header === "Input" && unit === "hr") {
-      rates.push(publishedRate("input_audio", amount, "hour", sourceId, "hr", conditions));
       continue;
     }
     if (unit === "M" && (header === "Input" || header === "Output" || header === "Cache")) {

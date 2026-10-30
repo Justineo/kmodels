@@ -1230,6 +1230,35 @@ describe("Anthropic adapters", () => {
       models.find(({ model_id }) => model_id === "claude-fable-5")?.limits.context_tokens,
     ).toBe(1000000);
   });
+  it("excludes explicitly retired partner-only prices without blocking direct API peers", async () => {
+    const prices = await fixture("anthropic/pricing.md");
+    const native =
+      "Claude Haiku 3.5 (retired, except on Claude Models on Google Cloud (Google managed))";
+    for (const [label, excluded] of [
+      [native, true],
+      [native.replace("retired", "available"), false],
+    ] as const) {
+      const failures: string[] = [];
+      const items: PricingReconciliationItem[] = [];
+      const result = await anthropicSource({
+        overrides: {
+          "/docs/en/about-claude/pricing.md": prices.replace(
+            "| Claude Fable 5",
+            `| ${label} | $0.80 / MTok | $1 / MTok | $1.60 / MTok | $0.08 / MTok | $4 / MTok |\n| Claude Fable 5`,
+          ),
+        },
+        onPricingDependencyFailure: (url) => failures.push(url),
+        onPricingReconciliation: (item) => items.push(item),
+      });
+      expect(items.some(({ reason_code }) => reason_code === "retired_partner_only_price")).toBe(
+        excluded,
+      );
+      expect(failures.length > 0).toBe(!excluded);
+      expect(
+        result.models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts.length,
+      ).toBeGreaterThan(0);
+    }
+  });
   it.each(["$1*0 / MTok", "`$1**0** / MTok`"])(
     "does not turn a literal price expression into a scalar (%s)",
     async (quote) => {
