@@ -1,5 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
+import { canonicalJson } from "../catalog/canonical-value.ts";
 import {
   configureInvocation,
   invocationScopeFields,
@@ -96,6 +97,18 @@ function caseLabel(value: InvocationCase): string {
     formatSnakeCase(value.support.state),
   ].join(" · ");
 }
+const sharedSelectors = computed(() => {
+  const targets = props.detail.graph.invocation_targets;
+  return new Set(
+    (targets[0]?.selectors ?? [])
+      .map((selector) => canonicalJson(selector))
+      .filter((selector) =>
+        targets.every((target) =>
+          target.selectors.some((value) => canonicalJson(value) === selector),
+        ),
+      ),
+  );
+});
 const targetOptions = computed(() =>
   props.detail.graph.invocation_targets.map((value) => {
     const wire = props.detail.graph.surfaces.find(({ id }) => id === value.surface_ref);
@@ -106,6 +119,12 @@ const targetOptions = computed(() =>
           ? value.address.value
           : `Caller-supplied ${value.address_role}`,
         wire?.api ?? value.surface_ref,
+        ...value.selectors
+          .filter((selector) => !sharedSelectors.value.has(canonicalJson(selector)))
+          .map(
+            ({ location, value }) =>
+              `${location.key}: ${value.kind === "literal" ? value.value : `Caller-supplied ${value.input}`}`,
+          ),
         wire?.origin_template,
         wire?.request_media_type,
         value.lifecycle,

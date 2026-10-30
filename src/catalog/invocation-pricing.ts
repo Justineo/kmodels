@@ -1,6 +1,7 @@
 import { canonicalJson } from "./canonical-value.ts";
 import { invocationPricingModelRef } from "./invocation-pricing-model.ts";
 import { openAiInvocationPriceBindings } from "./openai-invocation-pricing.ts";
+import { anthropicInvocationPriceBindings } from "./anthropic-invocation-pricing.ts";
 import type { InvocationCatalog } from "./invocation-schema.ts";
 import type { InvocationPricingBinding } from "./publication-v2-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
@@ -23,6 +24,7 @@ export function reconcileInvocationBindings(
   const offers = pricing.books.flatMap((book) => book.offers.map((offer) => ({ book, offer })));
   const compiled = new Map<string, InvocationPricingBinding[]>([
     ["openai", openAiInvocationPriceBindings(invocation, pricing)],
+    ["anthropic", anthropicInvocationPriceBindings(invocation, pricing)],
   ]);
   const result = new Map(
     [...compiled.values()]

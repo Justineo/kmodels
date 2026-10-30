@@ -12,6 +12,12 @@ import {
 } from "./anthropic-accounting.ts";
 import { anthropicPriceKind, anthropicPriceRow } from "./anthropic-price-row.ts";
 import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
+import { anthropicInvocation } from "./anthropic-invocation.ts";
+import {
+  anthropicAtLeastGeneration as atLeastGeneration,
+  anthropicModelGeneration as modelGeneration,
+  type AnthropicModelGeneration as ModelGeneration,
+} from "./anthropic-model-generation.ts";
 import type { ProviderAtomRegistryEntry } from "./pricing-schema.ts";
 import type {
   ParsedProviderModel as ProviderModel,
@@ -897,11 +903,6 @@ function validateModelIdentityContract(body: string, modelsListBody: string, inp
   );
 }
 
-interface ModelGeneration {
-  major: number;
-  minor: number;
-}
-
 function sectionProse(body: string, depth: number, heading: string): string {
   const content = markdownSection(body, depth, heading);
   if (content === undefined) return "";
@@ -946,24 +947,6 @@ function reviewedGeographyGeneration(
     });
     return;
   }
-}
-
-function modelGeneration(id: string): ModelGeneration | undefined {
-  const match = id.match(/^claude-[a-z]+(?:-[a-z]+)*-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  if (match?.[1] === undefined) return undefined;
-  const generation = { major: Number(match[1]), minor: Number(match[2] ?? 0) };
-  return Number.isSafeInteger(generation.major) && Number.isSafeInteger(generation.minor)
-    ? generation
-    : undefined;
-}
-
-function atLeastGeneration(id: string, threshold: ModelGeneration): boolean {
-  const generation = modelGeneration(id);
-  return (
-    generation !== undefined &&
-    (generation.major > threshold.major ||
-      (generation.major === threshold.major && generation.minor >= threshold.minor))
-  );
 }
 
 function validateRequestAccounting(
@@ -1950,6 +1933,13 @@ export function parseAnthropicCatalog(input: Input): SourceParseResult {
   return {
     models: [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid)),
     ...commercial,
+    ...anthropicInvocation({
+      models: [...models.values()],
+      index: bundle.index,
+      documents: bundle.documents,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
   };
 }
 
