@@ -720,6 +720,48 @@ export function parseDashscopeCatalog(input: ParseInput): SourceParseResult {
       "rows",
     ]);
   }
+  // The TTS page now lists its model inventory as region sections of code IDs rather than tables.
+  if (extractor.category === "tts" && catalogTables === 0) {
+    const $ = load(body);
+    const heading = $("h2")
+      .filter((_index, element) => text($(element).text()).trim() === "Supported models")
+      .first();
+    const container = heading.nextAll("section").first();
+    container.find("section").each((_sectionIndex, section) => {
+      const region = recommendedRegions.get(text($(section).children("h4").first().text()));
+      if (region === undefined) return;
+      let listed = 0;
+      $(section)
+        .find("li")
+        .each((_itemIndex, item) => {
+          const family = text($(item).find("strong").first().text());
+          for (const code of $(item).find("code").toArray()) {
+            const id = exactId(text($(code).text()));
+            if (id === undefined) continue;
+            const model = baseModel({
+              providerId: input.provider.id,
+              id,
+              name: id,
+              sourceId: input.source.id,
+              observedAt: input.observedAt,
+            });
+            add(models, {
+              ...model,
+              tasks: rowOperations(extractor.category, id, family, undefined, ["Supported models"]),
+              ...(family === "" ? {} : { raw_type: family }),
+              modalities: { input: ["text"], output: ["audio"] },
+              status: "active",
+              release_stage: /preview/i.test(id) ? "preview" : "unknown",
+              pricing_state: "unknown",
+              scope: "regional_catalog",
+              availability: [{ region, deployment_type: "model_api" }],
+            });
+            listed += 1;
+          }
+        });
+      if (listed > 0) catalogTables += 1;
+    });
+  }
   assertItemCount("DashScope catalog tables", catalogTables, 1);
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return { models: bounded(models, 1, extractor.maxModels, `DashScope ${extractor.category}`) };
@@ -985,11 +1027,36 @@ export function parseDashscopeRecommended(input: ParseInput): SourceParseResult 
   if (extractor.kind !== "dashscope-recommended")
     throw new Error("Wrong DashScope recommended-model extractor");
   const $ = load(input.body);
+  const detailedCards = $(".bl-cardwrap").length > 0;
+  const listingCards = !detailedCards && $("a.adoc-help-center-card").length > 0;
   const models =
-    $(".bl-cardwrap").length === 0
-      ? parseDashscopeRecommendedMarkdown(input)
-      : new Map<string, ProviderModel>();
+    detailedCards || listingCards
+      ? new Map<string, ProviderModel>()
+      : parseDashscopeRecommendedMarkdown(input);
   const findings: string[] = [];
+  if (listingCards) {
+    $("a.adoc-help-center-card").each((index, element) => {
+      try {
+        const href = $(element).attr("href");
+        if (href === undefined)
+          throw new Error("DashScope recommended-model listing card omitted a link");
+        const { id, region } = recommendedListingTarget(href);
+        add(models, {
+          ...baseModel({
+            providerId: input.provider.id,
+            id,
+            name: id,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          }),
+          availability: [{ region, deployment_type: "model_api" }],
+          scope: "regional_catalog",
+        });
+      } catch {
+        findings.push(`/cards/${index}`);
+      }
+    });
+  }
   $(".bl-cardwrap").each((index, element) => {
     try {
       const card = $(element);

@@ -12305,6 +12305,70 @@ describe("DashScope adapters", () => {
     expect(models.map(({ model_id }) => model_id)).toEqual(["qwen-image-2.0-pro", "qwen3.7-plus"]);
   });
 
+  it("reads the region-linked recommended-model listing cards", async () => {
+    const models = parse(
+      source("dashscope-recommended"),
+      await fixture("dashscope/recommended-listing.html"),
+    );
+    expect(
+      models.map(({ model_id, availability, api_endpoints }) => ({
+        model_id,
+        availability,
+        api_endpoints,
+      })),
+    ).toEqual([
+      {
+        model_id: "happyoyster-1.0-adventure",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+      {
+        model_id: "MiniMax-M2.5",
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+      {
+        model_id: "ZHIPU/GLM-5.3",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+    ]);
+  });
+
+  it("reads the region-tabbed TTS model lists under the supported-models heading", async () => {
+    const models = parse(
+      source("dashscope-tts"),
+      await fixture("dashscope/tts-supported-models.html"),
+    );
+    expect(
+      models.map(({ model_id, tasks, modalities, availability }) => ({
+        model_id,
+        tasks,
+        modalities,
+        availability,
+      })),
+    ).toEqual([
+      {
+        model_id: "cosyvoice-v3.5-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-flash",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+      },
+    ]);
+  });
+
   it("validates Markdown recommended-model cards against their published routes", async () => {
     const body = await fixture("dashscope/recommended.md");
     const models = parse(source("dashscope-recommended"), body);
@@ -13630,7 +13694,7 @@ describe("DashScope adapters", () => {
     expect(catalogSources.length).toBeGreaterThan(0);
     expect(
       catalogSources.every(({ format, extractorVersion }) => {
-        return format === "html" && extractorVersion === "dashscope-catalog-v7";
+        return format === "html" && extractorVersion === "dashscope-catalog-v8";
       }),
     ).toBe(true);
     const markdownSources = value.sources.filter(
@@ -13643,7 +13707,7 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v7",
+      extractorVersion: "dashscope-recommended-v8",
       retainOmittedFacts: true,
     });
     expect(source("dashscope-pricing")).toMatchObject({

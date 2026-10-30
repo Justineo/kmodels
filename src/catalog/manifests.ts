@@ -462,7 +462,7 @@ const dashscopeCatalogSource = (
   format: "html",
   stability: "documented",
   extractor: { kind: "dashscope-catalog", category, maxModels },
-  extractorVersion: "dashscope-catalog-v7",
+  extractorVersion: "dashscope-catalog-v8",
   fields: [
     "model_id",
     "description",
@@ -3683,7 +3683,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
-        extractorVersion: "dashscope-recommended-v7",
+        extractorVersion: "dashscope-recommended-v8",
         fields: ["api_endpoints", "availability"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),

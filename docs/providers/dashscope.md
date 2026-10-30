@@ -57,7 +57,9 @@ Production collection uses only Alibaba Cloud first-party sources:
   `Recommended models`/`All models`/`Legacy models` ownership is declared by heading elements that
   are page siblings of the tables rather than enclosing sections, so catalog extraction resolves
   each table's heading outline from its preceding siblings before applying the reviewed section
-  filter;
+  filter. The TTS catalog now publishes its inventory as region sections of exact `<code>` IDs under
+  a `Supported models` heading instead of model tables, so that source reads the region sections
+  directly while keeping the table path and the at-least-one-section completeness guard;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
@@ -129,8 +131,12 @@ The recommendation page adds only exact region and endpoint evidence. Detailed c
 request routes and regions. Compact listings provide exact model IDs in console links and the
 console path's reviewed region, but no request route; repeated links are merged by exact ID.
 Listings may use either the original hash route or `/<region>/model/market/detail/<encoded-id>`.
-Decode the exact final path segment, including encoded publisher slashes; do not take identity
-from the display label or infer an API endpoint from a console URL. Both forms retain the same
+The current page renders its compact listings as `a.adoc-help-center-card` anchors around console
+model-market detail routes packed many per line, so cards are read as DOM anchors rather than
+line-oriented text. Decode the exact final path segment, including encoded publisher slashes; do
+not take identity from the display label or infer an API endpoint from a console URL. Cards that
+link to relative help pages instead of a console route contribute no identity and are recorded as
+localized findings. Both forms retain the same
 host, region, model-ID, and 15–60-model collection guards. A
 malformed card or link, unknown route or console region, or route/region contradiction suppresses
 only that item and records a contract finding; valid siblings survive.
