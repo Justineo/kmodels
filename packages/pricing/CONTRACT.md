@@ -52,7 +52,15 @@ and explicit target coverage. All model, source, surface, target, case, evidence
 must close within the provider. Invocation sources have explicit public global/region scope and
 remain separate from potentially older price source revisions. Private account/runtime inventories
 cannot establish public invocation facts. Bindings require a documented supported case and offers
-for the same resolved model; duplicate target/case bindings and foreign evidence are invalid.
+for the resolved model, or an explicit fixed `model` selector naming the target's own published
+tariff identity. An unrelated model cannot supply a tariff. Duplicate target/case bindings and
+foreign evidence are invalid.
+
+An HTTP POST surface may declare `request_media_type` as `application/json` or
+`multipart/form-data`. A `form` identifier location or selector names a multipart field; it
+requires the multipart media type and cannot be mixed with JSON body assignments. WebSocket
+surfaces describe the opening handshake. Event payloads and multi-step workflows are not implied
+by that handshake. Neither a surface nor a pricing binding is an executable request client.
 
 `listInvocationBindings()` returns isolated copies of the exact target/case/offer joins. An offer
 with bindings requires explicit `invocation: { targetRef, caseRef, inputs?, observed? }` in selection
@@ -61,12 +69,16 @@ calculation; that does not establish callability. `bindInvocation(selection)` re
 `selectors`, the selected `binding` where present, and `missingInputs` with context/observed kind and
 input reference. It does not choose a default target or case.
 
-Fixed selectors come from the published binding. Context values use their declared input names;
+Fixed selectors come from the published binding and may be categorical or boolean. Context values use their declared input names;
 observed values use their declared acquisition-contract references. Both maps contain normalized
 categorical values. Callers collect and normalize observations according to the offer's acquisition
 contract; a requested region/tier is not evidence of the actual served region/tier. An observed
 reference is `selector:` followed by the SHA-256 of RFC 8785 JSON containing `offer_ref` and the
 selector source `contract` with evidence/observations removed. It must resolve in every linked offer.
+A reference may identify a consistent union of normalization maps from rate-local sources with
+otherwise identical contracts in that offer. Union entries are unique by raw `source_value` and
+ordered by UTF-8 bytes; conflicting mappings or mixed mapped/unmapped sources cannot form a union.
+Individual acquisition references remain valid. Rate applicability and legacy exports are unchanged.
 Ordinary selectors cannot bypass missing inputs or contradict derived values. Undeclared input keys,
 unknown cases and unrelated offers fail with `INVALID_REQUEST`; duplicate selector dimensions retain
 `DUPLICATE_SELECTOR`. Requirements and calculation reject incomplete invocation pricing inputs.

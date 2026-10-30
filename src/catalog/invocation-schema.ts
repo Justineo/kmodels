@@ -94,6 +94,7 @@ const identifierLocation = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("path"), parameter: parameterName }),
   z.strictObject({ kind: z.literal("query"), parameter: parameterName }),
+  z.strictObject({ kind: z.literal("form"), parameter: parameterName }),
 ]);
 
 export const apiSurfaceSchema = z
@@ -107,6 +108,7 @@ export const apiSurfaceSchema = z
     origin_template: z.string().min(1).max(512),
     path_template: z.string().min(1).max(1024).startsWith("/"),
     identifier_location: identifierLocation,
+    request_media_type: z.enum(["application/json", "multipart/form-data"]).optional(),
     inputs: z
       .array(
         z.strictObject({
@@ -118,6 +120,18 @@ export const apiSurfaceSchema = z
     evidence_refs: evidenceReferences,
   })
   .superRefine((surface, context) => {
+    if (
+      (surface.identifier_location.kind === "form" &&
+        surface.request_media_type !== "multipart/form-data") ||
+      (surface.identifier_location.kind === "body" &&
+        surface.request_media_type === "multipart/form-data") ||
+      (surface.request_media_type !== undefined &&
+        (surface.transport !== "http" || surface.method !== "POST"))
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Request media type contradicts its wire location or transport",
+      });
     const names = new Set(surface.inputs.map(({ name }) => name));
     if (names.size !== surface.inputs.length)
       context.addIssue({ code: "custom", message: "Duplicate surface input" });
@@ -233,7 +247,7 @@ export const invocationTargetSchema = z
       .array(
         z.strictObject({
           location: z.strictObject({
-            kind: z.enum(["header", "body", "path", "query"]),
+            kind: z.enum(["header", "body", "form", "path", "query"]),
             key: text,
           }),
           value: invocationAddressSchema,

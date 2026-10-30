@@ -10666,8 +10666,27 @@
                           },
                           "required": ["kind", "parameter"],
                           "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "form"
+                            },
+                            "parameter": {
+                              "type": "string",
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,63}$"
+                            }
+                          },
+                          "required": ["kind", "parameter"],
+                          "additionalProperties": false
                         }
                       ]
+                    },
+                    "request_media_type": {
+                      "type": "string",
+                      "enum": ["application/json", "multipart/form-data"]
                     },
                     "inputs": {
                       "maxItems": 16,
@@ -10833,7 +10852,7 @@
                             "properties": {
                               "kind": {
                                 "type": "string",
-                                "enum": ["header", "body", "path", "query"]
+                                "enum": ["header", "body", "form", "path", "query"]
                               },
                               "key": {
                                 "type": "string",
@@ -11832,40 +11851,47 @@
                                 "const": "fixed"
                               },
                               "value": {
-                                "oneOf": [
+                                "anyOf": [
                                   {
-                                    "type": "object",
-                                    "properties": {
-                                      "namespace": {
-                                        "type": "string",
-                                        "const": "kmodels"
+                                    "oneOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "namespace": {
+                                            "type": "string",
+                                            "const": "kmodels"
+                                          },
+                                          "value": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        },
+                                        "required": ["namespace", "value"],
+                                        "additionalProperties": false
                                       },
-                                      "value": {
-                                        "type": "string",
-                                        "minLength": 1
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "namespace": {
+                                            "type": "string",
+                                            "const": "provider"
+                                          },
+                                          "provider_id": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "value": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        },
+                                        "required": ["namespace", "provider_id", "value"],
+                                        "additionalProperties": false
                                       }
-                                    },
-                                    "required": ["namespace", "value"],
-                                    "additionalProperties": false
+                                    ]
                                   },
                                   {
-                                    "type": "object",
-                                    "properties": {
-                                      "namespace": {
-                                        "type": "string",
-                                        "const": "provider"
-                                      },
-                                      "provider_id": {
-                                        "type": "string",
-                                        "minLength": 1
-                                      },
-                                      "value": {
-                                        "type": "string",
-                                        "minLength": 1
-                                      }
-                                    },
-                                    "required": ["namespace", "provider_id", "value"],
-                                    "additionalProperties": false
+                                    "type": "boolean"
                                   }
                                 ]
                               }

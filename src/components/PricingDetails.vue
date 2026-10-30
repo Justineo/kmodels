@@ -1,6 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
 import { compareUtf8 } from "../catalog/canonical-value.ts";
+import { invocationPricingModelRef } from "../catalog/invocation-pricing-model.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
@@ -66,8 +67,10 @@ const offers = computed(() => {
     ? all.filter(({ id }) => props.invocation?.binding?.offer_refs.includes(id))
     : [];
 });
-const pricingModelRef = computed(
-  () => props.invocation?.target.resolved_model_ref ?? props.model.uid,
+const pricingModelRef = computed(() =>
+  props.invocation === undefined
+    ? props.model.uid
+    : invocationPricingModelRef(props.invocation.target, props.invocation.binding),
 );
 interface CapacityGroup {
   key: string;

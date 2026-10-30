@@ -38,6 +38,12 @@ const entry = computed(() => target.value?.cases.find(({ id }) => id === caseRef
 const surface = computed(() =>
   props.detail.graph.surfaces.find(({ id }) => id === target.value?.surface_ref),
 );
+const coverage = computed(() =>
+  props.detail.graph.target_coverage.map((value) => ({
+    ...value,
+    api: props.detail.graph.surfaces.find(({ id }) => id === value.surface_ref)?.api,
+  })),
+);
 const selection = computed(() =>
   selectWebsiteInvocation(
     props.detail,
@@ -91,10 +97,23 @@ function caseLabel(value: InvocationCase): string {
   ].join(" · ");
 }
 const targetOptions = computed(() =>
-  props.detail.graph.invocation_targets.map((value) => ({
-    value: value.id,
-    label: `${value.address.kind === "literal" ? value.address.value : `Caller-supplied ${value.address_role}`} · ${props.detail.graph.surfaces.find(({ id }) => id === value.surface_ref)?.api ?? value.surface_ref} · ${value.lifecycle}`,
-  })),
+  props.detail.graph.invocation_targets.map((value) => {
+    const wire = props.detail.graph.surfaces.find(({ id }) => id === value.surface_ref);
+    return {
+      value: value.id,
+      label: [
+        value.address.kind === "literal"
+          ? value.address.value
+          : `Caller-supplied ${value.address_role}`,
+        wire?.api ?? value.surface_ref,
+        wire?.origin_template,
+        wire?.request_media_type,
+        value.lifecycle,
+      ]
+        .filter((part) => part !== undefined)
+        .join(" · "),
+    };
+  }),
 );
 const inputNames = computed(() => {
   const value = target.value;
@@ -202,6 +221,15 @@ async function copy(value: string, label: string) {
 <template>
   <section class="detail-section invocation-section" aria-labelledby="invocation-heading">
     <h3 id="invocation-heading">Invocation</h3>
+    <p v-for="item in coverage" :key="item.surface_ref ?? item.model_ref" class="unknown-note">
+      Collection coverage<template v-if="item.api"> ({{ item.api }})</template>:
+      {{ formatSnakeCase(item.state)
+      }}<template v-if="item.reason"> · {{ formatSnakeCase(item.reason) }}</template
+      >.
+    </p>
+    <p v-if="coverage.some(({ state }) => state !== 'complete')" class="unknown-note">
+      Missing options do not establish lack of provider support.
+    </p>
     <p v-if="targetOptions.length === 0" class="unknown-note">
       Invocation options have not been established for this model.
     </p>
@@ -234,6 +262,10 @@ async function copy(value: string, label: string) {
           <div>
             <dt>API</dt>
             <dd>{{ surface.api }}</dd>
+          </div>
+          <div v-if="surface.request_media_type">
+            <dt>Request format</dt>
+            <dd>{{ surface.request_media_type }}</dd>
           </div>
           <div>
             <dt>Lifecycle</dt>
@@ -355,6 +387,10 @@ async function copy(value: string, label: string) {
         <details v-if="assessment?.request">
           <summary>Request addressing template</summary>
           <pre>{{ JSON.stringify(assessment.request, null, 2) }}</pre>
+          <p v-if="surface?.request_media_type === 'multipart/form-data'" class="unknown-note">
+            Send form fields with your file payload. Let the HTTP client generate the multipart
+            boundary.
+          </p>
           <button
             type="button"
             @click="copy(JSON.stringify(assessment.request, null, 2), 'Request template')"

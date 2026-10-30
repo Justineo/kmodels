@@ -33,7 +33,18 @@ const fields = computed(() =>
         .flatMap(({ selectors }) => selectors)
         .find((item) => canonicalJson(item.dimension) === key)?.label ??
       formatDimension(selector.dimension);
-    return { selector, key, label, choices: [...choices.values()] };
+    const fixed = selector.value.kind === "fixed" ? selector.value.value : undefined;
+    const fixedLabel =
+      fixed === undefined
+        ? undefined
+        : typeof fixed === "boolean"
+          ? fixed
+            ? "Yes"
+            : "No"
+          : selector.dimension.namespace === "kmodels" && selector.dimension.value === "model"
+            ? fixed.value
+            : (choices.get(canonicalJson(fixed))?.label ?? formatCategoricalValue(fixed));
+    return { selector, key, label, fixedLabel, choices: [...choices.values()] };
   }),
 );
 const resolved = computed(() => {
@@ -90,17 +101,7 @@ function select(key: string, value: string) {
       <template v-for="field in fields" :key="field.key"
         ><div v-if="field.selector.value.kind === 'fixed'">
           <dt>{{ field.label }} · fixed by target</dt>
-          <dd>
-            {{
-              field.choices.find(
-                ({ value }) =>
-                  canonicalJson(value) ===
-                  canonicalJson(
-                    field.selector.value.kind === "fixed" ? field.selector.value.value : null,
-                  ),
-              )?.label ?? formatCategoricalValue(field.selector.value.value)
-            }}
-          </dd>
+          <dd>{{ field.fixedLabel }}</dd>
         </div></template
       >
     </dl>

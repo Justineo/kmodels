@@ -8,6 +8,8 @@ import type { SourceContractEvidence } from "./source-contract.ts";
 export interface SourceParseResult extends SourcePricingFacts {
   models: ProviderModel[];
   invocation?: InvocationCatalog;
+  /** Current documents that must not contradict a retained invocation's older evidence. */
+  invocationRetentionDocuments?: Array<{ document_url: string; content_hash: string }>;
 }
 
 export interface SourceParseInput {

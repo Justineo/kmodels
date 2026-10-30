@@ -38,7 +38,8 @@ input: clients still verify downloaded resource hashes against their accepted pu
 `listInvocationBindings()` exposes exact target/case/offer joins. An offer with published bindings
 requires explicit `invocation: { targetRef, caseRef, inputs?, observed? }` selection in requirements
 and calculation components. `bindInvocation()` derives fixed selectors and reports missing context
-or observed inputs. Input values are normalized categorical values under their declared dimension;
+or observed inputs. Fixed selectors may be categorical or boolean. Context and observed input values
+are normalized categorical values under their declared dimension;
 the caller follows the acquisition contract when collecting and normalizing observations. Ordinary
 selectors cannot bypass those inputs or override a fixed value. Unknown cases, unrelated offers,
 undeclared inputs and conflicting selectors fail. Requirements/calculation reject unresolved

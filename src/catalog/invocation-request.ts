@@ -14,6 +14,8 @@ export interface InvocationRequestTemplate {
   url: string;
   headers: Record<string, string>;
   body_fields: Array<{ pointer: string; value: string }>;
+  request_media_type?: ApiSurface["request_media_type"];
+  form_fields?: Array<{ name: string; value: string }>;
   authentication: "required" | "not_published";
   account_access: "unknown";
   request_verification: "not_tested";
@@ -39,11 +41,14 @@ export function invocationRequestTemplate(
   const queryParameters = new Map<string, string>();
   const headers = new Map<string, string>();
   const body: InvocationRequestTemplate["body_fields"] = [];
+  const form = new Map<string, string>();
   function assign(values: Map<string, string>, key: string, value: string) {
     if (values.has(key) && values.get(key) !== value) throw new Error("Conflicting wire values");
     values.set(key, value);
   }
   function bodyField(pointer: string, value: string) {
+    if (surface.request_media_type === "multipart/form-data")
+      throw new Error("JSON body assignment on a multipart request");
     if (!/^(?:\/(?:[^~/]|~[01])*)+$/.test(pointer)) throw new Error("Invalid body pointer");
     const path = decodePointer(pointer);
     for (const existing of body) {
@@ -58,6 +63,14 @@ export function invocationRequestTemplate(
     }
     body.push({ pointer, value });
   }
+  function formField(name: string, value: string) {
+    if (
+      surface.request_media_type !== "multipart/form-data" ||
+      !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name)
+    )
+      throw new Error("Invalid multipart form assignment");
+    assign(form, name, value);
+  }
   const identifier = address(target.address);
   switch (surface.identifier_location.kind) {
     case "path":
@@ -68,6 +81,9 @@ export function invocationRequestTemplate(
       break;
     case "body":
       bodyField(surface.identifier_location.pointer, identifier);
+      break;
+    case "form":
+      formField(surface.identifier_location.parameter, identifier);
       break;
   }
   for (const selector of target.selectors) {
@@ -83,6 +99,9 @@ export function invocationRequestTemplate(
         break;
       case "body":
         bodyField(key, value);
+        break;
+      case "form":
+        formField(key, value);
         break;
       case "header": {
         const name = key.toLowerCase();
@@ -139,6 +158,12 @@ export function invocationRequestTemplate(
     url: url.href,
     headers: Object.fromEntries(headers),
     body_fields: body,
+    ...(surface.request_media_type === undefined
+      ? {}
+      : { request_media_type: surface.request_media_type }),
+    ...(surface.request_media_type === "multipart/form-data"
+      ? { form_fields: [...form].map(([name, value]) => ({ name, value })) }
+      : {}),
     authentication: entry.requirements.some(({ kind }) => kind === "authentication")
       ? "required"
       : "not_published",

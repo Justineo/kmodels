@@ -1,4 +1,6 @@
 import { canonicalJson } from "./canonical-value.ts";
+import { invocationPricingModelRef } from "./invocation-pricing-model.ts";
+import { openAiInvocationPriceBindings } from "./openai-invocation-pricing.ts";
 import type { InvocationCatalog } from "./invocation-schema.ts";
 import type { InvocationPricingBinding } from "./publication-v2-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
@@ -19,13 +21,23 @@ export function reconcileInvocationBindings(
       .map(({ provider_id }) => provider_id),
   );
   const offers = pricing.books.flatMap((book) => book.offers.map((offer) => ({ book, offer })));
-  const result = new Map<string, InvocationPricingBinding>();
+  const compiled = new Map<string, InvocationPricingBinding[]>([
+    ["openai", openAiInvocationPriceBindings(invocation, pricing)],
+  ]);
+  const result = new Map(
+    [...compiled.values()]
+      .flat()
+      .map((binding) => [canonicalJson([binding.target_ref, binding.case_ref]), binding]),
+  );
   for (const link of links) {
     const target = targets.get(link.target_ref);
     const entry = target?.cases.find(({ id }) => id === link.case_ref);
     if (target === undefined || entry?.support.state !== "supported") continue;
-    if ((target.resolved_model_ref ?? target.model_ref) !== link.model_ref)
-      throw new Error("Invocation price link disagrees with the observed model resolution");
+    if (
+      invocationPricingModelRef(target, link) !== link.model_ref ||
+      (link.model_ref !== target.model_ref && link.model_ref !== target.resolved_model_ref)
+    )
+      throw new Error("Invocation price link disagrees with its explicit tariff or model identity");
     const provider = surfaces.get(target.surface_ref)?.provider_id;
     if (provider === undefined || !fresh.has(provider)) continue;
     const offerRefs = offers
@@ -57,6 +69,11 @@ export function reconcileInvocationBindings(
     const evidence = new Set(invocation.invocation_evidence.map(({ id }) => id));
     for (const binding of previous.bindings) {
       const key = canonicalJson([binding.target_ref, binding.case_ref]);
+      const target = targets.get(binding.target_ref);
+      const provider =
+        target === undefined ? undefined : surfaces.get(target.surface_ref)?.provider_id;
+      // A fresh provider compiler's omission is meaningful, including withdrawn acquisition evidence.
+      if (provider !== undefined && fresh.has(provider) && compiled.has(provider)) continue;
       if (
         result.has(key) ||
         !targets.has(binding.target_ref) ||

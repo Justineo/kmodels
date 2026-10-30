@@ -257,8 +257,10 @@ interface ApiSurface {
   path_template: string;
   identifier_location:
     | { kind: "body"; pointer: string }
+    | { kind: "form"; parameter: string }
     | { kind: "path"; parameter: string }
     | { kind: "query"; parameter: string };
+  request_media_type?: "application/json" | "multipart/form-data";
   inputs: Array<{
     name: string;
     role: "origin" | "project" | "region" | "workspace" | "api_version";
@@ -303,7 +305,7 @@ interface InvocationTarget {
   routing?: { kind: "fixed" | "automatic"; provider?: string; policy?: string };
   // Additional selectors, such as SageMaker multi-model or component selectors.
   selectors: Array<{
-    location: { kind: "header" | "body" | "path" | "query"; key: string };
+    location: { kind: "header" | "body" | "form" | "path" | "query"; key: string };
     value: Address;
   }>;
   lifecycle: ModelLifecycle;
@@ -529,7 +531,7 @@ interface InvocationPricingBinding {
   selectors: Array<{
     dimension: PriceDimension;
     value:
-      | { kind: "fixed"; value: PriceCategoricalValue }
+      | { kind: "fixed"; value: PriceCategoricalValue | boolean }
       | { kind: "context"; input: string }
       | { kind: "observed"; input_ref: string };
     evidence_refs: string[];
@@ -538,8 +540,20 @@ interface InvocationPricingBinding {
 }
 ```
 
+Fixed booleans bind route conditions such as EU data residency through the same applicability
+evaluator. Their dimension must be consumed as a boolean; a caller cannot override a fixed value.
+An explicit fixed `model` selector may name the target's own published tariff identity or its
+documented resolved identity. Without that selector, pricing uses the resolved identity. This
+allows a rolling request name's independently published tariff without copying it to a snapshot
+or changing the observed resolution. An unrelated model is never a valid tariff identity.
+
 Context inputs are bounded, typed request or deployment fields, not arbitrary expressions.
-Observed inputs reference the existing pricing-input acquisition contracts. Noncategorical inputs
+Observed inputs reference the existing pricing-input acquisition contracts. A reference may also
+identify the deterministic union of rate-local normalization maps for the same field within one
+offer. All other contract fields must agree; conflicting mappings or a mix of mapped and unmapped
+peers cannot establish that union. The union does not change rate applicability or legacy pricing
+bytes. Both canonical and portable validators reconstruct and verify its exact contract hash.
+Noncategorical inputs
 continue to use the existing price-input types. Offer references narrow the candidate set; they
 do not make every variant in an offer applicable. Evaluate the complete applicability expression.
 
@@ -768,6 +782,10 @@ with exact locators. Preserve reviewed fixtures and parse remote code without ex
 Update facts according to ownership: a new model need not have a target; failure of a route page
 does not delete identity; retained facts keep old timestamps. A removed cell in a complete matrix
 and omission from a non-exhaustive page have different meanings.
+An extractor may supply current document hashes as internal invocation-retention guards. If an old
+target's evidence depends on a now-changed document, the collector withholds that retained target
+rather than substituting stale support, lifecycle or regional claims. These guards are collection
+inputs, not a new public invocation or price contract.
 
 Separate transport/schema checks, identity joins, and semantic invariants. HTTP success, plausible
 row counts, and successful parsing do not establish meaning. Region-label/hostname conflicts and

@@ -1,10 +1,12 @@
 import { assertIJsonValue, canonicalJson } from "../../catalog/canonical-value.ts";
 import { validateInvocationCatalog } from "../../catalog/invocation-validation.ts";
-import {
-  invocationSelectorContract,
-  validateInvocationPricing,
-} from "../../catalog/invocation-pricing-validation.ts";
+import { validateInvocationPricing } from "../../catalog/invocation-pricing-validation.ts";
 import { PricingError } from "../errors.ts";
+import {
+  invocationOfferSelectorSources,
+  invocationOfferSelectorContracts,
+  invocationSelectorContract,
+} from "../../catalog/invocation-price-inputs.ts";
 import type { CalculationEnvelope } from "../schema.ts";
 import { validatePriceData as validateLegacyPriceData } from "../validation.ts";
 import {
@@ -73,23 +75,22 @@ export async function validatePriceData(input: unknown): Promise<CalculationV2En
       ) {
         for (const book of provider.books)
           for (const offer of book.offers)
-            for (const term of offer.terms) {
-              if (term.kind !== "rate") continue;
-              for (const variant of term.variants)
-                for (const source of variant.selector_sources ?? []) {
-                  const key = canonicalJson({
-                    offer_ref: offer.id,
-                    contract: invocationSelectorContract(source),
-                  });
-                  if (!sourceRefs.has(key)) {
-                    const bytes = new TextEncoder().encode(key);
-                    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-                    sourceRefs.set(
-                      key,
-                      `selector:${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`,
-                    );
-                  }
-                }
+            for (const source of [
+              ...invocationOfferSelectorSources(offer),
+              ...invocationOfferSelectorContracts(offer),
+            ]) {
+              const key = canonicalJson({
+                offer_ref: offer.id,
+                contract: invocationSelectorContract(source),
+              });
+              if (!sourceRefs.has(key)) {
+                const bytes = new TextEncoder().encode(key);
+                const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+                sourceRefs.set(
+                  key,
+                  `selector:${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`,
+                );
+              }
             }
       }
       validateInvocationPricing(

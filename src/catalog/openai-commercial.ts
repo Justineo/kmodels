@@ -649,7 +649,7 @@ function selectorSources(
     if (dimension.namespace !== "kmodels") continue;
     const keys =
       dimension.value === "served_service_tier"
-        ? ["responses.served_service_tier"]
+        ? ["responses.served_service_tier", "chat.served_service_tier"]
         : dimension.value === "context_tokens"
           ? ["responses.usage.input_tokens"]
           : dimension.value === "quality"
