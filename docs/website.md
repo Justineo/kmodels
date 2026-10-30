@@ -179,7 +179,10 @@ Status: implemented core; provider pricing convergence is in progress
   value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
-  remains in the canonical audit; a missing driver never hides a rate.
+  remains in the canonical audit; a missing driver never hides a rate. When one meter charges
+  distinct named quantities within an offer, use those quantity names to distinguish its rate rows
+  (for example, separate cache-write lifetimes). This consumes the shared charge binding rather
+  than interpreting provider-specific term keys in the UI.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,

@@ -940,6 +940,17 @@ function websiteOffer(
     });
   }
 
+  const driverLabels = new Map<string, Set<string>>();
+  for (const rate of rates) {
+    if (rate.driver === undefined) continue;
+    const labels = driverLabels.get(rate.label) ?? new Set<string>();
+    labels.add(rate.driver.label);
+    driverLabels.set(rate.label, labels);
+  }
+  for (const rate of rates)
+    if (rate.driver !== undefined && (driverLabels.get(rate.label)?.size ?? 0) > 1)
+      rate.label = rate.driver.label;
+
   return {
     id: offer.id,
     title: offer.name ?? formatSentenceCase(offer.offer_key),
