@@ -123,7 +123,8 @@ A model's complete graph must fit in one detail record; oversized records reject
 than truncating their evidence or silently dropping targets.
 
 The inspector requires an explicit target and documented case; it does not select the first target,
-region or account resource. Catalog facts remain separately labeled as unscoped. Case-scoped facts,
+region or account resource. Target choices put differing wire selectors before shared endpoint
+details so variants at one origin remain distinguishable. Catalog facts remain separately labeled as unscoped. Case-scoped facts,
 support, context matching, configuration and selection policy stay visible independently. Only
 supported cases expose a request-ID copy action; a ready addressing template additionally requires
 matched scope, complete configuration and eligible lifecycle/release policy. Resource confirmation
