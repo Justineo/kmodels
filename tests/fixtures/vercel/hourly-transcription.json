@@ -1,0 +1,20 @@
+{
+  "index": {
+    "url": "https://ai-gateway.vercel.sh/v1/models",
+    "body": "{\"object\":\"list\",\"data\":[{\"id\":\"elevenlabs/scribe-v2-realtime\",\"object\":\"model\",\"created\":1755815280,\"released\":1793059200,\"owned_by\":\"elevenlabs\",\"name\":\"Scribe v2 Realtime\",\"description\":\"Real-time speech-to-text over WebSocket with manual or voice-activity-based commits, optional word timestamps, and language detection. Supports PCM and mu-law audio and is billed per second of streamed audio.\",\"type\":\"transcription\",\"tags\":[\"websocket-transcription\"],\"supported_specifications\":[\"v3\",\"v4\"],\"modalities\":{\"input\":[\"audio\"],\"output\":[\"text\"]},\"pricing\":{}},{\"id\":\"microsoft/mai-transcribe-2\",\"object\":\"model\",\"created\":1755815280,\"released\":1788393600,\"owned_by\":\"microsoft\",\"name\":\"MAI-Transcribe 2\",\"description\":\"A multilingual speech-to-text model.\",\"type\":\"transcription\",\"supported_specifications\":[\"v2\",\"v3\",\"v4\"],\"modalities\":{\"input\":[\"audio\"],\"output\":[\"text\"]},\"pricing\":{\"input\":\"0\",\"transcription_duration_cost_per_second\":\"0.00002778\"}}]}"
+  },
+  "documents": [
+    {
+      "url": "https://ai-gateway.vercel.sh/v1/models/elevenlabs/scribe-v2-realtime/endpoints",
+      "body": "{\"data\":{\"id\":\"elevenlabs/scribe-v2-realtime\",\"name\":\"Scribe v2 Realtime\",\"created\":1755815280,\"released\":1793059200,\"description\":\"Real-time speech-to-text.\",\"architecture\":{\"modality\":\"audio\\u2192text\"},\"endpoints\":[{\"name\":\"elevenlabs | elevenlabs/scribe-v2-realtime\",\"model_name\":\"Scribe v2 Realtime\",\"pricing\":{\"prompt\":\"0\",\"completion\":\"0\",\"request\":\"0\",\"image\":\"0\",\"image_output\":\"0\",\"web_search\":\"0\",\"internal_reasoning\":\"0\",\"discount\":0},\"provider_name\":\"elevenlabs\",\"quantization\":null,\"status\":0,\"supports_implicit_caching\":false}]}}"
+    },
+    {
+      "url": "https://ai-gateway.vercel.sh/v1/models/microsoft/mai-transcribe-2/endpoints",
+      "body": "{\"data\":{\"id\":\"microsoft/mai-transcribe-2\",\"name\":\"MAI-Transcribe 2\",\"created\":1755815280,\"released\":1788393600,\"description\":\"A multilingual speech-to-text model.\",\"architecture\":{},\"endpoints\":[{\"name\":\"azure | microsoft/mai-transcribe-2\",\"model_name\":\"MAI-Transcribe 2\",\"pricing\":{\"prompt\":\"0\",\"completion\":\"0\",\"request\":\"0\",\"image\":\"0\",\"image_output\":\"0\",\"web_search\":\"0\",\"internal_reasoning\":\"0\",\"transcription_duration_cost_per_second\":\"0.00002778\",\"discount\":0},\"provider_name\":\"azure\",\"quantization\":null,\"status\":0,\"supports_implicit_caching\":false}]}}"
+    },
+    {
+      "url": "https://vercel.com/ai-gateway/models/scribe-v2-realtime",
+      "body": "{\"title\":\"Scribe v2 Realtime\",\"provider\":\"elevenlabs\",\"headers\":[\"Provider\",\"Input\",\"Capabilities\",\"ZDR\",\"No Training\",\"Free AI Gateway Credit\",\"Release Date\"],\"values\":[\"ElevenLabsLegal:Terms\\u2022Privacy\",\"$0.39/hr\",\"\",\"\",\"\",\"\",\"10/27/2026\"],\"titles\":[[],[],[],[],[],[],[]]}"
+    }
+  ]
+}

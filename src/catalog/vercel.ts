@@ -882,7 +882,7 @@ function modelPageRates(
   if (!free && prices.includes("Free"))
     throw new Error(`Vercel model page free pricing disagreed for ${item.id}`);
   const pricePattern =
-    /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP|sec|video)(\*)?(?:\+(\d+) more)?$/;
+    /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|hr|img|MP|sec|video)(\*)?(?:\+(\d+) more)?$/;
   for (const header of priceHeaders) {
     const value = cells.get(header);
     if (value === undefined || value === "" || value === "—" || value === "Free") continue;
@@ -947,6 +947,10 @@ function modelPageRates(
           conditions,
         ),
       );
+      continue;
+    }
+    if (item.type === "transcription" && header === "Input" && unit === "hr") {
+      rates.push(publishedRate("input_audio", amount, "hour", sourceId, "hr", conditions));
       continue;
     }
     if (unit === "M" && (header === "Input" || header === "Output" || header === "Cache")) {
