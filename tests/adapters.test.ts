@@ -9055,6 +9055,29 @@ describe("Vercel adapter", () => {
     ]);
   });
 
+  it("normalizes a per-hour transcription page without dropping priced siblings", async () => {
+    const models = await vercelCatalog("vercel/hourly-transcription.json");
+    const hourly = models.find(({ model_id }) => model_id === "elevenlabs/scribe-v2-realtime");
+    const perSecond = models.find(({ model_id }) => model_id === "microsoft/mai-transcribe-2");
+    expect(hourly).toMatchObject({ pricing_state: "numeric" });
+    expect(hourly?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_audio",
+        price: "0.39",
+        unit: "hour",
+        conditions: { route_provider: "elevenlabs" },
+      }),
+    ]);
+    expect(hourly?.raw_price_facts).toEqual([]);
+    expect(perSecond?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_audio",
+        price: "0.00002778",
+        unit: "second",
+      }),
+    ]);
+  });
+
   it("preserves pricing tiers and normalizes token units", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     expect({

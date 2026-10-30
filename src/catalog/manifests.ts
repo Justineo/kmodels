@@ -1608,7 +1608,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v32",
+        extractorVersion: "vercel-catalog-v33",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
