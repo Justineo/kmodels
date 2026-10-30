@@ -123,6 +123,7 @@ export type Extractor =
 
 export interface LinkedDocuments {
   path: RegExp;
+  includeScripts?: boolean;
   indexFormat?: "html" | "markdown" | "typescript" | "mixed";
   nestedIndexes?: {
     path: RegExp;
@@ -496,7 +497,7 @@ const kimiPricingSource = (
   format: "html",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v14",
+  extractorVersion: "kimi-pricing-v15",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -749,7 +750,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v17",
+        extractorVersion: "openai-pricing-v18",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -850,7 +851,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v27",
+        extractorVersion: "anthropic-catalog-v28",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -1608,7 +1609,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v33",
+        extractorVersion: "vercel-catalog-v34",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1911,7 +1912,7 @@ export const manifests = [
           maxModels: 200,
           minHandledRatio: 0.7,
         },
-        extractorVersion: "azure-retail-prices-v7",
+        extractorVersion: "azure-retail-prices-v8",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -2941,8 +2942,8 @@ export const manifests = [
     sources: [
       {
         id: "mistral-models",
-        url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/models/index.ts",
-        type: "repository",
+        url: "https://docs.mistral.ai/models.md",
+        type: "website",
         source: ["repository", "website"],
         access: "public",
         format: "mixed",
@@ -2952,7 +2953,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v17",
+        extractorVersion: "mistral-catalog-v18",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2979,25 +2980,17 @@ export const manifests = [
         exhaustive: true,
         role: "catalog",
         linkedDocuments: {
-          path: /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/[a-z0-9-]+$/,
-          indexFormat: "typescript",
-          requestSuffix: ".ts",
+          path: /^\/models\/[a-z0-9-]+$/,
+          indexFormat: "markdown",
+          requestSuffix: ".md",
           minDocuments: 55,
           maxDocuments: 90,
           concurrency: 8,
           maxDocumentBytes: mebibytes(1),
           documents: fixedDocuments([
             [
-              "model-schema",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/schema.ts",
-            ],
-            [
-              "model-endpoints",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts",
-            ],
-            [
               "prompt-caching",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+              "https://docs.mistral.ai/studio/conversations/advanced/prompt-caching.md",
               1,
               undefined,
               true,
@@ -3005,7 +2998,7 @@ export const manifests = [
             ],
             [
               "batch-processing",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/batch-processing/page.mdx",
+              "https://docs.mistral.ai/studio/batch-processing.md",
               1,
               undefined,
               true,
@@ -3023,7 +3016,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v10",
+        extractorVersion: "mistral-pricing-v11",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],
@@ -3035,41 +3028,27 @@ export const manifests = [
         pricingRequired: true,
         retainOmittedFacts: true,
         linkedDocuments: {
-          path: /^\/models\/(?:model-cards\/)?[a-z0-9-]+\/?$/,
+          path: /^(?:\/models\/(?:model-cards\/)?[a-z0-9-]+\/?|\/_next\/static\/chunks\/[a-zA-Z0-9_-]+\.js)$/,
+          includeScripts: true,
           indexFormat: "html",
           minDocuments: 0,
-          maxDocuments: 40,
+          maxDocuments: 80,
           concurrency: 5,
           optionalDocuments: true,
           maxDocumentBytes: mebibytes(2),
           documents: fixedDocuments([
             [
-              "pricing-currency",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/pricing-currency.ts",
-              1,
-              undefined,
-              true,
-              false,
-            ],
-            [
               "priority-tier",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/inference/priority-tier/page.mdx",
+              "https://docs.mistral.ai/inference/priority-tier.md",
               1,
               undefined,
               true,
               false,
             ],
-            [
-              "api-schema",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
-              2,
-              undefined,
-              true,
-              true,
-            ],
+            ["api-schema", "https://docs.mistral.ai/openapi.yaml", 2, undefined, true, true],
             [
               "prompt-caching",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+              "https://docs.mistral.ai/studio/conversations/advanced/prompt-caching.md",
               1,
               undefined,
               true,
@@ -3077,7 +3056,7 @@ export const manifests = [
             ],
             [
               "code-interpreter",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
+              "https://docs.mistral.ai/studio/agents/agent-tools/code_interpreter.md",
               1,
               undefined,
               true,
@@ -3085,7 +3064,7 @@ export const manifests = [
             ],
             [
               "web-search",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/websearch/page.mdx",
+              "https://docs.mistral.ai/studio/agents/agent-tools/websearch.md",
               1,
               undefined,
               true,
@@ -3093,7 +3072,7 @@ export const manifests = [
             ],
             [
               "image-generation",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/image_generation/page.mdx",
+              "https://docs.mistral.ai/studio/agents/agent-tools/image_generation.md",
               1,
               undefined,
               true,
@@ -3101,7 +3080,7 @@ export const manifests = [
             ],
             [
               "libraries",
-              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/search/libraries/page.mdx",
+              "https://docs.mistral.ai/studio/search/libraries.md",
               2,
               undefined,
               true,
@@ -3948,7 +3927,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v17",
+        extractorVersion: "cerebras-catalog-v18",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",

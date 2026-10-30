@@ -363,6 +363,12 @@ it("returns failed validation to the agent and stages only a successful unchange
   failTests = false;
   await runRepairPublication("stage");
   expect(files.get("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(patch);
+  const validation = git.mock.calls.find(
+    ([command, args]) => command === "vp" && args[1] === "scripts/validate-changes.ts",
+  );
+  expect(validation?.[2].env).toMatchObject({ REPAIR_BASE_SHA: "1".repeat(40) });
+  expect(validation?.[2].env).not.toHaveProperty("GITHUB_OUTPUT");
+  expect(process.env.GITHUB_OUTPUT).toBe("/tmp/repair-test-output");
   expect(
     git.mock.calls
       .filter(([command]) => command === "vp")

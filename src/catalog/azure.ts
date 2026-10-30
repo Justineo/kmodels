@@ -1626,6 +1626,7 @@ const retailQualifierTokens = new Set([
 
 const retailIdentityTokenAliases: Readonly<Record<string, string>> = {
   aud: "audio",
+  ccchd: "cached",
   doc: "document",
   img: "image",
   mn: "mini",
@@ -1753,7 +1754,9 @@ function modelSignatures(model: RetailCatalogModel, productScope: readonly strin
     const tokens = retailIdentityTokens(value);
     const withoutPreview = tokens.at(-1) === "preview" ? [tokens.slice(0, -1)] : [];
     const withoutPublisher = productScope.includes(tokens[0] ?? "") ? [tokens.slice(1)] : [];
-    const baseVariants = [tokens, ...withoutPreview, ...withoutPublisher];
+    const withoutInstruct =
+      productScope.includes("llama") && tokens.at(-1) === "instruct" ? [tokens.slice(0, -1)] : [];
+    const baseVariants = [tokens, ...withoutPreview, ...withoutPublisher, ...withoutInstruct];
     const releaseVariants = baseVariants.flatMap((candidate) => {
       const withoutRelease = withoutReleaseSuffix(candidate);
       return withoutRelease === undefined ? [] : [withoutRelease];
@@ -1801,7 +1804,13 @@ function catalogRetailModelIdentity(
   price: RetailIdentity,
   catalogModels: readonly RetailCatalogModel[],
 ): { id: string; version?: string } | undefined {
-  const sku = retailIdentityTokens(price.skuName);
+  const openAi = price.productName.startsWith("Azure OpenAI");
+  const label = openAi
+    ? openAiRetailLabel(price.skuName)
+    : price.productName === "Azure Mistral Models"
+      ? price.skuName.replace(/^MM(?=\d)/, "Mistral Medium ")
+      : price.skuName;
+  const sku = retailIdentityTokens(label).filter((token) => !openAi || token !== "flex");
   const candidates = retailProductCandidates(price, catalogModels);
   const matches = candidates.models.flatMap((model): CatalogIdentityMatch[] => {
     const markers = versionMarkers(model.version);
@@ -1874,7 +1883,7 @@ function retailMeter(
   const value = ` ${retailWords(label)} `;
   const input = /\b(?:in|inp|inpt|input|prompt)\b/.test(value);
   const output = /\b(?:opt|out|outp|outpt|output|completion)\b/.test(value);
-  const cache = /\b(?:cache|cached|cchd|cd)\b/.test(value);
+  const cache = /\b(?:cache|cached|ccchd|cchd|cd)\b/.test(value);
   const cacheWrite = cache && /\b(?:writes?|wr|creation)\b/.test(value);
   const text = /\b(?:text|txt)(?:\b|(?=\d))/.test(value);
   const image = !text && /\b(?:img|image)(?:\b|(?=\d))/.test(value);
@@ -1907,13 +1916,36 @@ function retailMeter(
 }
 
 function retailConditions(price: RetailPrice): SourcePriceFact["conditions"] {
-  return retailLabelConditions(price.skuName, price.armRegionName);
+  const openAi = price.productName.startsWith("Azure OpenAI");
+  return retailLabelConditions(
+    openAi ? openAiRetailLabel(price.skuName) : price.skuName,
+    price.armRegionName,
+    openAi,
+  );
 }
 
-function retailLabelConditions(label: string, region: string): SourcePriceFact["conditions"] {
+// Native GPT SKUs abbreviate both the model number and the processing/context class.
+// Keep this expansion inside Azure OpenAI: Flex is also a BFL model identity.
+function openAiRetailLabel(label: string): string {
+  return label
+    .replace(
+      /\b(54|55|56|61)(?=\s|luna|sol|terra)/gi,
+      (digits) => `${digits.slice(0, 1)}.${digits.slice(1)} `,
+    )
+    .replace(/\bShCo\b/gi, "ShortCo")
+    .replace(/\bLoCo\b/gi, "LongCo")
+    .replace(/\bFl\b/gi, "Flex");
+}
+
+function retailLabelConditions(
+  label: string,
+  region: string,
+  openAi = false,
+): SourcePriceFact["conditions"] {
   const sku = ` ${retailWords(label)} `;
   const batch = /\bbatch\b/.test(sku);
   const priority = /\b(?:pp|priority processing)\b/.test(sku);
+  const flex = openAi && /\bflex\b/.test(sku);
   const global = /\b(?:global|glbl|gl)\b/.test(sku);
   const dataZone = /\b(?:data zone|datazone|dzone|dz|dzn)\b/.test(sku);
   const regional = /\b(?:regional|regnl|rgnl|rg)\b/.test(sku);
@@ -1924,7 +1956,15 @@ function retailLabelConditions(label: string, region: string): SourcePriceFact["
   return {
     ...(region === "" ? {} : { region }),
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
-    ...(batch ? { service_tier: "batch" } : priority ? { service_tier: "priority" } : {}),
+    ...(batch
+      ? { service_tier: "batch" }
+      : priority
+        ? { service_tier: "priority" }
+        : flex
+          ? { service_tier: "flex" }
+          : openAi
+            ? { service_tier: "standard" }
+            : {}),
     ...(/\b(?:longco|long context)\b/.test(sku)
       ? { context_tier: "long_context" }
       : /\b(?:shortco|short context)\b/.test(sku)

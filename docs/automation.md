@@ -4,7 +4,7 @@ Status: implemented
 
 - GitHub Actions checks every push and pull request, including the portable pricing package build
   and packed Node/browser conformance checks. Package preparation never publishes to npm.
-- A separate daily `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
+- A separate six-hourly `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
   alone never starts Copilot: preparation reads the latest completed main-branch refresh's report
   artifact, run identity, failed steps, and bounded failure log with read-only Actions access.
   Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
@@ -15,11 +15,17 @@ Status: implemented
   committed report. Code-repair inference also begins when the selected refresh report contains
   a parser failure, a changed source-contract finding, known unrecognized public pricing-card
   structure, an explicitly rejected Databricks pricing subpage, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
-  pricing validation. The gate excludes operational states such as fetch failures and missing
-  credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
+  pricing validation. Repeated public acquisition failures also enter investigation when they retain
+  failed pricing for at least 24 hours after the last successful fetch and have at least three
+  consecutive failures, including commercial companions. A persistent 403/timeout must not silently
+  keep old prices outside the queue; investigation can establish a source successor or an honest
+  operational block. The gate excludes transient fetch failures, missing credentials and unresolved
+  pricing by itself. It deliberately does not pre-judge which changed
   source caused a provider regression; Copilot reviews every listed candidate and decides whether a
   safe code repair exists. Preparation admits one error-driven provider per run, using a stable
-  rotation over configured providers by UTC day, alongside the independent periodic-review slot.
+  rotation over configured providers by six-hour UTC slot. The independent periodic-review slot is
+  admitted once daily in the first UTC slot. With 20 providers, persistent error candidates receive
+  a slot within five days instead of waiting a full 20-day daily rotation.
   All candidates for that error provider stay together. The context and immutable admission retain
   every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
   later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
@@ -70,12 +76,12 @@ Status: implemented
   The agent has only read permissions. A custom `commit_repair` safe-output job receives the
   write permissions required for direct publication and deployment dispatch; it runs only after
   successful agent validation, safe-output processing, and successful threat detection.
-- Neither hourly refresh nor daily repair runs Jev. The [manual semantic experiment](semantic-audit.md)
+- Neither hourly refresh nor scheduled repair runs Jev. The [manual semantic experiment](semantic-audit.md)
   remains available, but has not demonstrated incremental production defect discovery. Follow the
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
   repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
   supplies no semantic-audit directory, key, or cache.
-- Daily repair also admits one comprehensive review independently of errors through
+- The first UTC slot each day also admits one comprehensive review independently of errors through
   `KMODELS_PERIODIC_REVIEW=true`. UTC days rotate deterministically over sorted manifest providers,
   then a global architecture review: currently 20 providers plus one global slot per 21-day cycle.
   Provider reviews inspect current first-party discovery, identity/lifecycle, complete price/service
@@ -88,8 +94,9 @@ Status: implemented
   action and prevent a healthy no-op, while an independent verified repair can still publish.
   The trusted terminal summary exposes completed/blocked scope and deferred candidates; a delivered
   patch does not establish a completed periodic review. A failed slot is incomplete, visible in Actions, and revisited
-  on its next cycle; a manual dispatch can rerun that day's slot. Error-driven candidates continue
-  to be investigated daily regardless of the selected review provider.
+  on its next cycle; a manual dispatch in the first UTC slot can rerun that day's review.
+  Error-driven candidates continue to be investigated every six hours regardless of the selected
+  review provider.
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
@@ -144,11 +151,11 @@ Status: implemented
   patch, reinstalls frozen dependencies, and repeats affected validation and exact-tree commit checks
   before retrying once. Validation never receives the push credential. Conflicts, validation
   failures, other push failures, or a second race fail the run and retry from current evidence on
-  the next daily schedule. Repair commits record the Actions run
+  the next six-hour schedule. Repair commits record the Actions run
   in a `Kmodels-Repair-Run` trailer and explicitly dispatch `void-deploy.yml`, since the workflow
   token does not trigger push workflows. A final delivery job requires successful publication
   and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.
-  Failed or incomplete runs leave their diagnostics in Actions; the next daily run re-evaluates
+  Failed or incomplete runs leave their diagnostics in Actions; the next scheduled run re-evaluates
   the latest committed refresh and retries remaining candidates. There is no issue-based queue,
   automatic success disposition, or immediate unbounded retry loop. DeepSeek inference uses
   `DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
@@ -199,6 +206,8 @@ Status: implemented
   allowed changes and retries the affected gate, up to three attempts per run. Apparently
   transient failures get one diagnostic rerun; deterministic failures require a correction.
   Staging removes any stale detection patch first and rejects mutations during validation.
+  The staged validation child does not inherit `GITHUB_OUTPUT`: runner file-command paths may not
+  exist inside the agent sandbox. The trusted parent retains its own output channel.
   Staging and publication admission also reject changes to manifest `min*`/`max*` limit
   declarations, including removal or replacement with an expression. Tests passing cannot justify
   lowering a count floor or raising a resource ceiling. Operator-reviewed source-contract migrations
@@ -275,6 +284,10 @@ Status: implemented
   inside the sandbox. A missing fake token must not strand an otherwise valid source repair.
 - Public repair evidence is fetched through `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID`
   (optionally followed by one exact fixed companion URL), using the reviewed manifest transport.
+  Every fetch writes an immutable receipt under a unique filename and prints its whole-file
+  `sha256` for review references. `source_hash` hashes only the source body; it is not the review
+  artifact digest. Refetching identical bytes cannot replace an earlier receipt's timestamp or
+  baseline metadata and invalidate evidence already cited by an investigation.
   For relocation research, `SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL` fetches the
   reviewed HTML companion afresh, requires an actual anchor to the target, and fetches just that
   target within the same public host/redirect boundary and a maximum 4 MiB response budget.

@@ -135,7 +135,13 @@ export function extractMistralPricingInputs(
 ): SourcePricingInputFact[] {
   const bodies = new Map<string, string | undefined>();
   for (const { url, body } of documents) {
-    const path = new URL(url).pathname;
+    const parsed = new URL(url);
+    const path =
+      parsed.origin === "https://docs.mistral.ai"
+        ? parsed.pathname === "/openapi.yaml"
+          ? openApiPath
+          : `${repositoryRoot}/src/content/en/docs${parsed.pathname.replace(/\.md$/, "/page.mdx")}`
+        : parsed.pathname;
     bodies.set(path, bodies.has(path) ? undefined : body);
   }
   const schemaReaders = new Map<string, ReturnType<typeof openApiYamlSchemaReader>>();

@@ -104,6 +104,103 @@ const tokenTable = (input: string, output: string) =>
     "| gpt-test | " + input + " | " + output + " |",
   ].join("\n");
 
+it("signals an unreadable owned price table without admitting an unreviewed new identity", () => {
+  const result = parse(
+    tokenTable("$2", "$10") +
+      "\n\n| Model | Unreviewed rate |\n| --- | --- |\n| gpt-test | $3 |\n| gpt-unreviewed-new | $4 |",
+  );
+  expect(result.report.reason_counts).toMatchObject({
+    public_price_shape_unsupported: 1,
+    unreviewed_pricing_table: 1,
+  });
+  expect(result.models.map(({ model_id }) => model_id)).toEqual(["gpt-test"]);
+  expect(result.models[0]?.price_facts).toHaveLength(2);
+});
+
+it("retains the two native write lifetimes and context bands as independent charge partitions", () => {
+  const result = parse(
+    [
+      "Flagship models",
+      "Standard",
+      "| Model | Short context input | Short context output | Short context cached input | Short context 30m write | Short context 12h write | Long context input | Long context output | Long context cached input | Long context 30m write | Long context 12h write |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| gpt-test | $2.00 | $10.00 | $0.10 | $2.50 | $5.00 | $4.00 | $15.00 | $0.20 | $5.00 | $10.00 |",
+    ].join("\n"),
+  );
+  expect(result.models[0]?.price_facts).toHaveLength(10);
+  expect(result.models[0]?.raw_price_facts).toEqual([]);
+  expect(
+    result.models[0]?.price_facts
+      .filter(({ meter }) => meter === "cache_write_text")
+      .map(({ price, conditions }) => [
+        price,
+        conditions.cache_ttl_seconds,
+        conditions.context_max_tokens,
+        conditions.context_min_tokens,
+      ]),
+  ).toEqual([
+    ["2.50", 1800, 272000, undefined],
+    ["5.00", 43200, 272000, undefined],
+    ["5.00", 1800, undefined, 272001],
+    ["10.00", 43200, undefined, 272001],
+  ]);
+  const partition = validatedPricing(result, result.source);
+  const offer = partition.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+  expect(offer).toBeDefined();
+  const writes = offer?.terms.filter(
+    (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
+  );
+  expect(writes).toHaveLength(2);
+  expect(
+    writes
+      ?.flatMap((term) => (term.kind === "rate" ? term.variants : []))
+      .every((variant) =>
+        variant.applicability.any_of.every(({ all_of }) =>
+          all_of.every(({ dimension }) => dimension.value !== "cache_ttl_seconds"),
+        ),
+      ),
+  ).toBe(true);
+  expect(
+    writes
+      ?.flatMap((term) => (term.kind === "rate" ? term.variants : []))
+      .every((variant) => variant.charge_binding?.quantity_methods === undefined),
+  ).toBe(true);
+});
+
+it.each([
+  ["| Model | Input | Output | Cached input |", "| gpt-test | $2 | $10 | $0.1 |"],
+  ["| Model | Cached input | Output | Input |", "| gpt-test | $0.1 | $10 | $2 |"],
+])("binds reordered text columns by their owned labels: %s", (headers, row) => {
+  const result = parse(
+    ["Flagship models", "Standard", headers, "| --- | --- | --- | --- |", row].join("\n"),
+  );
+  expect(result.models[0]?.price_facts.map(({ meter, price }) => [meter, price])).toEqual([
+    ["input_text", "2"],
+    ["cache_read_text", "0.1"],
+    ["output_text", "10"],
+  ]);
+});
+
+it("preserves an unreviewed write lifetime with its context and admits it to repair", () => {
+  const result = parse(
+    [
+      "Flagship models",
+      "Standard",
+      "| Model | Short context input | Long context 24h write |",
+      "| --- | --- | --- |",
+      "| gpt-test | $2 | $8 |",
+    ].join("\n"),
+  );
+  expect(result.models[0]?.raw_price_facts).toEqual([
+    expect.objectContaining({
+      reason: "unknown_meter",
+      conditions: { service_tier: "standard", context_min_tokens: 272001 },
+      raw: expect.objectContaining({ amount: "$8" }),
+    }),
+  ]);
+  expect(result.report.reason_counts?.unsupported_pricing_cell_preserved).toBe(1);
+});
+
 async function parseCards(change: (body: string) => string) {
   const { source, provider } = fixtureSource("openai-overview");
   const body = await readFile(

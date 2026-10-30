@@ -173,6 +173,12 @@ The same bucket distinction applies to a raw price in an explicitly reviewed fiv
 one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
 dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.
 
+Rows explicitly marked `retired, except on … Claude Models on Google Cloud (Google managed)`
+(with or without Bedrock) describe surviving partner availability, not current direct Claude API
+prices. Exclude those rows before direct-model binding, retaining their exclusion diagnostic and
+historical catalog identities. Other unknown qualifiers remain unbound or raw; they do not inherit
+this exclusion merely by mentioning a partner.
+
 All recognized standard, Batch and Fast matrices contribute rows. Monetary columns bind by their
 reviewed headers rather than column position. A well-shaped row parses each cell independently:
 unsupported amounts, denominations, units and columns retain raw evidence without discarding known

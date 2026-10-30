@@ -154,19 +154,20 @@ export function openAiModelPriceCells(
     };
   };
   const headers = table.headers.join("|");
+  const hasColumns = (...columns: string[]) =>
+    table.headers.length === columns.length &&
+    columns.every((column) => table.headers.includes(column));
   if (table.section === "GPT-Live sessions" && headers === "Model|Price per minute")
     return [make("Price per minute", "session_runtime", "minute", {})];
   if (headers.startsWith("Model|Short context input|")) {
     return table.headers.slice(1).map((header) => {
-      const match = header.match(
-        /^(?:(Short|Long) context )?(input|cached input|cache writes|output)$/,
-      );
+      const match = header.match(/^(?:(Short|Long) context )?(.+)$/);
       const meter =
         match?.[2] === "input"
           ? "input_text"
           : match?.[2] === "cached input"
             ? "cache_read_text"
-            : match?.[2] === "cache writes"
+            : ["cache writes", "30m write", "12h write"].includes(match?.[2] ?? "")
               ? "cache_write_text"
               : match?.[2] === "output"
                 ? "output_text"
@@ -180,12 +181,17 @@ export function openAiModelPriceCells(
       return make(header, meter, meter === undefined ? undefined : "million_tokens", {
         ...conditions,
         ...context,
+        ...(match?.[2] === "30m write"
+          ? { cache_ttl_seconds: 1800 }
+          : match?.[2] === "12h write"
+            ? { cache_ttl_seconds: 43200 }
+            : {}),
       });
     });
   }
   if (
-    headers === "Model|Modality|Input|Cached input|Output" ||
-    headers === "Model|Modality|Input|Cached input|Output / cost"
+    hasColumns("Model", "Modality", "Input", "Cached input", "Output") ||
+    hasColumns("Model", "Modality", "Input", "Cached input", "Output / cost")
   ) {
     const modality = cell("Modality");
     return [
@@ -232,7 +238,10 @@ export function openAiModelPriceCells(
       },
     ];
   }
-  if (headers === "Category|Model|Input|Cached input|Output")
+  if (
+    hasColumns("Category", "Model", "Input", "Cached input", "Output") ||
+    hasColumns("Model", "Input", "Cached input", "Output")
+  )
     return [
       make("Input", cell("Category") === "Embedding" ? "embedding" : "input_text"),
       make("Cached input", "cache_read_text"),

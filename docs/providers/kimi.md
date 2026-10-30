@@ -54,7 +54,9 @@ visible element text: when a header or cell is an element, extraction reads that
 `children` text rather than its attribute literals, so a tooltip label such as `缓存命中` is the
 column label and a linked model cell is the model ID. The current overview publishes the short
 labels `输入` / `输出` / `缓存命中` / `缓存写入（5min）` / `缓存写入（1h）` and no per-row unit or
-context column, so those tables omit `context_tokens` instead of inventing a value; the ` / MTok`
+context column. The international overview also uses `Cached Input`, `5m writes`, and `1h writes`;
+these map to the same cache-read and lifetime-specific write meters as the longer reviewed English
+labels. Those tables omit `context_tokens` instead of inventing a value; the ` / MTok`
 suffix on a price cell supplies the reviewed `1M tokens` unit. Tables that still carry `计费单位`
 and `上下文窗口` keep their explicit unit and context validation. Current K3, K2.7 and K2.6 price URLs resolve to the same
 combined overview: extraction deduplicates identical documents and reads each labeled table

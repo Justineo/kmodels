@@ -33,6 +33,7 @@ const sourceAttemptSchema = z.object({
   dependency_failures_omitted: z.number().int().positive().optional(),
   message: z.string().optional(),
   consecutive_failures: z.number().int().nonnegative().optional(),
+  last_success_at: z.iso.datetime({ offset: true }).optional(),
   pricing_reconciliation: z
     .object({
       reason_counts: z.record(z.string(), z.number().int().nonnegative()).optional(),
@@ -83,6 +84,7 @@ const repairableReconciliationReasons = new Set([
   "unknown_public_pricing_card",
   "public_price_shape_unsupported",
   "public_price_label_unsupported",
+  "unsupported_pricing_cell_preserved",
   "optional_catalog_source_drifted",
   "pricing_input_contract_partial",
   "pricing_input_contract_drift",
@@ -130,7 +132,7 @@ export interface CatalogRepairCandidate {
   diagnostics: z.infer<typeof diagnosticSchema>[];
 }
 
-/** Admit one error-driven provider per run, keeping the independent periodic review. */
+/** Admit one error-driven provider per six-hour slot, keeping the independent daily review. */
 export function catalogRepairBatch(
   candidates: readonly CatalogRepairCandidate[],
   at: Date,
@@ -149,8 +151,8 @@ export function catalogRepairBatch(
   for (const providerId of pending)
     if (!providers.includes(providerId))
       throw new Error(`Unconfigured repair provider: ${providerId}`);
-  const day = Math.floor(at.getTime() / 86_400_000);
-  const start = ((day % providers.length) + providers.length) % providers.length;
+  const slot = Math.floor(at.getTime() / 21_600_000);
+  const start = ((slot % providers.length) + providers.length) % providers.length;
   const providerId = Array.from(
     { length: providers.length },
     (_, offset) => providers[(start + offset) % providers.length],
@@ -273,20 +275,28 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
   for (const provider of report.providers) {
     const attempt = provider.attempt;
     if (attempt === undefined) continue;
+    const stalePricingFailure = (
+      failure: Pick<SourceAttempt, "outcome" | "consecutive_failures" | "last_success_at">,
+    ): boolean =>
+      attempt.pricing?.outcome === "failed" &&
+      failure.outcome === "fetch_failed" &&
+      (failure.consecutive_failures ?? 0) >= 3 &&
+      failure.last_success_at !== undefined &&
+      Date.parse(report.generated_at) - Date.parse(failure.last_success_at) >= 86_400_000;
     for (const sourceAttempt of attempt.sources) {
       const source = reviewedSource(sources, provider.provider_id, sourceAttempt.source_id);
       if (source === undefined) continue;
       if (
         source.access === "public" &&
         sourceAttempt.outcome === "fetch_failed" &&
-        repeatedMissingSource(sourceAttempt)
+        (repeatedMissingSource(sourceAttempt) || stalePricingFailure(sourceAttempt))
       ) {
         const value = sourceCandidate(
           provider.provider_id,
           source,
           sourceAttempt,
           "source_location_change",
-          "The reviewed public source is repeatedly absent; verify a first-party relocation before changing its manifest.",
+          "The reviewed public source is repeatedly unavailable and may be retaining stale pricing; investigate acquisition and first-party successors before deciding whether code can repair it.",
         );
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
@@ -305,7 +315,13 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       const dependencies = sourceAttempt.dependency_failures ?? [];
       const structural = dependencies.filter(({ outcome }) => outcome === "parse_failed");
       const relocated =
-        source.access === "public" ? dependencies.filter(repeatedMissingSource) : [];
+        source.access === "public"
+          ? dependencies.filter(
+              (failure) =>
+                repeatedMissingSource(failure) ||
+                (failure.impact === "bundle" && stalePricingFailure(failure)),
+            )
+          : [];
       if (
         ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
         (structural.length > 0 ||

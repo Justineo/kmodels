@@ -314,7 +314,14 @@ function mechanismApplicability(
           key: value.value,
           dimension: servedTier,
           definition: `Azure served service tier ${JSON.stringify(value.value)} that selects the published rate`,
-          label: value.value === "priority" ? "Priority" : "Standard",
+          label:
+            value.value === "priority"
+              ? "Priority"
+              : value.value === "standard"
+                ? "Standard"
+                : value.value === "flex"
+                  ? "Flex"
+                  : value.value,
         });
         return value;
       }),

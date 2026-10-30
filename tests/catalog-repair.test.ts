@@ -28,7 +28,7 @@ it("bounds provider repair admission without dropping candidates or delaying the
   const firstDay = Date.parse("2026-10-20T00:00:00Z");
   const reviewed = new Set<string>();
   for (let offset = 0; offset < manifests.length; offset++) {
-    const at = new Date(firstDay + offset * 86_400_000);
+    const at = new Date(firstDay + offset * 21_600_000);
     const periodic = scheduledCatalogReview(at);
     const input = [...candidates, periodic];
     const batch = catalogRepairBatch(input, at);
@@ -39,7 +39,7 @@ it("bounds provider repair admission without dropping candidates or delaying the
     active.forEach(({ provider_id }) => reviewed.add(provider_id));
     expect([...batch.selected, ...batch.deferred]).toHaveLength(input.length);
     expect(new Set([...batch.selected, ...batch.deferred])).toEqual(new Set(input));
-    expect(catalogRepairBatch(input, new Date(at.getTime() + 86_399_999))).toEqual(batch);
+    expect(catalogRepairBatch(input, new Date(at.getTime() + 21_599_999))).toEqual(batch);
     expect(
       catalogRepairBatch(input.toReversed(), at)
         .selected.filter((candidate) => candidate !== periodic)
@@ -397,6 +397,53 @@ describe("catalog repair candidate selection", () => {
       ),
     ).toBe(false);
   });
+
+  it("admits prolonged public acquisition failures retaining stale prices, including commercial companions", () => {
+    const input = (lastSuccess: string, failures: number, dependency = false) =>
+      report([
+        provider({
+          attempt: {
+            outcome: "accepted",
+            pricing: { outcome: "failed", failure_code: "source_unavailable" },
+            sources: [
+              {
+                source_id: "openai-pricing",
+                ...(dependency
+                  ? {
+                      outcome: "unchanged",
+                      dependency_failures: [
+                        {
+                          dependency_id: "price-policy",
+                          impact: "bundle",
+                          outcome: "fetch_failed",
+                          message: "HTTP 403",
+                          http_status: 403,
+                          consecutive_failures: failures,
+                          last_success_at: lastSuccess,
+                        },
+                      ],
+                    }
+                  : {
+                      outcome: "fetch_failed",
+                      message: "HTTP 403",
+                      http_status: 403,
+                      consecutive_failures: failures,
+                      last_success_at: lastSuccess,
+                    }),
+              },
+            ],
+          },
+        }),
+      ]);
+    expect(catalogRepairCandidates(input("2026-08-20T00:00:00Z", 6))).toMatchObject([
+      { source_id: "openai-pricing", trigger: "source_location_change" },
+    ]);
+    expect(catalogRepairCandidates(input("2026-08-20T00:00:00Z", 6, true))).toMatchObject([
+      { source_id: "openai-pricing", trigger: "source_location_change" },
+    ]);
+    expect(catalogRepairCandidates(input("2026-09-01T23:00:00Z", 6))).toEqual([]);
+    expect(catalogRepairCandidates(input("2026-08-20T00:00:00Z", 1))).toEqual([]);
+  });
   it("admits missing owned accounting contracts even when accepted source bytes are unchanged", () => {
     const candidates = catalogRepairCandidates(
       report([
@@ -474,6 +521,7 @@ describe("catalog repair candidate selection", () => {
       "served_tier_contract_unavailable",
       "model_card_price_scope_unresolved",
       "model_card_price_cell_unreadable",
+      "unsupported_pricing_cell_preserved",
       "model_card_service_tier_scope_unresolved",
     ])
       expect(catalogRepairCandidates(input(reason, 1))).toEqual([

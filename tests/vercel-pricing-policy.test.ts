@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
@@ -90,6 +91,48 @@ function parse(
   return { result, diagnostics };
 }
 describe("Vercel price authority", () => {
+  it("preserves the hourly transcription denominator and audio quantity through assembly", async () => {
+    const fixture = await readFile(
+      new URL("./fixtures/vercel/unpriced-transcription.json", import.meta.url),
+      "utf8",
+    );
+    const result = parseSource({
+      provider,
+      source,
+      observedAt,
+      body: fixture.replace(
+        '\\"AzureLegal:Terms•Privacy\\",\\"\\"',
+        '\\"AzureLegal:Terms•Privacy\\",\\"$0.39/hr\\"',
+      ),
+    });
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const terms = partition?.books
+      .find(({ book_key }) => book_key === "model:vercel/microsoft/mai-transcribe-2-streaming")
+      ?.offers.flatMap(({ terms }) => terms);
+    expect(terms).toHaveLength(1);
+    expect(terms?.[0]).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "input_audio" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "processed_audio_seconds" },
+          }),
+          price: {
+            denomination: { kind: "fiat", currency: "USD" },
+            value: { numerator: "13", denominator: "120000" },
+            per: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+          },
+        }),
+      ],
+      raw_variants: [],
+    });
+  });
   it("keeps independently callable search tools outside model inference-price resolution", () => {
     const { result } = parse({});
     const commercial = vercelCommercialFacts({

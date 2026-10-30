@@ -268,6 +268,15 @@ placeholders such as `Pending` before they can enter a numeric fact.
   `retail_version_not_unique`; if exact bindings fall below the reviewed coverage guard, the
   previous pricing partition remains stale. Fetch success does not justify guessing identities,
   assigning an ambiguous family rate to every version, or lowering `minHandledRatio`.
+  Azure OpenAI's compact GPT numbers (`54`, `55`, `56luna`, `61 terra`) and `ShCo`/`LoCo`/`Fl`
+  labels are expanded only inside the OpenAI product family. Standard, Priority and Flex remain
+  disjoint served tiers within synchronous inference; Batch stays a separate mechanism. Microsoft's
+  [Flex guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/flex-processing) and
+  [Priority guide](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/priority-processing)
+  establish standard processing as the default tariff and Flex as a Global Standard processing
+  tier. This does not invent a context class for an unqualified quote. BFL's Flex identity is not
+  a processing tier. Scoped `MM3.5` and omitted Llama `Instruct` suffixes still require a unique
+  catalog identity; competing base/instruct identities remain ambiguous. The 70% guard is unchanged.
 - A local Retail Prices failure can occur before any HTTP response: the observed local proxy
   path timed out during TLS, while the same public request completed directly. Diagnose curl exit
   code and phase before changing an extractor. Where direct access is verified and intended, add

@@ -4,7 +4,7 @@ description: Investigate catalog drift, rotate comprehensive reviews, and publis
 timeout-minutes: 45
 
 on:
-  schedule: daily
+  schedule: every 6h
   workflow_dispatch:
 
 permissions:
@@ -233,13 +233,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$DELIVERY_RESULT" != 'success' ]; then
-            echo '::error::Catalog repair delivery did not complete. See the failed job; the next daily run retries against the latest refresh.'
+            echo '::error::Catalog repair delivery did not complete. See the failed job; the next scheduled run retries against the latest refresh.'
             exit 1
           fi
           case "$REPAIR_OUTCOME" in
             commit_repair)
               if [ "$PUBLICATION_RESULT" != 'success' ]; then
-                echo '::error::Catalog repair was not committed and deployed. The next daily run retries against latest main.'
+                echo '::error::Catalog repair was not committed and deployed. The next scheduled run retries against latest main.'
                 exit 1
               fi
               echo 'Validated repair committed to main and deployment dispatched.' >> "$GITHUB_STEP_SUMMARY"
@@ -332,7 +332,8 @@ test. A `noop` requires every admitted candidate to have independently checked `
 evidence and an empty patch. Blocked, pending or repaired candidates cannot become a no-op.
 Never manufacture a code change to close an investigation that found no defect.
 
-The prepared admission defines this run's active batch: one error-driven provider plus the
+The prepared admission defines this run's active batch: one error-driven provider per six-hour
+UTC slot plus, in the first slot of each day, the
 independent periodic slot and workflow evidence items. Other providers' candidates remain in the
 deferred queue in the context and immutable admission. Do not expand investigation to that queue,
 dismiss its entries or describe the whole catalog as healthy after closing only this batch.
@@ -443,7 +444,7 @@ still inspect what commands returned and make source-grounded judgments.
 
 ## Scheduled comprehensive review
 
-Each daily run also admits one review independently of refresh errors. A deterministic UTC-day
+The first six-hour UTC slot of each day also admits one review independently of refresh errors. A deterministic UTC-day
 rotation covers every manifest provider once, then global architecture once (currently a 21-day
 cycle). A successful refresh, unchanged body hash or zero error count does not close this review.
 Use the same evidence records, toolchain, publication bounds and failure reporting as error repair.
@@ -666,7 +667,7 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    commits and pushes without force. If main advances before push, publication reapplies the
    same admitted patch to current main and validates the new affected delta once before another push.
    Conflicts, failed validation, or a second race fail publication and are retried from current
-   evidence by the next daily run. A publication request is only an intent.
+   evidence by the next scheduled run. A publication request is only an intent.
    If validation is blocked by the environment, report the exact
    failed command and reason with `report_incomplete` and stop. Never claim that checks passed
    without running them or that a recorded publication intent is an already-pushed commit.

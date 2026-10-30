@@ -112,6 +112,10 @@ calculated and the synchronous rate is not copied into Batch.
 - Unknown additive API fields are accepted with a contract signal.
 - Catalog Markdown tables accept compact delimiter cells such as `:-`; delimiter and data rows
   must still match the header width, and model identity still requires exact IDs and model links.
+- Discovered documentation links may already include `.md`. The request suffix is applied once,
+  so extensionless and Markdown links to the same document converge on one request and dependency.
+  Catalog rows accept relative links and absolute links on the exact official documentation host;
+  the Markdown suffix is removed for the card join. Other hosts cannot establish a model identity.
 - Malformed inventory rows, rate components, model cards, usage fields, and lifecycle references are
   isolated to the affected claim.
 - Missing model cards retain exact catalog identities. Missing usage companions retain numeric rates

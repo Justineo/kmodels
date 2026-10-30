@@ -1143,7 +1143,8 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
       if (suffix !== undefined && !url.pathname.endsWith(suffix)) return;
       const path = suffix === undefined ? url.pathname : url.pathname.slice(0, -suffix.length);
       if (!pathPattern.test(path)) return;
-      url.pathname = `${path}${crawl.requestSuffix ?? ""}`;
+      const requestSuffix = crawl.requestSuffix ?? "";
+      url.pathname = path.endsWith(requestSuffix) ? path : `${path}${requestSuffix}`;
       urls.set(url.href, url);
     } catch {
       return;
@@ -1162,6 +1163,8 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
   if (indexFormat === "html" || indexFormat === "mixed") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
+    if (crawl.includeScripts)
+      $("script[src]").each((_index, element) => add($(element).attr("src")));
   }
   const values = [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
   return values;

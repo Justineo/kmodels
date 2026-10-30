@@ -9,6 +9,7 @@ import {
 import { pricingLimits } from "./pricing-constants.ts";
 import { isStandardUnit, rawEvidence, withApplicability } from "./pricing-commercial-assembly.ts";
 import type { PriceApplicability, PriceCondition } from "./pricing-schema.ts";
+import { openAiCacheLifetime, withoutOpenAiCacheLifetime } from "./openai-cache.ts";
 
 type Clause = PriceApplicability["any_of"][number];
 
@@ -58,11 +59,29 @@ function preferTerm(term: AtomicRateTerm): AtomicRateTerm {
       });
       continue;
     }
-    const overrides = authority.filter(
+    // The primary page's lifetime-specific write schedule replaces a card's unqualified write
+    // quote in the same execution scope. Keeping the card as another charge bills writes twice.
+    const lifetimeSchedule =
+      term.meter.namespace === "kmodels" &&
+      term.meter.value === "cache_write_text" &&
+      openAiCacheLifetime(variant.applicability) === undefined;
+    const scopedAuthority = authority.map((value) =>
+      lifetimeSchedule && openAiCacheLifetime(value.applicability) !== undefined
+        ? { ...value, applicability: withoutOpenAiCacheLifetime(value.applicability) }
+        : value,
+    );
+    const overrides = scopedAuthority.filter(
       (value) =>
         compatibleQuantity(variant, value) &&
         applicabilitiesOverlap(variant.applicability, value.applicability) &&
-        canonicalJson(variant.price) !== canonicalJson(value.price),
+        (canonicalJson(variant.price) !== canonicalJson(value.price) ||
+          (lifetimeSchedule &&
+            authority.some(
+              (original) =>
+                openAiCacheLifetime(original.applicability) !== undefined &&
+                canonicalJson(withoutOpenAiCacheLifetime(original.applicability)) ===
+                  canonicalJson(value.applicability),
+            ))),
     );
     if (overrides.length === 0) {
       variants.push(variant);
