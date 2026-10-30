@@ -65,23 +65,19 @@ function preferTerm(term: AtomicRateTerm): AtomicRateTerm {
       term.meter.namespace === "kmodels" &&
       term.meter.value === "cache_write_text" &&
       openAiCacheLifetime(variant.applicability) === undefined;
-    const scopedAuthority = authority.map((value) =>
-      lifetimeSchedule && openAiCacheLifetime(value.applicability) !== undefined
-        ? { ...value, applicability: withoutOpenAiCacheLifetime(value.applicability) }
-        : value,
-    );
+    const lifetimeScopes = new Set<string>();
+    const scopedAuthority = authority.map((value) => {
+      if (!lifetimeSchedule || openAiCacheLifetime(value.applicability) === undefined) return value;
+      const applicability = withoutOpenAiCacheLifetime(value.applicability);
+      lifetimeScopes.add(canonicalJson(applicability));
+      return { ...value, applicability };
+    });
     const overrides = scopedAuthority.filter(
       (value) =>
         compatibleQuantity(variant, value) &&
         applicabilitiesOverlap(variant.applicability, value.applicability) &&
         (canonicalJson(variant.price) !== canonicalJson(value.price) ||
-          (lifetimeSchedule &&
-            authority.some(
-              (original) =>
-                openAiCacheLifetime(original.applicability) !== undefined &&
-                canonicalJson(withoutOpenAiCacheLifetime(original.applicability)) ===
-                  canonicalJson(value.applicability),
-            ))),
+          lifetimeScopes.has(canonicalJson(value.applicability))),
     );
     if (overrides.length === 0) {
       variants.push(variant);

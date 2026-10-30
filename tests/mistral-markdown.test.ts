@@ -125,6 +125,18 @@ it("reads the shipped currency formatter with exact lexical precision and reject
   expect(parse([document, document]).euro).toBeUndefined();
   expect(parse([{ ...document, body: body.replace("0.85 * e", "0.85 + e") }]).euro).toBeUndefined();
   expect(parse([{ ...document, url: "https://example.com/pricing.js" }]).euro).toBeUndefined();
+  expect(parse([{ ...document, body: `function unrelated() { ${body} }` }]).euro).toEqual({
+    factor: "0.85",
+    decimals: 7,
+  });
+  expect(parse([{ ...document, body: body + body }]).euro).toBeUndefined();
+  for (const changed of [
+    body.replace("eur: 7", "eur: 7, eur: 8"),
+    body.replace("eur: 7", "eur: 19"),
+    body.replace("0.85 * e", "0.85 * unrelated"),
+    body.replace("i[t]", "i[e]"),
+  ])
+    expect(parse([{ ...document, body: changed }]).euro).toBeUndefined();
 });
 
 it("discovers pricing runtime scripts only within the reviewed opt-in host and path", () => {
