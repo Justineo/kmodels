@@ -1,28 +1,21 @@
 import { canonicalJson } from "./canonical-value.ts";
+import { invocationPricingModelRef } from "./invocation-pricing-model.ts";
 import type { InvocationCatalog } from "./invocation-schema.ts";
 import type { InvocationOwners } from "./invocation-validation.ts";
 import type { InvocationPricingBinding } from "./invocation-pricing-schema.ts";
 import type {
-  PriceSelectorSource,
   PricingBook,
   PricingOffer,
   ProviderPricingVocabulary,
+  PriceCondition,
 } from "./pricing-schema.ts";
-import type { CalculationBook, CalculationOffer, CalculationRate } from "../pricing/schema.ts";
+import type { CalculationBook, CalculationOffer } from "../pricing/schema.ts";
 import { standardDimensionKind } from "./pricing-dimension-kind.ts";
-
-export type InvocationPriceSelectorSource =
-  | PriceSelectorSource
-  | NonNullable<CalculationRate["selector_sources"]>[number];
-
-export function invocationSelectorContract(source: InvocationPriceSelectorSource) {
-  if ("observations" in source) {
-    const { observations: _observations, ...contract } = source;
-    return contract;
-  }
-  const { evidence: _evidence, ...contract } = source;
-  return contract;
-}
+import {
+  invocationOfferSelectorSources,
+  invocationOfferSelectorContracts,
+  type InvocationPriceSelectorSource,
+} from "./invocation-price-inputs.ts";
 
 /** Shared reference and selector validation for canonical and portable price books. */
 export function validateInvocationPricing(
@@ -71,8 +64,12 @@ export function validateInvocationPricing(
       if (dimensions.has(dimension)) throw new Error("Duplicate invocation price selector");
       dimensions.add(dimension);
       if (selector.dimension.namespace === "kmodels") {
-        if (standardDimensionKind(selector.dimension.value) !== "categorical")
-          throw new Error("Invocation selectors require a categorical price dimension");
+        const kind =
+          selector.value.kind === "fixed" && typeof selector.value.value === "boolean"
+            ? "boolean"
+            : "categorical";
+        if (standardDimensionKind(selector.dimension.value) !== kind)
+          throw new Error("Invocation selector kind disagrees with its price dimension");
         if (selector.dimension.value === "model" && selector.value.kind !== "fixed")
           throw new Error("Invocation price model selector must fix the target identity");
       } else if (
@@ -82,12 +79,12 @@ export function validateInvocationPricing(
         )
       )
         throw new Error("Invocation price dimension has missing or foreign ownership");
-      if (selector.value.kind === "fixed") {
+      if (selector.value.kind === "fixed" && typeof selector.value.value !== "boolean") {
         const value = selector.value.value;
         if (selector.dimension.namespace === "kmodels" && selector.dimension.value === "model") {
           if (
             value.namespace !== "kmodels" ||
-            value.value !== (target.resolved_model_ref ?? target.model_ref)
+            (value.value !== target.model_ref && value.value !== target.resolved_model_ref)
           )
             throw new Error("Invocation price model selector contradicts its target");
         } else if (
@@ -107,23 +104,21 @@ export function validateInvocationPricing(
       if (selector.value.kind === "observed") {
         const inputRef = selector.value.input_ref;
         // Acquisition contracts belong to an offer; check every linked offer below.
-        for (const offerRef of binding.offer_refs)
+        for (const offerRef of binding.offer_refs) {
+          const offer = offers.get(offerRef)?.offer;
           if (
-            !offers
-              .get(offerRef)
-              ?.offer.terms.some(
-                (term) =>
-                  term.kind === "rate" &&
-                  term.variants.some((variant) =>
-                    variant.selector_sources?.some(
-                      (source) =>
-                        sourceRef(offerRef, source) === inputRef &&
-                        canonicalJson(source.dimension) === dimension,
-                    ),
-                  ),
-              )
+            offer === undefined ||
+            ![
+              ...invocationOfferSelectorSources(offer),
+              ...invocationOfferSelectorContracts(offer),
+            ].some(
+              (source) =>
+                sourceRef(offerRef, source) === inputRef &&
+                canonicalJson(source.dimension) === dimension,
+            )
           )
             throw new Error("Invocation pricing references an unknown observed input");
+        }
       }
     }
     for (const ref of [
@@ -140,20 +135,28 @@ export function validateInvocationPricing(
         match === undefined ||
         match.book.provider_id !== provider ||
         !(match.offer.model_refs ?? match.book.scope.model_refs).includes(
-          target.resolved_model_ref ?? target.model_ref,
+          invocationPricingModelRef(target, binding),
         )
       )
         throw new Error("Invocation pricing offer is missing or belongs to a different model");
       let consumed = commercialDimensions.get(ref);
       if (consumed === undefined) {
-        consumed = offerDimensions(match.offer);
+        consumed = new Set(
+          invocationOfferConditions(match.offer).map(({ dimension, kind }) =>
+            canonicalJson([dimension, kind]),
+          ),
+        );
         commercialDimensions.set(ref, consumed);
       }
       for (const selector of binding.selectors) {
         // Model membership is already restricted by the canonical book/offer scope.
         if (selector.dimension.namespace === "kmodels" && selector.dimension.value === "model")
           continue;
-        if (!consumed.has(canonicalJson(selector.dimension)))
+        const kind =
+          selector.value.kind === "fixed" && typeof selector.value.value === "boolean"
+            ? "boolean"
+            : "categorical";
+        if (!consumed.has(canonicalJson([selector.dimension, kind])))
           throw new Error(
             "Invocation price selector is absent from the offer's commercial applicability",
           );
@@ -162,7 +165,9 @@ export function validateInvocationPricing(
   }
 }
 
-function offerDimensions(offer: PricingOffer | CalculationOffer): ReadonlySet<string> {
+export function invocationOfferConditions(
+  offer: PricingOffer | CalculationOffer,
+): PriceCondition[] {
   const scopes = [
     ...offer.states,
     ...offer.enrollment,
@@ -176,9 +181,5 @@ function offerDimensions(offer: PricingOffer | CalculationOffer): ReadonlySet<st
     for (const variant of raw)
       if (variant.possible_scope !== undefined) scopes.push(variant.possible_scope);
   }
-  return new Set(
-    scopes.flatMap(({ any_of }) =>
-      any_of.flatMap(({ all_of }) => all_of.map(({ dimension }) => canonicalJson(dimension))),
-    ),
-  );
+  return scopes.flatMap(({ any_of }) => any_of.flatMap(({ all_of }) => all_of));
 }

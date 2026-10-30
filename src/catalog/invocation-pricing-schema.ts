@@ -17,7 +17,10 @@ export const invocationPricingBindingSchema = z.strictObject({
       z.strictObject({
         dimension: priceDimensionSchema,
         value: z.discriminatedUnion("kind", [
-          z.strictObject({ kind: z.literal("fixed"), value: priceCategoricalValueSchema }),
+          z.strictObject({
+            kind: z.literal("fixed"),
+            value: z.union([priceCategoricalValueSchema, z.boolean()]),
+          }),
           z.strictObject({ kind: z.literal("context"), input: reference }),
           z.strictObject({ kind: z.literal("observed"), input_ref: reference }),
         ]),

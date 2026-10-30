@@ -167,6 +167,11 @@ export function replaceInvocationProvider(
 export function retainUnavailableInvocation(
   fresh: InvocationCatalog,
   previous: InvocationCatalog | undefined,
+  currentDocuments: readonly {
+    source_ref: string;
+    document_url: string;
+    content_hash: string;
+  }[] = [],
 ): InvocationCatalog {
   if (previous === undefined) return fresh;
   const missing = new Set(
@@ -179,9 +184,33 @@ export function retainUnavailableInvocation(
     fresh.identifier_relations.map(({ model_ref, value }) => canonicalJson([model_ref, value])),
   );
   const retained = emptyInvocationCatalog();
+  const changedEvidence = new Set(
+    previous.invocation_evidence
+      .filter((evidence) =>
+        currentDocuments.some(
+          (document) =>
+            document.source_ref === evidence.source_ref &&
+            document.document_url === evidence.document_url &&
+            document.content_hash !== evidence.content_hash,
+        ),
+      )
+      .map(({ id }) => id),
+  );
   retained.invocation_targets = previous.invocation_targets.filter(
     (target) =>
       missing.has(target.model_ref) &&
+      (changedEvidence.size === 0 ||
+        ![
+          ...invocationEvidenceRefs({
+            surfaces: previous.surfaces.filter(({ id }) => id === target.surface_ref),
+            invocation_targets: [target],
+            scoped_facts: previous.scoped_facts.filter(({ id }) =>
+              target.cases.some(({ fact_refs }) => fact_refs.includes(id)),
+            ),
+            identifier_relations: [],
+            target_coverage: [],
+          }),
+        ].some((ref) => changedEvidence.has(ref))) &&
       (target.address.kind === "caller" ||
         addresses.has(canonicalJson([target.model_ref, target.address.value]))),
   );

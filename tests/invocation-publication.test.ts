@@ -333,6 +333,120 @@ describe("invocation publication", () => {
     ).toThrow(/not declared/);
   });
 
+  it("keeps an explicitly priced request identity separate from its resolved snapshot", async () => {
+    const { candidate } = await initial();
+    if (candidate.v2 === undefined) throw new Error("Missing v2 publication");
+    const data = await calculationV2Export(candidate.v2);
+    const provider = data.providers[0];
+    const binding = provider?.invocation_bindings[0];
+    const target = provider?.invocation.invocation_targets.find(
+      ({ id }) => id === binding?.target_ref,
+    );
+    const offerRef = binding?.offer_refs[0];
+    if (
+      provider === undefined ||
+      binding === undefined ||
+      target === undefined ||
+      offerRef === undefined
+    )
+      throw new Error("Missing fixture invocation");
+    provider.models.push({ model_ref: "typesafe/next-snapshot", disposition: "unknown" });
+    target.resolution = "rolling";
+    target.resolved_model_ref = "typesafe/next-snapshot";
+    await expect(validatePriceData(data)).rejects.toThrow(/different model/);
+    binding.selectors = [
+      {
+        dimension: { namespace: "kmodels", value: "model" },
+        value: { kind: "fixed", value: { namespace: "kmodels", value: target.model_ref } },
+        evidence_refs: binding.evidence_refs,
+      },
+    ];
+    const calculator = await createCalculator(data);
+    expect(
+      calculator.bindInvocation({
+        offerRef,
+        invocation: { targetRef: target.id, caseRef: binding.case_ref },
+      }).selectors,
+    ).toContainEqual({
+      kind: "categorical",
+      dimension: { namespace: "kmodels", value: "model" },
+      value: { namespace: "kmodels", value: target.model_ref },
+    });
+    expect(target.resolved_model_ref).toBe("typesafe/next-snapshot");
+    binding.selectors[0] = {
+      dimension: { namespace: "kmodels", value: "model" },
+      value: { kind: "fixed", value: { namespace: "kmodels", value: "typesafe/unrelated" } },
+      evidence_refs: binding.evidence_refs,
+    };
+    await expect(validatePriceData(data)).rejects.toThrow(/contradicts/);
+  });
+
+  it("fixes a boolean route condition and rejects contradictory caller selectors", async () => {
+    const { candidate } = await initial();
+    if (candidate.v2 === undefined) throw new Error("Missing v2 publication");
+    const data = await calculationV2Export(candidate.v2);
+    const provider = data.providers[0];
+    const binding = provider?.invocation_bindings[0];
+    const offerRef = binding?.offer_refs[0];
+    const offer = provider?.books.flatMap(({ offers }) => offers).find(({ id }) => id === offerRef);
+    const term = offer?.terms.find((entry) => entry.kind === "rate");
+    const rate = term?.kind === "rate" ? term.variants[0] : undefined;
+    if (
+      provider === undefined ||
+      binding === undefined ||
+      offerRef === undefined ||
+      rate === undefined
+    )
+      throw new Error("Missing fixture price");
+    const dimension = {
+      namespace: "provider" as const,
+      provider_id: "typesafe",
+      value: "regional_fixture",
+    };
+    provider.vocabulary.atoms.push({
+      kind: "dimension",
+      key: dimension.value,
+      definition: "Synthetic regional request condition",
+      resolution_phase: "request",
+    });
+    rate.applicability = canonicalizeApplicability({
+      any_of: rate.applicability.any_of.map(({ all_of }) => ({
+        all_of: [...all_of, { kind: "boolean", dimension, value: true }],
+      })),
+    });
+    binding.selectors = invocationPricingBindingSchema.parse({
+      ...binding,
+      selectors: [
+        { dimension, value: { kind: "fixed", value: true }, evidence_refs: binding.evidence_refs },
+      ],
+    }).selectors;
+    const calculator = await createCalculator(data);
+    const selection = {
+      offerRef,
+      invocation: { targetRef: binding.target_ref, caseRef: binding.case_ref },
+    };
+    expect(calculator.bindInvocation(selection).selectors).toEqual([
+      { kind: "boolean", dimension, value: true },
+    ]);
+    expect(() =>
+      calculator.bindInvocation({
+        ...selection,
+        selectors: [{ kind: "boolean", dimension, value: false }],
+      }),
+    ).toThrow(/contradicts/);
+    binding.selectors = invocationPricingBindingSchema.parse({
+      ...binding,
+      selectors: [
+        {
+          dimension: { namespace: "kmodels", value: "model" },
+          value: { kind: "fixed", value: true },
+          evidence_refs: binding.evidence_refs,
+        },
+      ],
+    }).selectors;
+    await expect(validatePriceData(data)).rejects.toThrow();
+  });
+
   it.each(["context", "observed"] as const)(
     "keeps %s price inputs explicit and cannot bypass them with ordinary selectors",
     async (kind) => {

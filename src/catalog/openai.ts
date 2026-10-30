@@ -3,6 +3,8 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
+import { openAiInvocation, type OpenAiInvocationCard } from "./openai-invocation.ts";
+import { openAiSnapshotModels } from "./openai-invocation-snapshots.ts";
 export { parseOpenAiAccounting } from "./openai-accounting.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact } from "./pricing.ts";
 import { applyOpenAiCardRules } from "./openai-card-rules.ts";
@@ -1703,7 +1705,7 @@ function openAiMarkdownModel(
   };
 }
 
-export function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
+export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
   const bundle = linkedBundleSchema.parse(parseJson(input.body));
   const statuses = openAiIndexStatuses(bundle.index.body);
   const documents = new Map<string, typeof bundle.documents>();
@@ -1720,13 +1722,20 @@ export function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
     input.onContractFinding?.(
       contractExtensionEvidence(extra.map((id) => `/models/${id}/unindexed`)),
     );
-  return [...statuses.entries()]
+  const cards: OpenAiInvocationCard[] = [];
+  const models = [...statuses.entries()]
     .map(([id, lifecycle]) => {
       const matches = documents.get(id) ?? [];
       const [document] = matches;
       if (matches.length === 1 && document !== undefined)
         try {
-          return openAiMarkdownModel(input, document.body, id, lifecycle);
+          const model = openAiMarkdownModel(input, document.body, id, lifecycle);
+          cards.push({
+            model,
+            document,
+            support: openAiEndpointEvidence(document.body, model.tasks, undefined).support,
+          });
+          return model;
         } catch {
           input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/card`]));
         }
@@ -1743,6 +1752,22 @@ export function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
       };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
+  const inventory = openAiSnapshotModels({
+    models,
+    cards,
+    sourceId: input.source.id,
+    observedAt: input.observedAt,
+  });
+  return {
+    models: inventory.models,
+    ...openAiInvocation({
+      ...inventory,
+      index: bundle.index,
+      documents: bundle.documents,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
+  };
 }
 
 export function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {

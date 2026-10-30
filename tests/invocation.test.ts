@@ -547,6 +547,45 @@ describe("invocation contract", () => {
 });
 
 describe("invocation resolution", () => {
+  it("projects multipart identifiers as form fields and rejects incompatible assignments", () => {
+    const data = fixture();
+    const surface = required(data.surfaces[0]);
+    const target = required(data.invocation_targets[0]);
+    surface.path_template = "/transcriptions";
+    surface.identifier_location = { kind: "form", parameter: "model" };
+    surface.request_media_type = "multipart/form-data";
+    target.selectors = [
+      { location: { kind: "form", key: "language" }, value: { kind: "literal", value: "en" } },
+    ];
+    invocationCatalogSchema.parse(data);
+    validateInvocationCatalog(data, owners);
+    expect(chosen(data).request).toMatchObject({
+      request_media_type: "multipart/form-data",
+      form_fields: [
+        { name: "model", value: "us.model" },
+        { name: "language", value: "en" },
+      ],
+      body_fields: [],
+      headers: {},
+    });
+    target.selectors.push({
+      location: { kind: "form", key: "model" },
+      value: { kind: "literal", value: "different" },
+    });
+    expect(chosen(data).request).toBeUndefined();
+    target.selectors = [
+      { location: { kind: "body", key: "/model" }, value: { kind: "literal", value: "us.model" } },
+    ];
+    expect(() => validateInvocationCatalog(data, owners)).toThrow(/media type/);
+    expect(chosen(data).request).toBeUndefined();
+    expect(
+      apiSurfaceSchema.safeParse({ ...surface, request_media_type: "application/json" }).success,
+    ).toBe(false);
+    expect(apiSurfaceSchema.safeParse({ ...surface, request_media_type: undefined }).success).toBe(
+      false,
+    );
+  });
+
   it("keeps supported regional options when the caller has not selected a region", () => {
     const results = resolveInvocation(fixture(), query);
     expect(

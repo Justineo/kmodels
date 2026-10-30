@@ -5,7 +5,7 @@ import { markdownSection } from "./markdown.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
-import { yamlBlock } from "./yaml.ts";
+import { yamlPath } from "./yaml.ts";
 import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-source.ts";
@@ -135,20 +135,6 @@ function reviewIndex(bundle: LinkedBundle): void {
     if (/(?:pricing|billing|cost|usage|account|credits|plans|batch|caching)/i.test(path))
       throw new Error("TypeSafe index contains an unreviewed commercial document");
   }
-}
-
-function yamlPath(body: string, path: readonly string[]): string | undefined {
-  let block: string | undefined = body;
-  for (const [depth, label] of path.entries()) {
-    if (block === undefined) return;
-    const matches: string[] = [];
-    for (const key of [label, `'${label}'`, `"${label}"`]) {
-      const value = yamlBlock(block, key, depth * 2);
-      if (value !== undefined) matches.push(value);
-    }
-    block = matches.length === 1 ? matches[0] : undefined;
-  }
-  return block;
 }
 
 function schemaRefs(

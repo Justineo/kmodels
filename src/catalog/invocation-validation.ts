@@ -53,6 +53,15 @@ export function validateInvocationCatalog(data: InvocationCatalog, owners: Invoc
     const surface = surfaces.get(target.surface_ref);
     if (surface === undefined || surface.provider_id !== provider)
       throw new Error(`Invocation target has missing or foreign surface: ${target.id}`);
+    for (const { location } of target.selectors) {
+      if (
+        (location.kind === "form" &&
+          (surface.request_media_type !== "multipart/form-data" ||
+            !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(location.key))) ||
+        (location.kind === "body" && surface.request_media_type === "multipart/form-data")
+      )
+        throw new Error(`Invocation selector contradicts the request media type: ${target.id}`);
+    }
     if (
       target.resolved_model_ref !== undefined &&
       modelOwner(target.resolved_model_ref) !== provider

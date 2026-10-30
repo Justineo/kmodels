@@ -10,3 +10,18 @@ export function yamlBlock(body: string, label: string, indentation: number): str
   });
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
+
+/** Follow one unambiguous block-style mapping path, accepting quoted YAML keys. */
+export function yamlPath(body: string, path: readonly string[]): string | undefined {
+  let block: string | undefined = body;
+  for (const [depth, label] of path.entries()) {
+    if (block === undefined) return;
+    const matches: string[] = [];
+    for (const key of [label, `'${label}'`, `"${label}"`]) {
+      const value = yamlBlock(block, key, depth * 2);
+      if (value !== undefined) matches.push(value);
+    }
+    block = matches.length === 1 ? matches[0] : undefined;
+  }
+  return block;
+}

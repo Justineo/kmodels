@@ -80,7 +80,6 @@ import {
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
-  type SourcePricingFacts,
 } from "./pricing-source.ts";
 import type { SourceParseResult } from "./source-parse.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
@@ -202,10 +201,8 @@ function recordSourceFailure(
   };
 }
 
-export interface SourceGroup extends SourcePricingFacts {
+export interface SourceGroup extends SourceParseResult {
   source: SourceManifest;
-  models: ParsedProviderModel[];
-  invocation?: InvocationCatalog;
 }
 
 interface SourceRetention {
@@ -1210,6 +1207,12 @@ export async function collectProvider(
             retainUnavailableInvocation(
               mergeInvocationCatalogs(invocationParts),
               previous?.invocation,
+              pricingSources.flatMap(({ source, invocationRetentionDocuments }) =>
+                (invocationRetentionDocuments ?? []).map((document) => ({
+                  ...document,
+                  source_ref: source.id,
+                })),
+              ),
             ),
             models,
           );

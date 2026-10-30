@@ -80,7 +80,7 @@ export {
 function parseSourceBody(input: ParseInput): SourceParseResult {
   switch (input.source.extractor.kind) {
     case "openai-catalog":
-      return { models: parseOpenAiCatalog(input) };
+      return parseOpenAiCatalog(input);
     case "openai-model-pricing":
       return { models: parseOpenAiModelPricing(input) };
     case "openai-api":

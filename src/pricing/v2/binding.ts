@@ -46,7 +46,10 @@ export function resolveInvocationPriceSelectors(
         });
       continue;
     }
-    const derived: Selector = { kind: "categorical", dimension: selector.dimension, value };
+    const derived: Selector =
+      typeof value === "boolean"
+        ? { kind: "boolean", dimension: selector.dimension, value }
+        : { kind: "categorical", dimension: selector.dimension, value };
     if (existing !== undefined && canonicalJson(existing) !== canonicalJson(derived))
       throw new PricingError(
         "INVALID_REQUEST",

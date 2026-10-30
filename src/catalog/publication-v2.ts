@@ -23,9 +23,9 @@ import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import {
   invocationSelectorContract,
-  validateInvocationPricing,
   type InvocationPriceSelectorSource,
-} from "./invocation-pricing-validation.ts";
+} from "./invocation-price-inputs.ts";
+import { validateInvocationPricing } from "./invocation-pricing-validation.ts";
 import {
   invocationCaseId,
   invocationTargetId,

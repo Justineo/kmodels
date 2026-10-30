@@ -1,4 +1,5 @@
 import { invocationEvidenceRefs } from "./invocation-collection.ts";
+import { invocationPricingModelRef } from "./invocation-pricing-model.ts";
 import type { InvocationPricingBinding } from "./invocation-pricing-schema.ts";
 import { validateInvocationCatalog } from "./invocation-validation.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
@@ -76,9 +77,11 @@ export function validateWebsiteInvocationDetail(
     const key = JSON.stringify([binding.target_ref, binding.case_ref]);
     if (bindings.has(key)) throw new Error("Duplicate invocation detail price binding");
     bindings.add(key);
-    const entry = targets.get(binding.target_ref)?.cases.find(({ id }) => id === binding.case_ref);
+    const target = targets.get(binding.target_ref);
+    const entry = target?.cases.find(({ id }) => id === binding.case_ref);
     if (entry?.support.state !== "supported")
       throw new Error("Invocation detail price binding has no supported target case");
+    if (target !== undefined) invocationPricingModelRef(target, binding);
     for (const ref of [
       ...binding.evidence_refs,
       ...binding.selectors.flatMap(({ evidence_refs }) => evidence_refs),
