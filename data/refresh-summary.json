@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b1a7042db90a5e7f15a5e94025b43dcebf6dc638a7cd87fb1b57ba757e6f687c",
-  "generated_at": "2026-10-30T12:05:14.315Z",
+  "catalog_version": "4092aa7fdbda84d4c0d81adc57c42ba5b886c5c77f2c1216620b6b975778a730",
+  "generated_at": "2026-10-30T13:03:38.261Z",
   "outcome": "changed",
-  "previous_catalog_version": "b2d406050f59a154fd6675a4da450da39d3e41a84209e94a78919bf0637bb5cd",
+  "previous_catalog_version": "b1a7042db90a5e7f15a5e94025b43dcebf6dc638a7cd87fb1b57ba757e6f687c",
   "providers": [
     {
       "attempt": {
@@ -147,10 +147,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-10-30T12:05:14.315Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -215,9 +215,9 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1
+        "source_fetch_failed": 1
       }
     },
     {
@@ -903,9 +903,9 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 184,
             "source_id": "azure-api"
           }
@@ -970,14 +970,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -995,7 +989,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -1213,9 +1207,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1275,13 +1269,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1341,9 +1342,9 @@
             "source_id": "cohere-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 20,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1462,13 +1463,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cohere-pricing"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1485,32 +1493,63 @@
         },
         "sources": [
           {
-            "consecutive_failures": 75,
+            "content_changed": true,
             "contract_findings": [
               {
-                "diagnostic_count": 1,
+                "diagnostic_count": 5,
                 "diagnostics": [
                   {
-                    "affected_items": 0,
-                    "expected": "15..60 items",
-                    "fingerprint": "1bb519f8245f8f6c",
-                    "kind": "count_outside_bounds",
-                    "observed": "array",
-                    "observed_value": "0",
-                    "path": "/"
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "c44e2b766882434e",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/cards/11"
+                  },
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "b3b8c6b74d926fdc",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/cards/31"
+                  },
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "d04b63150d79017f",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/cards/32"
+                  },
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "244afbc2594a254a",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/cards/33"
+                  },
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "f909e9436a579d02",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/cards/34"
                   }
                 ],
-                "disposition": "reject",
-                "observed_items": 0
+                "disposition": "accept_with_signal",
+                "observed_items": 5
               }
             ],
-            "last_success_at": "2026-10-27T08:05:28.626Z",
-            "message": "DashScope recommended-model models contract mismatch: count_outside_bounds at / (expected 15..60 items, observed array)",
-            "outcome": "parse_failed",
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 32,
             "source_id": "dashscope-recommended"
           },
           {
-            "consecutive_failures": 51,
+            "consecutive_failures": 52,
             "http_status": 406,
             "last_success_at": "2026-10-28T08:04:33.090Z",
             "message": "HTTP 406",
@@ -1519,74 +1558,56 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 22,
             "source_id": "dashscope-vision"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 20,
             "source_id": "dashscope-image"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 35,
             "source_id": "dashscope-video"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 20,
             "source_id": "dashscope-asr"
           },
           {
-            "consecutive_failures": 72,
-            "contract_findings": [
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 0,
-                    "expected": "1..∞ items",
-                    "fingerprint": "f8736501e85762a0",
-                    "kind": "count_outside_bounds",
-                    "observed": "array",
-                    "observed_value": "0",
-                    "path": "/"
-                  }
-                ],
-                "disposition": "reject",
-                "observed_items": 0
-              }
-            ],
-            "last_success_at": "2026-10-27T11:04:24.838Z",
-            "message": "DashScope catalog tables contract mismatch: count_outside_bounds at / (expected 1..∞ items, observed array)",
-            "outcome": "parse_failed",
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 11,
             "source_id": "dashscope-tts"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 20,
             "source_id": "dashscope-s2s"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 21,
             "source_id": "dashscope-omni"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 7,
             "source_id": "dashscope-embedding"
@@ -1944,21 +1965,1339 @@
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 600,
+          "field": "availability",
+          "previous": 603
+        }
+      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 22,
+        "changed_fields": {
+          "api_endpoints": 11,
+          "availability": 11,
+          "capabilities": 9,
+          "delivery_mode_evidence": 9,
+          "delivery_modes": 9,
+          "raw_type": 11,
+          "source_refs": 12,
+          "task_evidence": 11
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "source_refs"
+            ],
+            "model_ref": "dashscope/ZHIPU/GLM-5.3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "CosyVoice",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "CosyVoice",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities"
+            ],
+            "model_ref": "dashscope/cosyvoice-v2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "CosyVoice",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "CosyVoice",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities",
+              "availability"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "CosyVoice",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "CosyVoice",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities",
+              "availability"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "CosyVoice",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "CosyVoice",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3.5-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "CosyVoice",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "CosyVoice",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3.5-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/deepseek-v4-pro-0813"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "dashscope/deepseek-v4.1-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "api_endpoints",
+                "previous": []
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "ptu_v2",
+                    "region": "Singapore"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "dashscope-text",
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-deployable-api"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-text",
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases",
+                  "dashscope-deployable-api"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "availability",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/glm-5.2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-deployable-api",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-deployable-api"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/glm-5.3"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "api_endpoints",
+                "previous": []
+              },
+              {
+                "current": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-asr-flash-filetrans"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "api_endpoints",
+                "previous": []
+              },
+              {
+                "current": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-asr-flash-streaming"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen-Audio-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "Qwen-Audio-TTS",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities",
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-tts-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen-Audio-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "Qwen-Audio-TTS",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "path": "api_endpoints",
+                "previous": []
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  "dashscope-tts",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-tts",
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "api_endpoints",
+              "capabilities",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-tts-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-asr",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-asr-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  "dashscope-pricing",
+                  "dashscope-asr",
+                  "dashscope-releases",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-pricing",
+                  "dashscope-asr",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-asr-flash-message"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen-Audio-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence"
+              },
+              {
+                "current": "Qwen-Audio-TTS",
+                "path": "raw_type"
+              },
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-tts",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "raw_type",
+              "api_endpoints",
+              "availability",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "availability",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-next"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen-Audio-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket / HTTP",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket / HTTP",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "Qwen-Audio-TTS",
+                "path": "raw_type",
+                "previous": "WebSocket / HTTP"
+              },
+              {
+                "current": [],
+                "path": "api_endpoints"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "dashscope-tts",
+                  "dashscope-pricing",
+                  "dashscope-releases",
+                  "dashscope-recommended"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-tts",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "api_endpoints",
+              "capabilities",
+              "availability",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.1-tts-plus"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen3-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "HTTP",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "current": "Qwen3-TTS",
+                "path": "raw_type",
+                "previous": "HTTP"
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "raw_type",
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3-tts-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "Qwen3-TTS",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ],
+                "path": "task_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "namespace": "dashscope.type",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts",
+                    "task": "speech_synthesis"
+                  }
+                ]
+              },
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "realtime"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "provider_type",
+                    "mode": "realtime",
+                    "namespace": "dashscope.api",
+                    "raw_value": "WebSocket",
+                    "source_ref": "dashscope-tts"
+                  }
+                ]
+              },
+              {
+                "current": "Qwen3-TTS",
+                "path": "raw_type",
+                "previous": "WebSocket"
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "task_evidence",
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "raw_type",
+              "capabilities",
+              "availability"
+            ],
+            "model_ref": "dashscope/qwen3-tts-flash-realtime"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "api_endpoints",
+                "previous": []
+              },
+              {
+                "current": [
+                  "dashscope-s2s",
+                  "dashscope-omni",
+                  "dashscope-pricing",
+                  "dashscope-releases"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-s2s",
+                  "dashscope-omni",
+                  "dashscope-pricing",
+                  "dashscope-recommended",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "api_endpoints",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/qwen3.5-omni-plus-realtime"
+          }
+        ],
         "current": 235,
         "previous": 235,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 235
+        "unchanged": 213
       },
       "pricing": {
-        "commercial_hash": "bbab68a5492407b86289c857d70846265031d85eb3692f6efb7371b266b64002",
-        "outcome": "provenance_only",
+        "commercial_hash": "f82155ea214f6058e80c3d40fdd44d650bac536267f562fb8b8d3299078ae8cc",
+        "outcome": "commercial",
         "previous_commercial_hash": "bbab68a5492407b86289c857d70846265031d85eb3692f6efb7371b266b64002"
       },
       "pricing_coverage": {
@@ -1987,18 +3326,18 @@
       "provider_id": "dashscope",
       "publication": "accepted",
       "signals": [
+        "catalog_count_decrease",
         "partial_contract_mismatch",
-        "coverage_regression",
         "persistent_source_failure"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 10,
+        "changed": 12,
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-asr"
           },
@@ -2010,19 +3349,19 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-embedding"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-image"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-omni"
           },
@@ -2034,25 +3373,37 @@
           },
           {
             "content_changed": true,
+            "extractor_changed": true,
+            "field_paths_changed": false,
+            "source_id": "dashscope-recommended"
+          },
+          {
+            "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-releases"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-s2s"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
+            "field_paths_changed": false,
+            "source_id": "dashscope-tts"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-video"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "dashscope-vision"
           }
@@ -2061,17 +3412,16 @@
         "previous": 13,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
         "missing_field": 4,
         "scope_limited": 1,
-        "source_contract_drift": 16,
+        "source_contract_drift": 17,
         "source_fetch_failed": 1,
-        "source_parse_failed": 2,
-        "source_partial_retention": 3
+        "source_partial_retention": 1
       }
     },
     {
@@ -2609,22 +3959,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1562,
+            "parsed_models": 1561,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1562,
+              "model_records": 1561,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1562
+              "unknown_models": 1561
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1790,
+              "diagnostic_count": 1786,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2669,20 +4019,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6820,
+                "excluded": 6817,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1790,
+                "unbound": 1786,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8610,
+              "observed_items": 8603,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1432,
-                "partner_route_price_not_published": 358,
-                "single_partner_inventory_without_product_evidence": 6749
+                "hf_inference_compute_price_unbound": 1430,
+                "partner_route_price_not_published": 356,
+                "single_partner_inventory_without_product_evidence": 6746
               },
               "unit": "reviewed source pricing item"
             },
@@ -2697,17 +4047,17 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 137,
-              "normalized_facts": 366,
+              "normalized_facts": 362,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 114,
-              "raw_facts": 103,
-              "raw_models": 92,
+              "raw_facts": 104,
+              "raw_models": 93,
               "unknown_models": 23
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 104,
+              "diagnostic_count": 105,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2754,19 +4104,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 184,
+                "normalized": 182,
                 "raw": 0,
-                "unbound": 103,
+                "unbound": 104,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 289,
+              "observed_items": 288,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 183,
-                "route_price_not_published": 103
+                "route_price_normalized": 181,
+                "route_price_not_published": 104
               },
               "unit": "reviewed source pricing item"
             },
@@ -2816,7 +4166,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 4,
-                "excluded": 22342,
+                "excluded": 22343,
                 "explicit_non_numeric": 0,
                 "normalized": 66,
                 "raw": 0,
@@ -2824,9 +4174,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 22412,
+              "observed_items": 22413,
               "reason_counts": {
-                "featherless_model_not_hf_route": 22341,
+                "featherless_model_not_hf_route": 22342,
                 "featherless_price_normalized": 66,
                 "featherless_price_unit_conflict": 4,
                 "invalid_featherless_model_id": 1
@@ -2854,8 +4204,13 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 17,
+              "diagnostic_count": 19,
               "diagnostics": [
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "native_free_conflicts_with_hf_paid_route",
+                  "sample": "zai-org/GLM-4.6V-Flash:glm-4.6v-flash"
+                },
                 {
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
@@ -2890,27 +4245,23 @@
                   "disposition": "unresolved",
                   "reason_code": "native_route_price_not_exactly_joinable",
                   "sample": "CohereLabs/tiny-aya-global:cohere:tiny-aya-global"
-                },
-                {
-                  "disposition": "unresolved",
-                  "reason_code": "native_route_price_not_exactly_joinable",
-                  "sample": "CohereLabs/tiny-aya-water:cohere:tiny-aya-water"
                 }
               ],
               "disposition_counts": {
-                "ambiguous": 0,
+                "ambiguous": 1,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
                 "normalized": 24,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 17,
+                "unresolved": 18,
                 "unsupported": 0
               },
-              "observed_items": 41,
+              "observed_items": 43,
               "reason_counts": {
+                "native_free_conflicts_with_hf_paid_route": 1,
                 "native_route_price_normalized": 24,
-                "native_route_price_not_exactly_joinable": 17
+                "native_route_price_not_exactly_joinable": 18
               },
               "unit": "reviewed source pricing item"
             },
@@ -2920,30 +4271,29 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1432,
+            "parsed_models": 1430,
             "source_id": "huggingface-hub"
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 1611,
+          "field": "models",
+          "previous": 1613
+        },
+        {
+          "current": 1786,
+          "field": "routes",
+          "previous": 1790
+        }
+      ],
       "models": {
-        "added": 11,
-        "added_model_refs": [
-          "huggingface/CAMeL-Lab/bert-base-arabic-camelbert-msa-ner",
-          "huggingface/DTAI-KULeuven/robbert-2023-dutch-large",
-          "huggingface/Hate-speech-CNERG/dehatebert-mono-english",
-          "huggingface/Helsinki-NLP/opus-mt-en-dra",
-          "huggingface/Helsinki-NLP/opus-mt-sla-en",
-          "huggingface/Qwen/Qwen2.5-VL-72B-Instruct",
-          "huggingface/deepseek-ai/DeepSeek-V3.2",
-          "huggingface/deepset/roberta-large-squad2",
-          "huggingface/google/vit-large-patch32-384",
-          "huggingface/pparasurama/raceBERT-ethnicity",
-          "huggingface/yiyanghkust/finbert-fls"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 5,
         "changed_fields": {
-          "capabilities": 3,
-          "routes": 2,
+          "routes": 5,
           "source_refs": 1,
           "task_evidence": 1
         },
@@ -2951,15 +4301,52 @@
           {
             "field_changes": [
               {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.6-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3.6-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.6-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3.6-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Qwen3.6-27B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
               }
             ],
             "fields": [
-              "capabilities"
+              "routes"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
+            "model_ref": "huggingface/Qwen/Qwen3.6-27B"
           },
           {
             "field_changes": [
@@ -2967,14 +4354,14 @@
                 "current": [
                   {
                     "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "provider_model_id": "fal-ai/flux-kontext/dev",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
                   },
                   {
                     "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
+                    "provider_model_id": "wavespeed-ai/flux-kontext-dev",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
@@ -2984,21 +4371,21 @@
                 "previous": [
                   {
                     "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "provider_model_id": "fal-ai/flux-kontext/dev",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
                   },
                   {
                     "provider": "replicate",
-                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
+                    "provider_model_id": "black-forest-labs/flux-kontext-dev",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
                   },
                   {
                     "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
+                    "provider_model_id": "wavespeed-ai/flux-kontext-dev",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
@@ -3009,39 +4396,62 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-9B"
+            "model_ref": "huggingface/black-forest-labs/FLUX.1-Kontext-dev"
           },
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro-0813"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/stepfun-ai/Step-3.5-Flash"
-          },
-          {
-            "field_changes": [
-              {
-                "path": "task_evidence",
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-4b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ],
+                "path": "routes",
                 "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-4b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-4b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-4B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
                   {
                     "kind": "provider_task",
                     "namespace": "huggingface.task",
@@ -3049,11 +4459,11 @@
                     "source_ref": "huggingface-hf-inference",
                     "task": "text_generation"
                   }
-                ]
+                ],
+                "path": "task_evidence"
               },
               {
-                "path": "routes",
-                "previous": [
+                "current": [
                   {
                     "provider": "novita",
                     "provider_model_id": "zai-org/glm-4.6v",
@@ -3068,16 +4478,17 @@
                     "status": "live",
                     "task": "conversational"
                   }
-                ]
+                ],
+                "path": "routes"
               },
               {
                 "current": [
-                  "huggingface-router"
+                  "huggingface-router",
+                  "huggingface-hf-inference"
                 ],
                 "path": "source_refs",
                 "previous": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
+                  "huggingface-router"
                 ]
               }
             ],
@@ -3087,32 +4498,96 @@
               "source_refs"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.6V-Flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-4.7-flashx",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-4.7-flashx",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
           }
         ],
-        "current": 1613,
-        "previous": 1604,
+        "current": 1611,
+        "previous": 1613,
         "removed": 2,
         "removed_model_refs": [
-          "huggingface/HiDream-ai/HiDream-I1-Dev",
-          "huggingface/ideogram-ai/ideogram-4-fp8"
+          "huggingface/microsoft/deberta-v2-xxlarge",
+          "huggingface/nlpai-lab/LAMAR-600m"
         ],
-        "unchanged": 1597
+        "unchanged": 1606
       },
       "pricing": {
-        "commercial_hash": "121e777982b7ddaa50b614e81f5083c907a96a1a734992a7e6417a9b73ec2b6f",
+        "commercial_hash": "f4760171484c9057a228cf66dd0b7e1ca8e7a7dc824288b6387e87225c4f004f",
         "outcome": "commercial",
-        "previous_commercial_hash": "334c0d12f3b9c74666365cf52bc4d00a9469acb7e4a068a072e77ccd0b4e2e71"
+        "previous_commercial_hash": "121e777982b7ddaa50b614e81f5083c907a96a1a734992a7e6417a9b73ec2b6f"
       },
       "pricing_coverage": {
-        "current_models": 1613,
+        "current_models": 1611,
         "delta": {
-          "resolved_models": 2,
-          "unknown_models": 7
+          "resolved_models": 0,
+          "unknown_models": -2
         },
         "normalized_rate_models": 132,
         "not_applicable_models": 0,
         "offer_models": 141,
-        "raw_fact_models": 17,
+        "raw_fact_models": 18,
         "unknown_model_refs": [
           "huggingface/2013khansohail/cartographer-ecommerce-reranker-MiniLM-L6-v2",
           "huggingface/51la5/roberta-large-NER",
@@ -3135,13 +4610,15 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1452,
-        "unknown_models": 1472
+        "unknown_model_refs_omitted": 1450,
+        "unknown_models": 1470
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -3289,7 +4766,7 @@
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3308,13 +4785,13 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 6,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 6,
-              "normalized_facts": 30,
+              "normalized_facts": 24,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 6,
@@ -3324,12 +4801,32 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 8,
+              "diagnostic_count": 13,
               "diagnostics": [
                 {
                   "disposition": "unbound",
                   "reason_code": "pricing_input_contract_partial",
                   "sample": "3/4 Kimi commercial pricing inputs"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 1: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 2: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 3: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 4: Kimi Batch label disagrees with its page"
                 },
                 {
                   "disposition": "unbound",
@@ -3343,45 +4840,29 @@
                   "disposition": "unbound",
                   "reason_code": "web_search_warning_drift",
                   "sample": "Kimi K3 web-search warning drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_documentation_outdated"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_billing_contract_drift",
-                  "sample": "Kimi web-search billing contract drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_usage_contract_drift",
-                  "sample": "Kimi web-search usage contract drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "batch_cached_tokens_not_documented"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 10,
-                "normalized": 30,
+                "normalized": 24,
                 "raw": 0,
-                "unbound": 8,
+                "unbound": 9,
                 "unresolved": 0,
-                "unsupported": 0
+                "unsupported": 4
               },
-              "observed_items": 48,
+              "observed_items": 47,
               "reason_counts": {
                 "batch_cached_tokens_not_documented": 1,
+                "batch_model_scope_drift": 1,
                 "file_service_promotional_free": 1,
                 "formula_tool_promotion_end_not_published": 1,
                 "formula_tool_promotional_free": 9,
                 "formula_web_search_billing_trigger_ambiguous": 1,
-                "price_fact_normalized": 30,
+                "price_fact_normalized": 24,
                 "pricing_input_contract_partial": 1,
+                "pricing_row_rejected": 4,
                 "web_search_billing_contract_drift": 1,
                 "web_search_documentation_outdated": 1,
                 "web_search_usage_contract_drift": 1,
@@ -3392,7 +4873,7 @@
             "source_id": "kimi-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3411,13 +4892,13 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 6,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 6,
-              "normalized_facts": 30,
+              "normalized_facts": 24,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 6,
@@ -3427,12 +4908,32 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 9,
+              "diagnostic_count": 14,
               "diagnostics": [
                 {
                   "disposition": "unbound",
                   "reason_code": "pricing_input_contract_partial",
                   "sample": "3/4 Kimi commercial pricing inputs"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 1: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 2: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 3: Kimi Batch label disagrees with its page"
+                },
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_rejected",
+                  "sample": "/docs/pricing/batch row 4: Kimi Batch label disagrees with its page"
                 },
                 {
                   "disposition": "unbound",
@@ -3446,46 +4947,29 @@
                   "disposition": "unbound",
                   "reason_code": "web_search_warning_drift",
                   "sample": "Kimi K3 web-search warning drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_documentation_outdated"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "billing_contract_drift",
-                  "sample": "Kimi billing contract drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_billing_contract_drift",
-                  "sample": "Kimi web-search billing contract drifted"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "web_search_usage_contract_drift",
-                  "sample": "Kimi web-search usage contract drifted"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 9,
-                "normalized": 30,
+                "normalized": 24,
                 "raw": 0,
-                "unbound": 9,
+                "unbound": 10,
                 "unresolved": 0,
-                "unsupported": 0
+                "unsupported": 4
               },
-              "observed_items": 48,
+              "observed_items": 47,
               "reason_counts": {
                 "batch_cached_tokens_not_documented": 1,
+                "batch_model_scope_drift": 1,
                 "billing_contract_drift": 1,
                 "formula_tool_promotion_end_not_published": 1,
                 "formula_tool_promotional_free": 9,
                 "formula_web_search_billing_trigger_ambiguous": 1,
-                "price_fact_normalized": 30,
+                "price_fact_normalized": 24,
                 "pricing_input_contract_partial": 1,
+                "pricing_row_rejected": 4,
                 "web_search_billing_contract_drift": 1,
                 "web_search_documentation_outdated": 1,
                 "web_search_usage_contract_drift": 1,
@@ -3668,21 +5152,175 @@
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 12,
+          "field": "api_endpoints",
+          "previous": 14
+        }
+      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "api_endpoints": 2,
+          "capabilities": 2,
+          "delivery_mode_evidence": 2,
+          "delivery_modes": 2,
+          "limits": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "endpoint",
+                    "mode": "batch",
+                    "namespace": "kimi.endpoint",
+                    "raw_value": "Batch",
+                    "source_ref": "kimi-international-pricing"
+                  },
+                  {
+                    "kind": "endpoint",
+                    "mode": "batch",
+                    "namespace": "kimi.endpoint",
+                    "raw_value": "Batch",
+                    "source_ref": "kimi-pricing"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
+                  }
+                ],
+                "path": "api_endpoints",
+                "previous": [
+                  {
+                    "name": "Batch",
+                    "path": "/v1/batches"
+                  },
+                  {
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
+                  }
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": 256000,
+                "path": "limits.context_tokens",
+                "previous": 262144
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "api_endpoints",
+              "capabilities",
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "path": "delivery_mode_evidence",
+                "previous": [
+                  {
+                    "kind": "endpoint",
+                    "mode": "batch",
+                    "namespace": "kimi.endpoint",
+                    "raw_value": "Batch",
+                    "source_ref": "kimi-international-pricing"
+                  },
+                  {
+                    "kind": "endpoint",
+                    "mode": "batch",
+                    "namespace": "kimi.endpoint",
+                    "raw_value": "Batch",
+                    "source_ref": "kimi-pricing"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
+                  }
+                ],
+                "path": "api_endpoints",
+                "previous": [
+                  {
+                    "name": "Batch",
+                    "path": "/v1/batches"
+                  },
+                  {
+                    "name": "Chat Completions",
+                    "path": "/v1/chat/completions"
+                  }
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": 256000,
+                "path": "limits.context_tokens",
+                "previous": 262144
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "delivery_mode_evidence",
+              "api_endpoints",
+              "capabilities",
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.7-code"
+          }
+        ],
         "current": 21,
         "previous": 21,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 21
+        "unchanged": 19
       },
       "pricing": {
-        "commercial_hash": "2c7ed25177b0e6da4cc0a46d3aa15ae177ce496d994ea69509cfd5f92d9770d9",
-        "outcome": "provenance_only",
+        "commercial_hash": "46af7e2c76853efb2f87b068fa7f2feaca50babd26e6f2f0dae314943232046d",
+        "outcome": "commercial",
         "previous_commercial_hash": "2c7ed25177b0e6da4cc0a46d3aa15ae177ce496d994ea69509cfd5f92d9770d9"
       },
       "pricing_coverage": {
@@ -3703,13 +5341,14 @@
       "provider_id": "kimi",
       "publication": "accepted",
       "signals": [
+        "catalog_count_decrease",
         "partial_contract_mismatch",
         "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
@@ -3727,6 +5366,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
+            "source_id": "kimi-international-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
             "source_id": "kimi-releases"
           }
         ],
@@ -3734,7 +5385,7 @@
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3851,7 +5502,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3870,7 +5521,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 69,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3919,7 +5570,7 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3953,7 +5604,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 24,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -4108,30 +5759,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "description": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "DeepSeek V4.1 Flash 1017 is a third-party open weight model from DeepSeek, hosted by Mistral, with support for text and image inputs. Ideal for long-context coding and agentic workflows. The model is served without Mistral modifications.",
-                "path": "description",
-                "previous": "DeepSeek V4.1 Flash 1017 is a third-party open weight text model from DeepSeek, hosted by Mistral. Ideal for long-context coding and agentic workflows. The model is served without Mistral modifications."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "mistral/deepseek-v4-1-flash-1017@v4.1-flash-1017"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 68,
         "previous": 68,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 67
+        "unchanged": 68
       },
       "pricing": {
         "commercial_hash": "764d8cb5c353551a53cfbf0c07e30b25610c483268ee3a19c5c243b143b2ce02",
@@ -4164,32 +5799,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "mistral-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-pricing"
           }
         ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -4826,7 +6449,7 @@
             ],
             "dependency_failures": [
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -4834,7 +6457,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -4842,7 +6465,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -4850,7 +6473,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -4858,7 +6481,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -4866,7 +6489,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -4874,7 +6497,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -4882,7 +6505,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -4890,7 +6513,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -4898,7 +6521,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -4906,7 +6529,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -4914,7 +6537,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -4922,7 +6545,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -4930,7 +6553,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -4938,7 +6561,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -4946,7 +6569,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 247,
+                "consecutive_failures": 248,
                 "dependency_id": "vercel-models/endpoints/3fcdf7b90d0d428c39e44b430e7d5b337fe9ab2b3da07e7e1fe56d133e1f2ece",
                 "http_status": 404,
                 "impact": "claim",
@@ -5058,9 +6681,9 @@
         "unchanged": 500
       },
       "pricing": {
-        "commercial_hash": "c5d5b31b858f49b784c9e0504f08ee2278014643578d062476ec15600884fe43",
+        "commercial_hash": "6ce4a5e675368e1af089d824ea516dd788bf9cfde4768737b9a986961d5f93e6",
         "outcome": "commercial",
-        "previous_commercial_hash": "6e2f2aec99af711c0f35e4e521a632a17cb8de92c0d20d02fdc681a864588410"
+        "previous_commercial_hash": "c5d5b31b858f49b784c9e0504f08ee2278014643578d062476ec15600884fe43"
       },
       "pricing_coverage": {
         "current_models": 500,
@@ -5638,11 +7261,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 20,
-    "added_models": 11,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 6,
-    "changed_sources": 38,
-    "models": 4334,
+    "changed_models": 29,
+    "changed_sources": 41,
+    "models": 4332,
     "pricing_accepted": 19,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
