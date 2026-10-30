@@ -1027,6 +1027,117 @@
               "minLength": 1,
               "maxLength": 4096
             }
+          },
+          "invocation": {
+            "type": "object",
+            "properties": {
+              "targetRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "caseRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "inputs": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "type": "string",
+                          "const": "kmodels"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["namespace", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "type": "string",
+                          "const": "provider"
+                        },
+                        "provider_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["namespace", "provider_id", "value"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "observed": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "type": "string",
+                          "const": "kmodels"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["namespace", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "type": "string",
+                          "const": "provider"
+                        },
+                        "provider_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["namespace", "provider_id", "value"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["targetRef", "caseRef"],
+            "additionalProperties": false
           }
         },
         "required": ["id", "offerRef", "quantities"],

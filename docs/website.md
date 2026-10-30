@@ -18,7 +18,7 @@ Status: implemented core; provider pricing convergence is in progress
 
 ## Table and details
 
-- Give each inspector fact one home. The header owns provider, display name, and exact request
+- Give each inspector fact one home. The header owns provider, display name, and exact catalog
   identity. Primary lifecycle/release status and catalog scope begin the content in one compact
   metadata line; Overview does not repeat those fields. Keep the exact model ID as a compact copy
   control even when it repeats the display name, and show a distinct version beside it without
@@ -32,6 +32,15 @@ Status: implemented core; provider pricing convergence is in progress
   counts. Inside, group the documented regions under a readable deployment-type
   label. Leave unlisted regions unknown rather than presenting the data as an
   exhaustive support matrix.
+- When deferred invocation data is available, the inspector adds explicit target/API and documented
+  case selection before Overview. `Catalog ID` and the selected API's `Request ID` have distinct copy
+  actions. Case-scoped support, geography, lifecycle, configuration, facts and evidence use the shared
+  [invocation contract](invocation-addressing.md#typed-invocation-contracts); catalog-level facts are
+  labeled as unscoped. Unknown scope never becomes a default region or an executable request template.
+  Target-bound prices remain hidden until selection. Fixed price conditions are read-only, while
+  context and observed response values require explicit input. Changing target, case or request inputs
+  clears the previous quote conditions and caller-resource confirmation. Legacy detail chunks without
+  invocation data retain the existing catalog/pricing view.
 - Keep single-variant provider models as one ordinary row. When the filtered
   result contains multiple exact versions of one `(provider_id, model_id)`,
   show one collapsed parent row with the variant count. Its identity uses the
@@ -411,12 +420,15 @@ Status: implemented core; provider pricing convergence is in progress
   remain build concerns. Keep post-paint chunks out of the HTML module-preload
   graph. Mount the inspector into a second Vapor root and share only the small
   reactive detail state.
-- All UI projections exclude source records, observations, locators, undigested
+- Commercial UI projections exclude source records, observations, locators, undigested
   source fragments, derivations, evidence arrays, and canonical audit-envelope
   metadata. Raw commercial facts may retain only display-safe structured
   parameters such as amount, denomination, unit, meter, validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal
   definitions, aggregation boundaries, resolution phases, and provider-snapshot freshness copy.
+  Deferred invocation details retain their bounded public evidence records and minimal source
+  ownership so the inspector can explain exact scope and the loader can validate reference closure.
+  They contain no source document bodies or account observations.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
   books once. Each model reuses one pricing view for its summary and detail.
   Equal display-ready offers are stored once per provider and referenced by

@@ -26,7 +26,12 @@ export interface PricingSnapshot {
 }
 
 export function createPricingSnapshot(priceData: unknown): PricingSnapshot {
-  const data = freezeRecursively(validatePriceData(priceData));
+  return indexValidatedPriceData(validatePriceData(priceData));
+}
+
+/** Internal entry for readers that have already validated their complete partition. */
+export function indexValidatedPriceData(validated: CalculationEnvelope): PricingSnapshot {
+  const data = freezeRecursively(validated);
   const offers = new Map<string, IndexedOffer>();
   const rates = new Map<string, CalculationRateTerm>();
   for (const provider of data.providers) {

@@ -12,6 +12,10 @@ import PricingServiceOffer from "./PricingServiceOffer.vue";
 import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiSelect from "./UiSelect.vue";
+import InvocationPriceInputs from "./InvocationPriceInputs.vue";
+import type { WebsiteInvocationSelection } from "../catalog/website-invocation-context.ts";
+import type { Selector } from "../pricing/schema.ts";
+import { resolveInvocationPriceSelectors } from "../pricing/v2/binding.ts";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -20,6 +24,8 @@ const props = defineProps<{
   detail: WebsitePricingDetail | undefined;
   loading: boolean;
   error: string | undefined;
+  invocation?: WebsiteInvocationSelection | undefined;
+  invocationRequired?: boolean;
 }>();
 
 const emit = defineEmits<{ retry: [] }>();
@@ -27,7 +33,42 @@ const emit = defineEmits<{ retry: [] }>();
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
 const otherChargesOpen = ref(false);
-const offers = computed(() => props.detail?.offers ?? []);
+const initialPrice =
+  props.invocation?.binding === undefined
+    ? undefined
+    : resolveInvocationPriceSelectors(props.invocation.binding, {
+        selectors: [],
+        inputs: {},
+        observed: {},
+      });
+const boundPrice = ref<{ selectors: Selector[]; ready: boolean }>({
+  selectors: initialPrice?.selectors ?? [],
+  ready: initialPrice?.missingInputs.length === 0,
+});
+const invocationMessage = computed(() => {
+  if (!props.invocationRequired) return;
+  if (props.invocation === undefined)
+    return "Choose an invocation target and documented case to inspect its rates.";
+  const resolution = props.invocation.assessment?.resolution;
+  if (
+    resolution?.documented_support !== "supported" ||
+    resolution.context_match === "mismatched" ||
+    resolution.configuration === "conflicting"
+  )
+    return "No quote for this unsupported, conflicting or mismatched invocation context.";
+  if (props.invocation.binding === undefined)
+    return "No public price binding for this target and case in this snapshot.";
+});
+const offers = computed(() => {
+  const all = props.detail?.offers ?? [];
+  if (!props.invocationRequired) return all;
+  return invocationMessage.value === undefined
+    ? all.filter(({ id }) => props.invocation?.binding?.offer_refs.includes(id))
+    : [];
+});
+const pricingModelRef = computed(
+  () => props.invocation?.target.resolved_model_ref ?? props.model.uid,
+);
 interface CapacityGroup {
   key: string;
   title: string;
@@ -151,7 +192,9 @@ function toggleOtherCharges(event: Event): void {
       </span>
     </p>
 
-    <div v-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
+    <p v-if="invocationMessage" class="pricing-outcome" role="status">{{ invocationMessage }}</p>
+
+    <div v-else-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
       <strong>Not applicable</strong>
       <span>This provider publishes no public pricing offer for this model.</span>
     </div>
@@ -172,90 +215,109 @@ function toggleOtherCharges(event: Event): void {
     </div>
 
     <template v-else-if="detail">
-      <section
-        v-if="capacityGroups.length > 0"
-        class="base-rates"
-        aria-labelledby="capacity-rates-heading"
-      >
-        <h4 id="capacity-rates-heading" class="section-heading">Capacity charges</h4>
-        <p class="capacity-note">
-          Billed for the selected resource while it runs. These rates are separate from per-request
-          usage and do not establish deployment availability.
-        </p>
-        <article v-for="group in capacityGroups" :key="group.key" class="rate-offer">
+      <InvocationPriceInputs
+        v-if="invocationRequired && invocation?.binding"
+        :selection="invocation"
+        :offers
+        @resolve="boundPrice = $event"
+      />
+      <template v-if="!invocationRequired || boundPrice.ready">
+        <section
+          v-if="capacityGroups.length > 0"
+          class="base-rates"
+          aria-labelledby="capacity-rates-heading"
+        >
+          <h4 id="capacity-rates-heading" class="section-heading">Capacity charges</h4>
+          <p class="capacity-note">
+            Billed for the selected resource while it runs. These rates are separate from
+            per-request usage and do not establish deployment availability.
+          </p>
+          <article v-for="group in capacityGroups" :key="group.key" class="rate-offer">
+            <header class="rate-offer-heading">
+              <h5>{{ group.title }}</h5>
+              <small v-if="offerState(group.active)" class="offer-state">
+                {{ offerState(group.active) }}
+              </small>
+            </header>
+            <div v-if="group.offers.length > 1" class="capacity-selector">
+              <label :for="`capacity-${group.key}`">Instance type</label>
+              <UiSelect
+                :id="`capacity-${group.key}`"
+                :model-value="selectedCapacityIds[group.key] ?? ''"
+                :options="
+                  group.offers.map((offer) => ({
+                    value: offer.id,
+                    label: offer.capacity_choice?.label ?? offer.title,
+                  }))
+                "
+                placeholder="Choose instance type"
+                @update:model-value="selectCapacity(group.key, $event)"
+              />
+            </div>
+            <p v-else-if="group.offers[0]?.capacity_choice" class="capacity-instance">
+              Instance type: {{ group.offers[0].capacity_choice.label }}
+            </p>
+            <PricingOfferBreakdown
+              v-if="group.active"
+              :offer="group.active"
+              :model-ref="pricingModelRef"
+              :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
+            />
+          </article>
+        </section>
+
+        <section
+          v-if="modelMechanisms.length > 1"
+          class="run-mode"
+          aria-labelledby="run-mode-heading"
+        >
+          <h4 id="run-mode-heading" class="section-heading">Run mode</h4>
+
+          <fieldset class="run-mode-options">
+            <legend class="visually-hidden">Choose a run mode</legend>
+            <div class="offer-list">
+              <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
+                <input
+                  type="radio"
+                  :name="`pricing-mechanism-${model.uid}`"
+                  :value="offer.id"
+                  :checked="activeMechanism?.id === offer.id"
+                  @change="selectMechanism(offer.id)"
+                />
+                <strong>{{ offer.title }}</strong>
+                <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
+              </label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section v-if="activeMechanism" class="base-rates" aria-labelledby="base-rates-heading">
           <header class="rate-offer-heading">
-            <h5>{{ group.title }}</h5>
-            <small v-if="offerState(group.active)" class="offer-state">
-              {{ offerState(group.active) }}
+            <h4 id="base-rates-heading" class="section-heading">Model rates</h4>
+            <small v-if="modelMechanisms.length === 1" class="offer-state">
+              Run mode · {{ activeMechanism.title }}
             </small>
           </header>
-          <div v-if="group.offers.length > 1" class="capacity-selector">
-            <label :for="`capacity-${group.key}`">Instance type</label>
-            <UiSelect
-              :id="`capacity-${group.key}`"
-              :model-value="selectedCapacityIds[group.key] ?? ''"
-              :options="
-                group.offers.map((offer) => ({
-                  value: offer.id,
-                  label: offer.capacity_choice?.label ?? offer.title,
-                }))
-              "
-              placeholder="Choose instance type"
-              @update:model-value="selectCapacity(group.key, $event)"
-            />
-          </div>
-          <p v-else-if="group.offers[0]?.capacity_choice" class="capacity-instance">
-            Instance type: {{ group.offers[0].capacity_choice.label }}
-          </p>
-          <PricingOfferBreakdown v-if="group.active" :offer="group.active" :model-ref="model.uid" />
-        </article>
-      </section>
+          <PricingOfferBreakdown
+            :offer="activeMechanism"
+            :model-ref="pricingModelRef"
+            :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
+          />
+        </section>
 
-      <section
-        v-if="modelMechanisms.length > 1"
-        class="run-mode"
-        aria-labelledby="run-mode-heading"
-      >
-        <h4 id="run-mode-heading" class="section-heading">Run mode</h4>
-
-        <fieldset class="run-mode-options">
-          <legend class="visually-hidden">Choose a run mode</legend>
-          <div class="offer-list">
-            <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
-              <input
-                type="radio"
-                :name="`pricing-mechanism-${model.uid}`"
-                :value="offer.id"
-                :checked="activeMechanism?.id === offer.id"
-                @change="selectMechanism(offer.id)"
-              />
-              <strong>{{ offer.title }}</strong>
-              <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
-            </label>
-          </div>
-        </fieldset>
-      </section>
-
-      <section v-if="activeMechanism" class="base-rates" aria-labelledby="base-rates-heading">
-        <header class="rate-offer-heading">
-          <h4 id="base-rates-heading" class="section-heading">Model rates</h4>
-          <small v-if="modelMechanisms.length === 1" class="offer-state">
-            Run mode · {{ activeMechanism.title }}
-          </small>
-        </header>
-        <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
-      </section>
-
-      <div
-        v-else-if="supplementaryOffers.length > 0 && capacityGroups.length === 0"
-        class="pricing-outcome no-base-offer"
-      >
-        <strong>No model inference rate shown</strong>
-      </div>
+        <div
+          v-else-if="supplementaryOffers.length > 0 && capacityGroups.length === 0"
+          class="pricing-outcome no-base-offer"
+        >
+          <strong>No model inference rate shown</strong>
+        </div>
+      </template>
     </template>
     <details
       v-if="
-        supplementaryOffers.length > 0 || (provider?.pricing_coverage.standalone_resources ?? 0) > 0
+        (!invocationRequired || (invocationMessage === undefined && boundPrice.ready)) &&
+        (supplementaryOffers.length > 0 ||
+          (provider?.pricing_coverage.standalone_resources ?? 0) > 0)
       "
       class="additional-costs"
       @toggle="toggleOtherCharges"
@@ -270,7 +332,8 @@ function toggleOtherCharges(event: Event): void {
           v-for="offer in supplementaryOffers"
           :key="offer.id"
           :offer
-          :model-ref="model.uid"
+          :model-ref="pricingModelRef"
+          :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
         />
         <ProviderServices
           v-if="provider && provider.pricing_coverage.standalone_resources > 0"
@@ -278,7 +341,7 @@ function toggleOtherCharges(event: Event): void {
           :provider
           :data-version
           :active="otherChargesOpen"
-          :excluded-offer-ids="offers.map(({ id }) => id)"
+          :excluded-offer-ids="(detail?.offers ?? []).map(({ id }) => id)"
         />
       </div>
     </details>

@@ -386,6 +386,19 @@ Status: implemented
 
 ## Durable outputs
 
+Invocation-enabled collection also persists the canonical invocation graph and a v2 pricing mirror
+at `data/pricing-v2.json.gz`. Reviewed source-level invocation/offer joins travel with parsed pricing
+compilation inputs. They resolve after provider price assembly and are revalidated against the exact
+accepted target and case. A retained binding cannot follow changed alias resolution or surface scope.
+
+The v2 catalog and pricing pair has its own content identity; legacy response bytes and pair identity
+keep their existing rules. The atomic accepted-state manifest records both pairs' response hashes.
+`/catalog/publication.json` lists the co-published resources, including calculation resources, and
+their exact hashes. Recovery restores the v2 price mirror together with the legacy mirrors and packs;
+a v2 catalog without its v2 pricing mirror cannot be treated as an empty binding set. Static asset
+loading rejects mixed pairs and incomplete resource manifests. These paths do not refresh stored data
+by themselves; the implemented v2 calculation and UI paths still require separate stored-data adoption.
+
 Collection has four data layers:
 
 1. allowlisted upstream response bodies, bounded and process-local;

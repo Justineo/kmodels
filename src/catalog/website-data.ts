@@ -43,7 +43,10 @@ import type {
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
 import type { RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
+import type { InvocationPricingBinding } from "./invocation-pricing-schema.ts";
+import { websiteInvocationDetail } from "./website-invocation.ts";
 import {
+  WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
   websiteOfferChunkSchema,
@@ -64,7 +67,7 @@ import {
   type WebsiteStoredModelDetail,
 } from "./website-schema.ts";
 
-export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
+export { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "./website-schema.ts";
 export const PROVIDER_UNNORMALIZED_PREVIEW_LIMIT = 20;
 export const WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH = 180;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
@@ -91,6 +94,7 @@ export function websitePublication(
   catalog: Catalog,
   pricing: PricingCatalog,
   dataVersion: string,
+  invocationBindings: readonly InvocationPricingBinding[] = [],
 ): WebsitePublication {
   const index = pricingViewIndex(pricing);
   const labels = categoricalMetadataIndex(pricing);
@@ -104,7 +108,15 @@ export function websitePublication(
     return result;
   };
   const summaries = catalog.models.map((model) => pricingSummary(view(model), model, labels));
-  const deferred = websiteDeferredAssets(catalog, pricing, dataVersion, view, labels, atoms);
+  const deferred = websiteDeferredAssets(
+    catalog,
+    pricing,
+    dataVersion,
+    view,
+    labels,
+    atoms,
+    invocationBindings,
+  );
   const providerPricingChunks = new Map<string, number>();
   for (const { provider_id } of deferred.providerPricing)
     providerPricingChunks.set(provider_id, (providerPricingChunks.get(provider_id) ?? 0) + 1);
@@ -256,6 +268,7 @@ function websiteDeferredAssets(
   view: (model: ProviderModel) => ModelPricingView,
   labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
+  invocationBindings: readonly InvocationPricingBinding[],
 ): Pick<WebsitePublication, "details" | "offers" | "providerPricing"> {
   const details: WebsiteDetailChunk[] = [];
   const offers: WebsiteOfferChunk[] = [];
@@ -283,8 +296,9 @@ function websiteDeferredAssets(
           labels,
           atoms,
         );
+        const invocation = websiteInvocationDetail(catalog, model, invocationBindings);
         return {
-          detail,
+          detail: { ...detail, ...(invocation === undefined ? {} : { invocation }) },
           ...(pricing === undefined
             ? {}
             : {
@@ -342,7 +356,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: 6,
+            schema_version: catalog.invocation === undefined ? 6 : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,

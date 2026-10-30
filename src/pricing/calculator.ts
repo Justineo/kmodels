@@ -15,7 +15,11 @@ const offerFilterSchema = z.strictObject({
 type OfferFilter = z.infer<typeof offerFilterSchema>;
 
 export function createCalculator(priceData: unknown): Calculator {
-  const snapshot = createPricingSnapshot(priceData);
+  return calculatorForSnapshot(createPricingSnapshot(priceData));
+}
+
+/** Internal shared evaluator; public readers own schema and reference validation. */
+export function calculatorForSnapshot(snapshot: PricingSnapshot): Calculator {
   return Object.freeze({
     listOffers(input: OfferFilter = {}): OfferEntry[] {
       return guarded(() => listMatchingOffers(snapshot, parseRequest(offerFilterSchema, input)));

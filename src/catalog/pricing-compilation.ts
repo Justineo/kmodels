@@ -35,6 +35,7 @@ import {
 import { providerPartition } from "./pricing-transition.ts";
 import type { SourceRecord } from "./schema.ts";
 import { runWorkerPool } from "./worker-pool.ts";
+import { reconcileInvocationBindings } from "./invocation-pricing.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const pricingReplaySourceSchema = sourcePricingFactsSchema.extend({
@@ -52,6 +53,7 @@ function hasSourceProvenance(facts: SourcePricingFacts, sourceId: string): boole
   return [
     ...(facts.pricing_inputs ?? []).map(({ source_ref }) => source_ref),
     ...(facts.commercial_facts ?? []).flatMap(commercialFactSourceRefs),
+    ...(facts.invocation_pricing ?? []).map(({ source_ref }) => source_ref),
   ].every((sourceRef) => sourceRef === sourceId);
 }
 export const pricingCompilationSnapshotSchema = z
@@ -372,11 +374,27 @@ export async function compilePricingSnapshot(
       return partition;
     }),
   );
+  const invocation = current.catalog.invocation;
+  const bindings =
+    invocation === undefined
+      ? []
+      : reconcileInvocationBindings(
+          invocation,
+          pricing,
+          tasks
+            .filter(({ providerId }) => replayedProviders.includes(providerId))
+            .flatMap(({ sources }) =>
+              sources.flatMap(({ invocation_pricing }) => invocation_pricing ?? []),
+            ),
+          current.v2 === undefined
+            ? undefined
+            : { invocation, bindings: current.v2.pricing.data.invocation_bindings },
+        );
   return {
     candidate:
       replayedProviders.length === 0
         ? current
-        : await prepareCatalogPairInParallel(current.catalog, pricing),
+        : await prepareCatalogPairInParallel(current.catalog, pricing, bindings),
     replayedProviders: replayedProviders.sort(compareUtf8),
     preservedProviders: preservedProviders.sort(compareUtf8),
     replayFailures: replayFailures.sort((left, right) =>
@@ -497,6 +515,7 @@ function replaySources(
       (facts.commercial_facts?.length ?? 0) > 0 ||
       (facts.pricing_inputs?.length ?? 0) > 0 ||
       (facts.vocabulary?.length ?? 0) > 0 ||
+      (facts.invocation_pricing?.length ?? 0) > 0 ||
       source.models.some(
         ({ pricing_state, price_facts, raw_price_facts, state_facts }) =>
           pricing_state !== "unknown" ||

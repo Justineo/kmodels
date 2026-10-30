@@ -85,7 +85,9 @@ function parseDetailChunk(target: DetailTarget, dataVersion: string): Promise<We
         headers: { Accept: "application/json" },
       }).then(responseSource),
       websiteSchemas(),
-    ]).then(([source, { websiteDetailChunkSchema }]) => {
+    ]).then(async ([source, { websiteDetailChunkSchema, WEBSITE_DETAIL_CHUNK_MAX_BYTES }]) => {
+      if (new TextEncoder().encode(source).byteLength > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
+        throw new Error("Model detail chunk exceeds the size limit");
       const value: unknown = JSON.parse(source);
       const chunk = websiteDetailChunkSchema.parse(value);
       if (
@@ -94,6 +96,15 @@ function parseDetailChunk(target: DetailTarget, dataVersion: string): Promise<We
         chunk.chunk !== target.chunk
       )
         throw new Error("Model detail chunk does not match the catalog");
+      for (const detail of chunk.details) {
+        const invocation = detail.invocation;
+        if (invocation !== undefined) {
+          if (chunk.schema_version !== 7)
+            throw new Error("Invocation detail requires schema version 7");
+          const { validateWebsiteInvocationDetail } = await import("./website-invocation.ts");
+          validateWebsiteInvocationDetail(invocation, detail.model_ref, target.providerId);
+        }
+      }
       for (const detail of chunk.details)
         storedDetailsByModel.set(modelDetailKey(dataVersion, detail.model_ref), detail);
       return chunk;

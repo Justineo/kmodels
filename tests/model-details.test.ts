@@ -61,7 +61,7 @@ describe("model details", () => {
     expect(content).toContain('<div class="status-line"');
     expect(content).toContain("active");
     expect(content).toContain("regional catalog");
-    expect(header).toContain("Copy model ID model");
+    expect(header).toContain("Copy catalog ID model");
     expect(header).toContain("#ui-copy");
     expect(content).toContain('<details class="detail-section detail-disclosure"');
     expect(content).toContain("Alternate identifiers");

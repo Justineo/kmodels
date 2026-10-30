@@ -19,8 +19,9 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.
+- [Catalog schema upgrade](docs/catalog-schema-upgrade.md): accepted separation of model
+  identity, conditional invocation targets, and price applicability; provider research and migration.
 - [Collection](docs/collection.md): source trust, scopes, matching, validation, fallback, provenance, and generated data.
-- [Kong AI Gateway](docs/kong-ai-gateway.md): consumer boundary and compatibility evidence.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
 - [Review and repair method](docs/refresh-repair-audit.md): finite review scope, source-to-consumer evidence, diagnostic admission, periodic review and historical-data repair.
@@ -35,6 +36,10 @@ This index points to the repository's current decisions. Detailed documents are 
   inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
+
+## Downstream consumers
+
+- [Kong AI Gateway](docs/kong-ai-gateway.md): separate consumer compatibility evidence; it does not define the catalog schema or provider semantics.
 
 ## Providers
 

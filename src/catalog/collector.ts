@@ -1,6 +1,18 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import {
+  completeInvocationInventory,
+  invocationProviderPartition,
+  mergeInvocationCatalogs,
+  retainUnavailableInvocation,
+} from "./invocation-collection.ts";
+import { emptyInvocationCatalog, type InvocationCatalog } from "./invocation-schema.ts";
+import { validateInvocationCatalog } from "./invocation-validation.ts";
+import {
+  reconcileInvocationBindings,
+  type SourceInvocationPriceLink,
+} from "./invocation-pricing.ts";
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { mapConcurrentByKey } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
@@ -108,6 +120,8 @@ const availabilityWarning: CatalogWarning = {
 interface ProviderResult {
   provider: Provider;
   models: ProviderModel[];
+  invocation?: InvocationCatalog;
+  invocationPricing?: SourceInvocationPriceLink[];
   sources: SourceRecord[];
   coverage: Coverage;
   warnings: CatalogWarning[];
@@ -191,6 +205,7 @@ function recordSourceFailure(
 export interface SourceGroup extends SourcePricingFacts {
   source: SourceManifest;
   models: ParsedProviderModel[];
+  invocation?: InvocationCatalog;
 }
 
 interface SourceRetention {
@@ -734,11 +749,13 @@ function providerSources(
   pricing: ProviderPricingPartition | undefined,
   sources: ReadonlyMap<string, SourceRecord>,
   replaySources: readonly PricingReplaySource[] | undefined,
+  invocation?: InvocationCatalog,
 ): SourceRecord[] {
   const sourceIds = new Set([
     ...models.flatMap((model) => model.source_refs),
     ...(pricing === undefined ? [] : providerPartitionSourceRefs(pricing)),
     ...(replaySources ?? []).map(({ source_id }) => source_id),
+    ...(invocation?.invocation_evidence.map(({ source_ref }) => source_ref) ?? []),
   ]);
   const result = [...sourceIds].flatMap((sourceId) => {
     const source = sources.get(sourceId);
@@ -926,6 +943,10 @@ export async function collectProvider(
           },
         });
         parsed = parsedSource.models.map(normalizeModelTasks).map(normalizeDeliveryModes);
+        if (parsedSource.invocation !== undefined && !source.fields.includes("invocation"))
+          throw new Error("Source emitted invocation facts without declared ownership");
+        if (source.fields.includes("invocation") && parsedSource.invocation === undefined)
+          throw new Error("Invocation source omitted its declared contract");
       } catch (error) {
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
         const evidence = contractEvidence(error);
@@ -1179,10 +1200,39 @@ export async function collectProvider(
       pricing = undefined;
       pricingFailure ??= "pricing_validation_failed";
     }
-    const retainedSources = providerSources(models, pricing, sourceById, pricingReplaySources);
+    const invocationParts = pricingSources.flatMap(({ invocation }) =>
+      invocation === undefined ? [] : [invocation],
+    );
+    const invocation =
+      invocationParts.length === 0
+        ? undefined
+        : completeInvocationInventory(
+            retainUnavailableInvocation(
+              mergeInvocationCatalogs(invocationParts),
+              previous?.invocation,
+            ),
+            models,
+          );
+    const retainedSources = providerSources(
+      models,
+      pricing,
+      sourceById,
+      pricingReplaySources,
+      invocation,
+    );
+    if (invocation !== undefined)
+      validateInvocationCatalog(invocation, {
+        providers: [provider],
+        models,
+        sources: retainedSources,
+      });
     return {
       provider,
       models,
+      ...(invocation === undefined ? {} : { invocation }),
+      invocationPricing: pricingSources.flatMap(
+        ({ invocation_pricing }) => invocation_pricing ?? [],
+      ),
       sources: retainedSources,
       coverage: {
         provider_id: manifest.provider.id,
@@ -1259,10 +1309,25 @@ export async function collectProvider(
         pricing = undefined;
       }
     }
-    const retainedSources = providerSources(oldModels, pricing, sourceById, pricingReplaySources);
+    const invocation =
+      previous?.invocation === undefined
+        ? undefined
+        : invocationProviderPartition(
+            previous.invocation,
+            new Set(oldModels.map(({ uid }) => uid)),
+            manifest.provider.id,
+          );
+    const retainedSources = providerSources(
+      oldModels,
+      pricing,
+      sourceById,
+      pricingReplaySources,
+      invocation,
+    );
     return {
       provider: providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),
       models: oldModels,
+      ...(invocation === undefined ? {} : { invocation }),
       sources: retainedSources,
       coverage: {
         provider_id: manifest.provider.id,
@@ -1366,6 +1431,12 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     sources,
     coverage,
     warnings: [availabilityWarning, ...results.flatMap((result) => result.warnings)],
+    invocation: completeInvocationInventory(
+      mergeInvocationCatalogs(
+        results.map(({ invocation }) => invocation ?? emptyInvocationCatalog()),
+      ),
+      models,
+    ),
   });
 
   const configuredSourceIds = manifests.flatMap((manifest) =>
@@ -1411,7 +1482,22 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       safety_findings: options.pricingSafetyFindings ?? [],
     },
   );
-  const candidatePromise = prepareCatalogPairInParallel(composed.catalog, composed.pricing);
+  const invocationBindings = reconcileInvocationBindings(
+    composed.catalog.invocation ?? emptyInvocationCatalog(),
+    composed.pricing,
+    results.flatMap(({ invocationPricing }) => invocationPricing ?? []),
+    acceptedCatalog?.invocation === undefined || acceptedPair?.v2 === undefined
+      ? undefined
+      : {
+          invocation: acceptedCatalog.invocation,
+          bindings: acceptedPair.v2.pricing.data.invocation_bindings,
+        },
+  );
+  const candidatePromise = prepareCatalogPairInParallel(
+    composed.catalog,
+    composed.pricing,
+    invocationBindings,
+  );
   const summary = summarizeRefresh(
     previous,
     composed.catalog,
