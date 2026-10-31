@@ -708,8 +708,7 @@ function formatDisplayAmountText(
 }
 
 export function formatDimension(value: PriceDimension): string {
-  if (value.namespace === "provider")
-    return formatProviderValue("provider-dimension", value.provider_id, value.value);
+  if (value.namespace === "provider") return formatSentenceCase(value.value);
   if (value.value === "cache_ttl_seconds") return "Cache TTL";
   if (value.value === "context_tokens") return "Context";
   return formatSentenceCase(value.value);

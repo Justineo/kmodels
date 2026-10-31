@@ -1,4 +1,12 @@
 export { createCalculator } from "./calculator.ts";
+export { createInferencePriceLookup } from "./inference.ts";
+export { inferencePriceMappingSchema } from "./inference-schema.ts";
+export type {
+  InferencePriceMapping,
+  InferencePriceRule,
+  InferencePriceQuery,
+} from "./inference-schema.ts";
+export type { InferencePriceCandidate, InferencePriceResult } from "./inference.ts";
 export { validatePriceData } from "./validation.ts";
 export { PricingError, errorCodes } from "./errors.ts";
 export {

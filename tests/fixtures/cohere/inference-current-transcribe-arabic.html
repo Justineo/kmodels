@@ -1,0 +1,126 @@
+<main>
+  <h1 class="fern-page-heading text-balance wrap-anywhere">Cohere Transcribe Arabic</h1>
+  <div class="fern-prose prose break-words prose-h1:mt-[1.5em] first:prose-h1:mt-0 max-w-full">
+    <div>
+      This page is for version v2 API (default). For other versions, use one of these documentation
+      indexes: - v2 API (default): https://docs.cohere.com/v2/llms.txt - v1 API:
+      https://docs.cohere.com/v1/llms.txt
+    </div>
+    <!--$-->
+    <div style="display: contents">
+      <h2 class="max-md:pr-4" style="cursor: pointer">About this model</h2>
+      <p>
+        Cohere Transcribe Arabic is a finetuned version of Cohere Transcribe that is optimized for
+        Arabic audio inputs. Like Cohere Transcribe, it is a 2B parameters dedicated audio-in,
+        text-out, automatic speech recognition (ASR) model available open source. The model is
+        designed to accurately capture the diversity of dialects, accents, and acoustic conditions
+        among Arabic speakers during transcription.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Model details</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class=""><strong class="font-semibold">Input</strong>: Audio waveform</li>
+        <li class=""><strong class="font-semibold">Output</strong>: Text</li>
+        <li class="">
+          <strong class="font-semibold">Model name</strong>:
+          <code>cohere-transcribe-arabic-07-2026</code>
+        </li>
+        <li class=""><strong class="font-semibold">Languages covered</strong>: Arabic, English</li>
+        <li class=""><strong class="font-semibold">Multidialectal support</strong>: Yes</li>
+        <li class=""><strong class="font-semibold">Code-switching support</strong>: Yes</li>
+        <li class=""><strong class="font-semibold">Maximum file size</strong>: 25MB</li>
+        <li class="">
+          <strong class="font-semibold">License</strong>:
+          <a class="fern-mdx-link" href="https://www.apache.org/licenses/LICENSE-2.0"
+            >Apache 2.0<svg class="lucide lucide-external-link external-link-icon">
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </li>
+      </ul>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Availability</h2>
+      <p>
+        You can access Cohere Transcribe Arabic via our
+        <a class="fern-mdx-link" href="https://dashboard.cohere.com/"
+          >API<svg class="lucide lucide-external-link external-link-icon">
+            <path></path>
+            <path></path>
+            <path></path></svg
+        ></a>
+        for free, low-setup experimentation subject to
+        <a class="fern-mdx-link" href="/v2/docs/rate-limits">rate limits</a>.
+      </p>
+      <p>
+        For production deployment without rate limits, provision a dedicated
+        <a class="fern-mdx-link" href="/v2/docs/model-vault">Model Vault</a>. This enables
+        low-latency, private cloud inference without having to manage infrastructure. Pricing is
+        calculated per hour-instance, with discounted plans for longer-term commitments.
+        <a class="fern-mdx-link" href="https://cohere.com/contact-sales"
+          >Contact our team<svg class="lucide lucide-external-link external-link-icon">
+            <path></path>
+            <path></path>
+            <path></path></svg
+        ></a>
+        to discuss your requirements.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Strengths</h2>
+      <p>
+        Cohere Transcribe Arabic achieves state-of-the-art transcription accuracy for Arabic speech.
+        These results are robust to diverse or variable audio inputs, including: bilingual dialogues
+        (Arabic-English); regional dialects and phrasing, and enterprise-specific vocabulary. Like
+        its parent model, Cohere Transcribe Arabic has been optimized for high-throughput,
+        production inference, and is at the frontier for far-field (where the speaker is not close
+        to the receiver) transcription tasks.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Key Limitations</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class="">
+          <strong class="font-semibold">Timestamps</strong>: The model does not output timestamps
+          alongside transcripts.
+        </li>
+        <li class="">
+          <strong class="font-semibold">Speaker diarization</strong>: The model does not
+          automatically identify individual speakers in a multispeaker audio file.
+        </li>
+      </ul>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Model architecture</h2>
+      <p>
+        Cohere Transcribe is built on a speech-optimized Transformer variant: a Conformer. Input
+        audio waveforms are converted into a Mel spectrogram and then processed by a Conformer
+        encoder that holds the majority of the model’s parameters. The encoder’s representations are
+        then passed to a lightweight Transformer decoder that generates text tokens. Cohere
+        Transcribe is trained using standard supervised cross-entropy.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Further Resources</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class="">
+          <a class="fern-mdx-link" href="/v2/docs/audio-transcription-quickstart"
+            >Audio Transcriptions quickstart</a
+          >
+        </li>
+        <li class="">
+          <a class="fern-mdx-link" href="/v2/reference/create-audio-transcription"
+            >Audio Transcriptions API reference documentation</a
+          >
+        </li>
+        <li class="">
+          <a
+            class="fern-mdx-link"
+            href="https://github.com/cohere-ai/cohere-developer-experience/blob/main/notebooks/guides/audio/audio_transcription.ipynb"
+            >Jupyter notebook<svg class="lucide lucide-external-link external-link-icon">
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </li>
+      </ul>
+    </div>
+    <!--/$-->
+  </div>
+</main>

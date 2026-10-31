@@ -174,6 +174,37 @@ async function openAiModelPricing(
 }
 
 describe("OpenAI adapters", () => {
+  it("retains the actual Chat served tier as a commercial input without invocation wiring", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-accounting");
+    if (source === undefined) throw new Error("Missing OpenAI accounting source");
+    const owned = await fixture("openai/invocation-chat-tier.yaml");
+    const parse = (body: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        body: `${body}\n${accountingBody().split("\n").slice(2).join("\n")}`,
+      }).pricing_inputs ?? [];
+    expect(parse(owned)).toContainEqual(
+      expect.objectContaining({
+        key: "chat.served_service_tier",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/service_tier" },
+        availability: "terminal_only",
+      }),
+    );
+    for (const changed of [
+      owned.replace("CreateChatCompletionResponse:", "CreateChatCompletionRequest:"),
+      owned.replace("        service_tier:", "        requested_tier:"),
+      owned.replace("- type: string\n", "- type: integer\n"),
+    ]) {
+      const inputs = parse(changed);
+      expect(inputs.some(({ key }) => key === "chat.served_service_tier")).toBe(false);
+      expect(inputs.some(({ key }) => key === "responses.served_service_tier")).toBe(true);
+    }
+  });
+
   it.each([
     ["1", "2", "3"],
     ["3", "2", "1"],

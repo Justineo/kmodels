@@ -123,6 +123,10 @@ it("reads the shipped currency formatter with exact lexical precision and reject
     decimals: 7,
   });
   expect(parse([document, document]).euro).toBeUndefined();
+  const second = { ...document, url: "https://docs.mistral.ai/_next/static/chunks/other.js" };
+  expect(parse([document, second]).euro).toEqual({ factor: "0.85", decimals: 7 });
+  expect(parse([document, { ...second, body: body.replace("0.85", "0.9") }]).euro).toBeUndefined();
+  expect(parse([{ ...document, body: `${body}\n${body}` }]).euro).toBeUndefined();
   expect(parse([{ ...document, body: body.replace("0.85 * e", "0.85 + e") }]).euro).toBeUndefined();
   expect(parse([{ ...document, url: "https://example.com/pricing.js" }]).euro).toBeUndefined();
 });

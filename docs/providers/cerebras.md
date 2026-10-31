@@ -44,10 +44,32 @@ them once. A model is not a transport record for independent services or account
 
 ## Rates and calculation inputs
 
+### Inference model ID pricing
+
+The public inventory's exact `id` field and the official catalog's labeled `Model ID` rows
+independently establish direct associations to that identity's existing `payg` offer. A missing
+model card or optional usage reference does not invalidate an otherwise evidenced ID and price.
+Multiple surviving sources produce one price candidate with combined evidence. Fresh source
+revisions replace their own associations; losing an ID in both sources cannot revive it through a
+retained display name, Hugging Face ID or equal-price sibling.
+
+This association covers the published shared-inference tariff. It fixes no commercial conditions:
+datacenter metadata, free-trial limits and private-preview service tiers do not establish another
+public price. Batch remains without a price association until its own commercial evidence exists;
+the synchronous rate is not copied. Private endpoint names and inferred prefixes remain unknown.
+No protocol graph, authentication contract or account discovery is required for lookup.
+
+### Published rates
+
 Public model rates are USD per million tokens. The native per-token API values are scaled with exact
 decimal arithmetic. Its exact-scope quotes take precedence over conflicting model-card quotes;
 the shared resolver preserves superseded card evidence. A structured model-card rate is independent
 supporting evidence and supplies a missing API quote. Narrative duplicates are not additional rates.
+
+The current flattened Markdown cards no longer expose the structured `ModelInfo` fields consumed
+by the card parser. Their labeled catalog rows still establish exact IDs, and the public API supplies
+the reviewed current rates. Flattened card amounts are not currently a fallback when an API quote
+is missing; those amounts remain an explicit extraction limit, with claim-local drift diagnostics.
 
 Cached and freshly processed input use the same standard rate. Kmodels charges the entire prompt
 once and does not derive a duplicate cache tariff from a card's input quote:

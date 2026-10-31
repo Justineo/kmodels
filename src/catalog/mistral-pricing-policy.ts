@@ -78,9 +78,13 @@ export function parseMistralPricingPolicy(
 // Parse its arithmetic and lexical precision binding without evaluating downloaded JavaScript.
 function bundledCurrencyPolicy(bundle: LinkedBundle): CurrencyPolicy | undefined {
   const policies: CurrencyPolicy[] = [];
+  const seen = new Set<string>();
   for (const document of bundle.documents) {
     if (!/^https:\/\/docs\.mistral\.ai\/_next\/static\/chunks\/[\w-]+\.js$/.test(document.url))
       continue;
+    if (seen.has(document.url)) return;
+    seen.add(document.url);
+    const previousCount = policies.length;
     const source = ts.createSourceFile("currency.js", document.body, ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node): void => {
       if (
@@ -175,8 +179,13 @@ function bundledCurrencyPolicy(bundle: LinkedBundle): CurrencyPolicy | undefined
       ts.forEachChild(node, visit);
     };
     visit(source);
+    if (policies.length - previousCount > 1) return;
   }
-  return policies.length === 1 ? policies[0] : undefined;
+  const policy = policies[0];
+  return policy !== undefined &&
+    policies.every((value) => value.factor === policy.factor && value.decimals === policy.decimals)
+    ? policy
+    : undefined;
 }
 
 export function applyMistralPricingPolicy(

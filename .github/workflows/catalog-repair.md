@@ -56,6 +56,7 @@ network:
     - ai.azure.com
     - ai.google.dev
     - ai.meta.com
+    - dev.meta.ai
     - aiplatform.googleapis.com
     - api-docs.deepseek.com
     - api.cerebras.ai

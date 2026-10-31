@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractGeminiCommercialFacts } from "./gemini-commercial-source.ts";
+import { geminiInferencePrices } from "./gemini-inference-pricing.ts";
 import {
   geminiGroundingAllowance,
   geminiGroundingAllowances,
@@ -624,9 +625,9 @@ function applyGemmaFreePricing(
   sourceId: string,
   body: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): void {
+): string[] {
   const gemma = [...models.values()].filter((model) => /^gemma-4-.+-it$/.test(model.model_id));
-  if (gemma.length === 0) return;
+  if (gemma.length === 0) return [];
   const $ = load(body);
   const section = $(".models-section h2#gemma-4").first().closest(".models-section");
   const table = section.nextUntil(".models-section").filter("table.pricing-table").first();
@@ -654,7 +655,7 @@ function applyGemmaFreePricing(
       disposition: "unbound",
       reason_code: "gemma_pricing_structure_drift",
     });
-    return;
+    return [];
   }
 
   for (const label of required) {
@@ -712,6 +713,7 @@ function applyGemmaFreePricing(
       ),
     );
   }
+  return gemma.map(({ model_id }) => model_id);
 }
 
 function explicitModalities(value: string): Modality[] {
@@ -744,7 +746,9 @@ function conditions(
   const grounding = geminiGroundingOperation(row);
   if (grounding !== undefined) result.operation = grounding;
   const normalizedTier = tier.toLowerCase();
-  if (normalizedTier !== "") result.service_tier = normalizedTier;
+  if (normalizedTier === "contributor")
+    result.account_eligibility = `${accountEligibility}_contributor`;
+  else if (normalizedTier !== "") result.service_tier = normalizedTier;
   if (/prompts?\s*(?:<=|≤)\s*200k/i.test(descriptor)) result.context_max_tokens = 200_000;
   if (/prompts?\s*>\s*200k/i.test(descriptor)) result.context_min_tokens = 200_001;
   const resolution = descriptor.match(/\b(0\.5K|1K|2K|4K|720p|1080p)\b/i)?.[1];
@@ -1055,9 +1059,10 @@ function applyPricing(
   body: string,
   onPricingReconciliation: Input["onPricingReconciliation"],
   mapsBilling: MapsGroundingBilling,
-): GeminiGroundingClaim[] {
+): { claims: GeminiGroundingClaim[]; ids: Map<string, string> } {
   const $ = load(body);
   const claims: GeminiGroundingClaim[] = [];
+  const ids = new Map<string, string>();
   $(".devsite-article-body .models-section").each((_index, section) => {
     const codes = unique(
       $(section)
@@ -1067,6 +1072,10 @@ function applyPricing(
         .filter((id) => modelIdSchema.safeParse(id).success),
     );
     if (codes.length === 0) return;
+    for (const id of codes) {
+      const model = pricingModel(models, id);
+      if (model !== undefined) ids.set(id, model.uid);
+    }
     const siblings = $(section).nextUntil(".models-section");
     const searchPerQuery =
       /A customer-submitted request to Gemini may result in one or more queries to Google Search\. You will be charged for each individual search query performed\./.test(
@@ -1083,7 +1092,29 @@ function applyPricing(
       if (headers.join("|") === "|Model|Tools") return;
       const header = headers[2];
       const tier = text($(table).closest("section").children("h3").first().text());
-      if (headers[1] !== "Free Tier" || header === undefined || !header.startsWith("Paid Tier")) {
+      const tierScope = text($(table).closest("section").text());
+      const contributor = tier.toLowerCase() === "contributor";
+      const contributorRule =
+        !contributor ||
+        (tierScope.includes(
+          "Contributor Tier is offered as a private preview on an invite-only basis",
+        ) &&
+          $(table)
+            .find("tbody tr")
+            .toArray()
+            .some((row) => {
+              const cells = $(row).find("td");
+              return (
+                text(cells.eq(0).text()) === "Used to improve our products" &&
+                text(cells.eq(2).text()) === "Yes"
+              );
+            }));
+      if (
+        headers[1] !== "Free Tier" ||
+        header === undefined ||
+        !header.startsWith("Paid Tier") ||
+        !contributorRule
+      ) {
         $(table)
           .find("tbody tr")
           .each((_rowIndex, rowElement) => {
@@ -1100,16 +1131,21 @@ function applyPricing(
                 });
                 continue;
               }
-              preserveRawPricing(
-                model,
-                sourceId,
-                tier,
-                row,
-                "paid_tier",
-                text($(rowElement).text()),
-                "unsupported_structure",
-                onPricingReconciliation,
-              );
+              const accounts =
+                contributor && text(cells.eq(1).text()) === "Free of charge"
+                  ? (["free_tier", "paid_tier"] as const)
+                  : (["paid_tier"] as const);
+              for (const account of accounts)
+                preserveRawPricing(
+                  model,
+                  sourceId,
+                  tier,
+                  row,
+                  account,
+                  text($(rowElement).text()),
+                  "unsupported_structure",
+                  onPricingReconciliation,
+                );
             }
           });
         return;
@@ -1234,7 +1270,10 @@ function applyPricing(
         });
     });
   });
-  applyGemmaFreePricing(models, sourceId, body, onPricingReconciliation);
+  for (const id of applyGemmaFreePricing(models, sourceId, body, onPricingReconciliation)) {
+    const model = models.get(id);
+    if (model !== undefined) ids.set(id, model.uid);
+  }
   for (const item of models.values()) {
     item.price_facts = [
       ...new Map(
@@ -1263,7 +1302,7 @@ function applyPricing(
     )
   )
     throw new Error("Gemini pricing produced no usable or raw facts");
-  return claims;
+  return { claims, ids };
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
@@ -1971,6 +2010,7 @@ export function parseGeminiPricing(input: Input): SourceParseResult {
         }),
         aliases: [...target.aliases],
         tasks: [...target.tasks],
+        modalities: target.modalities ?? { input: [], output: [] },
       } satisfies ProviderModel;
       return [model.model_id, model] as const;
     }),
@@ -1984,7 +2024,7 @@ export function parseGeminiPricing(input: Input): SourceParseResult {
   );
   if (mapsGuides.length > 1)
     input.onContractFinding?.(contractExtensionEvidence(["/pricing/maps/billing/duplicate"]));
-  const claims = applyPricing(
+  const { claims, ids } = applyPricing(
     models,
     input.source.id,
     bundle.index.body,
@@ -2009,6 +2049,7 @@ export function parseGeminiPricing(input: Input): SourceParseResult {
     commercial_facts: commercial.facts,
     vocabulary: commercial.vocabulary,
     pricing_inputs: pricingInputs,
+    inference_prices: geminiInferencePrices(input, bundle, [...models.values()], ids),
   };
 }
 

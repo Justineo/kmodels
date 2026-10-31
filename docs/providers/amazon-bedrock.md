@@ -190,6 +190,51 @@ Region/scope claims remain rejected.
 
 ## Identity and model mapping
 
+### Inference model ID pricing
+
+The direct association reader joins literal request IDs to canonical `on-demand` offers.
+It reads each model card's Programmatic Access table and its explicit request-ID statement.
+It does not require API request syntax, capability matrices, protocol selection, or account-resource
+configuration. The catalog display, aliases, name comparison, and downstream Kong compatibility
+remain independent of this relation.
+
+An in-Region base ID requires the row's published in-Region endpoint URL. A base ID printed next
+to an unsupported in-Region endpoint remains a catalog identity, not a direct request association
+for that endpoint. Geo and global profiles retain their complete published IDs. An explicit
+`N/A` base identity uses the existing synthetic catalog key; removing an ID prefix never creates
+a base request ID.
+
+Only dimensions consumed by the model's on-demand prices become fixed selectors: endpoint,
+deployment scope, commercial profile geography, and an explicitly evidenced region. A profile's
+commercial geography comes from its own `Geo: US` (or other reviewed geography) declaration.
+If prices distinguish geography but that declaration is missing or ambiguous, the association is
+withheld and a source-contract finding is recorded. Prefixes do not establish geography.
+
+The request Region remains a separate caller-supplied price condition. For profiles with regional
+prices, this interpretation requires the [cross-Region guide](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.md)
+statement that billing uses the Region from which the profile is called. Routing geography is
+not a physical residency guarantee; the reader does not infer execution locations.
+Context length, cache TTL, served service tier and priced operation remain ordinary commercial
+conditions. Requested tier is not substituted for served tier.
+
+The [Rerank model configuration](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md)
+defines `modelArn`. The [direct-use example](https://docs.aws.amazon.com/bedrock/latest/userguide/rerank-use.md)
+supplies one literal accountless Cohere foundation-model ARN in `us-east-1`. Only this literal
+can establish an association through that evidence. Bare support-table IDs, other regional ARNs,
+application profiles, custom deployments and account-owned IDs are not synthesized.
+
+Source revisions are captured with the direct facts. The shared compiler resolves exact offer
+references against the accepted catalog/price pair; changed or withdrawn evidence removes the old
+association. Unreviewed IDs return an unknown mapping. Known conditions that exclude every
+candidate return no applicable prices. Static output and the UI use the shared price matcher.
+
+Coverage is limited to reviewed native model-card ID declarations and the literal Rerank example.
+Batch request-ID semantics are not yet mapped. Alternate card layouts or unresolved profile
+geographies remain unknown while canonical prices are preserved. Durable data adoption requires
+a separately authorized refresh.
+
+### Catalog identity
+
 - Runtime, Mantle, and Agent Runtime endpoints are distinct.
 - Rerank uses bedrock-agent-runtime and the Rerank operation. A normal model card may also expose
   Runtime invocation separately.

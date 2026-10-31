@@ -14,6 +14,7 @@ import type {
 import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import { extractXaiPricingInputs } from "./xai-accounting.ts";
+import { xaiModelOfferKeys } from "./xai-commercial.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
@@ -664,6 +665,121 @@ function regionalRates(rates: SourcePriceFact[], regions: string[]): SourcePrice
       conditions: { ...rate.conditions, region },
     })),
   );
+}
+
+function endpointPrices(
+  input: ParseInput,
+  pricing: string,
+  models: ProviderModel[],
+  language: z.infer<typeof languageModelSchema>[],
+  batchSupport: (id: string) => boolean | "unknown",
+  batchMultipliers: Map<string, string> | undefined,
+  priorityMultiplier: string | undefined,
+): ProviderModel[] {
+  const regional = markdownSection(pricing, 2, "US Regional Endpoint Pricing");
+  if (regional === undefined) throw new Error("xAI endpoint pricing scope is unavailable");
+  const endpointRow = regional.match(/^\| Base URL \| `([^`]+)` \| `([^`]+)` \|$/m);
+  const modelRow = regional.match(
+    /^\| Models \| All models available to your team \| Currently (.+) only \|$/m,
+  );
+  const multiplier = regional.match(/billed at \*\*([0-9.]+)x\*\* the global token rates/);
+  const global = endpointRow?.[1];
+  const us = endpointRow?.[2];
+  const premium = multiplier?.[1];
+  if (
+    global !== "https://api.x.ai/v1" ||
+    us !== "https://us.api.x.ai/v1" ||
+    !modelRow?.[1] ||
+    !premium ||
+    !regional.includes(
+      "multiplier applies to input, output, and cached input tokens, including long-context rates",
+    )
+  )
+    throw new Error("xAI endpoint pricing contract changed");
+  const regionalIds = [...modelRow[1].matchAll(/`([^`]+)`/g)].map((match) =>
+    modelIdSchema.parse(match[1]),
+  );
+  if (!regionalIds.length || regionalIds.some((id) => !language.some((model) => model.name === id)))
+    throw new Error("xAI regional pricing IDs did not resolve");
+  const rows = textPriceRows(pricing);
+  return models.map((model) => {
+    const identity = language.find((value) => value.name === model.model_id);
+    if (identity) {
+      const prices = rows.filter((row) => row.id === identity.name);
+      const short = prices.find((row) => !row.long);
+      const long = prices.find((row) => row.long);
+      if (
+        prices.length !== 2 ||
+        !short ||
+        !long ||
+        prices.some(
+          (row) =>
+            row.context !== identity.maxPromptLength ||
+            row.threshold !== Number(identity.longContextThreshold),
+        )
+      )
+        return model;
+      // The public table owns text token prices. Cluster-specific image-token fields
+      // do not establish an endpoint tariff or an endpoint-to-cluster mapping.
+      const rates = textRates(
+        identity,
+        input.source.id,
+        prices,
+        batchMultipliers !== undefined && batchSupport(identity.name) === true,
+        batchMultipliers?.get(identity.name),
+        priorityMultiplier,
+      ).filter((rate) => rate.meter !== "input_image");
+      const scoped = rates.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, endpoint: global },
+      }));
+      if (regionalIds.includes(identity.name))
+        scoped.push(
+          ...rates
+            .filter((rate) => rate.conditions.service_tier !== "batch")
+            .map((rate) => ({
+              ...rate,
+              price: multiplyDecimal(rate.price, premium),
+              conditions: { ...rate.conditions, endpoint: us },
+              derived: true,
+              derivation: `Published US endpoint token premium × ${premium}${rate.derivation ? `; ${rate.derivation}` : ""}`,
+            })),
+        );
+      return { ...model, price_facts: scoped };
+    }
+    // The endpoint contract covers text token prices only. Other model prices keep
+    // their existing evidence until their endpoint applicability is reviewed.
+    return model;
+  });
+}
+
+function isMediaModel(model: ProviderModel): boolean {
+  return model.tasks.some(
+    (task) =>
+      task === "image_generation" || task === "video_generation" || task === "speech_to_speech",
+  );
+}
+
+function globalMediaPrices(llms: string, models: ProviderModel[]): ProviderModel[] {
+  const regions = markdownProse(section(llms, "/developers/advanced-api-usage/regions"));
+  if (
+    !regions.includes("`https://api.x.ai` is the global endpoint.") ||
+    !regions.includes(
+      "The image generation, video generation, and voice APIs are not served by the US endpoint; use the global endpoint for those.",
+    )
+  )
+    throw new Error("xAI global media endpoint scope changed");
+  return models.map((model) => {
+    if (!isMediaModel(model)) return model;
+    const prices = model.price_facts.map((rate) => {
+      const { region: _cluster, ...conditions } = rate.conditions;
+      return { ...rate, conditions: { ...conditions, endpoint: "https://api.x.ai/v1" } };
+    });
+    return {
+      ...model,
+      price_facts: [...new Map(prices.map((rate) => [JSON.stringify(rate), rate])).values()],
+    };
+  });
 }
 
 function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
@@ -1474,9 +1590,7 @@ function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePr
   if (rate === undefined) throw new Error(`xAI voice pricing omitted ${id}`);
   return [
     publishedRate("output_audio", rate.audio, "minute", sourceId, "USD / min"),
-    publishedRate("input_text", rate.text, "request", sourceId, "USD / text input", {
-      operation: "conversation.item.create",
-    }),
+    publishedRate("input_text", rate.text, "request", sourceId, "USD / text input"),
   ];
 }
 
@@ -1893,9 +2007,34 @@ function currentModels(
     reviewClaim(input, "voice_model_contract_drift", () =>
       voiceModels(input, llms, voice, prices, releases, regions),
     ) ?? fallbackVoiceModels(input, voice, prices, releases, regions);
+  const models = [
+    ...languageModels,
+    ...embeddingModels,
+    ...imageModels,
+    ...videoModels,
+    ...realtime,
+  ];
+  const endpointModels =
+    pricing === undefined
+      ? undefined
+      : reviewClaim(input, "endpoint_pricing_scope_drift", () =>
+          endpointPrices(
+            input,
+            pricing,
+            models,
+            language,
+            batchSupport,
+            batchMultipliers,
+            priorityMultiplier,
+          ),
+        );
+  const scopedModels = endpointModels ?? models;
+  const mediaModels = reviewClaim(input, "media_endpoint_scope_drift", () =>
+    globalMediaPrices(llms, scopedModels),
+  );
   return {
     evidence: commercialEvidence(input, llms, pricing ?? "", prices),
-    models: [...languageModels, ...embeddingModels, ...imageModels, ...videoModels, ...realtime],
+    models: mediaModels ?? scopedModels,
   };
 }
 
@@ -2300,10 +2439,56 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
           : "model_price_set_unresolved",
       sample: model.model_id,
     });
+  const pricedIds = new Set(
+    models
+      .filter(
+        (model) =>
+          model.price_facts.length > 0 &&
+          model.price_facts.every(
+            (rate) =>
+              rate.conditions.endpoint !== undefined && rate.conditions.region === undefined,
+          ),
+      )
+      .flatMap((model) => [model.model_id, ...model.aliases]),
+  );
   return {
     models,
     commercial_facts: extractXaiCommercialFacts(models, input.source.id, current.evidence),
     pricing_inputs: pricingInputs,
+    inference_prices: models.flatMap((model) =>
+      [...new Set([model.model_id, ...model.aliases])]
+        .filter((id) => pricedIds.has(id))
+        .flatMap((model_id) =>
+          xaiModelOfferKeys(model).map((offer_key) => ({
+            model_id,
+            model_ref: model.uid,
+            source_ref: input.source.id,
+            offer_key,
+            fixed_selectors: isMediaModel(model)
+              ? [
+                  {
+                    kind: "categorical" as const,
+                    dimension: { namespace: "kmodels" as const, value: "endpoint" as const },
+                    value: {
+                      namespace: "provider" as const,
+                      provider_id: "xai",
+                      value: "https://api.x.ai/v1",
+                    },
+                  },
+                ]
+              : [],
+            evidence: [
+              {
+                source_ref: input.source.id,
+                locator: {
+                  kind: "provider_key" as const,
+                  value: JSON.stringify([model.model_id, model_id]),
+                },
+              },
+            ],
+          })),
+        ),
+    ),
   };
 }
 

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { appendFile, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, readFile, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { moduleDependencies } from "./module-dependencies.ts";
@@ -84,11 +85,42 @@ async function dependencyClosure(entries: string[]): Promise<Set<string>> {
   return seen;
 }
 
-function git(args: string[]): string {
-  const result = spawnSync("git", args, { encoding: "utf8" });
+function git(args: string[], cwd?: string): string {
+  const result = spawnSync("git", args, {
+    encoding: "utf8",
+    ...(cwd === undefined ? {} : { cwd }),
+  });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr.trim() || "Validation diff failed");
   return result.stdout;
+}
+
+/** Compare the prepared package tree, including intentional edits, across generation. */
+export async function packageSourceHash(root = resolve(".")): Promise<string> {
+  const paths = [
+    ...new Set(
+      git(
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "packages/pricing"],
+        root,
+      )
+        .split("\0")
+        .filter(Boolean),
+    ),
+  ].sort();
+  const entries = await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const file = resolve(root, path);
+        const [bytes, stat] = await Promise.all([readFile(file), lstat(file)]);
+        return [path, stat.mode, createHash("sha256").update(bytes).digest("hex")];
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT")
+          return [path, null];
+        throw error;
+      }
+    }),
+  );
+  return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 }
 
 export async function validateChanges(base: string | undefined, planOnly = false): Promise<void> {
@@ -122,11 +154,13 @@ export async function validateChanges(base: string | undefined, planOnly = false
   if (planOnly) return;
   for (const args of commands) {
     console.log(`Validation: vp ${args.join(" ")}`);
+    const packageBefore = args[1] === "package:build" ? await packageSourceHash() : undefined;
     const result = spawnSync("vp", args, { stdio: "inherit" });
     if (result.error !== undefined) throw result.error;
     if (result.status !== 0)
       throw new Error(`vp ${args.join(" ")} failed (${result.signal ?? result.status})`);
-    if (args[1] === "package:build") git(["diff", "--exit-code", "--", "packages/pricing"]);
+    if (packageBefore !== undefined && packageBefore !== (await packageSourceHash()))
+      throw new Error("Package generation changed the prepared source artifacts");
   }
 }
 

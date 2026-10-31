@@ -2,10 +2,10 @@ import { createAssetPack, type EncodedAssetPack } from "./asset-pack.ts";
 import { catalogExportAssets, websiteAssets } from "./endpoints.ts";
 import { sha256 } from "./io.ts";
 import { calculationExportAssets } from "./pricing-calculator-export.ts";
-import { calculationV2ExportAssets } from "./pricing-calculator-v2-export.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
-import { publicationManifestAsset, v2CatalogAssets, type V2Publication } from "./publication-v2.ts";
+import { inferencePricingPath, type InferencePricingPublication } from "./inference-pricing.ts";
+import { websiteInferencePrices } from "./website-inference-pricing.ts";
 
 export interface ProjectionInput {
   pairId: string;
@@ -13,7 +13,7 @@ export interface ProjectionInput {
   pricing: PricingCatalogEnvelope;
   catalogAssetSource: string;
   pricingAssetSource: string;
-  v2?: V2Publication;
+  inference?: InferencePricingPublication;
 }
 
 export interface PairProjections {
@@ -21,37 +21,38 @@ export interface PairProjections {
   exports: EncodedAssetPack;
 }
 
-export function websiteDataVersion(catalogVersion: string, pricingDataVersion: string): string {
-  return sha256(`website-core-v3\u0000${catalogVersion}\u0000${pricingDataVersion}`);
-}
-
-export function pairWebsiteDataVersion(input: ProjectionInput): string {
-  return websiteDataVersion(
-    input.v2?.catalog.catalog_version ?? input.catalog.catalog_version,
-    input.v2?.pricing.pricing_data_version ?? input.pricing.pricing_data_version,
+export function websiteDataVersion(
+  catalogVersion: string,
+  pricingDataVersion: string,
+  inferenceSource?: string,
+): string {
+  return sha256(
+    `website-core-v3\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v1\u0000${sha256(inferenceSource)}`}`,
   );
 }
 
 export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {
-  const dataVersion = pairWebsiteDataVersion(input);
+  const dataVersion = websiteDataVersion(
+    input.catalog.catalog_version,
+    input.pricing.pricing_data_version,
+    input.inference?.source,
+  );
   const uiAssets = websiteAssets(
     input.catalog,
-    input.v2?.pricing.data ?? input.pricing.data,
+    input.pricing.data,
     dataVersion,
-    input.v2?.pricing.data.invocation_bindings,
+    input.inference === undefined
+      ? undefined
+      : websiteInferencePrices(input.catalog, input.pricing, input.inference.mapping),
   );
   const exportAssets = [
     ...catalogExportAssets(input.catalog, input.catalogAssetSource),
     { fileName: "pricing/index.json", source: input.pricingAssetSource },
     ...calculationExportAssets(input.catalog, input.pricing),
+    ...(input.inference === undefined
+      ? []
+      : [{ fileName: inferencePricingPath, source: input.inference.source }]),
   ];
-  if (input.v2 !== undefined) {
-    exportAssets.push(...v2CatalogAssets(input.catalog, input.v2));
-    exportAssets.push(...(await calculationV2ExportAssets(input.v2)));
-    exportAssets.push(
-      publicationManifestAsset(input.catalog, input.pricing, input.v2, exportAssets),
-    );
-  }
   const [ui, exports] = await Promise.all([
     createAssetPack("ui", input.pairId, dataVersion, uiAssets),
     createAssetPack("exports", input.pairId, input.pairId, exportAssets),

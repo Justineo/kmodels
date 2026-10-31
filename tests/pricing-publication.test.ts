@@ -15,6 +15,7 @@ import {
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import type { ProjectionPaths } from "../src/catalog/projection-paths.ts";
 import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
+import { readPublishedAssets } from "../src/catalog/published-assets.ts";
 
 const directories: string[] = [];
 
@@ -48,7 +49,6 @@ async function paths(): Promise<CatalogPairPaths> {
     stateDirectory: join(directory, "state"),
     catalogMirror: join(directory, "catalog.json"),
     pricingMirrorGzip: join(directory, "pricing.json.gz"),
-    pricingV2MirrorGzip: join(directory, "pricing-v2.json.gz"),
     projections: {
       uiManifest: join(directory, "website-assets.json"),
       uiPack: join(directory, "website-assets.pack"),
@@ -76,6 +76,55 @@ async function expectProjectionPair(paths: ProjectionPaths, pairId: string): Pro
 }
 
 describe("crash-consistent catalog pair publication", () => {
+  it("recovers the optional ID mapping with the same accepted prices and repairs its mirror", async () => {
+    const basePaths = await paths();
+    const output = {
+      ...basePaths,
+      inferenceMirror: join(basePaths.stateDirectory, "..", "inference-pricing.json"),
+    };
+    const legacy = prepareCatalogPair(catalog(), pricing);
+    const candidate = prepareCatalogPair(catalog(), pricing, {
+      core_catalog_version: legacy.catalog.catalog_version,
+      pricing_data_version: legacy.pricing.pricing_data_version,
+      rules: [],
+      sources: [],
+    });
+    await commitCatalogPair(candidate, output);
+    await writeFile(output.inferenceMirror, "corrupt mirror");
+    expect((await recoverCatalogPair(output))?.inference).toEqual(candidate.inference);
+    expect(await readFile(output.inferenceMirror, "utf8")).toBe(candidate.inference?.source);
+    expect((await readPublishedAssets(output.projections)).exports.manifest.pair_id).toBe(
+      candidate.pairId,
+    );
+    await rm(output.stateDirectory, { recursive: true });
+    expect((await readCatalogPairMirrors(output))?.inference).toEqual(candidate.inference);
+    await commitCatalogPair(legacy, output);
+    await expect(readFile(output.inferenceMirror)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await recoverCatalogPair(output))?.pairId).toBe(legacy.pairId);
+  });
+
+  it("rejects a missing or altered mapping in the accepted journal", async () => {
+    const output = await paths();
+    const legacy = prepareCatalogPair(catalog(), pricing);
+    const candidate = prepareCatalogPair(catalog(), pricing, {
+      core_catalog_version: legacy.catalog.catalog_version,
+      pricing_data_version: legacy.pricing.pricing_data_version,
+      rules: [],
+      sources: [],
+    });
+    await commitCatalogPair(candidate, output);
+    const mappingPath = join(
+      output.stateDirectory,
+      "snapshots",
+      candidate.pairId,
+      "inference-pricing.json",
+    );
+    await writeFile(mappingPath, "{}");
+    await expect(recoverCatalogPair(output)).rejects.toThrow();
+    await rm(mappingPath);
+    await expect(recoverCatalogPair(output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("prepares the same immutable pair with parallel validation", async () => {
     const serial = prepareCatalogPair(catalog(), pricing);
     const parallel = await prepareCatalogPairInParallel(catalog(), pricing);

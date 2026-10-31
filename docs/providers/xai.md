@@ -55,10 +55,12 @@ dynamic product documentation as a refresh dependency.
 - The dedicated pricing table owns a current public amount when its model and
   applicability match exactly. Conflicts with the embedded payload or Models summary
   are retained as warnings; they do not discard the model or unrelated rates.
-  Language models with different fixed-point prices across public clusters retain one identity
-  and distinct region-qualified amounts. For these models, the unscoped summary cannot override
-  the narrower regional prices. Batch and Priority multipliers apply to each region's own base
-  rates. Batch availability is a regional commercial attribute and does not split identity.
+  Language models with different fixed-point prices across public clusters retain one identity.
+  Cluster observations alone do not establish a caller-selectable billing location or a mapping
+  from an API hostname to that cluster. The reviewed endpoint tariff described below owns current
+  text prices. Older or unreviewed layouts retain their cluster-qualified observations without
+  admitting a direct inference-ID price association. Batch flags are cluster observations and do
+  not split model identity.
   Conflicting intrinsic identity/capability fields across regions, or competing prices within the
   same region, still reject rather than selecting an arbitrary row.
 - Optional authenticated model inventories are enabled by `XAI_API_KEY`. They are
@@ -79,6 +81,44 @@ Realtime identities and transcription engine IDs from the owned Speech to Text `
 table and REST route. The engine has no inferred model-specific rate: STT remains a separately
 metered provider resource, so admitting an engine cannot duplicate that tariff. Internal service
 configuration labels alone do not establish additional TTS/STT model identities.
+
+## Direct inference ID pricing
+
+The public source emits exact current model IDs and concrete aliases as associations to existing
+model offers. It does not synthesize dated or `-latest` spellings from naming conventions. Reviewed
+retirement redirects retain their own legacy identity and effective date. Competing structured
+alias and redirect identities remain ambiguous, including when only one identity has a reviewed
+endpoint tariff; selecting an offer cannot resolve that identity conflict.
+
+The dedicated Pricing page's **US Regional Endpoint Pricing** section owns the billing endpoints,
+eligible model IDs, and premium. Global text amounts come from its exact model/context rows.
+The US endpoint applies the independently published multiplier to those token prices, including
+realized Priority variants. Do not infer this association from similar cluster names or equal
+amounts. Internal cluster names are absent from these prices and their lookup controls. The user
+selects Global endpoint or US endpoint only where it changes price applicability. Endpoint URLs
+remain exact values in the exported conditions.
+
+Synchronous and Batch offers remain separate. Global Batch requires positive model availability
+and the published discount rules. US Batch applicability has not been established and supplies no
+candidate. Requested Priority is not a substitute for the realized response tier. Context length
+and endpoint remain separate conditions; none is inferred from a model ID without an owned rule.
+
+The Regional Endpoints guide explicitly assigns image, video, and voice APIs to the global
+endpoint. Their model-specific tariffs retain resolution, quality, input-media, and Batch
+conditions, but internal cluster duplication does not become a billing-region choice. Their
+associations fix the documented global endpoint; an incompatible supplied endpoint has no
+applicable price. This claim refreshes independently of the text endpoint premium. Speech to
+Speech exposes its audio-duration and text-input-event tariffs together: the event identifies the
+billable quantity and does not require an operation selector to view its rate.
+
+Known limits: the reviewed text endpoint table establishes text input, cached text, and text
+output rates. Cluster-specific image-input token fields do not establish endpoint prices and are
+not copied into those offers. Text models without aligned public context rows retain their
+ordinary catalog prices but have no direct ID price association. Independent TTS/STT and tool
+tariffs remain service books. Missing or changed endpoint evidence withdraws the affected direct
+associations even if older catalog identities or prices survive; optional protocol and
+release-note sections do not gate independently established prices. Public Grok Build rows
+establish its synchronous text rates, while its unflagged Batch availability remains unknown.
 
 ## Resilient collection
 
@@ -208,8 +248,8 @@ formulas without executable expressions or a provider-specific calculation engin
 - The image-generation tool's completed output count and effective quality/resolution remain caller
   supplied. A generic `result` mention does not establish an array count or a successful outcome.
 - The pre-generation usage-guideline fee lacks a stable documented response/error discriminator.
-- Serving region is a caller-supplied route/request fact. Missing terminal stream usage cannot be
-  reconstructed from partial content.
+- The billing endpoint is a caller-supplied request fact. Internal cluster names are not equivalent
+  to that endpoint. Missing terminal stream usage cannot be reconstructed from partial content.
 - The May retirement guide explicitly owns Pacific noon. The extractor resolves that local time
   through `America/Los_Angeles` rules, compares observation instants, and publishes the same exact
   activation instant on redirected prices. A missing or changed time declaration withholds that

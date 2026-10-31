@@ -125,6 +125,38 @@ does not guess the result of a server-side routing policy.
 Tool support and structured output are capabilities. They create no price term unless Hugging Face
 publishes a separate request charge; no such surcharge is currently modeled.
 
+## Inference model ID lookup
+
+The router's literal `id` and admitted partner-mapping repository keys identify the Hugging Face
+request model, independently of display names and upstream `providerId` values. These exact IDs
+join the existing `routed-inference` offer when that model has an offer. A mapping-only model with
+no public commercial record still has no price association; its catalog presence is preserved.
+The native price overlays add commercial facts only and cannot establish new request identifiers.
+
+The official overview documents `:<provider>` suffixes for router chat models. Emit them only for
+that model's currently live router providers, with `route_provider` fixed to the selected provider.
+For example, `openai/gpt-oss-120b:groq` selects the Groq-qualified prices; an incompatible supplied
+route is reported as no applicable prices. Do not emit arbitrary suffixes for non-chat task models,
+private endpoints, upstream native names, unavailable routes or unknown providers. Case is preserved.
+
+The same overview separately establishes `:fastest`, `:cheapest` and `:preferred`. These are exact
+request-ID forms, but do not establish a billed provider. Their mappings retain all route candidates
+and require the caller's actual route observation. Neither latency rankings, throughput, account
+preferences nor the cheapest published amount determine the actual route in advance. The SDK's
+`provider="auto"` option does not establish a `:auto` model suffix.
+
+Each suffix claim is reviewed independently of protocol and usage companions. If the overview is
+missing, duplicated or loses a suffix claim, refresh withdraws the affected suffix associations
+while preserving literal IDs, independent prices and safe sibling mappings. A router route becoming
+unavailable withdraws its pinned suffix. The parser reports missing or changed suffix evidence.
+Known routes with unpublished amounts remain `unresolved_price`; a known ID with conditions that
+exclude its published routes returns `no_applicable_price`, distinct from an unreviewed identifier.
+
+The website exposes copyable literal and suffixed IDs and only their remaining price conditions.
+The static export and UI use the shared matcher; no invocation graph, request protocol selection or
+account configuration is needed. Promotions retain their existing separate boolean condition and
+published free state; a route suffix does not invent promotion eligibility or a permanent zero rate.
+
 ## Calculator input contract
 
 The router source publishes nine field-local pricing inputs. These describe what a downstream cost

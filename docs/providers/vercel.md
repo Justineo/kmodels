@@ -35,6 +35,35 @@ request price book. Vercel's generation `total_cost`, `market_cost`, `gateway_co
 `surcharge_cost`, and `upstream_inference_cost` are settlement observations, not inputs used to
 reconstruct public list cost.
 
+## Direct inference ID association
+
+The model-list API's literal `id` is the request identifier. Associate it with the existing
+model-scoped `usage` offer, retaining all route, region, speed, served-tier and context conditions.
+The creator prefix is not the serving provider. Do not strip it, invent regional prefixes or aliases,
+or resolve a private `vmc/` virtual model without its independently known configuration. Unknown
+IDs remain unknown. A removed list entry withdraws its direct association on the next accepted refresh.
+Independent search-service books do not become base-model inference tariffs.
+
+The official [Batch guide](https://vercel.com/docs/ai-gateway/models-and-providers/batch-processing)
+establishes the exact `<model>-batch` relation to an independently listed base model. Both IDs can
+be used for Batch; the suffixed ID cannot be used synchronously. Preserve both catalog identities.
+Their existing model books share the published Batch rates through source-derived facts, with
+`operation=batch`; the base model's other inference rates retain `operation=sync`. A Batch ID fixes
+the operation and creator route. The base ID retains the operation choice. No protocol selection
+or request template is involved. Batch never borrows another hosting provider's route price.
+
+Use the list's actual Batch amounts, including cache exceptions, rather than assuming a uniform
+discount. Anthropic regional Batch rates additionally require the documented 50% rule and regional
+adjustment policy; derive them from the model list's explicit standard regional token amounts.
+Keep region as a price condition. Other creators do not acquire Anthropic regional Batch prices.
+Withdrawing the Batch commercial relation withholds affected ID associations while preserving
+ordinary catalog evidence and unrelated mappings. Optional accounting documents do not gate
+independently established ID prices. This is a commercial evidence dependency, not invocation discovery.
+
+The public list covers IDs whose complete price may still be unknown. Missing model-page or endpoint
+evidence remains a price gap; the association cannot supply a missing tariff. Virtual-model settings,
+account settlement, BYOK discounts and effective fallback model discovery remain caller-owned.
+
 ## First-party sources and resilience
 
 The parser returns model observations, independent search-service prices and acquisition contracts
@@ -54,6 +83,7 @@ The claim-local companions are:
 - `models-and-providers.md` for model and endpoint discovery;
 - `rest-api.md` for generation lookup and native usage counters;
 - `fast-mode.md`, `service-tiers.md`, and `regional-inference.md` for effective selectors;
+- `batch-processing.md` for exact Batch/base ID relationships, creator-only routing and regional discounts;
 - `web-search.md` for generic search rates, parameters, and successful-call metadata;
 - `getting-started/image.md` for completed image results;
 - `video-generation.md` for requested duration and completed video results;
@@ -101,6 +131,8 @@ Fast mode uses the `speed` dimension. Named Flex or Priority prices use
 `served_service_tier`, because Vercel bills the tier actually served rather than the requested tier.
 Regional prices use `region`. This separation prevents a Fast rate from being misrepresented as a
 service tier and permits speed, tier, route, and region to coexist on one rate.
+Fast and regional Fast objects retain their published input/output/cache context tiers. Their
+top-level scalar is not a flat rate over longer contexts when explicit tiers are present.
 
 The model-list and endpoint default language-token price fields own `service_tier=standard` at
 extraction. Fast, route and regional variants retain that scope; named service-tier fields own

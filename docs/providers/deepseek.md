@@ -50,6 +50,26 @@ sources.
 
 ## Rate-book boundary
 
+### Inference model ID pricing
+
+The current `MODEL` columns and successfully validated legacy acceptance/billing declarations emit
+direct associations to each exact ID's existing `payg` offer. Legacy IDs keep their own catalog
+identity and explicitly derived current tariff. A served model version, display name, retired alias,
+Anthropic wildcard rewrite or regional-looking prefix cannot establish an additional request ID.
+
+Associations fix no pricing selectors. Billing currency and the source-defined Peak/Off-peak category
+remain required commercial inputs when the applicable offers use them. Missing inputs return
+candidates; neither the ID nor the lookup clock chooses the customer's settlement currency or
+holiday classification. Optional protocol, authentication, endpoint and usage-counter references
+are not prerequisites for the price association. Search and Fetch remain separate service books.
+
+Each fresh source revision replaces its direct associations. Removed legacy acceptance or billing
+evidence cannot survive through retained display aliases or equal prices. A source outage may retain
+the previously accepted source and mapping under the shared snapshot rules. Unknown private IDs and
+unreviewed identifier layouts remain unknown rather than triggering deployment discovery.
+
+### Model and service rates
+
 Each current model owns one PAYG inference offer. The offer contains the three rates published by
 DeepSeek:
 

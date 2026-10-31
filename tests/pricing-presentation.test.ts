@@ -269,6 +269,13 @@ describe("canonical pricing presentation", () => {
   it("uses concise labels for unit-bearing dimensions", () => {
     expect(formatDimension({ namespace: "kmodels", value: "cache_ttl_seconds" })).toBe("Cache TTL");
     expect(formatDimension({ namespace: "kmodels", value: "context_tokens" })).toBe("Context");
+    expect(
+      formatDimension({
+        namespace: "provider",
+        provider_id: "databricks",
+        value: "cache_retention",
+      }),
+    ).toBe("Cache retention");
     expect(isWholeNumberDimension({ namespace: "kmodels", value: "context_tokens" })).toBe(true);
     expect(isWholeNumberDimension({ namespace: "kmodels", value: "duration_seconds" })).toBe(false);
   });

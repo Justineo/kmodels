@@ -1,4 +1,4 @@
-import { createCalculator, type CalculationComponent, type CalculationRequest, type CalculationResult, type Subtotal } from "@kmodels/pricing/v1";
+import { createCalculator, createInferencePriceLookup, type InferencePriceMapping, type InferencePriceResult, type CalculationComponent, type CalculationRequest, type CalculationResult, type Subtotal } from "@kmodels/pricing";
 
 const component: CalculationComponent = { id: "request-1", offerRef: "0".repeat(64), quantities: [] };
 const request: CalculationRequest = { evaluatedAt: "2026-09-27T00:00:00Z", components: [component] };
@@ -28,3 +28,13 @@ const invalidComplete: CalculationResult = { ...result, status: "calculated", to
 // @ts-expect-error Incomplete results cannot include totals.
 const invalidPartial: CalculationResult = { ...result, status: "partial", totals: [] };
 void [readTotals, invalidComplete, invalidPartial];
+
+declare const mapping: InferencePriceMapping;
+const lookup = createInferencePriceLookup(data, mapping);
+const inference: InferencePriceResult = lookup({ provider_id: "example", model_id: "actual-request-id" });
+for (const candidate of inference.candidates) {
+  candidate.offer.terms;
+  candidate.missing_conditions;
+  candidate.evidence;
+  lookup({ provider_id: "example", model_id: "actual-request-id", offer_ref: candidate.offer.id });
+}

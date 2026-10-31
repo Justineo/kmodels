@@ -102,7 +102,7 @@ function modelBook(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
-  const mechanisms = modelMechanisms(model);
+  const mechanisms = xaiModelOfferKeys(model);
   return {
     ...book,
     offers: book.offers.flatMap((offer) =>
@@ -116,7 +116,9 @@ function modelBook(
   };
 }
 
-function modelMechanisms(model: PublishedPricingModel | undefined): Mechanism[] {
+export function xaiModelOfferKeys(
+  model: Pick<PublishedPricingModel, "tasks"> | undefined,
+): Mechanism[] {
   if (model?.tasks.includes("speech_to_speech")) return ["realtime"];
   if (model?.tasks.some((task) => task === "image_generation" || task === "video_generation"))
     return ["direct", "batch"];

@@ -4,6 +4,7 @@ import { sha256 } from "./io.ts";
 export interface CatalogPairIdentity {
   catalog_asset_sha256: string;
   pricing_asset_sha256: string;
+  inference_asset_sha256?: string | undefined;
 }
 
 export function catalogPairId(identity: CatalogPairIdentity): string {
@@ -11,6 +12,9 @@ export function catalogPairId(identity: CatalogPairIdentity): string {
     canonicalJson({
       catalog_asset_sha256: identity.catalog_asset_sha256,
       pricing_asset_sha256: identity.pricing_asset_sha256,
+      ...(identity.inference_asset_sha256 === undefined
+        ? {}
+        : { inference_asset_sha256: identity.inference_asset_sha256 }),
     }),
   );
 }

@@ -1,15 +1,12 @@
 <script setup lang="ts" vapor>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { canonicalJson } from "../catalog/canonical-value.ts";
-import { isPricingDecimal } from "../catalog/pricing-constants.ts";
 import {
   formatCategoricalValue,
-  formatRecurringTimeSchedule,
   formatDimension,
   formatRateUnit,
   formatUnitExpression,
   isModelDimension,
-  isWholeNumberDimension,
 } from "../catalog/pricing-presentation.ts";
 import {
   evaluateApplicability,
@@ -32,13 +29,17 @@ import type {
 } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 import UiIcon from "./UiIcon.vue";
-import UiSelect from "./UiSelect.vue";
+import PricingConditions from "./PricingConditions.vue";
+import { pricingSelection } from "../catalog/pricing-selector-input.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer;
   modelRef?: string | undefined;
   explainCharges?: boolean;
   boundSelectors?: readonly PricingSelection[] | undefined;
+  showCandidateRates?: boolean;
+  matchedRows?: readonly string[] | undefined;
+  hideConditions?: boolean;
 }>();
 
 interface ScopeCopy {
@@ -51,11 +52,14 @@ const liveNow = ref(new Date().toISOString());
 const viewingUpcoming = ref(false);
 const timeline = computed(() => projectWebsitePricingTimeline(props.offer, liveNow.value));
 const displayOffer = computed(() =>
-  viewingUpcoming.value && timeline.value.upcoming !== undefined
-    ? timeline.value.upcoming.offer
-    : timeline.value.current,
+  props.matchedRows !== undefined
+    ? props.offer
+    : viewingUpcoming.value && timeline.value.upcoming !== undefined
+      ? timeline.value.upcoming.offer
+      : timeline.value.current,
 );
 const selectors = computed(() => {
+  if (props.hideConditions) return [];
   const bound = new Set(
     (props.boundSelectors ?? []).map(({ dimension }) => canonicalJson(dimension)),
   );
@@ -93,7 +97,25 @@ const rateSelectors = computed(() => {
   return configurableSelectors.value.filter(({ key }) => keys.has(key));
 });
 const visibleRates = computed(() =>
-  rateProjection.value.rates.map(({ row }) => ({ ...row, qualifier: validityNote(row.validity) })),
+  props.showCandidateRates
+    ? displayOffer.value.rates
+        .filter(({ key, applicability }) => selectedRow(key) && applies(applicability))
+        .map((row) => ({
+          ...row,
+          qualifier:
+            [
+              evaluate(row.applicability).state === "missing"
+                ? applicabilityLabel(row.applicability, true)
+                : undefined,
+              validityNote(row.validity),
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined,
+        }))
+    : rateProjection.value.rates.map(({ row }) => ({
+        ...row,
+        qualifier: validityNote(row.validity),
+      })),
 );
 const chargeDrivers = computed(() => [
   ...new Map(
@@ -107,7 +129,10 @@ const visibleContributions = computed(() => matchingRows(displayOffer.value.cont
 const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const visibleUnnormalized = computed(() =>
   projectWebsitePricingNotes(displayOffer.value)
-    .filter(({ possible_scope }) => possible_scope === undefined || applies(possible_scope))
+    .filter(
+      ({ key, possible_scope }) =>
+        selectedRow(key) && (possible_scope === undefined || applies(possible_scope)),
+    )
     .map((row) => ({
       ...row,
       scope:
@@ -130,10 +155,6 @@ const showPublishedStatus = computed(
     displayOffer.value.state_summary !== "Incomplete" &&
     displayOffer.value.state_summary !== "Included",
 );
-const booleanOptions = [
-  { value: "true", label: "Yes" },
-  { value: "false", label: "No" },
-];
 
 watch(
   () => props.offer.id,
@@ -180,6 +201,10 @@ function applies(applicability: WebsitePriceApplicability): boolean {
   return evaluate(applicability).state !== "false";
 }
 
+function selectedRow(key: string): boolean {
+  return props.matchedRows === undefined || props.matchedRows.includes(key);
+}
+
 function matches(applicability: WebsitePriceApplicability): boolean {
   return evaluate(applicability).state === "true";
 }
@@ -193,14 +218,27 @@ function evaluate(applicability: WebsitePriceApplicability) {
 function matchingRows<
   T extends {
     applicability: WebsitePriceApplicability;
+    key: string;
     validity?: WebsitePublishedValidity | undefined;
   },
 >(rows: readonly T[]): Array<T & { qualifier: string | undefined }> {
   return rows
-    .filter(({ applicability }) => matches(applicability))
+    .filter(
+      ({ key, applicability }) =>
+        selectedRow(key) &&
+        (props.showCandidateRates ? applies(applicability) : matches(applicability)),
+    )
     .map((row) => ({
       ...row,
-      qualifier: validityNote(row.validity),
+      qualifier:
+        [
+          props.showCandidateRates && evaluate(row.applicability).state === "missing"
+            ? applicabilityLabel(row.applicability, true)
+            : undefined,
+          validityNote(row.validity),
+        ]
+          .filter(Boolean)
+          .join(" · ") || undefined,
     }));
 }
 
@@ -227,12 +265,45 @@ function qualifiedScope(
   return secondary === undefined ? { primary } : { primary, secondary };
 }
 
-function applicabilityLabel(applicability: WebsitePriceApplicability): string {
-  const clauses = applicability.any_of.map(({ all_of }) =>
-    all_of.filter(({ dimension }) => !isModelDimension(dimension)).map(conditionLabel),
+function applicabilityLabel(
+  applicability: WebsitePriceApplicability,
+  omitSelected = false,
+): string {
+  const selected = new Set(
+    omitSelected ? selectionValues.value.map(({ dimension }) => canonicalJson(dimension)) : [],
   );
+  const clauses = applicability.any_of
+    .filter((clause) => !omitSelected || applies({ any_of: [clause] }))
+    .map(({ all_of }) =>
+      all_of.filter(
+        ({ dimension }) => !isModelDimension(dimension) && !selected.has(canonicalJson(dimension)),
+      ),
+    );
   if (clauses.some((conditions) => conditions.length === 0)) return "All contexts";
-  const labels = clauses.map((conditions) => conditions.join(" · "));
+  if (omitSelected && clauses.length > 1) {
+    const common = (clauses[0] ?? []).filter((condition) =>
+      clauses.every((clause) =>
+        clause.some((other) => canonicalJson(other) === canonicalJson(condition)),
+      ),
+    );
+    const commonKeys = new Set(common.map(canonicalJson));
+    const variableDimensions = new Map(
+      clauses.flatMap((clause) =>
+        clause
+          .filter((condition) => !commonKeys.has(canonicalJson(condition)))
+          .map(({ dimension }) => [canonicalJson(dimension), formatDimension(dimension)] as const),
+      ),
+    );
+    return [
+      ...common.map(conditionLabel),
+      ...(variableDimensions.size === 0
+        ? []
+        : [
+            `${[...variableDimensions.values()].join(", ")}: ${clauses.length} published combinations`,
+          ]),
+    ].join(" · ");
+  }
+  const labels = clauses.map((conditions) => conditions.map(conditionLabel).join(" · "));
   if (labels.length <= 2) return labels.join(" or ");
   return `${labels[0]} or ${labels[1]} · +${labels.length - 2} alternatives`;
 }
@@ -288,117 +359,13 @@ function fixedSelection(selector: FixedSelector): PricingSelection {
       };
 }
 
-type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
-
 function setInput(key: string, value: string): void {
   if (value === "") delete inputs.value[key];
   else inputs.value[key] = value;
 }
 
-function setDecimalInput(key: string, event: Event): void {
-  setInput(key, event.target instanceof HTMLInputElement ? event.target.value : "");
-}
-
 function selection(selector: WebsitePricingSelector): PricingSelection | undefined {
-  const value = inputValue(selector.key);
-  if (value === "") return undefined;
-  if (selector.kind === "categorical") {
-    const selected = selector.values.find(({ key }) => key === value);
-    return selected === undefined
-      ? undefined
-      : { dimension: selector.dimension, kind: "categorical", value: selected.value };
-  }
-  if (selector.kind === "boolean")
-    return value === "true" || value === "false"
-      ? { dimension: selector.dimension, kind: "boolean", value: value === "true" }
-      : undefined;
-  if (selector.kind === "decimal_buckets") {
-    const selected = selector.values.find(({ key }) => key === value);
-    return selected === undefined
-      ? undefined
-      : {
-          dimension: selector.dimension,
-          kind: "decimal_range",
-          unit: selector.unit,
-          ...(selected.lower === undefined ? {} : { lower: selected.lower }),
-          ...(selected.upper === undefined ? {} : { upper: selected.upper }),
-        };
-  }
-  if (
-    (selector.kind === "decimal_values" && !selector.values.includes(value)) ||
-    (selector.kind === "decimal_range" && !isAcceptedDecimal(selector, value))
-  )
-    return undefined;
-  return { dimension: selector.dimension, kind: "decimal", value, unit: selector.unit };
-}
-
-function isIntegerSelector(selector: WebsitePricingSelector): boolean {
-  return isWholeNumberDimension(selector.dimension);
-}
-
-function isAcceptedDecimal(selector: DecimalRangeSelector, value: string): boolean {
-  if (!isPricingDecimal(value) || (isIntegerSelector(selector) && value.includes(".")))
-    return false;
-  return (
-    evaluateApplicability(
-      {
-        any_of: selector.ranges.map((range) => ({
-          all_of: [
-            {
-              kind: "decimal_range",
-              dimension: selector.dimension,
-              unit: selector.unit,
-              ...range,
-            },
-          ],
-        })),
-      },
-      [{ dimension: selector.dimension, kind: "decimal", value, unit: selector.unit }],
-    ).state === "true"
-  );
-}
-
-function decimalInputError(selector: DecimalRangeSelector): string | undefined {
-  const value = inputValue(selector.key);
-  if (value === "" || isAcceptedDecimal(selector, value)) return undefined;
-  if (!isPricingDecimal(value)) return "Enter a non-negative number.";
-  if (isIntegerSelector(selector) && value.includes(".")) return "Enter a whole number.";
-  return "No published pricing range includes this value.";
-}
-
-function decimalRangeLabel(selector: DecimalRangeSelector): string {
-  return selector.ranges.map(({ lower, upper }) => rangeLabel(lower, upper)).join(" or ");
-}
-
-function rangeLabel(
-  lower: { value: string; inclusive: boolean } | undefined,
-  upper: { value: string; inclusive: boolean } | undefined,
-): string {
-  if (lower === undefined) return `${upper?.inclusive === true ? "≤" : "<"} ${upper?.value ?? ""}`;
-  if (upper === undefined) return `${lower.inclusive ? "≥" : ">"} ${lower.value}`;
-  if (lower.inclusive && upper.inclusive) return `${lower.value}–${upper.value}`;
-  return `${lower.inclusive ? "≥" : ">"} ${lower.value} and ${upper.inclusive ? "≤" : "<"} ${upper.value}`;
-}
-
-function inputValue(key: string): string {
-  return inputs.value[key] ?? "";
-}
-
-function scheduleRows(selector: WebsitePricingSelector) {
-  if (selector.kind !== "categorical") return [];
-  return selector.values.flatMap(({ key, label, schedule }) =>
-    schedule === undefined
-      ? []
-      : [
-          {
-            key,
-            label,
-            cadence: schedule.kind.startsWith("weekly_") ? "Weekly" : "Daily",
-            rule: formatRecurringTimeSchedule(schedule),
-            timeZone: schedule.time_zone,
-          },
-        ],
-  );
+  return pricingSelection(selector, inputs.value[selector.key] ?? "");
 }
 
 function noteExplanation(reason: string, impact: string): string {
@@ -418,7 +385,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
 
 <template>
   <div class="offer-breakdown">
-    <div v-if="timeline.upcoming" class="pricing-change">
+    <div v-if="matchedRows === undefined && timeline.upcoming" class="pricing-change">
       <span class="pricing-change-icon"><UiIcon name="calendar-clock" /></span>
       <p>
         <strong>{{ viewingUpcoming ? "Previewing upcoming rates" : "Upcoming rates" }}</strong>
@@ -431,92 +398,12 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </button>
     </div>
 
-    <section v-if="rateSelectors.length > 0" class="pricing-context" aria-label="Pricing options">
-      <div class="pricing-selector-grid">
-        <div v-for="(selector, index) in rateSelectors" :key="selector.key">
-          <label :for="`${offer.id}-selector-${index}`">
-            {{ selector.label }}
-            <template v-if="'unit' in selector"
-              >({{ formatUnitExpression(selector.unit) }})</template
-            >
-          </label>
-          <template v-if="selector.kind === 'categorical'">
-            <UiSelect
-              :id="`${offer.id}-selector-${index}`"
-              :model-value="inputValue(selector.key)"
-              :options="
-                selector.values.map((option) => ({
-                  value: option.key,
-                  label: option.label,
-                }))
-              "
-              placeholder="Choose…"
-              @update:model-value="setInput(selector.key, $event)"
-            />
-            <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
-              <summary>
-                <span
-                  >{{ scheduleRows(selector)[0]?.cadence }} rule ·
-                  {{ scheduleRows(selector)[0]?.timeZone }}</span
-                >
-                <UiIcon name="chevron-right" />
-              </summary>
-              <dl>
-                <div
-                  v-for="row in scheduleRows(selector)"
-                  :key="row.key"
-                  :data-selected="inputValue(selector.key) === row.key"
-                >
-                  <dt>{{ row.label }}</dt>
-                  <dd>{{ row.rule }}</dd>
-                </div>
-              </dl>
-            </details>
-          </template>
-          <UiSelect
-            v-else-if="selector.kind === 'boolean'"
-            :id="`${offer.id}-selector-${index}`"
-            :model-value="inputValue(selector.key)"
-            :options="booleanOptions"
-            placeholder="Choose…"
-            @update:model-value="setInput(selector.key, $event)"
-          />
-          <UiSelect
-            v-else-if="selector.kind === 'decimal_values'"
-            :id="`${offer.id}-selector-${index}`"
-            :model-value="inputValue(selector.key)"
-            :options="selector.values.map((value) => ({ value, label: value }))"
-            placeholder="Choose…"
-            @update:model-value="setInput(selector.key, $event)"
-          />
-          <UiSelect
-            v-else-if="selector.kind === 'decimal_buckets'"
-            :id="`${offer.id}-selector-${index}`"
-            :model-value="inputValue(selector.key)"
-            :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-            placeholder="Choose…"
-            @update:model-value="setInput(selector.key, $event)"
-          />
-          <input
-            v-else-if="selector.kind === 'decimal_range'"
-            :id="`${offer.id}-selector-${index}`"
-            :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
-            :value="inputValue(selector.key)"
-            :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
-            :aria-describedby="`${offer.id}-selector-${index}-guidance`"
-            placeholder="Enter value"
-            @input="setDecimalInput(selector.key, $event)"
-          />
-          <small
-            v-if="selector.kind === 'decimal_range'"
-            :id="`${offer.id}-selector-${index}-guidance`"
-            :class="decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'"
-          >
-            {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
-          </small>
-        </div>
-      </div>
-    </section>
+    <PricingConditions
+      :prefix="offer.id"
+      :selectors="rateSelectors"
+      :inputs="inputs"
+      @input="setInput"
+    />
 
     <section
       v-if="
@@ -636,7 +523,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
 }
 
 .pricing-subheading,
-.schedule-rule > summary,
 .state-row,
 .allowance-list > div,
 .pricing-disclosure > summary {
@@ -709,29 +595,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
   margin-top: var(--space-3);
 }
 
-.pricing-context {
-  margin-top: var(--space-3);
-}
-
-.schedule-rule > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.schedule-rule > summary::-webkit-details-marker {
-  display: none;
-}
-
-.schedule-rule > summary .ui-icon {
-  width: var(--icon-size-xs);
-  height: var(--icon-size-xs);
-  transition: transform var(--duration-fast) var(--easing-standard);
-}
-
-.schedule-rule[open] > summary .ui-icon {
-  transform: rotate(90deg);
-}
-
 .pricing-subheading {
   min-height: var(--control-height-compact);
   gap: var(--space-3);
@@ -761,130 +624,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
 .published-status small {
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
-}
-
-.pricing-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: var(--space-2);
-}
-
-.pricing-selector-grid > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-}
-
-.pricing-selector-grid > div > label {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
-}
-
-.pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid input {
-  min-width: 0;
-  height: var(--control-height-default);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font: inherit;
-}
-
-.pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid :deep(.ui-select option) {
-  font-size: var(--font-size-meta);
-}
-
-.pricing-selector-grid :deep(.ui-select-control:has(.ui-select:focus-visible)),
-.pricing-selector-grid input:focus-visible {
-  border-color: var(--color-accent);
-  outline: var(--stroke-focus) solid var(--color-accent);
-  outline-offset: calc(var(--stroke-focus) * -1);
-}
-
-.pricing-selector-grid .selector-hint,
-.pricing-selector-grid .selector-error {
-  line-height: var(--line-height-tight);
-}
-
-.pricing-selector-grid .selector-error {
-  color: var(--color-status-danger);
-}
-
-.schedule-rule {
-  overflow: hidden;
-  border: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-subtle);
-}
-
-.schedule-rule > summary {
-  min-height: var(--control-height-compact);
-  padding-inline: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-medium);
-}
-
-.schedule-rule[open] > summary {
-  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
-}
-
-.schedule-rule dl,
-.schedule-rule dd {
-  margin: 0;
-}
-
-.schedule-rule dl {
-  display: grid;
-  background: var(--color-surface);
-}
-
-.schedule-rule dl > div {
-  display: grid;
-  grid-template-columns: var(--space-2) minmax(0, 1fr) minmax(0, 2fr);
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-2-5);
-  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
-  transition: background-color var(--duration-fast) var(--easing-standard);
-}
-
-.schedule-rule dl > div:last-child {
-  border-bottom: 0;
-}
-
-.schedule-rule dl > div::before {
-  width: var(--space-2);
-  height: var(--space-2);
-  border: var(--stroke-hairline) solid var(--color-border-default);
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  content: "";
-}
-
-.schedule-rule dl > div[data-selected="true"] {
-  background: var(--color-accent-soft);
-}
-
-.schedule-rule dl > div[data-selected="true"]::before {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-}
-
-.schedule-rule dt {
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-medium);
-}
-
-.schedule-rule dd {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-meta);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .context-prompt {
@@ -1002,10 +741,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
 }
 
 @media (max-width: 640px) {
-  .pricing-selector-grid {
-    grid-template-columns: 1fr;
-  }
-
   .pricing-change {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -1013,15 +748,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
   .pricing-change button {
     grid-column: 2;
     justify-self: start;
-  }
-
-  .schedule-rule dl > div {
-    grid-template-columns: var(--space-2) minmax(0, 1fr);
-  }
-
-  .schedule-rule dd {
-    grid-column: 2;
-    text-align: left;
   }
 }
 </style>

@@ -435,7 +435,8 @@ function rootTables(
   models: Map<string, ProviderModel>,
   body: string,
   references: EndpointReferences,
-): void {
+): string[] {
+  const ids: string[] = [];
   const $ = load(body);
   let sectionOperations: ModelTask[] | undefined;
   $("main h2,main table").each((_tableIndex, table) => {
@@ -464,6 +465,7 @@ function rootTables(
         const id = parsedId.data;
         model(models, input, id, defaultOperations);
         if (!headers.includes("Description") && !headers.includes("Status")) return;
+        ids.push(id);
         const value = (name: string): string | undefined => {
           const index = column(name);
           return index < 0 ? undefined : cells[index];
@@ -562,6 +564,7 @@ function rootTables(
         );
       });
   });
+  return ids;
 }
 
 function cardTitle($: Document): string | undefined {
@@ -722,7 +725,7 @@ function modelCard(
   body: string,
   references: EndpointReferences,
   documents: LinkedDocument[],
-): void {
+): string | undefined {
   const $ = load(body);
   const observedId = cardId($);
   const title = cardTitle($);
@@ -883,6 +886,7 @@ function modelCard(
       reason_code: "out_of_scope_capacity_offer",
       sample: id,
     });
+  return id;
 }
 
 function parsePage(
@@ -890,7 +894,7 @@ function parsePage(
   models: Map<string, ProviderModel>,
   body: string,
   references: EndpointReferences,
-): void {
+): string | undefined {
   const $ = load(body);
   const label = $(".fern-prose li").filter(
     (_index, element) => text($(element).children("strong").text()) === "Latest model",
@@ -932,6 +936,7 @@ function parsePage(
       reference?.endpoint.name === "Parse" ? [reference.endpoint] : [],
     ),
   );
+  return id.data;
 }
 
 function transcribePage(
@@ -940,7 +945,7 @@ function transcribePage(
   url: URL,
   body: string,
   references: EndpointReferences,
-): void {
+): string | undefined {
   const $ = load(body);
   const label = $("strong")
     .filter((_index, element) => /^Model name:?$/i.test(text($(element).text())))
@@ -998,6 +1003,7 @@ function transcribePage(
       sample: parsed.data,
     });
   }
+  return parsed.data;
 }
 
 function lifecycle(input: Input, models: Map<string, ProviderModel>, body: string): void {
@@ -1623,14 +1629,25 @@ export function parseCohereCatalog(input: Input): SourceParseResult {
     linkedDocuments.minDocuments,
     linkedDocuments.maxDocuments,
   );
-  rootTables(input, models, exactDocument(bundle.documents, "/docs/models").body, references);
+  const overview = exactDocument(bundle.documents, "/docs/models");
+  const identities: { id: string; url: string }[] = rootTables(
+    input,
+    models,
+    overview.body,
+    references,
+  ).map((id) => ({ id, url: overview.url }));
   for (const document of modelDocuments) {
     const url = new URL(document.url);
-    modelCard(input, models, url, document.body, references, bundle.documents);
-    if (/^\/(?:v2\/)?docs\/transcribe(?:-arabic)?$/.test(url.pathname))
-      transcribePage(input, models, url, document.body, references);
-    if (/^\/(?:v2\/)?docs\/parse$/.test(url.pathname))
-      parsePage(input, models, document.body, references);
+    const card = modelCard(input, models, url, document.body, references, bundle.documents);
+    if (card !== undefined) identities.push({ id: card, url: document.url });
+    if (/^\/(?:v2\/)?docs\/transcribe(?:-arabic)?$/.test(url.pathname)) {
+      const id = transcribePage(input, models, url, document.body, references);
+      if (id !== undefined) identities.push({ id, url: document.url });
+    }
+    if (/^\/(?:v2\/)?docs\/parse$/.test(url.pathname)) {
+      const id = parsePage(input, models, document.body, references);
+      if (id !== undefined) identities.push({ id, url: document.url });
+    }
   }
   for (const document of bundle.documents) {
     const url = new URL(document.url);
@@ -1658,6 +1675,25 @@ export function parseCohereCatalog(input: Input): SourceParseResult {
   );
   return {
     models: [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id)),
+    inference_prices: identities.flatMap(({ id, url }) => {
+      const current = models.get(id);
+      if (current === undefined || current.status === "retired") return [];
+      return [
+        {
+          model_id: id,
+          model_ref: current.uid,
+          source_ref: input.source.id,
+          offer_key: "hosted-inference",
+          fixed_selectors: [],
+          evidence: [
+            {
+              source_ref: input.source.id,
+              locator: { kind: "fragment" as const, value: `${url}#model: ${id}` },
+            },
+          ],
+        },
+      ];
+    }),
     ...(pricingInputs.length === 0 ? {} : { pricing_inputs: pricingInputs }),
   };
 }

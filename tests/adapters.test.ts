@@ -2512,7 +2512,7 @@ describe("Cohere adapters", () => {
     expect(value.sources).toMatchObject([
       {
         url: "https://docs.cohere.com/docs/models.md",
-        extractorVersion: "cohere-catalog-v17",
+        extractorVersion: "cohere-catalog-v18",
         extractor: {
           kind: "cohere-catalog",
           minModels: 40,
@@ -2969,7 +2969,7 @@ describe("Meta Llama adapters", () => {
     expect(invalidFindings[0]).toMatchObject({ disposition: "accept_with_signal" });
   });
 
-  it("declares an exhaustive registry catalog and non-persistent API inventory", () => {
+  it("separates the artifact registry, public Model API prices and account inventory", () => {
     const sources = manifest("llama").sources;
     expect(sources).toMatchObject([
       {
@@ -3009,6 +3009,13 @@ describe("Meta Llama adapters", () => {
             expect.objectContaining({ id: "llama-protections-release" }),
           ]),
         },
+      },
+      {
+        extractor: { kind: "meta-model-api" },
+        type: "website",
+        access: "public",
+        role: "catalog",
+        pricingEvidence: { kind: "price_book", binding: "exact_id" },
       },
       {
         extractor: { kind: "llama-api" },
@@ -3850,7 +3857,7 @@ describe("Gemini adapters", () => {
       gemma: {
         context: 256_000,
         pricing: "numeric",
-        rates: 1,
+        rates: 5,
         prices: ["0"],
       },
     });
@@ -4173,9 +4180,7 @@ describe("Vertex AI adapters", () => {
       expect.objectContaining({ meter: "output_text", price: "0" }),
     );
     for (const id of ["gemini-omni-flash-preview", "gemini-omni-1.1-flash-preview"])
-      expect(facts(id)).toContainEqual(
-        expect.objectContaining({ meter: "output_video", price: "17.50", unit: "million_tokens" }),
-      );
+      expect(models.find(({ model_id }) => model_id === id)?.price_facts ?? []).toEqual([]);
     expect(facts("lyria-002")).toContainEqual(
       expect.objectContaining({ meter: "output_audio", price: "60", unit: "thousand_items" }),
     );
@@ -4248,7 +4253,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v15",
+      extractorVersion: "vertex-pricing-v17",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -5755,7 +5760,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v18");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v19");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5772,7 +5777,8 @@ describe("Databricks adapters", () => {
       optional: true,
       claimLocal: true,
     });
-    expect(companions.get("api-reference")?.optional).toBeUndefined();
+    expect(companions.get("api-reference")).toMatchObject({ optional: true, claimLocal: true });
+    expect(companions.get("model-types")).toMatchObject({ optional: true, claimLocal: true });
   });
 
   it("combines labeled endpoints with lifecycle, limits, feature support, and DBU rates", async () => {
@@ -6183,9 +6189,10 @@ describe("Databricks adapters", () => {
     expect(withoutLifecycle).toHaveLength(11);
     expect(withoutLifecycle.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
 
-    await expect(databricksWithout("api-reference.html")).rejects.toThrow(
-      "expected one /aws/en/machine-learning/foundation-model-apis/api-reference",
-    );
+    const withoutApi = await databricksWithout("api-reference.html");
+    expect(withoutApi).toHaveLength(11);
+    expect(withoutApi.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
+    expect(withoutApi.every(({ api_endpoints }) => (api_endpoints?.length ?? 0) === 0)).toBe(true);
   });
 
   it("keeps a redirected partner slug deprecated until Databricks stops serving it", async () => {
@@ -6334,11 +6341,11 @@ describe("Databricks adapters", () => {
 
   it("rejects unsafe route drift and keeps independent pricing claims", async () => {
     const tasks = await fixture("databricks/model-types.html");
-    await expect(
-      databricksCatalog({
-        "model-types.html": tasks.replace("databricks-gpt-5-6-sol", "databricks-unknown-model"),
-      }),
-    ).rejects.toThrow("unknown catalog model");
+    const unknownRoute = await databricksCatalog({
+      "model-types.html": tasks.replace("databricks-gpt-5-6-sol", "databricks-unknown-model"),
+    });
+    expect(unknownRoute.every(({ api_endpoints }) => api_endpoints === undefined)).toBe(true);
+    expect(unknownRoute.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
     const incomplete = await databricksCatalog({
       "model-types.html": tasks.replace("<code>databricks-gpt-5-6-sol</code>", ""),
     });
@@ -6350,26 +6357,31 @@ describe("Databricks adapters", () => {
     expect(incomplete.map(({ model_id }) => model_id)).toEqual(
       (await databricksCatalog()).map(({ model_id }) => model_id),
     );
-    await expect(
-      databricksCatalog({
-        "model-types.html": tasks.replace(
-          "POST /serving-endpoints/{name}/invocations",
-          "POST /serving-endpoints/{name}",
-        ),
-      }),
-    ).rejects.toThrow("invocation route changed");
+    const changedRoute = await databricksCatalog({
+      "model-types.html": tasks.replace(
+        "POST /serving-endpoints/{name}/invocations",
+        "POST /serving-endpoints/{name}",
+      ),
+    });
+    expect(changedRoute.every(({ api_endpoints }) => api_endpoints === undefined)).toBe(true);
+    expect(changedRoute.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
     const reference = await fixture("databricks/api-reference.html");
-    await expect(
-      databricksCatalog({
-        "api-reference.html": reference.replace("Chat Completions API", "Chat API"),
-      }),
-    ).rejects.toThrow("API reference changed");
+    const changedApi = await databricksCatalog({
+      "api-reference.html": reference.replace("Chat Completions API", "Chat API"),
+    });
+    expect(changedApi.every(({ api_endpoints }) => api_endpoints === undefined)).toBe(true);
+    expect(changedApi.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
     const priority = await fixture("databricks/priority-mode.html");
-    await expect(
-      databricksCatalog({
-        "priority-mode.html": priority.replace("billed at standard", "charged at regular"),
-      }),
-    ).rejects.toThrow("priority request or fallback contract changed");
+    const changedPriority = await databricksCatalog({
+      "priority-mode.html": priority.replace("billed at standard", "charged at regular"),
+    });
+    expect(changedPriority.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
+    expect(
+      changedPriority.every(
+        ({ raw_price_facts }) =>
+          !raw_price_facts.some(({ term_key }) => term_key === "priority_pay_per_token"),
+      ),
+    ).toBe(true);
     const imagePricing = await fixture("databricks/google-image-pricing.html");
     const imageItems: PricingReconciliationItem[] = [];
     const withoutPassThrough = await databricksCatalog(
@@ -8032,7 +8044,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v24");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v26");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -10071,7 +10083,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v18",
+      extractorVersion: "cerebras-catalog-v19",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -10519,7 +10531,7 @@ describe("Hugging Face adapter", () => {
       { id: "huggingface-hub", role: "overlay" },
     ]);
     const mappings = sources[0];
-    expect(mappings?.extractorVersion).toBe("huggingface-mapping-v8");
+    expect(mappings?.extractorVersion).toBe("huggingface-mapping-v9");
     expect(mappings?.extractor).toEqual({
       kind: "huggingface-mapping",
       providers: expectedPartners,
@@ -10544,7 +10556,7 @@ describe("Hugging Face adapter", () => {
         },
       ],
     });
-    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v12");
+    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v13");
     expect(sources[1]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     expect(sources[1]?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual([
       "pricing",
@@ -10632,12 +10644,28 @@ describe("Hugging Face adapter", () => {
       ...baseSource,
       extractor: { ...baseSource.extractor, providers: ["featherless-ai"] },
     };
-    const mappings = parseSource({
+    const mappingResult = parseSource({
       provider: provider(value),
       source: mappingSource,
       body: huggingFaceMappingBody(await fixture("huggingface/normal.json"), "featherless-ai"),
       observedAt,
-    }).models;
+    });
+    const mappings = mappingResult.models;
+    expect(mappingResult.inference_prices).toEqual(
+      mappings.map((model) => ({
+        model_id: model.model_id,
+        model_ref: model.uid,
+        offer_key: "routed-inference",
+        source_ref: mappingSource.id,
+        fixed_selectors: [],
+        evidence: [
+          {
+            source_ref: mappingSource.id,
+            locator: { kind: "provider_key", value: model.model_id },
+          },
+        ],
+      })),
+    );
     const reconciliation: PricingReconciliationItem[] = [];
     const native = await huggingFaceFeatherless(
       (body) => body,
@@ -11514,7 +11542,7 @@ describe("Hugging Face adapter", () => {
       raw: 0,
       explicit_non_numeric: 1,
       excluded: 3,
-      unbound: 1,
+      unbound: 2,
       ambiguous: 1,
       unsupported: 0,
       unresolved: 0,
@@ -11523,6 +11551,11 @@ describe("Hugging Face adapter", () => {
       disposition: "unbound",
       reason_code: "route_price_not_published",
       sample: "org/model-1:featherless-ai",
+    });
+    expect(items).toContainEqual({
+      disposition: "unbound",
+      reason_code: "model_id_suffix_contract_drift",
+      sample: "/docs/inference-providers/en/index.md",
     });
     expect(items).toContainEqual({
       disposition: "ambiguous",
@@ -13649,7 +13682,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v23",
+      extractorVersion: "dashscope-pricing-v24",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
@@ -13812,7 +13845,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v15",
+      extractorVersion: "kimi-pricing-v16",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -15628,7 +15661,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v13",
+      extractorVersion: "ollama-cloud-v14",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });

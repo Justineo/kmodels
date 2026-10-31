@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { gzipSync, gunzipSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import {
   compressedAsset,
@@ -31,31 +31,24 @@ import {
 import { validatePricingCatalogInParallel } from "./pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
-import { projectCatalogPair, pairWebsiteDataVersion, type PairProjections } from "./projections.ts";
+import { projectCatalogPair, websiteDataVersion, type PairProjections } from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
 import {
-  createV2PublicationFromValidatedPair,
-  v2PairId,
-  type V2Publication,
-} from "./publication-v2.ts";
-import { pricingV2EnvelopeSchema, type InvocationPricingBinding } from "./publication-v2-schema.ts";
+  inferencePricingPublication,
+  inferencePricingPath,
+  inferencePricingMaxBytes,
+  type InferencePricingPublication,
+} from "./inference-pricing.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const utf8 = new TextEncoder();
-const legacyAcceptedPairManifestSchema = z.strictObject({
+const acceptedPairManifestSchema = z.strictObject({
   version: z.literal(1),
   pair_id: hashSchema,
   catalog_asset_sha256: hashSchema,
   pricing_asset_sha256: hashSchema,
+  inference_asset_sha256: hashSchema.optional(),
 });
-const acceptedPairManifestSchema = z.union([
-  legacyAcceptedPairManifestSchema,
-  legacyAcceptedPairManifestSchema.extend({
-    version: z.literal(2),
-    v2_catalog_asset_sha256: hashSchema,
-    v2_pricing_asset_sha256: hashSchema,
-  }),
-]);
 
 type AcceptedPairManifest = z.infer<typeof acceptedPairManifestSchema>;
 
@@ -63,7 +56,7 @@ export interface CatalogPairPaths {
   stateDirectory: string;
   catalogMirror: string;
   pricingMirrorGzip: string;
-  pricingV2MirrorGzip: string;
+  inferenceMirror?: string;
   projections: ProjectionPaths;
 }
 
@@ -77,14 +70,14 @@ export interface CatalogPairCandidate {
   pricingAssetSource: string;
   identity: CatalogPairIdentity;
   pairId: string;
-  v2?: V2Publication;
+  inference?: InferencePricingPublication;
 }
 
 const defaultCatalogPairPaths: CatalogPairPaths = {
   stateDirectory: join(rootDirectory, "data/.catalog-state"),
   catalogMirror: join(rootDirectory, "data/catalog.json"),
   pricingMirrorGzip: join(rootDirectory, "data/pricing.json.gz"),
-  pricingV2MirrorGzip: join(rootDirectory, "data/pricing-v2.json.gz"),
+  inferenceMirror: join(rootDirectory, "data/inference-pricing.json"),
   projections: defaultProjectionPaths,
 };
 const preparedCandidates = new WeakSet<CatalogPairCandidate>();
@@ -93,7 +86,7 @@ const pricingHeaderSchema = pricingCatalogSchema.extend({ books: z.array(z.unkno
 export function prepareCatalogPair(
   catalog: Catalog,
   pricing: PricingCatalog | PricingCatalogEnvelope,
-  invocationBindings: readonly InvocationPricingBinding[] = [],
+  inference?: unknown,
 ): CatalogPairCandidate {
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
@@ -108,14 +101,14 @@ export function prepareCatalogPair(
     envelope,
     catalogStorageSource,
     canonicalDataChunks,
-    invocationBindings,
+    inference,
   );
 }
 
 export async function prepareCatalogPairInParallel(
   catalog: Catalog,
   pricing: PricingCatalog | PricingCatalogEnvelope,
-  invocationBindings: readonly InvocationPricingBinding[] = [],
+  inference?: unknown,
 ): Promise<CatalogPairCandidate> {
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
@@ -131,7 +124,7 @@ export async function prepareCatalogPairInParallel(
     envelope,
     catalogStorageSource,
     canonicalDataChunks,
-    invocationBindings,
+    inference,
   );
 }
 
@@ -169,8 +162,12 @@ function catalogPairCandidate(
   envelope: PricingCatalogEnvelope,
   catalogStorageSource: string,
   canonicalDataChunks: readonly string[],
-  invocationBindings: readonly InvocationPricingBinding[],
+  inferenceInput: unknown,
 ): CatalogPairCandidate {
+  const inference =
+    inferenceInput === undefined
+      ? undefined
+      : inferencePricingPublication(parsedCatalog, envelope, inferenceInput);
   const catalogAssetSource = catalogJson(parsedCatalog);
   const pricingChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
   // Keep the full source as a rope; joining the chunks or passing the source to
@@ -191,13 +188,8 @@ function catalogPairCandidate(
   const identity = {
     catalog_asset_sha256: sha256(catalogAssetSource),
     pricing_asset_sha256: sha256Chunks(pricingChunks),
+    ...(inference === undefined ? {} : { inference_asset_sha256: sha256(inference.source) }),
   };
-  if (parsedCatalog.invocation === undefined && invocationBindings.length > 0)
-    throw new Error("Invocation pricing requires an invocation catalog");
-  const v2 =
-    parsedCatalog.invocation === undefined
-      ? undefined
-      : createV2PublicationFromValidatedPair(parsedCatalog, envelope, invocationBindings);
   const candidate = {
     catalog: parsedCatalog,
     pricing: envelope,
@@ -205,8 +197,8 @@ function catalogPairCandidate(
     catalogAssetSource,
     pricingAssetSource,
     identity,
-    pairId: v2?.pairId ?? catalogPairId(identity),
-    ...(v2 === undefined ? {} : { v2 }),
+    pairId: catalogPairId(identity),
+    ...(inference === undefined ? {} : { inference }),
   };
   deepFreeze(candidate);
   preparedCandidates.add(candidate);
@@ -227,12 +219,7 @@ export async function recoverCatalogPair(
   const manifest = acceptedPairManifestSchema.parse(
     assertCanonicalJson(manifestBytes, pricingLimits.semanticStringBytes * 4),
   );
-  if (
-    manifest.pair_id !==
-    (manifest.version === 1
-      ? catalogPairId(manifest)
-      : v2PairId(manifest.v2_catalog_asset_sha256, manifest.v2_pricing_asset_sha256))
-  )
+  if (manifest.pair_id !== catalogPairId(manifest))
     throw new Error("Accepted catalog pair manifest identity is invalid");
 
   const snapshot = snapshotDirectory(paths, manifest.pair_id);
@@ -243,34 +230,20 @@ export async function recoverCatalogPair(
   ]);
   const catalog = decodeCatalogStorage(catalogBytes);
   const pricing = decodePricingCatalogStorage(pricingAssetBytes);
-  const v2Source =
-    manifest.version === 1 ? undefined : await readFile(join(snapshot, "pricing-v2.json"));
-  const v2Pricing =
-    v2Source === undefined
+  const inference =
+    manifest.inference_asset_sha256 === undefined
       ? undefined
-      : pricingV2EnvelopeSchema.parse(
-          assertCanonicalJson(v2Source, pricingLimits.pricingInputBytes),
+      : assertCanonicalJson(
+          await readFile(join(snapshot, "inference-pricing.json")),
+          inferencePricingMaxBytes,
         );
-  const candidate = await prepareCatalogPairInParallel(
-    catalog,
-    pricing,
-    v2Pricing?.data.invocation_bindings,
-  );
+  const candidate = await prepareCatalogPairInParallel(catalog, pricing, inference);
   if (
     candidate.pairId !== manifest.pair_id ||
     candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
     candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256
   )
     throw new Error("Accepted catalog pair snapshot does not match its manifest");
-  if (
-    manifest.version === 2 &&
-    (candidate.v2 === undefined ||
-      sha256(candidate.v2.catalogSource) !== manifest.v2_catalog_asset_sha256 ||
-      sha256(candidate.v2.pricingSource) !== manifest.v2_pricing_asset_sha256 ||
-      v2Source === undefined ||
-      !bytesEqual(v2Source, utf8.encode(candidate.v2.pricingSource)))
-  )
-    throw new Error("Accepted v2 assets do not match their snapshot manifest");
   if (!bytesEqual(catalogAssetBytes, utf8.encode(candidate.catalogAssetSource)))
     throw new Error("Accepted catalog asset bytes do not match the snapshot catalog");
   if (!bytesEqual(pricingAssetBytes, utf8.encode(candidate.pricingAssetSource)))
@@ -280,6 +253,21 @@ export async function recoverCatalogPair(
   await writePairMirrors(candidate, projections, paths);
   await pruneSnapshots(paths, candidate.pairId);
   return candidate;
+}
+
+/** Attach a checked ID mapping while preserving the exact already-validated canonical bytes. */
+export function withInferencePriceMapping(
+  candidate: CatalogPairCandidate,
+  input: unknown,
+): CatalogPairCandidate {
+  if (!preparedCandidates.has(candidate))
+    throw new Error("Catalog pair candidate was not prepared");
+  const inference = inferencePricingPublication(candidate.catalog, candidate.pricing, input);
+  const identity = { ...candidate.identity, inference_asset_sha256: sha256(inference.source) };
+  const mapped = { ...candidate, inference, identity, pairId: catalogPairId(identity) };
+  deepFreeze(mapped);
+  preparedCandidates.add(mapped);
+  return mapped;
 }
 
 export async function commitCatalogPair(
@@ -296,20 +284,14 @@ export async function commitCatalogPair(
     writeIfChanged(join(snapshot, "catalog.json"), candidate.catalogStorageSource),
     writeIfChanged(join(snapshot, "catalog-asset.json"), candidate.catalogAssetSource),
     writeIfChanged(join(snapshot, "pricing.json"), candidate.pricingAssetSource),
-    ...(candidate.v2 === undefined
+    ...(candidate.inference === undefined
       ? []
-      : [writeIfChanged(join(snapshot, "pricing-v2.json"), candidate.v2.pricingSource)]),
+      : [writeIfChanged(join(snapshot, "inference-pricing.json"), candidate.inference.source)]),
     writePairProjections(snapshotProjectionPaths(snapshot), projections),
   ]);
 
   const manifest: AcceptedPairManifest = {
-    ...(candidate.v2 === undefined
-      ? { version: 1 as const }
-      : {
-          version: 2 as const,
-          v2_catalog_asset_sha256: sha256(candidate.v2.catalogSource),
-          v2_pricing_asset_sha256: sha256(candidate.v2.pricingSource),
-        }),
+    version: 1,
     pair_id: candidate.pairId,
     ...candidate.identity,
   };
@@ -330,25 +312,15 @@ export async function readCatalogPairMirrors(
     pricingBytes === undefined
       ? createPricingCatalogEnvelope(emptyPricingCatalog(), catalog)
       : decodePricingCatalogStorage(decompressPricing(pricingBytes));
-  const v2Bytes = await optionalRead(paths.pricingV2MirrorGzip);
-  const v2Pricing =
-    v2Bytes === undefined
-      ? undefined
-      : pricingV2EnvelopeSchema.parse(
-          assertCanonicalJson(decompressPricing(v2Bytes), pricingLimits.pricingInputBytes),
-        );
-  if (catalog.invocation === undefined && v2Pricing !== undefined)
-    throw new Error("V2 pricing mirror has no matching invocation catalog");
-  if (catalog.invocation !== undefined && v2Pricing === undefined)
-    throw new Error("Invocation catalog is missing its v2 pricing mirror");
-  const candidate = await prepareCatalogPairInParallel(
+  const inferenceBytes =
+    paths.inferenceMirror === undefined ? undefined : await optionalRead(paths.inferenceMirror);
+  return prepareCatalogPairInParallel(
     catalog,
     pricing,
-    v2Pricing?.data.invocation_bindings,
+    inferenceBytes === undefined
+      ? undefined
+      : assertCanonicalJson(inferenceBytes, inferencePricingMaxBytes),
   );
-  if (v2Pricing !== undefined && candidate.v2?.pricingSource !== canonicalJson(v2Pricing))
-    throw new Error("V2 pricing mirror does not match the accepted catalog");
-  return candidate;
 }
 
 function decodeCatalogStorage(input: Uint8Array): Catalog {
@@ -450,10 +422,14 @@ async function writePairMirrors(
   await Promise.all([
     writeIfChanged(paths.catalogMirror, candidate.catalogStorageSource),
     writeBytesIfChanged(paths.pricingMirrorGzip, compressedPricingProjection(projections.exports)),
-    candidate.v2 === undefined
-      ? rm(paths.pricingV2MirrorGzip, { force: true })
-      : writeBytesIfChanged(paths.pricingV2MirrorGzip, gzipSync(candidate.v2.pricingSource)),
     writePairProjections(paths.projections, projections),
+    ...(paths.inferenceMirror === undefined
+      ? []
+      : [
+          candidate.inference === undefined
+            ? rm(paths.inferenceMirror, { force: true })
+            : writeIfChanged(paths.inferenceMirror, candidate.inference.source),
+        ]),
   ]);
 }
 
@@ -487,7 +463,14 @@ function validatePairProjections(
     projections.exports.manifest.pair_id !== candidate.pairId
   )
     throw new Error("Projection assets do not match the accepted catalog pair");
-  if (projections.ui.manifest.data_version !== pairWebsiteDataVersion(candidate))
+  if (
+    projections.ui.manifest.data_version !==
+    websiteDataVersion(
+      candidate.catalog.catalog_version,
+      candidate.pricing.pricing_data_version,
+      candidate.inference?.source,
+    )
+  )
     throw new Error("UI assets have an invalid data version");
   if (projections.exports.manifest.data_version !== candidate.pairId)
     throw new Error("Export assets have an invalid data version");
@@ -495,17 +478,11 @@ function validatePairProjections(
   const pricing = projectionEntry(projections.exports.manifest, "pricing/index.json");
   if (
     catalog.source_sha256 !== candidate.identity.catalog_asset_sha256 ||
-    pricing.source_sha256 !== candidate.identity.pricing_asset_sha256
+    pricing.source_sha256 !== candidate.identity.pricing_asset_sha256 ||
+    projections.exports.manifest.assets.find(({ file_name }) => file_name === inferencePricingPath)
+      ?.source_sha256 !== candidate.identity.inference_asset_sha256
   )
     throw new Error("Canonical export assets do not match the accepted catalog pair");
-  if (
-    candidate.v2 !== undefined &&
-    (projectionEntry(projections.exports.manifest, "catalog/v2/index.json").source_sha256 !==
-      sha256(candidate.v2.catalogSource) ||
-      projectionEntry(projections.exports.manifest, "pricing/v2/index.json").source_sha256 !==
-        sha256(candidate.v2.pricingSource))
-  )
-    throw new Error("Canonical v2 exports do not match the accepted catalog pair");
 }
 
 function compressedPricingProjection(projections: EncodedAssetPack): Uint8Array {

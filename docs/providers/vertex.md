@@ -37,7 +37,9 @@ Model discovery and pricing remain independent:
 
 - the Google, partner, and managed-open indexes plus bounded model cards establish model identity,
   capabilities, lifecycle, availability, and invocation routes;
-- the public Agent Platform pricing page establishes rates and applicability; and
+- the public Agent Platform pricing page and its linked
+  [partner-model pricing page](https://cloud.google.com/model-garden/partner-models/pricing)
+  establish rates and applicability; and
 - the Discovery schema and fixed first-party Batch, grounding, Claude, Grok Responses,
   OpenAI-compatible, Imagen, and Veo documents establish calculation inputs and selectors.
 
@@ -55,12 +57,61 @@ or selector method while preserving the semantic charge binding and published ra
 accepted provider data is retained only when the provider refresh cannot publish a valid
 replacement.
 
+The partner price page is a commercial companion of the pricing source. The Google-model page now
+links to it instead of containing the partner tables. Both pages are parsed with the same owned
+table, location, context and footnote rules. If the current index links to that page, a missing or
+duplicated companion rejects the replacement pricing snapshot; an incomplete fetch must not erase
+partner rates. Historical bundles with inline partner tables remain readable. Accounting and
+capability guides do not establish the price amounts.
+
+## Inference model ID lookup
+
+Catalog sources emit the literal managed Model IDs established by labeled model-card fields or
+exact Model Garden links. These identify the native managed model component, separately from a
+display name or an account's deployment name. Associations join only existing model-scoped `sync`
+and `batch` offers. Merely appearing in the catalog does not create a price or an offer. General
+service fees and grounding allowances keep their independent commercial records.
+
+The OpenAI-compatible APIs also use publisher-qualified request values. Extract those exact
+spellings from official request examples and join their model component exactly to an admitted
+model. A documented `meta/MODEL` request template applies only to models with independently
+established `publishers/meta` ownership. Do not infer a universal publisher prefix from Model Garden
+URLs, copy response model names as aliases, or generate project-qualified private resource IDs.
+Qualified request forms currently establish online inference associations; they do not themselves
+prove the resource spelling required for a Batch job. Bare model IDs can identify either existing
+offer, and a missing offer choice keeps both candidates.
+
+This is price lookup, not request construction. It does not promise that every spelling works on
+every API. Qualified forms lacking owned request evidence remain unknown even when the native
+Model ID has prices. Removing an example or optional guide withdraws only its additional request
+spellings; literal catalog IDs and independent prices survive. A missing HTTP path, capability or
+usage counter does not suppress an independently established ID-to-price association.
+
+Request location remains separate from the ID. The partner endpoint guide distinguishes `global`,
+`us`, `eu` and named regions, while commercial tables distinguish their own `region` and
+`deployment_scope` conditions. No regional-looking prefix, publisher prefix, available-region list
+or globally routed URL selects a tariff implicitly. Served tier, context, cache TTL and validity
+also retain their existing conditions. Unfilled values produce candidates; incompatible known
+conditions produce no applicable prices. Known IDs with contradictory context footnotes, imprecise
+promotional dates or unknown units retain unresolved price evidence rather than invented amounts.
+
+The public mapping and compact website projection use the shared lookup. The UI exposes copyable
+IDs, offer choices when needed and the remaining price conditions, without an invocation graph,
+protocol selector or account configuration step. Stored catalog/pricing adoption remains separate
+from source collection and mapping implementation.
+
 ## Mapping
 
 - Model IDs come from labeled model-card fields or exact Model Garden links. Headings, display
   labels, and approximate dates do not create identity.
-- A family price may apply to multiple IDs only when one model card establishes that family. Other
-  joins require a unique best model match; ambiguous rows remain unmatched.
+- A family price may apply to multiple IDs only when a model card establishes that family. Price
+  labels must equal a source-owned model name or literal ID after the reviewed typography and
+  label normalization. Prefix/suffix similarity, longest-name ranking and stripped ID suffixes do
+  not establish a price association. Unowned family labels remain unmatched.
+  Section headings paired with their own Model ID table can establish names inside a multi-model
+  card. A broader price label such as `Llama 4 Scout` does not by itself bind the more specific
+  `llama-4-scout-17b-16e-instruct-maas` ID. That price association remains unknown until independent
+  commercial evidence establishes it; a documented request spelling alone is insufficient.
 - Flexible Savings Plan columns are excluded because they are account commitments, not request
   rates. New unrelated columns and sections are ignored locally.
 - Standard, Priority, Flex, and Batch are shared `service_tier` values. Online conditions become

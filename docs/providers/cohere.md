@@ -162,6 +162,34 @@ The current exact gaps are:
 - account reports and invoice reconciliation are runtime or billing-system inputs, not data that
   Kmodels can produce before invocation.
 
+The current Rerank 5 pricing payload labels Fast and Pro `Cost` amounts with `per: "1M tokens"`,
+while the general pricing guide and pricing-page FAQ still define Rerank charges in search units.
+These amounts are not converted into search-unit prices or assigned a guessed token counter.
+The adapter reports `unsupported_pricing_meter`; their exact IDs are observed, but there is no
+usable canonical hosted offer to associate until the commercial unit discrepancy is resolved.
+Existing explicitly quoted search-unit tariffs retain their original unit and accounting contract.
+
+## Inference model ID pricing
+
+The direct mapping references the existing `hosted-inference` offer for an exact Cohere request ID.
+Identity evidence comes from the overview's owned model tables with Status or Description columns, or a validated
+indexed model card's Model ID, Parse Latest model, or Transcribe Model name declaration. Cross-cloud
+comparison rows without either column, private deployment labels, product names and pricing-page title
+similarity do not establish additional request IDs. Existing price-book identity resolution remains
+independent; the pricing overlay cannot revive a withdrawn ID declaration from retained catalog rows.
+
+These mappings do not depend on endpoint references, usage-field contracts or authenticated model
+inventory. They fix no region, trial-key status or customer eligibility. Canonical conditions remain
+explicit: legacy prices require existing-customer eligibility; embedding modality and Parse operation
+retain their published scope. Model-specific free states remain free, while generic trial access and
+Model Vault prices do not create new offers. Batch and Embed Jobs do not inherit hosted online rates.
+
+Fresh catalog evidence replaces associations even though this non-exhaustive catalog may retain
+an omitted display identity. Surviving direct tables or cards can independently establish the same ID;
+an absent optional card does not invalidate the table's declaration. Retired IDs receive no current
+inference-price association. IDs without a canonical hosted offer remain unknown. Regional-looking
+prefixes, cloud-provider spellings and undeclared aliases are never synthesized.
+
 ## Refresh resilience
 
 The source is non-exhaustive and refreshed without an LLM. Known catalog sections, endpoint labels,

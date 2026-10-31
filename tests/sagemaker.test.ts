@@ -17,6 +17,12 @@ import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
 import PricingDetails from "../src/components/PricingDetails.vue";
+import { captureInferencePriceSources } from "../src/catalog/inference-pricing-source.ts";
+import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
+import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 
 const aws = vi.hoisted(() => ({ send: vi.fn(), destroy: vi.fn() }));
 vi.mock("@aws-sdk/client-sagemaker", async (importOriginal) => ({
@@ -320,6 +326,51 @@ describe("SageMaker price books", () => {
       models,
       sources,
     });
+    const inferenceSources = captureInferencePriceSources([{ source: s, ...parsed }], sources);
+    expect(inferenceSources.map(({ rules }) => rules)).toEqual([[]]);
+    const pair = compileInferencePriceMapping(
+      prepareCatalogPair({ ...core, sources }, pricing),
+      inferenceSources,
+    );
+    expect(pair.inference?.mapping.rules).toEqual([]);
+    const lookup = createInferencePriceLookup(
+      calculationExport(pair.catalog, pair.pricing),
+      pair.inference?.mapping,
+    );
+    for (const model_id of [
+      openModelId,
+      "fixture-speech",
+      "fixture-embedding",
+      "prodview-speech",
+      "private-endpoint",
+      "models/fixture-speech.tar.gz",
+      "us-west-2/fixture-speech",
+    ]) {
+      expect(lookup({ provider_id: provider.id, model_id })).toMatchObject({
+        query: { model_id },
+        status: "unknown",
+        reason: "unreviewed_id",
+        candidates: [],
+        missing_conditions: [],
+      });
+    }
+    if (!pair.inference) throw new Error("Missing evaluated SageMaker mapping");
+    const projected = websiteInferencePrices(pair.catalog, pair.pricing, pair.inference.mapping);
+    const speechModel = core.models.find(({ model_id }) => model_id === "fixture-speech");
+    if (!speechModel) throw new Error("Missing speech model");
+    const inferencePrices = projected.get(speechModel.uid);
+    expect(inferencePrices?.[0]).toMatchObject({ status: "unknown", reason: "unreviewed_id" });
+    const html = await renderComponent(PricingDetails, {
+      model: { ...speechModel, pricing: { outcome: "offers" } },
+      detail: websiteModelDetail(pricing, speechModel).pricing,
+      inferencePrices,
+    });
+    expect(html).toContain(
+      "The catalog prices below are not verified for this inference model ID.",
+    );
+    expect(html).toContain("Marketplace software");
+    expect(html).toContain("$6");
+    expect(html).not.toContain("Inspect target");
     const captured = capturePricingReplaySources(
       [{ source: s, ...parsed, models: [] }],
       sources,

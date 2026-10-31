@@ -46,6 +46,28 @@ function parse(index: string, documents: Readonly<Record<string, string>>) {
   return { result, diagnostics };
 }
 describe("DashScope cache scope", () => {
+  it("uses numeric context bounds without a duplicate tier selector and preserves unknown labels", () => {
+    for (const tier of ["0<Token≤128K", "Provider-defined tier"]) {
+      const index = prices()
+        .replace("<th>Deployment scope", "<th>Input tokens per request</th><th>Deployment scope")
+        .replaceAll(
+          "<td>qwen3.7-plus</td>",
+          `<td>qwen3.7-plus</td><td>${tier.replaceAll("<", "&lt;")}</td>`,
+        );
+      const { result } = parse(index, {});
+      const rate = result.models[0]?.price_facts.find((fact) => fact.meter === "input_text");
+      expect(rate).toBeDefined();
+      if (tier === "0<Token≤128K") {
+        expect(rate?.conditions.context_min_tokens).toBe(1);
+        expect(rate?.conditions.context_max_tokens).toBe(128000);
+        expect(rate?.conditions.context_tier).toBeUndefined();
+      } else {
+        expect(rate?.conditions.context_tier).toBe(tier);
+        expect(rate?.conditions.context_min_tokens).toBeUndefined();
+        expect(rate?.conditions.context_max_tokens).toBeUndefined();
+      }
+    }
+  });
   const scopedGuide = (id: string) => `${cacheRules}
 ## Explicit cache
 ### Supported models

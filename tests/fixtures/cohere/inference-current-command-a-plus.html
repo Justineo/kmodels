@@ -1,0 +1,476 @@
+<main>
+  <h1 class="fern-page-heading text-balance wrap-anywhere">
+    <!--$-->
+    <div style="display: contents"><p>Cohere’s Command A+ Model</p></div>
+    <!--/$-->
+  </h1>
+  <div class="fern-prose prose break-words prose-h1:mt-[1.5em] first:prose-h1:mt-0 max-w-full">
+    <div>
+      This page is for version v2 API (default). For other versions, use one of these documentation
+      indexes: - v2 API (default): https://docs.cohere.com/v2/llms.txt - v1 API:
+      https://docs.cohere.com/v1/llms.txt
+    </div>
+    <astro-island
+      ><!--$-->
+      <div style="display: contents">
+        <div
+          style="
+            max-width: 64rem;
+            margin-left: auto;
+            margin-right: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            font-family: sans-serif;
+          "
+        >
+          <div
+            class="model-showcase-grid"
+            style="display: grid; grid-template-columns: repeat(1, minmax(0px, 1fr)); gap: 24px"
+          >
+            <div
+              class="fern-card"
+              style="
+                padding: 20px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 6px -1px;
+              "
+            >
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px">
+                <svg><path></path></svg>
+                <div style="font-size: 1.125rem; font-weight: 600">Capabilities</div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                <span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <path></path>
+                    <path></path></svg
+                  >Reasoning</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <path></path>
+                    <path></path>
+                    <path></path>
+                    <path></path>
+                    <path></path></svg
+                  >Multilingual</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <circle></circle></svg
+                  >Image Inputs</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg><path></path></svg>Safety Modes</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <path></path>
+                    <path></path>
+                    <path></path>
+                    <path></path></svg
+                  >Citations</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <path></path></svg
+                  >Tool Use</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  ><svg>
+                    <path></path>
+                    <path></path></svg
+                  >Structured Outputs</span
+                >
+              </div>
+            </div>
+            <div
+              class="fern-card"
+              style="
+                padding: 20px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 6px -1px;
+              "
+            >
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px">
+                <svg>
+                  <circle></circle>
+                  <path></path>
+                  <path></path>
+                  <path></path>
+                </svg>
+                <div style="font-size: 1.125rem; font-weight: 600">Pricing</div>
+              </div>
+              <div style="font-size: 0.875rem; color: rgb(75, 85, 99)">
+                <p style="margin-bottom: 12px">
+                  For both trial keys and production keys,
+                  <!-- -->Command A+<!-- -->
+                  is free until rate limits are reached. Learn more about rate limits for different
+                  models and key types<!-- -->
+                  <a
+                    href="https://docs.cohere.com/docs/rate-limits"
+                    style="color: rgb(37, 99, 235); text-decoration: underline"
+                    >here</a
+                  >.
+                </p>
+                <p>
+                  Command A+ can be used in production through Cohere's
+                  <a class="fern-mdx-link" href="/v2/docs/model-vault">Model Vault</a>.
+                </p>
+              </div>
+            </div>
+            <div
+              class="fern-card"
+              style="
+                padding: 20px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 6px -1px;
+              "
+            >
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px">
+                <svg><path></path></svg>
+                <div style="font-size: 1.125rem; font-weight: 600">Specifications</div>
+              </div>
+              <ul style="display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem">
+                <div>
+                  <strong>Context Window:</strong>
+                  <!-- -->128,000<!-- -->
+                  tokens
+                </div>
+                <div>
+                  <strong>Max Output Tokens:</strong>
+                  <!-- -->64,000<!-- -->
+                  tokens
+                </div>
+                <div>
+                  <strong>Knowledge Cutoff:</strong>
+                  <!-- -->April 1, 2025
+                </div>
+              </ul>
+            </div>
+            <div
+              class="fern-card"
+              style="
+                padding: 20px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 6px -1px;
+              "
+            >
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px">
+                <svg><polygon></polygon></svg>
+                <div style="font-size: 1.125rem; font-weight: 600">API Endpoints</div>
+              </div>
+              <div style="font-size: 0.875rem; margin-bottom: 12px">
+                <strong>Model ID</strong>
+                <div style="font-size: 0.875rem; color: rgb(107, 114, 128)">
+                  command-a-plus-05-2026
+                </div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                <span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  >Chat V2</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                  "
+                  >Chat Completions</span
+                ><span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 4px 12px;
+                    background-color: var(--grayscale-a3);
+                    border-radius: 9999px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    opacity: 0.5;
+                    color: rgb(156, 163, 175);
+                  "
+                  >Chat V1</span
+                >
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 24px">
+            <a
+              href="https://dashboard.cohere.com/playground?model=command-a-plus-05-2026"
+              style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px 32px;
+                color: rgb(255, 255, 255);
+                font-weight: 600;
+                border-radius: 9999px;
+                box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 3px;
+                transition: 200ms;
+                text-decoration: none;
+                background-color: rgb(37, 99, 235);
+                position: relative;
+                overflow: hidden;
+              "
+              ><span style="position: relative; z-index: 10">Try in Playground</span></a
+            >
+          </div>
+        </div>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Description</h2>
+        <p>
+          Command A+ is Cohere’s first Mixture of Experts model, bringing together the power of a
+          strong agentic model, supporting vision and text on input, and expanding the language
+          support to 48 languages, including all of the official European Union languages. With the
+          MoE architecture, the model brings balance with providing a highly accurate user
+          experience, while balancing out the need for enterprises to have a high throughput, low
+          latency solution that minimizes the amount of GPUs required per instance, offering 1xB200
+          / 2xH100 support.
+        </p>
+        <h2 class="max-md:pr-4" style="cursor: pointer">What Can Command A+ Be Used For?</h2>
+        <p>Command A+ is excellent for:</p>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Complex, Multimodal Agentic Tasks</strong>: With mixed
+            modality (vision / text) inputs, the model can autonomously take actions and interact
+            with its environment to solve complex tasks.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Multilingual Tasks</strong>: With support for 48
+            languages, combined with the model’s reasoning, agentic problem solving &amp; vision
+            processing capabilities, Command A+ expands not only the number of languages supported,
+            but what enterprises across the globe can do with Cohere’s models.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Balancing Accuracy &amp; Efficiency</strong>: Providing
+            support for deploying the model with as few as a single B200 or two H100 chips, and with
+            vast improvements in reasoning, image processing, and agentic tasks over the rest of the
+            Command A family, Command A+ is the fastest and most performant model in the Command A
+            family by far.
+          </li>
+        </ul>
+        <p>
+          There’s more to be said about token budgets, enabling and disabling the
+          <code>thinking</code> operation, etc., which can be found in our dedicated
+          <a class="fern-mdx-link" href="/v2/docs/reasoning">Reasoning guide</a>.
+        </p>
+        <h2 class="max-md:pr-4" style="cursor: pointer">General</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Name of the model provider</strong>: Cohere Inc.
+          </li>
+          <li class=""><strong class="font-semibold">Release Date</strong>: May 20, 2026</li>
+          <li class=""><strong class="font-semibold">Model dependencies</strong>: N/A</li>
+          <li class="">
+            <strong class="font-semibold">Contact</strong>:
+            <a class="fern-mdx-link" href="mailto:support@cohere.com"
+              >support@cohere.com<svg class="lucide lucide-external-link external-link-icon">
+                <path></path>
+                <path></path>
+                <path></path></svg
+            ></a>
+          </li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Model Properties</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Model architecture</strong>: Command A+ is a sparse
+            mixture-of-experts model.
+          </li>
+          <li class=""><strong class="font-semibold">Input modalities</strong>: Text, image</li>
+          <li class=""><strong class="font-semibold">Output modalities</strong>: Text</li>
+          <li class="">
+            <strong class="font-semibold">Model Size</strong>: 218B total, 25B active
+          </li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Distribution and Technical Integration</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Cohere Deployment</strong>:
+            <a class="fern-mdx-link" href="https://docs.cohere.com/docs/deployment-options-overview"
+              >Deployment options</a
+            >
+            are subject to terms of use applicable to the deployment type or platform. Usage is
+            subject to limitations set out in commercial agreements with customers, which includes
+            Cohere’s
+            <a class="fern-mdx-link" href="https://docs.cohere.com/docs/usage-policy"
+              >Usage Policy</a
+            >.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Open Source Deployment</strong>: Command A+ is available
+            under an Apache 2.0 License on
+            <a
+              class="fern-mdx-link"
+              href="https://huggingface.co/CohereLabs/command-a-plus-05-2026-w4a4"
+              >Hugging Face<svg class="lucide lucide-external-link external-link-icon">
+                <path></path>
+                <path></path>
+                <path></path></svg></a
+            >.
+          </li>
+          <li class="">
+            <strong class="font-semibold"
+              >Technical Integration and Required Software (if any)</strong
+            >: For Cohere Deployments, see our
+            <a class="fern-mdx-link" href="https://docs.cohere.com/v2/docs/get-started-installation"
+              >Installation Guide</a
+            >
+            on getting started with Command A+. For Open Source Deployments, instructions are
+            available on the
+            <a
+              class="fern-mdx-link"
+              href="https://huggingface.co/CohereLabs/command-a-plus-05-2026-w4a4"
+              >HuggingFace page<svg class="lucide lucide-external-link external-link-icon">
+                <path></path>
+                <path></path>
+                <path></path></svg></a
+            >.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Required Hardware</strong>: 1× B200 at W4A4 or 2× H100s at
+            W4A4
+          </li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Model Data and Training</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Pre-training</strong>: The model was trained on a
+            large-scale collection of unlabelled data using self-supervised learning to learn
+            general patterns, syntax, and semantics across multiple languages.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Post-training</strong>: During post training, labelled
+            datasets were used with supervised fine-tuning (SFT) and reinforcement learning (RL)
+            techniques to maximize the model’s performance over a wide spectrum of domains and
+            capabilities.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Data</strong>: Across both pre-training and post-training,
+            various data sources and modalities are used, which include text and image content
+            sourced from publicly available information, proprietary datasets developed or generated
+            by Cohere with human annotation or through automated means, including synthetic data,
+            and datasets sourced from specialized data vendors. In most cases, Cohere customers use
+            Cohere models in their own environments, meaning Cohere has no access to inputs
+            submitted to its models and does not use them for model training. De-identified data
+            from the use of Cohere models on Cohere-hosted environments (e.g. user inputs) may be
+            used in limited circumstances where permitted by user controls and Cohere’s relevant
+            terms of service.
+          </li>
+          <li class="">
+            <strong class="font-semibold">Training Data Processing</strong>: Cohere employs various
+            techniques to ensure data quality and suitability for training, including deduplication,
+            filtering for toxic or harmful content, and quality filtering.
+          </li>
+          <li class="">
+            <strong class="font-semibold">EU AI Act Article 53(1)(d)</strong>:
+            <!--$--><a
+              class="fern-mdx-link"
+              href="/_fern-files/cohere.docs.buildwithfern.com/465ad10da2a73b55ca4291e34e665bf843f8f918fd8a0c4e8f0092a8d60f93ef/assets/documents/eu-ai-public-summary_command-a-plus-family_20260910.pdf"
+              >Public Summary of Training Content</a
+            ><!--/$-->
+          </li>
+        </ul>
+      </div>
+      <!--/$--></astro-island
+    >
+  </div>
+</main>

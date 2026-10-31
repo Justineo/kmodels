@@ -4,6 +4,22 @@ Status: implemented core; provider pricing convergence is in progress
 
 ## Product shape
 
+When the accepted snapshot includes inference ID mappings, model pricing begins with an exact
+**Inference model ID** selector. Its options contain only the raw IDs.
+When an ID has multiple commercial offers, a **Pricing plan** selector uses their
+existing names. Selecting an offer clears old condition inputs and limits the displayed conditions
+and rates to that offer; it does not select a protocol or provide account configuration. Publication runs the
+same `createInferencePriceLookup` used by external consumers and stores compact candidate references
+and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
+chunks remain the price source. Interactive conditions execute the same matching function as the
+public lookup, updating status, missing conditions and visible price rows together. Show every
+returned candidate, fixed ID conditions and compact mapping evidence without claiming a complete
+request quote. Unknown mappings preserve ordinary catalog prices with an explicit unverified-ID
+notice; known exclusions do not fall back to unfiltered rates. Snapshots without mappings retain the
+catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
+messages and rate annotations; namespace-qualified machine identifiers remain in structured data.
+See [Inference model ID pricing](inference-pricing.md) for producer limits.
+
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
 - One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The localized relative generation time shows its complete timestamp in the viewer's current time zone in a tooltip and links to the catalog-producing GitHub Actions run when recorded on the commit; otherwise it links to the catalog-producing commit.
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
@@ -18,8 +34,8 @@ Status: implemented core; provider pricing convergence is in progress
 
 ## Table and details
 
-- Give each inspector fact one home. The header owns provider, display name, and exact catalog
-  identity. Primary lifecycle/release status and catalog scope begin the content in one compact
+- Give each inspector fact one home. The header owns provider, display name, and the original catalog
+  identifier. Primary lifecycle/release status and catalog scope begin the content in one compact
   metadata line; Overview does not repeat those fields. Keep the exact model ID as a compact copy
   control even when it repeats the display name, and show a distinct version beside it without
   including that separate field in the copied ID.
@@ -32,15 +48,10 @@ Status: implemented core; provider pricing convergence is in progress
   counts. Inside, group the documented regions under a readable deployment-type
   label. Leave unlisted regions unknown rather than presenting the data as an
   exhaustive support matrix.
-- When deferred invocation data is available, the inspector adds explicit target/API and documented
-  case selection before Overview. `Catalog ID` and the selected API's `Request ID` have distinct copy
-  actions. Case-scoped support, geography, lifecycle, configuration, facts and evidence use the shared
-  [invocation contract](invocation-addressing.md#typed-invocation-contracts); catalog-level facts are
-  labeled as unscoped. Unknown scope never becomes a default region or an executable request template.
-  Target-bound prices remain hidden until selection. Fixed price conditions are read-only, while
-  context and observed response values require explicit input. Changing target, case or request inputs
-  clears the previous quote conditions and caller-resource confirmation. Legacy detail chunks without
-  invocation data retain the existing catalog/pricing view.
+- Pricing has no target/case inspector, request-template step or account-resource confirmation.
+  Protocol support and execution readiness do not gate published commercial rates. The independent
+  [inference ID lookup](inference-pricing.md) uses only explicit verified associations;
+  static aliases alone must not be presented as verified ID-to-price mappings.
 - Keep single-variant provider models as one ordinary row. When the filtered
   result contains multiple exact versions of one `(provider_id, model_id)`,
   show one collapsed parent row with the variant count. Its identity uses the
@@ -420,15 +431,16 @@ Status: implemented core; provider pricing convergence is in progress
   remain build concerns. Keep post-paint chunks out of the HTML module-preload
   graph. Mount the inspector into a second Vapor root and share only the small
   reactive detail state.
-- Commercial UI projections exclude source records, observations, locators, undigested
+- All UI projections exclude source records, observations, locators, undigested
   source fragments, derivations, evidence arrays, and canonical audit-envelope
   metadata. Raw commercial facts may retain only display-safe structured
   parameters such as amount, denomination, unit, meter, validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal
   definitions, aggregation boundaries, resolution phases, and provider-snapshot freshness copy.
-  Deferred invocation details retain their bounded public evidence records and minimal source
-  ownership so the inspector can explain exact scope and the loader can validate reference closure.
-  They contain no source document bodies or account observations.
+  Compact official source links, verification status and explanatory copy are permitted for
+  both ID associations and ordinary prices. Full audit data remains in the machine-readable
+  audit resources. Unknown associations and known conditions with no applicable published price
+  use different labels and explanations; an empty candidate set is not proof of provider non-support.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
   books once. Each model reuses one pricing view for its summary and detail.
   Equal display-ready offers are stored once per provider and referenced by

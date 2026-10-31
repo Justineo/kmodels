@@ -127,6 +127,55 @@ async function render(offers: WebsitePricingOffer[]): Promise<string> {
 }
 
 describe("model pricing details", () => {
+  it("does not fall back to unfiltered catalog prices for known price exclusions", async () => {
+    const html = await renderComponent(PricingDetails, {
+      model,
+      detail: { offers: [offer([{ amount: "$2", scope: region("us", "eu") }])] },
+      loading: false,
+      error: undefined,
+      inferencePrices: [
+        {
+          model_id: "model",
+          status: "unknown",
+          reason: "no_applicable_price",
+          explanation: "No published price applies to these conditions at the evaluated time.",
+          missing_conditions: [],
+          evidence_urls: [],
+          candidates: [],
+        },
+      ],
+    });
+    expect(html).toContain("No applicable prices");
+    expect(html).not.toContain("$2");
+    expect(html).not.toContain("The catalog prices below");
+  });
+
+  it("preserves catalog prices when inference ID associations are unknown", async () => {
+    const html = await renderComponent(PricingDetails, {
+      model,
+      detail: { offers: [offer([{ amount: "$2", scope: region("us", "eu") }])] },
+      loading: false,
+      error: undefined,
+      inferencePrices: [
+        {
+          model_id: "model",
+          status: "unknown",
+          reason: "unreviewed_id",
+          explanation: "No verified price mapping is available for this inference model ID.",
+          missing_conditions: [],
+          evidence_urls: [],
+          candidates: [],
+        },
+      ],
+    });
+    expect(html).toContain("Price mapping unknown");
+    expect(html).toContain(
+      "The catalog prices below are not verified for this inference model ID.",
+    );
+    expect(html).toContain("$2");
+    expect(html).not.toContain("Applicable prices");
+  });
+
   it("shows invariant regional rates without making the user choose a region", async () => {
     const html = await render([offer([{ amount: "$2", scope: region("us", "eu") }])]);
 

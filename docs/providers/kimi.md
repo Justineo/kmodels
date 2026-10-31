@@ -61,7 +61,7 @@ suffix on a price cell supplies the reviewed `1M tokens` unit. Tables that still
 and `上下文窗口` keep their explicit unit and context validation. Current K3, K2.7 and K2.6 price URLs resolve to the same
 combined overview: extraction deduplicates identical documents and reads each labeled table
 independently. Retired K2.5 and Moonshot V1 redirects to the model catalog are rejected as pricing
-claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
+claims. The Batch page publishes K3.1 Pro, K3, K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
 boundary. Account balances, quotas, budgets, invoices, consumer subscriptions, and organization
 controls are intentionally not collected as model-pricing reconciliation facts.
 
@@ -81,24 +81,50 @@ and the semantic labels remain validated.
 
 ## Current public price book
 
+### Inference model ID pricing
+
+Each labeled model row on an official regional price page establishes the exact request ID and
+its existing synchronous or Batch offer. Direct associations reference those canonical offers;
+they do not depend on OpenAPI, protocol capabilities, account inventories or usage-field contracts.
+Fresh pricing sources replace their own associations. Removed regional prices cannot be restored
+by the same ID remaining in the other region, and removal from both sources withdraws the mapping.
+
+The ID fixes no region or cache TTL. Callers select China or International according to the actual
+API origin, then a synchronous or Batch offer where both are published. Cache-write tariffs retain
+their TTL condition. Missing values return candidates; a known region with no surviving tariff returns
+no applicable price. Unregistered selector values fail input validation. Highspeed IDs remain independent exact identifiers, without inferred suffix aliases or
+discounts. Private deployment names, guessed regional prefixes and display names remain unknown.
+
+The reviewed native HTML price tables are captured as fixtures, including their owned rendered
+component payloads. Current Batch rows use bare IDs; earlier tables explicitly suffixed IDs with
+`(Batch)`. The exact Batch price-page path establishes the mechanism in either layout. A Batch
+suffix on a synchronous page is rejected. A dash in a cache-write column means there is no quoted
+write rate for that row; it is never converted to zero. Other malformed amounts still reject the
+affected row. Numeric prices and ID associations remain independent of missing accounting fields.
+
 Standard rates per one million tokens are:
 
 | Model                      | China cache / input / output | International cache / input / output |
 | -------------------------- | ---------------------------- | ------------------------------------ |
-| `kimi-k3.1-pro`            | CNY 1.30 / 13 / 68           | not reviewed in this change          |
-| `kimi-k3.1-pro-highspeed`  | CNY 1.30 / 26 / 136          | not reviewed in this change          |
+| `kimi-k3.1-pro`            | CNY 1.30 / 13 / 68           | USD 0.20 / 2 / 10                    |
+| `kimi-k3.1-pro-highspeed`  | CNY 1.30 / 26 / 136          | USD 0.20 / 4 / 20                    |
 | `kimi-k3`                  | CNY 2 / 20 / 100             | USD 0.30 / 3 / 15                    |
 | `kimi-k2.7-code`           | CNY 1.30 / 6.50 / 27         | USD 0.19 / 0.95 / 4                  |
 | `kimi-k2.7-code-highspeed` | CNY 2.60 / 13 / 54           | USD 0.38 / 1.90 / 8                  |
 | `kimi-k2.6`                | CNY 1.10 / 6.50 / 27         | USD 0.16 / 0.95 / 4                  |
 
-K3.1 Pro additionally charges CNY 13 for a 300-second write TTL and CNY 26 for a 3,600-second TTL;
-K3.1 Pro Highspeed charges CNY 26 and CNY 52. K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
+K3.1 Pro additionally charges CNY 13 / USD 2 for a 300-second write TTL and CNY 26 / USD 4 for a 3,600-second TTL;
+K3.1 Pro Highspeed charges CNY 26 / USD 4 and CNY 52 / USD 8. K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
 CNY 40 / USD 6 for a 3,600-second TTL. Cache hits do not incur another write charge. These are
 separate `cache_write_text` rates with `cache_ttl_seconds` applicability; callers supply the write
 quantity through the documented protocol counters below. The applicable TTL remains caller-owned:
 native requests use `5m` / `1h` strings and defaults, while the catalog selector uses seconds. No
 numeric JSON pointer is invented for that conversion.
+
+Current Batch tables publish K3.1 Pro, K3, K2.7 Code and K2.6 rates. K3.1 Pro and K3 also have
+TTL-specific Batch cache-write prices; K2 rows explicitly leave those columns unquoted. Extract
+the published amounts rather than calculating the advertised 60% ratio: individual rounded rates,
+such as international K2.6 cache reads, remain authoritative.
 
 Account balances, credits, payment methods and invoice eligibility are not established by these
 public rate pages. Offers therefore carry no inferred account-settlement declarations.

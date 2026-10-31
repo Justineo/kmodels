@@ -66,6 +66,45 @@ valid model.
 
 ## Canonical pricing
 
+### Inference model ID lookup
+
+The pricing parser emits direct associations for literal IDs in the owned price-table headings,
+including a uniquely documented alias when that exact alias is priced. It does not spread a
+tariff to every catalog alias, historical version, `latest` name, agent or similar model name.
+Gemma 4's explicit family-wide free-tier declaration applies to the exact hosted IDs established
+by the Gemma API catalog. The pricing overlay carries their observed modalities so free input and
+cache meters survive alongside output; missing modality evidence cannot manufacture those meters.
+
+The optional Discovery document's `Model.name` definition establishes the resource-name form
+`models/{model}`. When that consumed definition is present and agrees, lookup also preserves each
+corresponding literal `models/...` value. Its absence or drift removes only those resource-name
+associations. Plain price-table IDs remain independent of Discovery, protocol references and
+response-field mappings. No Vertex publisher prefix, regional prefix, tuned-model name or private
+deployment name is inferred from this rule.
+
+Associations reference the existing `sync` and `batch` offers; they create no second price book.
+Account eligibility, response-reported served tier, context bands and media conditions remain on
+the existing rates. Missing conditions return candidates, and an explicit incompatible account
+condition returns no applicable price. Selecting a requested tier is not evidence of a served tier.
+Contributor is a separate account pricing program: the owned table states invite-only access and
+content use to improve Google's products. It is represented by the effective account conditions
+`paid_tier_contributor` and `free_tier_contributor`, preserving each published column separately,
+not an invented `UsageMetadata.serviceTier` value or an inference that equal performance means
+an observed Standard tier. The website labels this condition as data sharing. Missing or changed
+eligibility/data-use evidence leaves the Contributor table raw while other tariff tables survive.
+Fresh removal of an ID from the price declaration withdraws its association even if an older
+ordinary catalog price is retained. Independent grounding books remain separately scoped services.
+
+The website and public lookup use the same matcher. Price schedules stated only as calendar dates
+retain that precision: the existing exact-time contract reports `unresolved_validity` rather than
+inventing a timezone or midnight cutoff. This is known price evidence with unresolved applicability,
+not an unknown ID or a zero price. The numeric schedules remain in the canonical price book.
+Native public fixtures verify collection, publication, lookup and UI projection, including resource
+name withdrawal, observed tier/context choices and Gemma's paid-tier exclusion. Stored-data adoption
+is separate from this producer integration.
+
+### Offers and conditions
+
 Each model book has up to two offers:
 
 - `sync` — online inference. Standard, Flex, and Priority are realized service-tier variants because

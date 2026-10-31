@@ -12,7 +12,6 @@ import {
 } from "./anthropic-accounting.ts";
 import { anthropicPriceKind, anthropicPriceRow } from "./anthropic-price-row.ts";
 import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
-import { anthropicInvocation } from "./anthropic-invocation.ts";
 import {
   anthropicAtLeastGeneration as atLeastGeneration,
   anthropicModelGeneration as modelGeneration,
@@ -1853,6 +1852,102 @@ function commercialPricing(
   return { commercial_facts: facts, pricing_inputs: pricingInputs, vocabulary };
 }
 
+function inferencePrices(
+  input: Input,
+  bundle: z.infer<typeof linkedBundleSchema>,
+  models: readonly ProviderModel[],
+): NonNullable<SourcePricingFacts["inference_prices"]> {
+  const owned = (body: string) =>
+    markdownProse(body)
+      .split(/\r?\n/)
+      .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
+      .join("\n");
+  const identity = bundle.documents.find(({ url }) =>
+    url.endsWith("/about-claude/models/model-ids-and-versions.md"),
+  );
+  const meaning = owned(identity?.body ?? "");
+  if (
+    !meaning.includes("Each Claude model ID identifies a pinned version of the model.") ||
+    !meaning.includes(
+      "When you use a model ID in an API request, the underlying model remains constant for the lifetime of that ID.",
+    )
+  ) {
+    contractFinding(input, "inference_id_meaning_drift", "model IDs and versioning");
+    return [];
+  }
+  const guide = bundle.documents.find(({ url }) =>
+    url.endsWith("/build-with-claude/batch-processing.md"),
+  );
+  const batch = text(owned(guide?.body ?? ""));
+  const batchIds =
+    batch.includes("All active models support the Message Batches API.") &&
+    batch.includes("A params object with the standard Messages API parameters");
+  if (!batchIds)
+    contractFinding(input, "inference_batch_id_meaning_drift", "Message Batches parameters");
+  const identityDocuments = [
+    bundle.index,
+    ...bundle.documents.filter(
+      ({ url }) =>
+        url.endsWith("/about-claude/model-deprecations.md") ||
+        url.endsWith("/release-notes/overview.md"),
+    ),
+  ].map((document) => ({ document, ids: new Set(owned(document.body).split(/[^a-z0-9._:/-]+/i)) }));
+  // Read fresh labeled alias pairs; retained display aliases cannot revive a withdrawn price join.
+  const aliases = new Map<string, Set<string>>();
+  for (const table of tables(owned(bundle.index.body)).filter(
+    ({ headers }) => headers[0] === "Feature",
+  )) {
+    const idRows = table.rows.filter((values) => values[0] === "Claude API ID");
+    const aliasRows = table.rows.filter((values) => values[0] === "Claude API alias");
+    if (idRows.length !== 1 || aliasRows.length > 1) {
+      contractFinding(input, "inference_alias_table_ambiguous", `line ${table.line}`);
+      continue;
+    }
+    for (let column = 1; column < table.headers.length; column += 1) {
+      const id = idRows[0]?.[column];
+      const alias = aliasRows[0]?.[column];
+      if (
+        !id ||
+        !alias ||
+        id === alias ||
+        alias === "N/A" ||
+        !modelIdSchema.safeParse(alias).success
+      )
+        continue;
+      const values = aliases.get(id) ?? new Set<string>();
+      values.add(alias);
+      aliases.set(id, values);
+    }
+  }
+  return models.flatMap((model) => {
+    const owners = identityDocuments
+      .filter(({ ids }) => ids.has(model.model_id))
+      .map(({ document }) => document);
+    if (owners.length === 0) return [];
+    const ids = [model.model_id, ...(aliases.get(model.model_id) ?? [])];
+    const offers = ["sync", ...(batchIds && model.status === "active" ? ["batch"] : [])];
+    return ids.flatMap((model_id) =>
+      offers.map((offer_key) => ({
+        model_id,
+        model_ref: model.uid,
+        source_ref: input.source.id,
+        offer_key,
+        fixed_selectors: [],
+        evidence: [
+          ...(model_id === model.model_id ? owners : [bundle.index]),
+          identity,
+          ...(offer_key === "batch" ? [guide] : []),
+        ]
+          .filter((doc) => doc !== undefined)
+          .map(({ url }) => ({
+            source_ref: input.source.id,
+            locator: { kind: "fragment" as const, value: `${url}#model-id: ${model_id}` },
+          })),
+      })),
+    );
+  });
+}
+
 export function parseAnthropicCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(json(input.body));
   const documents = new Map<string, string>();
@@ -1933,13 +2028,7 @@ export function parseAnthropicCatalog(input: Input): SourceParseResult {
   return {
     models: [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid)),
     ...commercial,
-    ...anthropicInvocation({
-      models: [...models.values()],
-      index: bundle.index,
-      documents: bundle.documents,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    }),
+    inference_prices: inferencePrices(input, bundle, [...models.values()]),
   };
 }
 

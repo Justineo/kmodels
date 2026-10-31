@@ -5,7 +5,7 @@ import {
   unconditionalApplicability,
 } from "../catalog/pricing-canonical.ts";
 import { pricingLimits } from "../catalog/pricing-constants.ts";
-import { evaluateApplicability } from "../catalog/pricing-applicability.ts";
+import { evaluateApplicability, type PricingSelection } from "../catalog/pricing-applicability.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import {
   addRationals,
@@ -65,7 +65,7 @@ interface VariantSelection<T> {
 }
 
 export function validateSelectors(
-  selectors: readonly Selector[],
+  selectors: readonly PricingSelection[],
   scopes: readonly PriceApplicability[],
 ): void {
   const suppliedDimensions = new Set<string>();
@@ -88,16 +88,20 @@ export function validateSelectors(
   }
 }
 
-function selectorMatchesConditionType(selector: Selector, condition: PriceCondition): boolean {
+function selectorMatchesConditionType(
+  selector: PricingSelection,
+  condition: PriceCondition,
+): boolean {
   if (condition.kind !== "decimal_range") return selector.kind === condition.kind;
   return (
-    selector.kind === "decimal" && canonicalJson(condition.unit) === canonicalJson(selector.unit)
+    (selector.kind === "decimal" || selector.kind === "decimal_range") &&
+    canonicalJson(condition.unit) === canonicalJson(selector.unit)
   );
 }
 
 export function selectVariants<T extends Qualified>(
   variants: readonly T[],
-  selectors: readonly Selector[],
+  selectors: readonly PricingSelection[],
   semantics: (variant: T) => unknown,
   offerScope: PriceApplicability = unconditionalApplicability,
 ): VariantSelection<T> {
@@ -158,7 +162,7 @@ function boundedUnion(scopes: readonly PriceApplicability[]): PriceApplicability
 
 function remainingScope(
   scope: PriceApplicability,
-  selectors: readonly Selector[],
+  selectors: readonly PricingSelection[],
 ): PriceApplicability | undefined {
   const remainingClauses: PriceApplicability["any_of"] = [];
   for (const clause of scope.any_of) {

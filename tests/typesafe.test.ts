@@ -2,8 +2,6 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
-import { sha256 } from "../src/catalog/io.ts";
-import { validateInvocationCatalog } from "../src/catalog/invocation-validation.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
@@ -51,56 +49,58 @@ async function parse(
 }
 
 describe("TypeSafe AI", () => {
-  it("emits separate literal and rolling-alias targets from the owned API contract", async () => {
-    const api = await fixture("system-one.md");
-    const result = await parse({ api, apiUrl: "https://docs.typesafe.ai/api/system-one.md" });
-    const invocation = result.invocation;
-    if (invocation === undefined) throw new Error("Missing TypeSafe invocation facts");
-    expect(invocation.surfaces).toMatchObject([
+  it("follows the current alias destination without creating a long-context price tier", async () => {
+    const result = await parse({ models: await fixture("models-id-pricing.md") });
+    expect(
+      result.inference_prices
+        ?.toSorted((left, right) => left.model_id.localeCompare(right.model_id))
+        .map(({ model_id, model_ref }) => [model_id, model_ref]),
+    ).toEqual([
+      ["jev-1.13.0", "typesafe/jev-1.13.0"],
+      ["jev-1.14.0", "typesafe/jev-1.14.0"],
+      ["jev-latest", "typesafe/jev-1.14.0"],
+      ["jev-preview", "typesafe/jev-1.14.0"],
+    ]);
+    expect(
+      result.inference_prices?.every(({ fixed_selectors }) => fixed_selectors.length === 0),
+    ).toBe(true);
+    expect(result.models.every(({ price_facts }) => price_facts.length === 2)).toBe(true);
+  });
+  it("maps documented request IDs and aliases directly to their model's commercial offer", async () => {
+    const result = await parse({ api: null });
+    expect(
+      result.inference_prices
+        ?.toSorted((left, right) => left.model_id.localeCompare(right.model_id))
+        .map(({ model_id, model_ref, offer_key, fixed_selectors }) => ({
+          model_id,
+          model_ref,
+          offer_key,
+          fixed_selectors,
+        })),
+    ).toEqual([
       {
-        provider_id: "typesafe",
-        origin_template: "https://api.typesafe.ai",
-        path_template: "/v1/systemone",
-        identifier_location: { kind: "body", pointer: "/model" },
+        model_id: "jev-1.13.0",
+        model_ref: "typesafe/jev-1.13.0",
+        offer_key: "systemone",
+        fixed_selectors: [],
+      },
+      {
+        model_id: "jev-latest",
+        model_ref: "typesafe/jev-1.13.0",
+        offer_key: "systemone",
+        fixed_selectors: [],
+      },
+      {
+        model_id: "jev-preview",
+        model_ref: "typesafe/jev-1.13.0",
+        offer_key: "systemone",
+        fixed_selectors: [],
       },
     ]);
-    expect(invocation.invocation_targets).toHaveLength(3);
-    expect(
-      invocation.invocation_targets.map(({ address, resolution }) => ({ address, resolution })),
-    ).toEqual([
-      { address: { kind: "literal", value: "jev-1.13.0" }, resolution: "unknown" },
-      { address: { kind: "literal", value: "jev-latest" }, resolution: "rolling" },
-      { address: { kind: "literal", value: "jev-preview" }, resolution: "rolling" },
-    ]);
-    expect(
-      invocation.invocation_targets.every(
-        ({ cases }) =>
-          cases.length === 1 &&
-          cases[0]?.task === "classification" &&
-          cases[0].inference_geo.kind === "unknown",
-      ),
-    ).toBe(true);
-    expect(invocation.scoped_facts.map(({ field, value }) => ({ field, value }))).toEqual([
-      { field: "capabilities.structured_output", value: true },
-      { field: "limits.context_tokens", value: 64_000 },
-    ]);
-    expect(
-      invocation.invocation_evidence.find(({ basis }) => basis === "official_api_contract"),
-    ).toMatchObject({
-      content_hash: sha256(api),
-      document_url: "https://docs.typesafe.ai/api/system-one.md",
-      observed_at: observedAt,
-    });
-    expect(() =>
-      validateInvocationCatalog(invocation, {
-        providers: [provider],
-        models: result.models,
-        sources: [{ id: source.id, provider_id: provider.id, scope: "global" }],
-      }),
-    ).not.toThrow();
+    expect(result).not.toHaveProperty("invocation");
   });
 
-  it("keeps identities and prices when invocation evidence is missing or changes", async () => {
+  it("keeps price associations independent of API origin, authentication and wire configuration", async () => {
     const api = await fixture("system-one.md");
     const original = await parse({ api });
     for (const body of [
@@ -115,8 +115,7 @@ describe("TypeSafe AI", () => {
       ),
     ]) {
       const result = await parse({ api: body });
-      expect(result.invocation?.invocation_targets).toEqual([]);
-      expect(result.invocation?.target_coverage).toMatchObject([{ state: "not_collected" }]);
+      expect(result.inference_prices).toEqual(original.inference_prices);
       expect(
         result.models.map(({ model_id, aliases, price_facts }) => ({
           model_id,
@@ -133,26 +132,42 @@ describe("TypeSafe AI", () => {
     }
   });
 
-  it("keeps target identity stable when unrelated documentation text changes", async () => {
+  it("does not use release-stage or unrelated API text as price mapping conditions", async () => {
     const api = await fixture("system-one.md");
     const original = await parse({ api });
     const changed = await parse({ api: `${api}\nAdditional documentation text.\n` });
-    expect(changed.invocation?.invocation_targets.map(({ id }) => id)).toEqual(
-      original.invocation?.invocation_targets.map(({ id }) => id),
-    );
-    expect(changed.invocation?.invocation_evidence).not.toEqual(
-      original.invocation?.invocation_evidence,
-    );
+    expect(changed.inference_prices).toEqual(original.inference_prices);
     const models = (await fixture("models.md")).replace(
       "The most recent stable, official release.",
       "An official release.",
     );
     const unclearAlias = await parse({ api, models });
-    expect(
-      unclearAlias.invocation?.invocation_targets.find(
-        ({ address }) => address.kind === "literal" && address.value === "jev-latest",
-      )?.resolution,
-    ).toBe("unknown");
+    expect(unclearAlias.inference_prices).toEqual(original.inference_prices);
+  });
+
+  it("withdraws only associations whose request-ID meaning is no longer established", async () => {
+    const models = await fixture("models.md");
+    const withoutAliases = await parse({
+      models: models.replace(
+        "Send it in the `model` field like any other name.",
+        "This is a display label.",
+      ),
+    });
+    expect(withoutAliases.inference_prices?.map(({ model_id }) => model_id)).toEqual([
+      "jev-1.13.0",
+    ]);
+    expect(withoutAliases.findings.length).toBeGreaterThan(0);
+    const withoutIds = await parse({
+      models: models.replace(
+        "The request's `model` field selects which one handles the call.",
+        "Names are display labels.",
+      ),
+    });
+    expect(withoutIds.inference_prices?.map(({ model_id }) => model_id)).toEqual([
+      "jev-latest",
+      "jev-preview",
+    ]);
+    expect(withoutIds.models[0]?.price_facts).toEqual(withoutAliases.models[0]?.price_facts);
   });
 
   it("follows the indexed System One OpenAPI operation for typed questions and usage", async () => {
@@ -214,21 +229,11 @@ describe("TypeSafe AI", () => {
   });
   it("accepts compact and aligned Markdown delimiters but rejects missing hyphens", async () => {
     const models = await fixture("models.md");
-    const { invocation: expectedInvocation, ...expected } = await parse({ models });
-    expect(expectedInvocation).toBeDefined();
+    const expected = await parse({ models });
     for (const delimiter of ["-", "--", ":-", "-:", ":-:"]) {
       const body = models.replace(/:?-{3,}:?/g, delimiter);
-      const { invocation, ...actual } = await parse({ models: body });
+      const actual = await parse({ models: body });
       expect(actual, delimiter).toEqual(expected);
-      expect(invocation?.invocation_evidence.map(({ content_hash }) => content_hash)).toEqual([
-        sha256(body),
-        sha256(body),
-      ]);
-      expect(
-        invocation?.identifier_relations.map(({ evidence_refs: _refs, ...edge }) => edge),
-      ).toEqual(
-        expectedInvocation?.identifier_relations.map(({ evidence_refs: _refs, ...edge }) => edge),
-      );
     }
     await expect(parse({ models: models.replace(/:?-{3,}:?/g, ":") })).rejects.toThrow(
       "table header",

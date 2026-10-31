@@ -210,13 +210,29 @@ Pricing references: [SageMaker AI pricing](https://aws.amazon.com/sagemaker/ai/p
 [Marketplace ML pricing](https://docs.aws.amazon.com/marketplace/latest/userguide/machine-learning-pricing.html),
 [Serverless limitations](https://docs.aws.amazon.com/sagemaker/latest/dg/serverless-endpoints.html).
 
-## Invocation and publication
+## Inference model ID pricing
 
-Runtime calls use SigV4 and an account-created endpoint name. The serving container owns the
-request/response schema. `InvokeEndpointWithResponseStream` is not evidence that every listed
-model supports streaming. A JumpStart ID does not identify an invocable endpoint;
-runtime configuration still needs an endpoint name, Region and any routing selectors.
-See [InvokeEndpoint](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_runtime_InvokeEndpoint.html).
+Public JumpStart IDs identify deployable catalog products, not actual request destinations.
+[InvokeEndpoint](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_runtime_InvokeEndpoint.html)
+uses the account-created `EndpointName`. For a multi-model endpoint, `TargetModel` is the
+[relative path of the deployed model artifact](https://docs.aws.amazon.com/sagemaker/latest/dg/invoke-multi-model-endpoint.html),
+not a public JumpStart ID. Inference component names and production variants also belong to the
+deployment. The serving container owns the request body's model semantics.
+
+The public sources establish no endpoint/target-to-tariff association. The pricing source therefore
+emits an explicit empty inference-ID association set. Lookup returns `unknown / unreviewed_id`
+for private endpoint names, target paths, catalog IDs, Marketplace listing IDs and regional-looking
+strings, even when a catalog product has a numeric or zero software rate. A supplied Region or
+instance type cannot establish the missing identity relation. This is an evidence limit, not a
+claim that the provider lacks inference or prices.
+
+Ordinary catalog prices remain visible with the shared unverified-ID explanation. Infrastructure,
+Marketplace software and capacity remain separate existing books; none becomes a guessed token
+tariff or complete endpoint bill. No account discovery, deployment configurator or protocol graph
+is introduced. Public source refresh continues to update those commercial records without inventing
+private runtime mappings. A future mapping requires independently reviewed identity evidence.
+
+## Publication
 
 Registration, fixture validation and read-only live probes do not refresh the accepted `data/`
 snapshot. The normal authorized collection publishes the provider and its static projections

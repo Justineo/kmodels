@@ -43,8 +43,6 @@ import type {
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
 import type { RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
-import type { InvocationPricingBinding } from "./invocation-pricing-schema.ts";
-import { websiteInvocationDetail } from "./website-invocation.ts";
 import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websiteCatalogIndexSchema,
@@ -65,6 +63,7 @@ import {
   type WebsitePricingSummary,
   type WebsitePricingSummaries,
   type WebsiteStoredModelDetail,
+  type WebsiteInferencePrice,
 } from "./website-schema.ts";
 
 export { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "./website-schema.ts";
@@ -94,7 +93,7 @@ export function websitePublication(
   catalog: Catalog,
   pricing: PricingCatalog,
   dataVersion: string,
-  invocationBindings: readonly InvocationPricingBinding[] = [],
+  inferencePrices?: ReadonlyMap<string, WebsiteInferencePrice[]>,
 ): WebsitePublication {
   const index = pricingViewIndex(pricing);
   const labels = categoricalMetadataIndex(pricing);
@@ -115,7 +114,7 @@ export function websitePublication(
     view,
     labels,
     atoms,
-    invocationBindings,
+    inferencePrices,
   );
   const providerPricingChunks = new Map<string, number>();
   for (const { provider_id } of deferred.providerPricing)
@@ -268,7 +267,7 @@ function websiteDeferredAssets(
   view: (model: ProviderModel) => ModelPricingView,
   labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
-  invocationBindings: readonly InvocationPricingBinding[],
+  inferencePrices?: ReadonlyMap<string, WebsiteInferencePrice[]>,
 ): Pick<WebsitePublication, "details" | "offers" | "providerPricing"> {
   const details: WebsiteDetailChunk[] = [];
   const offers: WebsiteOfferChunk[] = [];
@@ -296,9 +295,13 @@ function websiteDeferredAssets(
           labels,
           atoms,
         );
-        const invocation = websiteInvocationDetail(catalog, model, invocationBindings);
         return {
-          detail: { ...detail, ...(invocation === undefined ? {} : { invocation }) },
+          detail: {
+            ...detail,
+            ...(inferencePrices?.get(model.uid) === undefined
+              ? {}
+              : { inference_prices: inferencePrices.get(model.uid) }),
+          },
           ...(pricing === undefined
             ? {}
             : {
@@ -356,7 +359,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: catalog.invocation === undefined ? 6 : 7,
+            schema_version: 6,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -1040,6 +1043,16 @@ function pricingSelectors(
   return selectors;
 }
 
+export function inferencePricingOptions(
+  conditions: Iterable<PriceCondition>,
+  pricing: PricingCatalog,
+): WebsitePricingSelector[] {
+  const labels = categoricalMetadataIndex(pricing);
+  return [...conditionsByDimension(conditions)]
+    .map(([key, values]) => pricingSelector(key, values, labels))
+    .sort((left, right) => compareUtf8(left.label, right.label));
+}
+
 function conditionsByDimension(
   conditions: Iterable<PriceCondition>,
 ): Map<string, PriceCondition[]> {
@@ -1063,7 +1076,7 @@ function pricingSelector(
   if (first === undefined) throw new Error(`Pricing selector ${key} has no conditions`);
   const base = {
     key,
-    label: dimensionLabel(first.dimension),
+    label: formatDimension(first.dimension),
     dimension: first.dimension,
   };
   if (first.kind === "categorical") {
@@ -1287,7 +1300,7 @@ export function applicabilityLabel(
 }
 
 function conditionLabel(condition: PriceCondition, labels: CategoricalMetadataIndex): string {
-  const label = dimensionLabel(condition.dimension);
+  const label = formatDimension(condition.dimension);
   if (condition.kind === "categorical")
     return `${label}: ${condition.values
       .map((value) => categoricalLabel(labels, condition.dimension, value))
@@ -1310,7 +1323,7 @@ function dimensionConditionSummary(
 ): string {
   const first = conditions[0];
   if (first === undefined) throw new Error("Cannot summarize an empty pricing dimension");
-  const label = dimensionLabel(first.dimension);
+  const label = formatDimension(first.dimension);
   if (conditions.every((condition) => condition.kind === "categorical")) {
     const values = [
       ...new Map(
@@ -1330,12 +1343,6 @@ function dimensionConditionSummary(
   if (conditions.every((condition) => condition.kind === "boolean")) return `${label}: yes or no`;
   const variants = new Set(conditions.map(canonicalJsonKey)).size;
   return `${label}: ${variants} ${conditions.every((condition) => condition.kind === "decimal_range") ? "ranges" : "conditions"}`;
-}
-
-function dimensionLabel(dimension: PriceDimension): string {
-  return dimension.namespace === "kmodels"
-    ? formatDimension(dimension)
-    : formatSentenceCase(dimension.value);
 }
 
 function categoricalLabelIdentity(

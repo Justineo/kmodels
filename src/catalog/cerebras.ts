@@ -200,6 +200,28 @@ function architectureInputs(value: string): Modality[] {
   return parsed.flatMap((result) => (result.success ? [result.data] : []));
 }
 
+function inferencePrices(
+  input: Input,
+  models: readonly ProviderModel[],
+): NonNullable<SourceParseResult["inference_prices"]> {
+  return models.map((model) => ({
+    model_id: model.model_id,
+    model_ref: model.uid,
+    source_ref: input.source.id,
+    offer_key: "payg",
+    fixed_selectors: [],
+    evidence: [
+      {
+        source_ref: input.source.id,
+        locator: {
+          kind: "fragment" as const,
+          value: `${input.source.url}#model-id: ${model.model_id}`,
+        },
+      },
+    ],
+  }));
+}
+
 export function parseCerebrasPublic(input: Input): SourceParseResult {
   const value: unknown = JSON.parse(input.body);
   const bundle = publicBundleSchema.parse(
@@ -220,7 +242,7 @@ export function parseCerebrasPublic(input: Input): SourceParseResult {
     items.map((item) => publicModel(input, item)),
   );
   reconcileRates(input, result);
-  return { models: result };
+  return { models: result, inference_prices: inferencePrices(input, result) };
 }
 
 type PublicItem = z.infer<typeof publicItemSchema>;
@@ -777,6 +799,7 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
   reconcileRates(input, result);
   return {
     models: result,
+    inference_prices: inferencePrices(input, result),
     ...(pricingInputs.length === 0 ? {} : { pricing_inputs: pricingInputs }),
   };
 }

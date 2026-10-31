@@ -1,5 +1,4 @@
 import type { SourceManifest } from "./manifests.ts";
-import type { InvocationCatalog } from "./invocation-schema.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePricingFacts } from "./pricing-source.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { Provider } from "./schema.ts";
@@ -7,9 +6,6 @@ import type { SourceContractEvidence } from "./source-contract.ts";
 
 export interface SourceParseResult extends SourcePricingFacts {
   models: ProviderModel[];
-  invocation?: InvocationCatalog;
-  /** Current documents that must not contradict a retained invocation's older evidence. */
-  invocationRetentionDocuments?: Array<{ document_url: string; content_hash: string }>;
 }
 
 export interface SourceParseInput {
@@ -33,7 +29,7 @@ export interface SourceParseInput {
     | "uid"
     | "version"
   > &
-    Partial<Pick<ProviderModel, "price_facts" | "pricing_state">>)[];
+    Partial<Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities">>)[];
   onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
   // A mixed source may retain valid catalog facts while its commercial partition must fail.

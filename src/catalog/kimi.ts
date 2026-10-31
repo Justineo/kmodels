@@ -983,7 +983,7 @@ function pricingModel(
   if (unitColumn !== -1 && row[unitColumn] !== "1M tokens")
     throw new Error("Kimi pricing row omitted its model or unit");
   const suffix = rawId.match(/\s*[（(]Batch[）)]$/)?.[0];
-  if (batch !== (suffix !== undefined)) throw new Error("Kimi Batch label disagrees with its page");
+  if (!batch && suffix !== undefined) throw new Error("Kimi Batch label disagrees with its page");
   const id = modelIdSchema.parse(suffix === undefined ? rawId : rawId.slice(0, -suffix.length));
   if (row.length !== columns.length)
     throw new Error(`Kimi pricing columns disagree with the row for ${id}`);
@@ -1007,7 +1007,9 @@ function pricingModel(
             : column === "write5m" || column === "write1h"
               ? "cache_write_text"
               : undefined;
-    return meter === undefined
+    // A dash in a cache-write column is an unavailable tariff, not a zero price.
+    return meter === undefined ||
+      ((column === "write5m" || column === "write1h") && row[index] === "—")
       ? []
       : [
           priceRate(
@@ -1600,6 +1602,7 @@ export function parseKimiPricing(input: Input): SourceParseResult {
       : { onReconciliation: input.onPricingReconciliation }),
   });
   const models = new Map<string, ProviderModel>();
+  const inferencePrices: NonNullable<SourceParseResult["inference_prices"]> = [];
   const rowReconciliation: PricingReconciliationItem[] = [];
   const seenDocuments = new Set<string>();
   const modelPricingPaths = new Set([
@@ -1651,6 +1654,22 @@ export function parseKimiPricing(input: Input): SourceParseResult {
               incoming.model_id,
               current === undefined ? incoming : mergePricing(current, incoming),
             );
+            inferencePrices.push({
+              model_id: incoming.model_id,
+              model_ref: incoming.uid,
+              source_ref: input.source.id,
+              offer_key: batch ? "batch" : "sync",
+              fixed_selectors: [],
+              evidence: [
+                {
+                  source_ref: input.source.id,
+                  locator: {
+                    kind: "fragment",
+                    value: `${document.url}#model: ${incoming.model_id}`,
+                  },
+                },
+              ],
+            });
           } catch (error) {
             rowReconciliation.push({
               disposition: "unsupported",
@@ -1734,6 +1753,7 @@ export function parseKimiPricing(input: Input): SourceParseResult {
     input.onPricingReconciliation?.(item);
   return {
     models: bounded(input, "kimi-pricing", result),
+    inference_prices: inferencePrices,
     commercial_facts: commercialFacts,
     pricing_inputs: pricingInputs,
   };

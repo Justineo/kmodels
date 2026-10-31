@@ -122,54 +122,45 @@ one malformed inventory item is skipped without rejecting recognized sibling row
   resolve without rearranging ID tokens or turning display names into invocation aliases.
   `To be announced` is an explicit unknown retirement date, not a malformed date.
 
-## Invocation targets and commercial joins
+## Inference model ID pricing
 
-The invocation graph covers direct first-party `POST /v1/messages` JSON requests. The
-[API overview](https://platform.claude.com/docs/en/api/overview), Messages reference and
-[version history](https://platform.claude.com/docs/en/api/versioning) independently establish the
-origin, authentication, model field and reviewed `anthropic-version: 2026-10-21` header. API keys,
-workspace selection required by some credential types, and task payloads remain caller-owned.
-These two additional companions are optional and claim-local; an unavailable contract does not
-invent a wire or block an otherwise independent canonical price refresh.
+The direct reader binds provider-published model IDs to existing model-token offers. The
+[ID/version guide](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions)
+establishes that an API request ID identifies a fixed model version. Dateless IDs from generation
+4.6 onward are canonical snapshots, not rolling aliases. The reader preserves the exact ID;
+it does not derive first-party request values from Bedrock or Google identifiers.
 
-The ID/version document establishes pinned canonical IDs, including dateless IDs. A labeled
-pre-4.6 alias of a dated snapshot has a rolling resolution to that separately retained model.
-Other aliases retain unknown resolution. First-party addresses never derive from Bedrock or Google
-IDs, and display labels are not request identifiers.
+Explicit `Claude API alias` cells bind to the `Claude API ID` in the same overview column.
+Only fresh labeled pairs establish alias associations. Catalog display aliases retained from an
+earlier observation cannot revive a withdrawn association. Conflicting alias owners remain
+ambiguous even when their token prices are equal.
 
-The [data residency contract](https://platform.claude.com/docs/en/manage-claude/data-residency)
-owns `inference_geo: "global" | "us"`, independently of the model ID and HTTP origin. An omitted
-parameter keeps inference geography unknown because workspace defaults may override global routing.
-Explicit geography variants for known pre-4.6 generations preserve the documented rejection.
-Unrecognized generations do not acquire a negative claim. Workspace storage/endpoint-processing
-geography does not become model inference geography. There is no request-region or deployment-name
-selector on this direct surface; account restrictions remain a separate eligibility requirement.
+Messages associates with the model's canonical `sync` offer. The
+[Batch guide](https://platform.claude.com/docs/en/build-with-claude/batch-processing)
+independently establishes active-model coverage and that each item's `params` uses standard Messages
+parameters. Those statements establish a separate `batch` association for active models.
+This prices the actual model ID in each batch item; it does not treat a batch ID as a model.
+When both offers apply, the lookup returns candidates and requires an explicit offer choice.
+The UI presents their existing names as a pricing option; it does not ask for an HTTP protocol.
 
-The [Fast guide](https://platform.claude.com/docs/en/build-with-claude/fast-mode) owns exact model
-membership, first-party availability, research-preview policy, beta headers and successful speed
-outcomes. Supported-model metadata and the Messages availability table must agree for known models.
-Its Opus 4.6 exception preserves `speed: "fast"` on the request but standard execution speed.
-Fast/geography combinations also require the explicit combined-modifier contract. Standard requests
-without a speed selector retain unknown speed; default billing comes from actual response usage.
-Model-level capability and limit unions are not promoted to every case. The direct streaming
-parameter establishes a scoped streaming fact; other scoped capabilities and limits remain unknown.
+ID matching has no dependency on authentication, API version headers, request templates,
+capability matrices or workspace configuration. Independent service books are not implicitly
+joined to the model ID. Managed Agents and private configuration IDs remain outside this mapping.
+The original catalog endpoint/capability metadata and accounting contracts retain their separate
+responsibilities.
 
-After canonical pricing assembly, supported targets bind only to one exact model's public `sync`
-offer. Independent service books and Batch offers are not inherited. Geo and speed require verified
-response selector contracts. Explicit routing and documented successful speed outcomes can fix their
-canonical commercial values; omitted values require observed `/usage/inference_geo` and
-`/usage/speed`. The shared calculator rejects contradictory fixed selectors and evaluates all other
-conditions. No new join is produced from retained prices, ambiguous offers or missing accounting
-evidence. A fresh compiler omission withdraws an older join.
+The ID does not fix speed, inference geography, context or cache TTL. Existing canonical price
+conditions determine which inputs are needed. Global routing cannot be assumed from an omitted
+request field because workspace defaults can differ. Fast request intent is not served speed;
+consumers use the actual commercial value, including the documented standard-speed outcome of
+an Opus 4.6 Fast request. Missing response-field acquisition evidence affects exact cost acquisition,
+not an independently published ID-to-tariff relation.
 
-Coverage remains partial. A Message Batch contains multiple independently addressed requests and
-is not represented as a single-model invocation. Managed Agents is a separate product, and the
-OpenAI SDK compatibility surface has not been migrated. Missing Fast/geography subsets are withheld
-while independent default targets survive. Whole-wire outages can retain previous targets only
-while current document hashes and literal identities agree; evidence keeps its original observation
-time. Changed identity, lifecycle, API, Fast or geographic evidence prevents stale positive retention.
-Implementation and fixture validation do not establish account access, live inference or adoption
-in the checked-in generated catalog.
+Changed ID semantics withdraw associations; changed Batch semantics withdraw only Batch associations.
+The shared compiler binds facts to exact accepted source revisions and existing offers, preserving
+canonical price records. Unreviewed IDs and known conditions with no applicable price remain distinct.
+Fixture collection, static output and UI verification do not establish account access or adopt new
+prices into the checked-in catalog.
 
 ## Model rates and dimensions
 
