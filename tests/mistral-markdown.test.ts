@@ -5,6 +5,7 @@ import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { parseMistralPricingPolicy } from "../src/catalog/mistral-pricing-policy.ts";
 import { extractMistralCommercialFacts } from "../src/catalog/mistral-commercial-source.ts";
+import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/mistral/${name}`, import.meta.url), "utf8");
@@ -91,6 +92,56 @@ it("migrates the official Markdown inventory without losing aliases, retired mod
       body: JSON.stringify(evidence),
     }),
   ).toThrow("disagree");
+});
+
+it("records a model card without a price as unknown instead of source-contract drift", async () => {
+  const evidence = await bundle();
+  const withoutPrice = (body: string) => body.replace(/^- Pricing: .*$\n?/mu, "");
+  const parse = (body: string) => {
+    const findings: unknown[] = [];
+    const items: PricingReconciliationItem[] = [];
+    const result = parseSource({
+      provider,
+      source: catalogSource,
+      observedAt: "2026-10-30T00:00:00Z",
+      body: JSON.stringify({
+        ...evidence,
+        documents: evidence.documents.map((document) =>
+          document.url.endsWith("mistral-medium-3-5-26-04.md") ? { ...document, body } : document,
+        ),
+      }),
+      onContractFinding: (finding) => findings.push(finding),
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    return { findings, items, result };
+  };
+  const absent = parse(withoutPrice(await fixture("mistral-medium-3-5-26-04.md")));
+  expect(
+    absent.result.models.find(({ model_id }) => model_id === "mistral-medium-3-5"),
+  ).toMatchObject({ pricing_state: "unknown", price_facts: [] });
+  expect(absent.items).toContainEqual({
+    disposition: "excluded",
+    reason_code: "repository_price_not_published",
+    sample: "mistral-medium-3-5-26-04",
+  });
+  expect(absent.findings).toEqual([]);
+  const unreadable = parse(
+    (await fixture("mistral-medium-3-5-26-04.md")).replace(
+      "- Pricing: Input $1.5 /M Tokens; Output $7.5 /M Tokens",
+      "- Pricing: Input one point five /M Tokens; Output seven /M Tokens",
+    ),
+  );
+  expect(unreadable.items).toContainEqual({
+    disposition: "unsupported",
+    reason_code: "repository_price_shape_unsupported",
+    sample: "mistral-medium-3-5-26-04",
+  });
+  expect(unreadable.items).not.toContainEqual(
+    expect.objectContaining({ reason_code: "repository_price_not_published" }),
+  );
+  expect(
+    unreadable.result.models.find(({ model_id }) => model_id === "mistral-medium-3-5"),
+  ).toMatchObject({ pricing_state: "unknown", price_facts: [] });
 });
 
 it("does not replace an inventory identity with a different model card", async () => {

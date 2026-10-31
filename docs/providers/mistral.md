@@ -113,6 +113,13 @@ sibling rates survive. An unreadable published rate is `unknown`, not a claim th
 published. A valid empty price definition also remains unknown; an explicit `free` declaration can
 establish free usage independently. An empty array cannot establish non-publication.
 
+The Markdown model card's `Pricing:` field is optional. A card that omits it records the model as
+`unknown` pricing and one `excluded` reconciliation item with reason
+`repository_price_not_published`; absence is not source-contract drift, so it neither emits a
+contract finding nor produces a `repository_price_shape_unsupported` diagnostic. Retired cards keep
+their `not_applicable` state, and a present but unparseable `Pricing:` value still signals the card
+path and reports unsupported row shapes.
+
 The current pricing page has Priority, currency and regional controls. Its linked runtime defines
 the EUR factor (`0.85`) and display precision (seven decimal places). The adapter statically
 verifies the unique currency formatter's conditional multiplication and lexical precision binding,
@@ -183,6 +190,13 @@ offers and service offers contain no enrollment or settlement topology.
   input characters, three connector counters, and completed image outputs. Every contract records
   its request/response/result channel, JSON Pointer or provider-owned derived field, availability,
   absence-as-zero semantics where documented, and source reference.
+- The OpenAPI `UsageInfo` bound to Chat Completions, FIM and completion chunks currently omits
+  `prompt_tokens_details` even though the prompt-caching guide still documents
+  `usage.prompt_tokens_details.cached_tokens`. The two cache-input contracts therefore remain
+  unbound and the overlay reports `pricing_input_contract_partial` for 18 of 20 inputs. The
+  documented field is not accepted from the guide example alone: the response-owning schema must
+  declare it again, or an API reference page linked from the reviewed bundle must publish the same
+  pointer.
 - Chat/FIM text input with caching uses an explicit `prompt_tokens - cached_tokens`, floored at zero.
   Cache absence is zero because Mistral documents that `cached_tokens` is zero or omitted. Output and
   cache-read terms consume their direct counters.
