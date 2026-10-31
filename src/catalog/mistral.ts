@@ -43,6 +43,9 @@ interface SourcePricing {
   prices: SourcePrice[];
   unsupported: number;
   valid: boolean;
+  // A Markdown card omits `Pricing:` for models the vendor publishes without a rate.
+  // Absence is an unknown price, not an unreadable price shape.
+  absent?: true;
 }
 
 interface Draft {
@@ -548,6 +551,7 @@ function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
       prices,
       unsupported,
       valid: priceText !== undefined,
+      ...(priceText === undefined ? { absent: true as const } : {}),
     },
   };
 }
@@ -855,7 +859,7 @@ function pricing(
 ): SourcePriceFact[] {
   if (draft.status === "retired") return [];
   if (!draft.pricing.valid) {
-    signal(`/models/${draft.sourceSlug}/pricing`);
+    if (draft.pricing.absent !== true) signal(`/models/${draft.sourceSlug}/pricing`);
     return [];
   }
   const direct = draft.pricing.prices.flatMap((price) => {
@@ -1049,6 +1053,14 @@ function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
       continue;
     }
     if (!draft.pricing.valid) {
+      if (draft.pricing.absent === true) {
+        reconcile?.({
+          disposition: "excluded",
+          reason_code: "repository_price_not_published",
+          sample: draft.sourceSlug,
+        });
+        continue;
+      }
       reconcile?.({
         disposition: "unsupported",
         reason_code: "repository_price_shape_unsupported",
