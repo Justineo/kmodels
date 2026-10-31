@@ -62,8 +62,13 @@ and `上下文窗口` keep their explicit unit and context validation. Current K
 combined overview: extraction deduplicates identical documents and reads each labeled table
 independently. Retired K2.5 and Moonshot V1 redirects to the model catalog are rejected as pricing
 claims. The restored Batch page publishes K2.7 Code and K2.6 rates. The index completeness check is limited to this price-book
-boundary. Account balances, quotas, budgets, invoices, consumer subscriptions, and organization
-controls are intentionally not collected as model-pricing reconciliation facts.
+boundary. It recognizes the model, Batch, REST-tool and web-search price pages that this source
+consumes — including the current `/docs/pricing/websearch` path that replaced `/docs/pricing/tools`
+in the index — and reports any other indexed page it does not collect. `/docs/pricing/limits` is an
+account and rate-limit page, and `/docs/pricing/hosted-agents` prices a separate Hosted Agents
+product that this source's fields do not cover; both stay outside the boundary rather than becoming
+permanent drift. A relocated recognized page is therefore reported as unreviewed instead of being
+silently ignored. Account balances, quotas, budgets, invoices, consumer subscriptions, and organizationcontrols are intentionally not collected as model-pricing reconciliation facts.
 
 Extraction is bilingual and deterministic. Formula billing evidence accepts the reviewed Chinese and
 English spellings of the `tool_call` charge marker, including Markdown-escaped underscores. Exact IDs,
@@ -108,18 +113,31 @@ adopted source contract.
 The catalog marks K2.5 and every Moonshot V1 variant as retired on August 31, 2026. Their former
 price pages no longer publish rate tables, so they have no current offers.
 
-Web search costs CNY 0.03 or USD 0.005 per billed event. Two route-distinct offers use that amount:
+Web search publishes separate per-call amounts on its own price page. The reviewed Markdown
+representation of that page renders its MDX price table as an empty `<table>`, so neither the
+amounts nor their row identities are recoverable from it. The parser reports that loss and binds no
+web-search offer from this representation:
 
-- Built-in Chat `$web_search` is billed for each exact emitted matching call when
-  `finish_reason=tool_calls`; declaration and `finish_reason=stop` do not incur the event charge.
-- Formula `moonshot/web-search:latest` is billed at Fiber creation. The dedicated pricing prose
-  still describes the built-in route, so failed-Fiber charging remains unknown.
+- Chat `$web_search` is retired. The page no longer publishes the `finish_reason = tool_calls`
+  function-name trigger, so the former built-in per-model offer and its
+  `KimiChatResponse.billable_builtin_web_search_calls` locator are no longer published.
+- The successor Responses `web_search` route is documented as billed per executed search when
+  `output` contains `web_search_call`, with image search at the same amount. Its amount is inside
+  the empty table, so no rate or charge binding is invented.
+- Formula `moonshot/web-search:latest` remains billed at Fiber creation. The page now prices that
+  route separately, so the earlier "failed-Fiber charging unknown" caveat is still unresolved.
 
 Independent REST tools have their own resource books and no invented model relationships:
 `POST /v1/tools/search` and `/v1/tools/fetch` cost CNY 0.01 / USD 0.002 per qualifying call;
 `/v1/tools/search_pro` costs CNY 0.015 / USD 0.003. Search requires HTTP 200 and non-empty
 `search_results`; Fetch requires HTTP 200 and non-blank `markdown`. Their provider signals retain
-those exact semantics; no response locator is invented. The legacy built-in fee remains separate.
+those exact semantics; no response locator is invented. Those amounts are also inside the empty
+table, so the parser reports `rest_tool_pricing_drift` instead of silently dropping the three
+priced services.
+
+Recovering any of these amounts requires the collector to request the page's HTML representation,
+where the table is a rendered `DocTable`; that changes the reviewed evidence representation and
+remains an operator-reviewed source change, not an automatic repair.
 
 The other 11 official Formula tools and the Files service are published as temporary `free` states,
 not numeric zero rates. Their promotion end and post-promotion pricing are unknown. Ordinary
@@ -185,8 +203,9 @@ write contracts retain their prices and timestamps, without reconstructing new a
 Tool quantity contracts are restricted to their own price source. The current structured partial cases are:
 
 - Responses streaming has no typed terminal usage envelope in the OpenAPI contract.
-- The Responses `web_search` tool is documented operationally, but the current price prose binds an
-  amount only to Chat `$web_search` and Formula Fiber execution.
+- The Responses `web_search` tool now has its own priced row billed on an executed `web_search_call`,
+  but that row lives in the page's rendered table, which the reviewed Markdown representation
+  renders empty. The rate and its accounting contract therefore remain withheld rather than inferred.
 - Formula failure charging and promotional end dates are not published.
 
 Raw variants are reserved for genuine source-native commercial ambiguity, such as the Formula

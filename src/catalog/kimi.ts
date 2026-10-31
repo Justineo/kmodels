@@ -1118,7 +1118,8 @@ function requireClaims(body: string, claims: readonly RegExp[], message: string)
 
 function commercialIndexPath(path: string): boolean {
   const normalized = path.replace(/\.md$/, "");
-  if (/^\/docs\/pricing\/(?:chat(?:-[a-z0-9-]+)?|batch|tools)$/.test(normalized)) return true;
+  if (/^\/docs\/pricing\/(?:chat(?:-[a-z0-9-]+)?|batch|tools|websearch)$/.test(normalized))
+    return true;
   if (normalized.startsWith("/docs/api/files")) return true;
   if (
     [
@@ -1247,7 +1248,8 @@ function restToolPrices(
   extractor: PricingExtractor,
   body: string,
 ): SourceCommercialPricingFact[] {
-  if (!body.includes("POST /v1/tools/")) return [];
+  if (!body.includes("POST /v1/tools/"))
+    throw new Error("Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints");
   const rows = z.array(z.array(z.string()).length(4)).min(1).parse(jsonArrayAfter(body, "rows={"));
   const definitions = new Map([
     ["POST /v1/tools/search", { key: "web-search-basic", field: "search_results" }],
