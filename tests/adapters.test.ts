@@ -13876,7 +13876,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v16",
+      extractorVersion: "kimi-pricing-v17",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -15080,6 +15080,32 @@ describe("Kimi adapters", () => {
         sample: "2/4 Kimi commercial pricing inputs",
       }),
     );
+  });
+
+  it("stops expecting the retired Chat web-search accounting input", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const parsed = await pricingResult({
+      overrides: { tools: await fixture("kimi/tools-websearch.md") },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const keys = parsed.pricing_inputs?.map(({ key }) => key) ?? [];
+    expect(keys).toHaveLength(3);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        "batch.result.input_tokens",
+        "batch.result.output_tokens",
+        "web_search.formula.created_fibers",
+      ]),
+    );
+    expect(keys).not.toContain("web_search.chat.billable_calls");
+    expect(
+      reconciliation.filter(({ reason_code }) => reason_code === "pricing_input_contract_partial"),
+    ).toEqual([]);
+    expect(
+      parsed.models
+        .find(({ model_id }) => model_id === "kimi-k2.6")
+        ?.price_facts.some(({ meter }) => meter === "input_text"),
+    ).toBe(true);
   });
 
   it("rejects only a malformed price row and retains its valid siblings", async () => {
