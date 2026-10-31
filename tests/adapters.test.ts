@@ -13876,7 +13876,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v15",
+      extractorVersion: "kimi-pricing-v16",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -15026,6 +15026,37 @@ describe("Kimi adapters", () => {
     ).toEqual(partition);
   });
 
+  it("reports the relocated web-search price page and its lost REST rows", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await pricing({
+      overrides: {
+        llms: await fixture("kimi/llms-websearch.txt"),
+        tools: await fixture("kimi/tools-websearch.md"),
+      },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(models.map(({ model_id }) => model_id)).toEqual(
+      expect.arrayContaining(["kimi-k3", "kimi-k2.6"]),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts.length,
+    ).toBeGreaterThan(0);
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "commercial_index_drift",
+        sample: "Kimi documentation index has unreviewed commercial pages: /docs/pricing/websearch",
+      }),
+    );
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "rest_tool_pricing_drift",
+        sample: "Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints",
+      }),
+    );
+  });
+
   it("keeps independent prices when Batch accounting evidence drifts", async () => {
     const body = await fixture("kimi/batch-api.md");
     const reconciliation: PricingReconciliationItem[] = [];
@@ -15079,12 +15110,12 @@ describe("Kimi adapters", () => {
     });
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
-      observed_items: 55,
+      observed_items: 56,
       disposition_counts: {
         normalized: 38,
         explicit_non_numeric: 12,
         excluded: 0,
-        unbound: 5,
+        unbound: 6,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -15124,6 +15155,11 @@ describe("Kimi adapters", () => {
           disposition: "unbound",
           reason_code: "web_search_documentation_outdated",
         }),
+        expect.objectContaining({
+          disposition: "unbound",
+          reason_code: "rest_tool_pricing_drift",
+          sample: "Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints",
+        }),
       ]),
     );
     const internationalReconciliation: PricingReconciliationItem[] = [];
@@ -15135,12 +15171,12 @@ describe("Kimi adapters", () => {
       sourcePricingReconciliation(international, internationalReconciliation, true),
     ).toMatchObject({
       basis: "source_item",
-      observed_items: 55,
+      observed_items: 56,
       disposition_counts: {
         normalized: 38,
         explicit_non_numeric: 12,
         excluded: 0,
-        unbound: 5,
+        unbound: 6,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
