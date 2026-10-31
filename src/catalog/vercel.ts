@@ -3,7 +3,13 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { canonicalJson } from "./canonical-json.ts";
-import { decimalsEqual, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
+import {
+  decimalsEqual,
+  multiplyDecimal,
+  publishedRate,
+  rawPricingFact,
+  scaleDecimal,
+} from "./pricing.ts";
 import {
   parsedPriceFact,
   type ParsedProviderModel as ProviderModel,
@@ -50,7 +56,7 @@ const tokenPriceSchema = servicePriceSchema.extend({
 });
 
 const regionalPriceSchema = tokenPriceSchema.extend({
-  fast: servicePriceSchema.optional(),
+  fast: tokenPriceSchema.optional(),
 });
 
 const serviceTierSchema = servicePriceSchema.extend({
@@ -113,7 +119,7 @@ const pricingSchema = tokenPriceSchema
   .extend({
     audio_input_token_cost: decimal.optional(),
     audio_output_token_cost: decimal.optional(),
-    fast: servicePriceSchema.optional(),
+    fast: tokenPriceSchema.optional(),
     regional: z.record(z.string().min(1), regionalPriceSchema).optional(),
     service_tiers: z.record(z.string().min(1), serviceTierSchema).optional(),
     image: decimal.optional(),
@@ -1465,12 +1471,15 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
   });
   reportPricingExtensions(list.data, pricingKeys, input);
   const byId = new Map(parsed.map((item) => [item.id, item]));
-  if (!bundled.success)
+  if (!bundled.success) {
+    const models = parsed.map((item) =>
+      model(item, input, [], undefined, undefined, isFastSlug(item, byId, [])),
+    );
     return {
-      models: parsed.map((item) =>
-        model(item, input, [], undefined, undefined, isFastSlug(item, byId, [])),
-      ),
+      models,
+      inference_prices: inferencePrices(models, input, new Set(), byId),
     };
+  }
   if (bundled.data.index.url !== input.source.url)
     throw new Error("Vercel bundle index URL changed");
   const endpoints = new Map<string, Endpoint[]>();
@@ -1579,6 +1588,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
       videoInputs.get(item.id),
     );
   });
+  const batchIds = applyBatchPrices(result, byId, documentation, input.source.id);
   const commercialFacts = vercelCommercialFacts({
     documents: documentation,
     sourceId: input.source.id,
@@ -1592,7 +1602,168 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  return { models: result, commercial_facts: commercialFacts, pricing_inputs: pricingInputs };
+  return {
+    models: result,
+    commercial_facts: commercialFacts,
+    pricing_inputs: pricingInputs,
+    inference_prices: inferencePrices(result, input, batchIds, byId),
+  };
+}
+
+function inferencePrices(
+  models: readonly ProviderModel[],
+  input: Input,
+  batchIds: ReadonlySet<string>,
+  items: ReadonlyMap<string, Item>,
+) {
+  return models
+    .filter(
+      ({ model_id }) =>
+        (!model_id.endsWith("-batch") || batchIds.has(model_id)) &&
+        (!items.has(`${model_id}-batch`) || batchIds.has(`${model_id}-batch`)),
+    )
+    .map((model) => ({
+      model_id: model.model_id,
+      model_ref: model.uid,
+      source_ref: input.source.id,
+      offer_key: "usage",
+      fixed_selectors: batchIds.has(model.model_id)
+        ? [
+            {
+              kind: "categorical" as const,
+              dimension: { namespace: "kmodels" as const, value: "operation" as const },
+              value: { namespace: "provider" as const, provider_id: "vercel", value: "batch" },
+            },
+            {
+              kind: "categorical" as const,
+              dimension: { namespace: "kmodels" as const, value: "route_provider" as const },
+              value: {
+                namespace: "provider" as const,
+                provider_id: "vercel",
+                value: model.model_id.split("/")[0] ?? "",
+              },
+            },
+          ]
+        : [],
+      evidence: [
+        {
+          source_ref: input.source.id,
+          locator: { kind: "provider_key" as const, value: model.model_id },
+        },
+      ],
+    }));
+}
+
+function applyBatchPrices(
+  models: ProviderModel[],
+  items: ReadonlyMap<string, Item>,
+  documents: ReadonlyMap<string, string>,
+  sourceId: string,
+): Set<string> {
+  const body = documents.get("/docs/ai-gateway/models-and-providers/batch-processing.md") ?? "";
+  const prose = body.replace(/\s+/g, " ");
+  const batchIds = new Set<string>();
+  if (
+    !prose.includes("Each batch-capable model has a `<model>-batch` entry") ||
+    !prose.includes("You can pass a `-batch` ID anywhere a batch takes a model") ||
+    !prose.includes("AI Gateway treats it as the base model") ||
+    !prose.includes("Synchronous requests don't accept `-batch` IDs") ||
+    !prose.includes("Batches run on the model provider's own batch API")
+  )
+    return batchIds;
+  const byId = new Map(models.map((model) => [model.model_id, model]));
+  for (const batch of models.filter((model) => model.model_id.endsWith("-batch"))) {
+    const baseId = batch.model_id.slice(0, -6);
+    const base = byId.get(baseId);
+    const item = items.get(baseId);
+    if (
+      !base ||
+      !item ||
+      item.type !== "language" ||
+      items.get(batch.model_id)?.owned_by !== item.owned_by
+    )
+      continue;
+    const regions = Object.keys(item.pricing.regional ?? {});
+    const batchConditions = {
+      operation: "batch",
+      route_provider: item.owned_by,
+      ...(item.owned_by === "anthropic" ? { region: "default" } : {}),
+    };
+    const batchRates = batch.price_facts.map((rate) => ({
+      ...rate,
+      source_locator: {
+        kind: "provider_key" as const,
+        value: JSON.stringify([batch.model_id, "pricing", rate.meter, rate.conditions]),
+      },
+      conditions: {
+        ...rate.conditions,
+        ...batchConditions,
+        service_tier:
+          rate.conditions.service_tier === "standard" ? undefined : rate.conditions.service_tier,
+        region: rate.conditions.region ?? batchConditions.region,
+      },
+    }));
+    if (
+      item.owned_by === "anthropic" &&
+      prose.includes(
+        "Anthropic, Google, and OpenAI batches cost 50% of the model's standard token prices",
+      ) &&
+      prose.includes("price adjustments apply to regional batches")
+    ) {
+      for (const rate of peakPricingFacts(pricing(item, sourceId), item.pricing.peak_pricing)
+        .rates) {
+        if (
+          !rate.conditions.region ||
+          !regions.includes(rate.conditions.region) ||
+          (rate.conditions.route_provider !== undefined &&
+            rate.conditions.route_provider !== item.owned_by) ||
+          (rate.conditions.speed !== undefined && rate.conditions.speed !== "standard") ||
+          rate.conditions.service_tier !== "standard" ||
+          rate.unit !== "million_tokens"
+        )
+          continue;
+        batchRates.push({
+          ...rate,
+          price: multiplyDecimal(rate.price, "0.5"),
+          derived: true,
+          derivation:
+            "Published regional standard token rate × documented Anthropic Batch factor 0.5",
+          source_locator: {
+            kind: "provider_key" as const,
+            value: JSON.stringify([baseId, "pricing.regional", rate.conditions.region, rate.meter]),
+          },
+          conditions: {
+            ...rate.conditions,
+            ...batchConditions,
+            region: rate.conditions.region,
+            service_tier: undefined,
+            speed: undefined,
+          },
+        });
+      }
+    }
+    base.price_facts = [
+      ...base.price_facts.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, operation: rate.conditions.operation ?? "sync" },
+      })),
+      ...batchRates,
+    ];
+    batch.price_facts = batchRates;
+    batch.raw_price_facts = batch.raw_price_facts.map((rate) => ({
+      ...rate,
+      conditions: { ...rate.conditions, ...batchConditions },
+    }));
+    base.raw_price_facts = [
+      ...base.raw_price_facts.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, operation: rate.conditions.operation ?? "sync" },
+      })),
+      ...batch.raw_price_facts,
+    ];
+    batchIds.add(batch.model_id);
+  }
+  return batchIds;
 }
 
 function reportPricingExtensions(

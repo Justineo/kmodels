@@ -1151,6 +1151,22 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
   const services = deepseekServicePricing(input, bundle);
   return {
     models: bounded(input, models),
+    inference_prices: models.map((model) => ({
+      model_id: model.model_id,
+      model_ref: model.uid,
+      source_ref: input.source.id,
+      offer_key: "payg",
+      fixed_selectors: [],
+      evidence: [
+        {
+          source_ref: input.source.id,
+          locator: {
+            kind: "fragment" as const,
+            value: `${bundle.index.url}#${model.status === "legacy" ? "accepted legacy ID and billing redirect" : "MODEL"}: ${model.model_id}`,
+          },
+        },
+      ],
+    })),
     pricing_inputs: pricingInputs,
     commercial_facts: services.commercial_facts ?? [],
     vocabulary: [

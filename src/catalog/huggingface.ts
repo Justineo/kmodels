@@ -234,7 +234,7 @@ function officialTaskDocumentCandidates(
   return new Set([...recommended, ...featured]);
 }
 
-export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
+export function parseHuggingFaceMapping(input: Input): SourceParseResult {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-mapping")
     throw new Error("Invalid Hugging Face mapping extractor");
@@ -381,7 +381,52 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
     config.minRoutes,
     config.maxRoutes,
   );
-  return [...admitted.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const result = [...admitted.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: result,
+    inference_prices: result.map((model) => inferencePrice(input, model.model_id)),
+  };
+}
+
+function inferencePrice(
+  input: Input,
+  id: string,
+  suffix?: { value: string; provider?: string },
+): NonNullable<SourceParseResult["inference_prices"]>[number] {
+  return {
+    model_id: suffix === undefined ? id : `${id}:${suffix.value}`,
+    model_ref: `${input.provider.id}/${id}`,
+    offer_key: "routed-inference",
+    source_ref: input.source.id,
+    fixed_selectors:
+      suffix?.provider === undefined
+        ? []
+        : [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "route_provider" },
+              value: {
+                namespace: "provider",
+                provider_id: input.provider.id,
+                value: suffix.provider,
+              },
+            },
+          ],
+    evidence: [
+      { source_ref: input.source.id, locator: { kind: "provider_key", value: id } },
+      ...(suffix === undefined
+        ? []
+        : [
+            {
+              source_ref: input.source.id,
+              locator: {
+                kind: "provider_key" as const,
+                value: `https://huggingface.co/docs/inference-providers/en/index.md model ID suffix :${suffix.value}`,
+              },
+            },
+          ]),
+    ],
+  };
 }
 
 function availability(values: (boolean | undefined)[]): boolean | "unknown" {
@@ -682,6 +727,36 @@ export function parseHuggingFaceRouter(input: Input): SourceParseResult {
   const items = routerSchema.parse(JSON.parse(bundle.index.body)).data;
   const ids = new Set<string>();
   const models: ProviderModel[] = [];
+  const inferencePrices: NonNullable<SourceParseResult["inference_prices"]> = [];
+  const suffixEvidence = reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/index.md",
+    [],
+    "model_id_suffix_evidence_missing",
+  );
+  const pinnedSuffix =
+    suffixEvidence?.includes(
+      "select the provider of your choice by appending the provider name to the model id",
+    ) === true;
+  const policies = (
+    [
+      ["fastest", "equivalent to appending `:fastest` to the model name"],
+      ["cheapest", "`:cheapest` selects the most cost-efficient provider for the model"],
+      [
+        "preferred",
+        "`:preferred` selects the first available provider sorted by your preference order",
+      ],
+    ] as const
+  )
+    .filter(([, claim]) => suffixEvidence?.includes(claim) === true)
+    .map(([policy]) => policy);
+  if (suffixEvidence !== undefined && (!pinnedSuffix || policies.length !== 3))
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "model_id_suffix_contract_drift",
+      sample: "/docs/inference-providers/en/index.md",
+    });
   for (const [itemIndex, rawItem] of items.entries()) {
     const parsedItem = routerItemSchema.safeParse(rawItem);
     if (!parsedItem.success) {
@@ -784,6 +859,18 @@ export function parseHuggingFaceRouter(input: Input): SourceParseResult {
     }
     const routes = routeFacts.filter(({ route }) => route.status === "live");
     if (routes.length === 0) continue;
+    inferencePrices.push(
+      inferencePrice(input, item.id),
+      ...policies.map((value) => inferencePrice(input, item.id, { value })),
+      ...(pinnedSuffix
+        ? routes.map(({ route }) =>
+            inferencePrice(input, item.id, {
+              value: route.provider,
+              provider: route.provider,
+            }),
+          )
+        : []),
+    );
     const pricing = routes.flatMap(({ rates }) => rates);
     const rawPricing = routes.flatMap(({ rawFacts }) => rawFacts);
     const stateFacts = routes.flatMap(({ stateFacts }) => stateFacts);
@@ -837,7 +924,7 @@ export function parseHuggingFaceRouter(input: Input): SourceParseResult {
     input.onContractFinding,
     input.onPricingReconciliation,
   );
-  return { models, pricing_inputs: pricingInputs };
+  return { models, pricing_inputs: pricingInputs, inference_prices: inferencePrices };
 }
 
 interface FeatherlessRate {

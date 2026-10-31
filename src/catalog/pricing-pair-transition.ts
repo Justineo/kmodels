@@ -11,7 +11,6 @@ import {
 } from "./pricing-transition.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
 import { catalogSchema, type Catalog } from "./schema.ts";
-import { invocationProviderPartition, replaceInvocationProvider } from "./invocation-collection.ts";
 
 export interface ComposedCatalogPair {
   catalog: Catalog;
@@ -275,19 +274,6 @@ function providerCoreSlice(catalog: Catalog, providerId: string) {
     providers,
     models: catalog.models.filter(({ provider_id }) => provider_id === providerId),
     sources: catalog.sources.filter(({ provider_id }) => provider_id === providerId),
-    ...(catalog.invocation === undefined
-      ? {}
-      : {
-          invocation: invocationProviderPartition(
-            catalog.invocation,
-            new Set(
-              catalog.models
-                .filter(({ provider_id }) => provider_id === providerId)
-                .map(({ uid }) => uid),
-            ),
-            providerId,
-          ),
-        }),
   };
 }
 
@@ -325,7 +311,7 @@ function validateTransitionSubjects(
 }
 
 function retainProviderCore(candidate: Catalog, prior: Catalog, providerId: string): Catalog {
-  const result = catalogSchema.parse({
+  return catalogSchema.parse({
     ...candidate,
     providers: replaceProviderRecords(
       candidate.providers,
@@ -350,32 +336,16 @@ function retainProviderCore(candidate: Catalog, prior: Catalog, providerId: stri
           ({ provider_id }) => provider_id === providerId,
         ),
   });
-  const invocation = replaceInvocationProvider(
-    candidate.invocation,
-    prior.invocation,
-    result.models,
-    providerId,
-  );
-  if (invocation !== undefined) result.invocation = invocation;
-  return result;
 }
 
 function removeProviderCore(candidate: Catalog, providerId: string): Catalog {
-  const result = catalogSchema.parse({
+  return catalogSchema.parse({
     ...candidate,
     providers: candidate.providers.filter(({ id }) => id !== providerId),
     models: candidate.models.filter(({ provider_id }) => provider_id !== providerId),
     sources: candidate.sources.filter(({ provider_id }) => provider_id !== providerId),
     coverage: candidate.coverage.filter(({ provider_id }) => provider_id !== providerId),
   });
-  const invocation = replaceInvocationProvider(
-    candidate.invocation,
-    undefined,
-    result.models,
-    providerId,
-  );
-  if (invocation !== undefined) result.invocation = invocation;
-  return result;
 }
 
 function replaceProviderRecords<T>(

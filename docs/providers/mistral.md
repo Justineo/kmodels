@@ -75,6 +75,29 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 - Optional authenticated `/v1/models` confirms only exact existing public base models or aliases.
   Private fine-tunes never create rows or enter durable data. Enable it with `MISTRAL_API_KEY`.
 
+## Direct inference ID association
+
+The catalog source emits exact API names and explicitly listed aliases as references to the
+existing synchronous and Batch offers. The inventory and model card must agree on the primary
+API ID before either establishes an association. Retired and weights-only definitions do not
+create current price associations. The central pricing overlay may update amounts but cannot
+revive an alias withdrawn from fresh identity evidence, or invent an API ID from a model title
+or URL slug. Authenticated private fine-tune identifiers remain unreviewed.
+
+The mapping uses the shared canonical conditions for currency, actual served tier, and any
+commercially relevant endpoint or operation. It does not add an invocation protocol selector.
+Officially listed aliases share their model's offers without changing the catalog identity.
+Missing currency, tier, or offer choice leaves candidates; known conditions excluding every
+candidate produce no applicable price. Unknown regional prefixes are not stripped or translated.
+Regional endpoint availability still requires independent evidence, as described below.
+
+Current OCR and audio cached-input cells remain explicit unresolved prices because their
+non-token cache meters have not been established. Associating an ID does not conceal those
+unknowns or reinterpret them using text-cache quantities. Model-specific free moderation is
+independent of separately priced request services. Optional accounting documents are not
+prerequisites for the direct ID association; discount evidence still owns derived Batch/cache
+amounts.
+
 ## Model pricing
 
 The official [documentation index](https://docs.mistral.ai/llms.txt) links the current inventory,
@@ -115,8 +138,11 @@ establish free usage independently. An empty array cannot establish non-publicat
 
 The current pricing page has Priority, currency and regional controls. Its linked runtime defines
 the EUR factor (`0.85`) and display precision (seven decimal places). The adapter statically
-verifies the unique currency formatter's conditional multiplication and lexical precision binding,
-without executing remote code. The former repository currency module remains supported for replay.
+verifies each chunk's unique currency formatter's conditional multiplication and lexical precision
+binding, without executing remote code. Repeated copies in distinct chunks are accepted only when
+their complete factor and precision policies agree. Repeated document URLs, multiple formatters
+within one chunk, or conflicting policies remain unresolved. The former repository currency module
+remains supported for replay.
 The adapter derives exact EUR
 rates for the current table, including Batch, and withholds a derived EUR amount that would require
 display rounding. Direct EUR amounts on legacy cards take precedence over conversion for the same

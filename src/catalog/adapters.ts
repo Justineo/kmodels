@@ -43,6 +43,7 @@ import {
   parseHuggingFaceRouter,
 } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
+import { parseMetaModelApi } from "./meta-model-api.ts";
 import {
   parseKimiApi,
   parseKimiCatalog,
@@ -114,7 +115,7 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
     case "cerebras-api":
       return parseCerebrasApi(input);
     case "huggingface-mapping":
-      return { models: parseHuggingFaceMapping(input) };
+      return parseHuggingFaceMapping(input);
     case "huggingface-router":
       return parseHuggingFaceRouter(input);
     case "huggingface-featherless":
@@ -166,7 +167,7 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
     case "gemini-api":
       return { models: parseGeminiApi(input) };
     case "vertex-catalog":
-      return { models: parseVertexCatalog(input) };
+      return parseVertexCatalog(input);
     case "vertex-pricing":
       return parseVertexPricing(input);
     case "vertex-api":
@@ -178,11 +179,13 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
     case "cohere-api":
       return parseCohereApi(input);
     case "mistral-catalog":
-      return { models: parseMistralCatalog(input) };
+      return parseMistralCatalog(input);
     case "mistral-pricing":
       return parseMistralPricing(input);
     case "mistral-api":
       return { models: parseMistralApi(input) };
+    case "meta-model-api":
+      return parseMetaModelApi(input);
     case "llama-catalog":
       return { models: parseLlamaCatalog(input) };
     case "llama-api":

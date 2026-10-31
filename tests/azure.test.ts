@@ -18,6 +18,16 @@ import type {
 } from "../src/catalog/pricing-source.ts";
 import type { ModelTask, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
+import { providerModelSchema } from "../src/catalog/schema.ts";
+import { captureInferencePriceSources } from "../src/catalog/inference-pricing-source.ts";
+import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
+import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
+import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { renderComponent } from "./render-component.ts";
+import PricingDetails from "../src/components/PricingDetails.vue";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
@@ -1163,7 +1173,7 @@ describe("Azure adapters", () => {
   it("extracts current public retail rates without Azure credentials", async () => {
     const value = manifest("azure");
     const source = azureRetailSource(3, 5, 0.8);
-    const models = parseSource({
+    const parsed = parseSource({
       provider: provider(value),
       source,
       body: await fixture("azure/retail-prices.json"),
@@ -1175,7 +1185,9 @@ describe("Azure adapters", () => {
         azurePricingModel("gpt-4o-mini-realtime-preview", "2024-12-17"),
         azurePricingModel("gpt-4o-mini-audio-preview", "2024-12-17"),
       ],
-    }).models;
+    });
+    const { models } = parsed;
+    expect(parsed.inference_prices).toEqual([]);
     const gpt = models.find(({ model_id }) => model_id === "gpt-4.1");
     const terra = models.find(({ model_id }) => model_id === "gpt-5.6-terra");
     const audio = models.find(({ model_id }) => model_id === "gpt-audio-1.5");
@@ -1327,7 +1339,7 @@ describe("Azure adapters", () => {
       llama("2"),
     ];
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = parseSource({
+    const parsed = parseSource({
       provider: provider(value),
       source,
       body: JSON.stringify({
@@ -1345,7 +1357,8 @@ describe("Azure adapters", () => {
       observedAt,
       catalogModels,
       onPricingReconciliation: (item) => reconciliation.push(item),
-    }).models;
+    });
+    const { models } = parsed;
     const gpt = models.find(({ model_id }) => model_id === "gpt-4o");
     const llamaPrice = models.find(({ model_id }) => model_id === "Llama-3.3-70B-Instruct");
     expect(models.map(({ uid }) => uid)).toEqual([
@@ -1375,6 +1388,97 @@ describe("Azure adapters", () => {
         reason_code: "public_price_bound",
       })),
     );
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source, ...parsed }],
+      catalogModels,
+      value.pricingCategoricalLabels,
+    );
+    if (!partition) throw new Error("Missing Azure pricing");
+    const sources = [
+      {
+        id: source.id,
+        provider_id: "azure",
+        url: source.url,
+        source: [source.type],
+        stability: source.stability,
+        scope: "global" as const,
+        exhaustive: false,
+        role: "overlay" as const,
+        field_paths: source.fields,
+        observed_at: observedAt,
+        content_hash: "1".repeat(64),
+        extractor_version: source.extractorVersion,
+        pricing_evidence: source.pricingEvidence,
+      },
+    ];
+    const core = {
+      catalog_version: "a".repeat(64),
+      generated_at: observedAt,
+      providers: [provider(value)],
+      models: catalogModels.map((model) => providerModelSchema.parse(model)),
+      sources,
+      coverage: [],
+      warnings: [],
+    };
+    const pricing = {
+      provider_vocabularies: [partition.vocabulary],
+      provider_snapshots: [partition.snapshot],
+      model_dispositions: partition.model_dispositions,
+      books: partition.books,
+    };
+    const captured = captureInferencePriceSources([{ source, ...parsed }], sources);
+    expect(captured.map(({ rules }) => rules)).toEqual([[]]);
+    const pair = compileInferencePriceMapping(prepareCatalogPair(core, pricing), captured);
+    if (!pair.inference) throw new Error("Missing evaluated Azure mapping");
+    expect(pair.inference.mapping.rules).toEqual([]);
+    const lookup = createInferencePriceLookup(
+      calculationExport(pair.catalog, pair.pricing),
+      pair.inference.mapping,
+    );
+    for (const model_id of [
+      "gpt-4o",
+      "gpt-4o-2024-08-06",
+      "Llama-3.3-70B-Instruct",
+      "private-deployment",
+      "westus3/gpt-5-mini",
+      "gpt-5-mini",
+      "chat-gpt-latest",
+    ]) {
+      expect(
+        lookup({
+          provider_id: "azure",
+          model_id,
+          selectors: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "deployment_scope" },
+              value: { namespace: "provider", provider_id: "azure", value: "GlobalStandard" },
+            },
+          ],
+        }),
+      ).toMatchObject({ status: "unknown", reason: "unreviewed_id", candidates: [] });
+    }
+    const model = core.models.find(({ uid }) => uid === "azure/gpt-4o@2024-08-06");
+    if (!model) throw new Error("Missing priced GPT model");
+    const inferencePrices = websiteInferencePrices(
+      pair.catalog,
+      pair.pricing,
+      pair.inference.mapping,
+    ).get(model.uid);
+    expect(inferencePrices?.[0]).toMatchObject({ status: "unknown", reason: "unreviewed_id" });
+    const html = await renderComponent(PricingDetails, {
+      model: { ...model, pricing: { outcome: "offers" } },
+      detail: websiteModelDetail(pricing, model).pricing,
+      inferencePrices,
+    });
+    expect(html).toContain(
+      "The catalog prices below are not verified for this inference model ID.",
+    );
+    expect(html).toContain("Model rates");
+    expect(html).toContain("East US");
+    expect(html).not.toContain("Inspect target");
   });
 
   it("accepts a newly linked Foundry pricing family without widening identity matching", async () => {
@@ -1628,7 +1732,7 @@ describe("Azure adapters", () => {
         : {}),
     });
     const reconciliation: PricingReconciliationItem[] = [];
-    const models = parseSource({
+    const parsed = parseSource({
       provider: provider(value),
       source,
       body: await fixture("azure/claude-pricing.md"),
@@ -1641,7 +1745,9 @@ describe("Azure adapters", () => {
         claude("claude-opus-5-5", true),
       ],
       onPricingReconciliation: (item) => reconciliation.push(item),
-    }).models;
+    });
+    const { models } = parsed;
+    expect(parsed.inference_prices).toEqual([]);
     const opus = models.find(({ model_id }) => model_id === "claude-opus-4-8");
     const sonnet = models.find(({ model_id }) => model_id === "claude-sonnet-5");
     const sonnet55 = models.find(({ model_id }) => model_id === "claude-sonnet-5-5");

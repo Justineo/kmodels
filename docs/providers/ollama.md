@@ -85,6 +85,31 @@ document order. Collection does not discover arbitrary commercial pages through 
 - A Cloud retirement is applied globally only when the exact identity is absent from the current
   Library. Current Library evidence keeps the shared catalog identity active.
 
+## Direct inference ID association
+
+For requests to `ollama.com`, the current [Cloud guide](https://docs.ollama.com/cloud) says to use
+the identifier returned by `GET /api/tags`. Emit ID-to-price facts only for those exact public
+Cloud list entries, resolving them to the existing model-scoped `cloud-inference` offer. Preserve
+colons, sizes and version tags. The guide separately describes App/CLI names such as `gemma4:cloud`;
+those are not implicit price aliases for the Cloud API. Library/search/page identities alone do
+not prove the actual direct API ID. A family price cannot be spread to a size or version by name.
+
+The current public sources illustrate this distinction: the API advertises `gemma4:31b`, while
+the central tariff names `gemma4`. Without an explicit exact tariff or price-alias relation, that
+tagged ID remains unknown even though the family has ordinary catalog pricing. `gpt-oss:20b`,
+by contrast, has an exact API entry and exact named tariff. Absence of a tariff is not a free rate.
+
+A fresh list that no longer contains an ID withdraws its mapping even if Library/search evidence
+keeps the catalog row and ordinary prices. A documented Cloud retirement also withholds that route's
+association independently of a still-active local Library identity. Optional Show, usage and
+protocol companions are not prerequisites for independently established ID/rate evidence.
+
+The lookup describes Ollama Cloud public invocation prices; its named offer does not price local
+execution or account subscriptions. Conditional tariffs retain the canonical billing-period
+selector and schedule. A lookup timestamp never substitutes for the actual billing period.
+Source ambiguities and missing exact-ID prices remain explicit rather than triggering local
+daemon discovery, account access or an invocation configuration workflow.
+
 ## Canonical price book
 
 Every Cloud family page with a valid public rate card produces one model-scoped `cloud-inference`

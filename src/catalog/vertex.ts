@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractVertexPricingInputs } from "./vertex-accounting.ts";
+import { vertexInferencePrices } from "./vertex-inference-pricing.ts";
 import { extractVertexCommercialFacts } from "./vertex-commercial-source.ts";
 import {
   vertexGroundingAllowance,
@@ -615,7 +616,7 @@ function regions($: LoadedDocument, table: Selection): ProviderModel["availabili
 
 function pageName(title: string, heading: string, count: number): string {
   if (count === 1 || heading === "") return title;
-  if (/deprecations?/i.test(title)) return heading;
+  if (/deprecations?|\bmodels$/i.test(title)) return heading;
   const first = title.split(" ")[0] ?? title;
   return /^\d/.test(heading) ? `${first} ${heading}` : `${title} ${heading}`;
 }
@@ -951,7 +952,10 @@ function parseModelTables(
           .get()
           .filter((value) => modelIdSchema.safeParse(value).success) ?? [])
       : [];
-    add(models, { model, names: new Set([name, ...versionNames]) });
+    add(models, {
+      model,
+      names: new Set([name, ...(tables.length > 1 ? [headingText] : []), ...versionNames]),
+    });
     parsed = true;
   });
   applyReplacementTables(models, $);
@@ -1077,14 +1081,7 @@ function priceNames(value: string): string[] {
 
 function priceKeys(item: Evidence): Set<string> {
   const values = new Set(item.names);
-  let id = item.model.model_id;
-  values.add(id);
-  id = id.replace(/-maas$/, "");
-  values.add(id);
-  while (/(?:-\d{3}|-preview|-generate)$/.test(id)) {
-    id = id.replace(/(?:-\d{3}|-preview|-generate)$/, "");
-    values.add(id);
-  }
+  values.add(item.model.model_id);
   return new Set([...values].flatMap(priceNames));
 }
 
@@ -1093,26 +1090,6 @@ function priceTargets(models: Map<string, Evidence>, label: string, hint = ""): 
   if (labelKeys.length === 0) return [];
   const entries = [...models.values()].map((item) => ({ item, keys: priceKeys(item) }));
   let candidates = entries.filter(({ keys }) => labelKeys.some((key) => keys.has(key)));
-  const exact = candidates.length > 0;
-  if (!exact) {
-    const related = entries
-      .map((entry) => ({
-        ...entry,
-        score: Math.max(
-          0,
-          ...[...entry.keys]
-            .filter((candidate) =>
-              labelKeys.some(
-                (key) => /\d/.test(key) && (candidate.startsWith(key) || candidate.endsWith(key)),
-              ),
-            )
-            .map((candidate) => candidate.length),
-        ),
-      }))
-      .filter(({ score }) => score > 0);
-    const best = Math.max(0, ...related.map(({ score }) => score));
-    candidates = related.filter(({ score }) => score === best);
-  }
   const hintKey =
     priceName(hint) ||
     ["fast", "ultra", "lite", "clip", "pro"].find((variant) =>
@@ -1130,7 +1107,7 @@ function priceTargets(models: Map<string, Evidence>, label: string, hint = ""): 
     );
     if (base.length > 0) candidates = base;
   }
-  return exact || candidates.length === 1 ? candidates.map(({ item }) => item.model) : [];
+  return candidates.map(({ item }) => item.model);
 }
 
 function applyEmbeddingReference(models: Map<string, Evidence>, body: string): void {
@@ -2646,7 +2623,7 @@ function applyOpenExamples(models: Map<string, Evidence>, documents: LinkedDocum
   }
 }
 
-export function parseVertexCatalog(input: Input): ProviderModel[] {
+export function parseVertexCatalog(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "vertex-catalog")
     throw new Error("Wrong Agent Platform catalog extractor");
@@ -2695,7 +2672,7 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
     extractor.minModelDocuments,
     extractor.maxModelDocuments,
   );
-  return values;
+  return { models: values, inference_prices: vertexInferencePrices(input, bundle, values) };
 }
 
 export function parseVertexPricing(input: Input): SourceParseResult {
@@ -2749,6 +2726,28 @@ export function parseVertexPricing(input: Input): SourceParseResult {
     groundingReferences,
     input.onPricingReconciliation,
   );
+  const partnerPrices = bundle.documents.filter(
+    ({ url }) => url === "https://cloud.google.com/model-garden/partner-models/pricing",
+  );
+  const partnerPriceLink =
+    load(bundle.index.body)(
+      'a[href="/model-garden/partner-models/pricing"],a[href="https://cloud.google.com/model-garden/partner-models/pricing"]',
+    ).length > 0;
+  if (partnerPrices.length > 1 || (partnerPriceLink && partnerPrices.length !== 1))
+    throw new Error("Agent Platform partner pricing companion is missing or duplicated");
+  const partnerPrice = partnerPrices[0];
+  if (partnerPrice !== undefined)
+    claims.push(
+      ...applyPricing(
+        models,
+        input.source.id,
+        partnerPrice.body,
+        pricingEvidence(bundle.documents),
+        document("/gemini-enterprise-agent-platform/models/partner-models/claude/web-search")?.body,
+        groundingReferences,
+        input.onPricingReconciliation,
+      ),
+    );
   const values = [...models.values()].map(({ model }) => model);
   const commercial = vertexGroundingAllowances(
     extractVertexCommercialFacts(values, input.source.id),

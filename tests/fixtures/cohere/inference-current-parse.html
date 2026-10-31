@@ -1,0 +1,208 @@
+<main>
+  <h1 class="fern-page-heading text-balance wrap-anywhere">Parse (Details and Application)</h1>
+  <div class="fern-prose prose break-words prose-h1:mt-[1.5em] first:prose-h1:mt-0 max-w-full">
+    <div>
+      This page is for version v2 API (default). For other versions, use one of these documentation
+      indexes: - v2 API (default): https://docs.cohere.com/v2/llms.txt - v1 API:
+      https://docs.cohere.com/v1/llms.txt
+    </div>
+    <astro-island
+      ><!--$-->
+      <div style="display: contents">
+        <p>
+          Parse is a vision language model that converts unstructured data from enterprise documents
+          to structured outputs that can be used for AI knowledge applications. It provides users
+          with one of the most attractive price-performance options available, making it the ideal
+          choice for high-volume enterprise parsing workloads. Parse can be used alongside
+          <a class="fern-mdx-link" href="/docs/cohere-embed">Embed</a> and
+          <a class="fern-mdx-link" href="/docs/rerank">Rerank</a> to build search and retrieval
+          pipelines, or as part of Compass.
+        </p>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Overview</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            <strong class="font-semibold">Latest model</strong>: <code>parse-v5.0</code>
+          </li>
+          <li class=""><strong class="font-semibold">Context Length</strong>: 8192</li>
+          <li class="">
+            <strong class="font-semibold">File types supported</strong>: PDF, PPT, JPEG (Base64
+            encoded)
+          </li>
+          <li class=""><strong class="font-semibold">Output format</strong>: Markdown</li>
+          <li class=""><strong class="font-semibold">Number of Parameters</strong>: 2.3B</li>
+          <li class=""><strong class="font-semibold">Model Size</strong>: ~4.6GB</li>
+          <li class="">
+            <strong class="font-semibold">Model Architecture</strong>: Proprietary
+            <a
+              class="fern-mdx-link"
+              href="https://huggingface.co/CohereLabs/North-Micro-Vision-Instruct"
+              >north-micro-vision-instruct<svg
+                class="lucide lucide-external-link external-link-icon"
+              >
+                <path></path>
+                <path></path>
+                <path></path></svg
+            ></a>
+          </li>
+          <li class="">
+            <strong class="font-semibold">Endpoint</strong>:
+            <a class="fern-mdx-link" href="/v2/reference/parse">Parse</a>
+          </li>
+          <li class="">
+            <strong class="font-semibold">API reference</strong>:
+            <a class="fern-mdx-link" href="/v2/reference/parse">Parse</a>
+          </li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">What it extracts</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">Text and reading order</li>
+          <li class="">Tables</li>
+          <li class="">Lists</li>
+          <li class="">Forms and key-value pairs</li>
+          <li class="">Images and captions</li>
+          <li class="">Locations of page boundaries and visual elements</li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Output</h2>
+        <p>Returns Markdown containing:</p>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">Document text and content</li>
+          <li class="">Lists</li>
+          <li class="">Tables represented as HTML</li>
+          <li class="">Bounding box coordinates</li>
+          <li class="">Image descriptions</li>
+          <li class="">Content that can be rendered directly as formatted Markdown/HTML</li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Supported languages</h2>
+        <p>
+          Parse is stable for nine input langauges. The model supports zero-shot parsing of
+          additional languages, though accuracy may be lower than for the recommended languages.
+        </p>
+        <!--$-->
+        <div class="fern-table-root not-prose m-mdx">
+          <div
+            class="fern-scroll-area"
+            style="
+              position: relative;
+              --radix-scroll-area-corner-width: 0px;
+              --radix-scroll-area-corner-height: 0px;
+            "
+          >
+            <div class="fern-scroll-area-viewport" style="overflow: scroll">
+              <div style="min-width: 100%; display: table">
+                <table class="fern-table">
+                  <thead>
+                    <tr>
+                      <th>ISO Code</th>
+                      <th>Language Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>ar</td>
+                      <td>Arabic</td>
+                    </tr>
+                    <tr>
+                      <td>en</td>
+                      <td>English</td>
+                    </tr>
+                    <tr>
+                      <td>fr</td>
+                      <td>French</td>
+                    </tr>
+                    <tr>
+                      <td>de</td>
+                      <td>German</td>
+                    </tr>
+                    <tr>
+                      <td>ja</td>
+                      <td>Japanese</td>
+                    </tr>
+                    <tr>
+                      <td>ko</td>
+                      <td>Korean</td>
+                    </tr>
+                    <tr>
+                      <td>it</td>
+                      <td>Italian</td>
+                    </tr>
+                    <tr>
+                      <td>pt</td>
+                      <td>Portuguese</td>
+                    </tr>
+                    <tr>
+                      <td>es</td>
+                      <td>Spanish</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!--/$-->
+        <h2 class="max-md:pr-4" style="cursor: pointer">Best for</h2>
+        <p>
+          Parse is particularly well suited for the following use case areas where
+          <strong class="font-semibold">throughput</strong>,
+          <strong class="font-semibold">scale</strong> and
+          <strong class="font-semibold">cost effectiveness</strong> are key performance
+          considerations:
+        </p>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">Preparing documents for search and retrieval</li>
+          <li class="">RAG ingestion pipelines</li>
+          <li class="">Intelligent document processing</li>
+          <li class="">Providing document context to AI agents</li>
+        </ul>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Known limitations</h2>
+        <p>
+          The model does not return confidence scores for extracted content. The model does not
+          identify document elements such as headers, footers, or font hierarchy. Parsed content is
+          returned as Markdown; structured JSON output is not supported.
+        </p>
+        <h2 class="max-md:pr-4" style="cursor: pointer">Getting started</h2>
+        <ul
+          class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+        >
+          <li class="">
+            Read the <a class="fern-mdx-link" href="/v2/reference/parse">reference API</a>
+          </li>
+          <li class="">
+            <a class="fern-mdx-link" href="/docs/parse-quickstart">Parse quickstart guide</a>
+          </li>
+          <li class="">
+            Try Parse for free in the
+            <a class="fern-mdx-link" href="https://huggingface.co/spaces/CohereLabs/cohere-parse"
+              >Hugging Face Space<svg class="lucide lucide-external-link external-link-icon">
+                <path></path>
+                <path></path>
+                <path></path></svg
+            ></a>
+          </li>
+          <li class="">
+            Access Parse through <a class="fern-mdx-link" href="/docs/model-vault">Model Vault</a>
+          </li>
+          <li class="">
+            <a
+              class="fern-mdx-link"
+              href="https://github.com/cohere-ai/cohere-developer-experience/blob/main/notebooks/sagemaker/Parse%20Models.ipynb"
+              >SageMaker notebook<svg class="lucide lucide-external-link external-link-icon">
+                <path></path>
+                <path></path>
+                <path></path></svg
+            ></a>
+          </li>
+        </ul>
+      </div>
+      <!--/$--></astro-island
+    >
+  </div>
+</main>

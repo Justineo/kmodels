@@ -1519,7 +1519,10 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
     extractor.minModels,
     extractor.maxModels,
   );
-  return { models: values.sort((left, right) => left.uid.localeCompare(right.uid)) };
+  return {
+    models: values.sort((left, right) => left.uid.localeCompare(right.uid)),
+    inference_prices: [],
+  };
 }
 
 function booleanCapability(values: Map<string, string>, keys: string[]): boolean | "unknown" {
@@ -2165,7 +2168,10 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
   assertCoverage("Azure retail-price binding", boundRows, baseRows, extractor.minHandledRatio, [
     "prices",
   ]);
-  return { models: values.sort((left, right) => left.uid.localeCompare(right.uid)) };
+  return {
+    models: values.sort((left, right) => left.uid.localeCompare(right.uid)),
+    inference_prices: [],
+  };
 }
 
 interface AzurePublicPricingPage {
@@ -2577,7 +2583,8 @@ export function parseAzurePublicPricing(input: Input): SourceParseResult {
     extractor.minModels,
     extractor.maxModels,
   );
-  return { models: values, commercial_facts: commercial };
+  // Published model tariffs do not resolve private deployment names or Instant Access billing.
+  return { models: values, commercial_facts: commercial, inference_prices: [] };
 }
 
 function commercialWords(value: string): string {

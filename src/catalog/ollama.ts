@@ -732,5 +732,31 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
         sample: model.model_id,
       });
   }
-  return { models: result, pricing_inputs: pricingInputs, vocabulary };
+  return {
+    models: result,
+    pricing_inputs: pricingInputs,
+    vocabulary,
+    inference_prices: result
+      .filter((model) => {
+        const retirement = retirements.get(model.model_id);
+        return (
+          listed.has(model.model_id) &&
+          model.status !== "retired" &&
+          (retirement === undefined || retirement.date > input.observedAt.slice(0, 10))
+        );
+      })
+      .map((model) => ({
+        model_id: model.model_id,
+        model_ref: model.uid,
+        source_ref: input.source.id,
+        offer_key: "cloud-inference",
+        fixed_selectors: [],
+        evidence: [
+          {
+            source_ref: input.source.id,
+            locator: { kind: "provider_key" as const, value: model.model_id },
+          },
+        ],
+      })),
+  };
 }

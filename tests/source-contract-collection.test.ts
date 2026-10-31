@@ -5,7 +5,6 @@ import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
-import { emptyInvocationCatalog } from "../src/catalog/invocation-schema.ts";
 import { parseTypesafeCatalog } from "../src/catalog/typesafe.ts";
 import type { FetchState } from "../src/catalog/fetch.ts";
 import { contractExtensionEvidence, SourceContractError } from "../src/catalog/source-contract.ts";
@@ -46,7 +45,6 @@ describe("source contract collection", () => {
       ],
     });
     vi.mocked(parseSource).mockImplementation(() => ({
-      invocation: emptyInvocationCatalog(),
       models: [
         baseModel({
           providerId: manifest.provider.id,
@@ -205,7 +203,6 @@ describe("source contract collection", () => {
       onContractFinding?.(second);
       if (reject) throw new SourceContractError("Rejected test source", rejected);
       return {
-        invocation: emptyInvocationCatalog(),
         models: [
           baseModel({
             providerId: manifest.provider.id,

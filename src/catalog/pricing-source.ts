@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceInferencePriceSchema } from "./inference-pricing-source.ts";
 import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
   priceSourceLocatorSchema,
@@ -16,7 +17,6 @@ import {
 } from "./pricing-schema.ts";
 import { rawPricingImpacts } from "./pricing-vocabulary.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
-import { sourceInvocationPriceLinkSchema } from "./invocation-pricing-schema.ts";
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
@@ -260,7 +260,7 @@ export const sourcePricingFactsSchema = z.strictObject({
   commercial_facts: z.array(sourceCommercialPricingFactSchema).optional(),
   pricing_inputs: z.array(sourcePricingInputFactSchema).optional(),
   vocabulary: z.array(providerAtomRegistryEntrySchema).optional(),
-  invocation_pricing: z.array(sourceInvocationPriceLinkSchema).optional(),
+  inference_prices: z.array(sourceInferencePriceSchema).optional(),
 });
 export type SourcePricingFacts = z.infer<typeof sourcePricingFactsSchema>;
 
@@ -278,11 +278,11 @@ export function sourcePricingFacts(
     ...legacyModels.flatMap((model) => model.pricing_inputs ?? []),
   ]);
   return {
+    ...(facts.inference_prices === undefined
+      ? {}
+      : { inference_prices: uniqueCanonicalValues(facts.inference_prices) }),
     ...(commercial.length === 0 ? {} : { commercial_facts: commercial }),
     ...(inputs.length === 0 ? {} : { pricing_inputs: inputs }),
-    ...(facts.invocation_pricing === undefined || facts.invocation_pricing.length === 0
-      ? {}
-      : { invocation_pricing: uniqueCanonicalValues(facts.invocation_pricing) }),
     ...(facts.vocabulary === undefined || facts.vocabulary.length === 0
       ? {}
       : { vocabulary: uniqueCanonicalValues(facts.vocabulary) }),

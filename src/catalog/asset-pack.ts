@@ -71,8 +71,7 @@ const CANONICAL_GZIP_OS = 3;
 const GZIP_OS_OFFSET = 9;
 const PACK_MAX_BYTES: Record<AssetPackProfile, number> = {
   ui: 16 * 1024 * 1024,
-  // One atomic pack now carries both complete v1 and v2 export trees.
-  exports: 64 * 1024 * 1024,
+  exports: 32 * 1024 * 1024,
 };
 
 export async function createAssetPack(

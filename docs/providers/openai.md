@@ -47,87 +47,50 @@ that call and are excluded.
 No community catalog supplies production facts. `models.dev` and LiteLLM are investigation aids
 only.
 
-Identity discovery uses the model index and discovered model cards. Optional invocation companions
-do not make general documentation indexes or guide pages atomic dependencies of the catalog. The OpenAPI repository supplies
-optional invocation and pricing-input evidence: it never creates model identity or rates, and its
-absence or field-level drift affects only the corresponding contracts. It cannot stall or erase
-the required pricing-page partition.
+Identity discovery uses the model index and discovered model cards. The separate optional
+OpenAPI accounting source supplies price-input acquisition evidence. It never creates identity
+or rates, and missing accounting fields do not stall the required pricing-page partition.
 
 ## Identity and catalog extraction
 
-### Typed invocation evidence
+### Inference model ID pricing
 
-The model-card bundle has optional, claim-local companions for the official OpenAPI, the
-data-residency guide, and the Realtime and Realtime translation connection references.
-Direct HTTP invocation surfaces require the owned POST operation, request
-schema's string `model` property, global server, and bearer-authentication contract to agree.
-A changed operation, request media type, authentication scheme, or endpoint override withholds
-that surface. The model index and independently valid card facts survive a missing companion.
-An explicit operation deprecation marks its invocation targets deprecated without changing the
-model's catalog lifecycle; a retired model remains retired. Ambiguous deprecation fields withhold
-the affected wire contract.
-JSON and multipart are separate surfaces. Transcription and translation use a form `model`
-field; image edits and video creation may have independently verified JSON and multipart variants.
-Form templates leave file payloads and boundary generation to the caller's HTTP client.
-The native Realtime references establish a WebSocket opening handshake with a query `model`;
-the conversation target also fixes `intent=realtime`. Joining an existing `call_id`, creating
-ephemeral client credentials, and transcription sessions are different contracts. A missing or
-changed HTTP OpenAPI companion does not remove an independently verified WebSocket handshake.
-An unavailable API companion can retain previously verified targets while the fresh identity
-still names their address. The producer declares the current document hashes to the shared
-retention step. A changed document used by the target, its surface or scoped facts withholds
-that retained target, including changed index lifecycle, card support or regional restrictions.
-Retained evidence keeps its original observation time. A changed wire contract cannot establish
-retention. Retention currently covers a whole-model invocation-source outage; a missing regional
-or HTTP subset alongside surviving fresh targets is withheld rather than reconstructed from old
-tuples. Fresh identity and independently verified targets survive these partial outages.
+The producer emits direct ID-to-offer associations from each successfully parsed card's explicit
+`Model ID` declaration and from exact ID rows in reviewed pricing tables. The shared compiler joins
+these facts to existing `sync` and `batch` offers for the same catalog identity. Absent offers do not
+produce public associations. A price-only ID can therefore be matched even if its model card is
+unavailable. Display names and retained aliases do not establish request IDs.
 
-Regional targets preserve the exact model, endpoint, processing region, and public origin tuple.
-Both the regional processing-services cell and the endpoint/model table must support it. Regional
-storage alone is insufficient. UAE snapshot exceptions remain local to their operation; combined
-audio rows do not establish every model/audio-operation combination. A negative card claim and a
-positive regional tuple remain conflicting, with both sources retained. The default API hostname
-does not establish execution geography or project processing configuration.
+An explicit default snapshot is admitted as an independent catalog identity only when the card
+also publishes its snapshot-pinning guarantee and lists that exact snapshot. No date is inferred
+as a separate version. Several cards naming one snapshot establish its identity without selecting
+one card's rich facts; an independently indexed snapshot keeps its own facts. A series tariff is
+never copied to its default snapshot. Other snapshot-list entries remain unclassified.
 
-An explicit default snapshot is admitted as an independent catalog identity when the card also
-publishes its snapshot-pinning guarantee. The series target records its observed rolling resolution;
-the snapshot target is pinned. The snapshot date does not become a separately invented version,
-and the series tariff is not copied. Other snapshot/alias list entries remain unclassified until
-their exact relationship is established. Several cards naming one snapshot establish its identity
-without arbitrarily selecting one card's rich facts.
-An independently indexed snapshot keeps its own card facts; a parent's explicit snapshot guarantee
-can still establish pinning, with that parent's document attached to the target evidence.
+An alias-routing statement establishes neither an identical tariff nor a universal account-independent
+target. Model-card routing prose and snapshot lists alone cannot create price associations. Where the pricing
+parser has an exact alias tariff or the pricing page explicitly declares its unique tariff target, that alias keeps its
+own canonical priced identity and can be matched directly. Unknown private fine-tuning IDs remain
+unmapped; no account-resource discovery or name-prefix matching is performed.
 
-Invocation coverage is partial. The current request template describes one HTTP request or WebSocket
-opening handshake. [Batch](https://developers.openai.com/api/docs/guides/batch) requires a JSONL input
-file, file upload, and batch creation; its model selector belongs to each item body, not the batch
-creation request. Live session event messages, WebRTC/SIP negotiation, and caller-created resources
-are not represented by a direct model request. These remain coverage limits, not unsupported claims.
-WebSocket conversation cases establish Realtime mode. HTTP inference mode and release stage
-remain unknown where the collected documents do not establish them. The invocation inspector
-shows collection coverage separately from support and configuration. Model-card context and output
-limits are retained as scoped facts; a model-level capability union does not establish every
-operation's feature support. No invocation price binding is
-inferred from a matching name, default hostname, or the model-level union of regional availability.
+Associations fix no commercial selectors. Existing offers own context bands, actual served tier,
+regional processing and residency conditions, validity, exclusions and charge bindings. Missing
+conditions return candidates; the requested `service_tier` cannot replace the actual billed tier.
+The synchronous and Batch offers remain separate pricing plans without requiring a protocol choice.
+Neither an ID nor the default API hostname establishes regional execution, project eligibility or
+access. Regional configuration remains an ordinary price input when the tariff consumes it.
 
-After canonical offer assembly, supported direct operations may bind the exact model's unique
-public synchronous offer. An explicit model selector preserves a series tariff independently of
-its observed snapshot resolution. Regional conditions are fixed only when the supported tuple and
-the price vocabulary agree; unknown project configuration remains an ordinary price input.
-The EU-residency boolean is fixed only for an exact regional case. It selects the published Fast
-exclusion through the shared applicability evaluator, while the default hostname leaves residency
-unknown. A caller cannot override this fixed condition. Tool-operation tariffs belong to independent
-service books; their operation selectors are not inferred from the model's API path. An unreviewed
-operation-conditioned model offer has no invocation join.
-Responses and Chat Completions served tiers use their independently verified response acquisition
-contracts, including a consistent union of rate-local normalization maps. Neither is inferred from
-a requested tier, and one API's evidence cannot supply the other's join. Failed price refreshes cannot create
-new invocation price claims. These joins do not establish account eligibility or runtime access.
-Request addressing templates intentionally leave optional requested `service_tier` to the caller's
-task payload. `auto` and other requested tiers cannot replace the observed billing selector.
-On a fresh price snapshot, the current binding compiler is authoritative: an omitted join cannot
-be restored from the previous publication, even if the invocation target and offer IDs are unchanged.
-This prevents withdrawn Chat accounting evidence from being replaced by a Responses-only contract.
+The mapping does not depend on OpenAPI transport, authentication, request templates, WebSocket
+handshakes, feature matrices or invocation graphs. Accounting acquisition, catalog capabilities,
+regional availability and independent tool-service prices retain their existing owners. Fresh source
+facts replace old associations, including an empty set; unchanged accepted source revisions may
+retain their evidence through a source outage. Independently valid card or exact pricing-row evidence
+can still establish a direct ID when the other source changes.
+
+Coverage is limited to explicitly identified public model IDs and their existing model-scoped offers.
+A mapping identifies a published tariff, not a promise of current runtime access. Unreviewed card
+layouts, unclassified aliases and account-specific IDs remain explicit unknowns. No service tariff
+is inferred from an API path, and no snapshot or alias borrows a price by name similarity.
 
 ### Catalog facts
 

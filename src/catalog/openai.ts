@@ -3,8 +3,11 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
-import { openAiInvocation, type OpenAiInvocationCard } from "./openai-invocation.ts";
-import { openAiSnapshotModels } from "./openai-invocation-snapshots.ts";
+import {
+  openAiInferencePrices,
+  openAiSnapshotModels,
+  type OpenAiModelCard,
+} from "./openai-model-ids.ts";
 export { parseOpenAiAccounting } from "./openai-accounting.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact } from "./pricing.ts";
 import { applyOpenAiCardRules } from "./openai-card-rules.ts";
@@ -1088,6 +1091,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
   const commercialFacts: SourceCommercialPricingFact[] = [];
   const vocabulary: ProviderAtomRegistryEntry[] = [];
   const pricingAliases = openAiPricingAliases(input.body);
+  const pricedIds = new Set<string>();
   const toolsText = openAiToolPricingText(input.body);
   const containerBilling = [
     ...toolsText.matchAll(/Eligible container sessions will be billed[^.]*\./g),
@@ -1217,6 +1221,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         continue;
       }
       target ??= createTarget(rawId);
+      if (target.model_id === rawId) pricedIds.add(rawId);
       for (const claim of claims) {
         const fact = claim.rate;
         if (fact !== undefined) {
@@ -1261,6 +1266,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         ]),
       ),
     );
+    pricedIds.add(aliasId);
     record({
       disposition: "normalized",
       reason_code: "documented_alias_price_bound",
@@ -1526,7 +1532,16 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
   for (const item of items) input.onPricingReconciliation?.(item);
   if (output.length === 0 && commercialFacts.length === 0)
     throw new Error("OpenAI pricing contained no admitted facts");
-  return { models: output, commercial_facts: commercialFacts, vocabulary };
+  return {
+    models: output,
+    commercial_facts: commercialFacts,
+    vocabulary,
+    inference_prices: openAiInferencePrices(
+      output.filter(({ model_id }) => pricedIds.has(model_id)),
+      input.source.id,
+      input.source.url,
+    ),
+  };
 }
 
 function openAiModalitiesFromDetails(
@@ -1722,7 +1737,7 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
     input.onContractFinding?.(
       contractExtensionEvidence(extra.map((id) => `/models/${id}/unindexed`)),
     );
-  const cards: OpenAiInvocationCard[] = [];
+  const cards: OpenAiModelCard[] = [];
   const models = [...statuses.entries()]
     .map(([id, lifecycle]) => {
       const matches = documents.get(id) ?? [];
@@ -1733,7 +1748,6 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
           cards.push({
             model,
             document,
-            support: openAiEndpointEvidence(document.body, model.tasks, undefined).support,
           });
           return model;
         } catch {
@@ -1760,13 +1774,9 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
   });
   return {
     models: inventory.models,
-    ...openAiInvocation({
-      ...inventory,
-      index: bundle.index,
-      documents: bundle.documents,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    }),
+    inference_prices: inventory.cards.flatMap(({ model, document }) =>
+      openAiInferencePrices([model], input.source.id, document.url),
+    ),
   };
 }
 

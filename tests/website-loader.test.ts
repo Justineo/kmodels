@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { emptyInvocationCatalog } from "../src/catalog/invocation-schema.ts";
 import { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "../src/catalog/website-schema.ts";
 import {
   loadWebsiteModelDetail,
@@ -139,38 +138,7 @@ function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOffe
 afterEach(() => vi.unstubAllGlobals());
 
 describe("website detail loading", () => {
-  it("loads a closed invocation graph and retries a rejected model reference", async () => {
-    const version = "01".repeat(32);
-    const payload = detailChunk(version, "Invocation detail");
-    payload.schema_version = 7;
-    const detail = payload.details[0];
-    if (detail === undefined) throw new Error("Missing detail");
-    detail.invocation = {
-      graph: {
-        ...emptyInvocationCatalog(),
-        target_coverage: [{ model_ref: model.uid, state: "not_collected", evidence_refs: [] }],
-      },
-      models: [{ uid: model.uid, provider_id: model.provider_id }],
-      sources: [],
-      bindings: [],
-    };
-    let requests = 0;
-    vi.stubGlobal("fetch", async () => {
-      requests += 1;
-      const response = structuredClone(payload);
-      const coverage = response.details[0]?.invocation?.graph.target_coverage[0];
-      if (coverage === undefined) throw new Error("Missing coverage");
-      if (requests === 1) coverage.model_ref = "other/model";
-      return new Response(JSON.stringify(response));
-    });
-    await expect(loadWebsiteModelDetail(version, model)).rejects.toThrow(
-      /Unknown invocation model/,
-    );
-    expect((await loadWebsiteModelDetail(version, model)).invocation).toEqual(detail.invocation);
-    expect(requests).toBe(2);
-  });
-
-  it("rejects oversized deferred details before parsing their graph", async () => {
+  it("rejects oversized deferred details before parsing", async () => {
     const version = "02".repeat(32);
     vi.stubGlobal(
       "fetch",
@@ -178,7 +146,6 @@ describe("website detail loading", () => {
     );
     await expect(loadWebsiteModelDetail(version, model)).rejects.toThrow(/size limit/);
   });
-
   it("deduplicates in-flight requests and evicts failures for retry", async () => {
     const dataVersion = "a".repeat(64);
     let attempts = 0;

@@ -1,0 +1,287 @@
+import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
+import { evaluateApplicability, type PricingSelection } from "../catalog/pricing-applicability.ts";
+import type { PriceDimension } from "../catalog/pricing-schema.ts";
+import type { InferencePriceReason } from "./inference-schema.ts";
+import type {
+  InferenceMatchData,
+  InferenceMatchOffer,
+  InferenceMatchTerm,
+} from "./inference-matching-schema.ts";
+import {
+  selectVariants,
+  validateSelectors,
+  validityGap,
+  type Gap,
+  type Qualified,
+} from "./selection.ts";
+
+export interface InferenceTermSelection {
+  id: string;
+  variants: number[];
+  raw_variants: number[];
+}
+export interface InferenceMatchCandidate {
+  rule_indexes: number[];
+  model_ref: string;
+  offer_ref: string;
+  selectors: PricingSelection[];
+  states: number[];
+  relations: number[];
+  terms: InferenceTermSelection[];
+  referenced_rates: InferenceTermSelection[];
+  missing_conditions: PriceDimension[];
+  gaps: Gap[];
+}
+export interface InferenceMatchResult {
+  status: "matched" | "candidates" | "unknown";
+  reason?: InferencePriceReason;
+  candidates: InferenceMatchCandidate[];
+  missing_conditions: PriceDimension[];
+  requires_offer_choice: boolean;
+}
+
+/** The same decision is used by portable lookup and interactive UI; no evidence or price copies. */
+export function matchInferencePrices(
+  data: InferenceMatchData,
+  supplied: readonly PricingSelection[] = [],
+  evaluatedAt = data.generated_at,
+  offerRef?: string,
+): InferenceMatchResult {
+  validateSelectors(supplied, []);
+  const result: InferenceMatchResult = {
+    status: "unknown",
+    candidates: [],
+    missing_conditions: [],
+    requires_offer_choice: false,
+  };
+  if (data.rules.length === 0) return { ...result, reason: "unreviewed_id" };
+  if (new Set(data.rules.map(({ model_ref }) => model_ref)).size > 1)
+    return { ...result, reason: "ambiguous_identity" };
+  let compatible = false;
+  const selected = new Map<string, InferenceMatchCandidate>();
+  for (const [rule_index, rule] of data.rules.entries()) {
+    const selectors = inferenceSelectors(rule, supplied);
+    if (selectors === undefined) continue;
+    compatible = true;
+    for (const ref of rule.offer_refs) {
+      if (offerRef !== undefined && ref !== offerRef) continue;
+      const offer = data.offers.find(({ id }) => id === ref);
+      if (offer === undefined) throw new Error(`Missing mapped offer ${ref}`);
+      const candidate = selectOffer(
+        data,
+        offer,
+        rule_index,
+        rule.model_ref,
+        selectors,
+        evaluatedAt,
+      );
+      if (candidate !== undefined) {
+        const { rule_indexes: _indexes, ...selection } = candidate;
+        const key = canonicalJson(selection);
+        const prior = selected.get(key);
+        if (prior === undefined) {
+          selected.set(key, candidate);
+          result.candidates.push(candidate);
+        } else prior.rule_indexes.push(rule_index);
+      }
+    }
+  }
+  const dimensions = uniqueCanonicalValues(
+    result.candidates.flatMap(({ selectors }) => selectors.map(({ dimension }) => dimension)),
+  );
+  const choices = dimensions.filter((dimension) => {
+    const key = canonicalJson(dimension);
+    return (
+      new Set(
+        result.candidates.map(({ selectors }) => {
+          const value = selectors.find((selector) => canonicalJson(selector.dimension) === key);
+          return value === undefined ? "unspecified" : canonicalJson(value);
+        }),
+      ).size > 1
+    );
+  });
+  for (const candidate of result.candidates)
+    candidate.missing_conditions = uniqueCanonicalValues([
+      ...candidate.missing_conditions,
+      ...choices,
+    ]);
+  result.missing_conditions = uniqueCanonicalValues(
+    result.candidates.flatMap(({ missing_conditions }) => missing_conditions),
+  );
+  result.requires_offer_choice =
+    new Set(result.candidates.map(({ offer_ref }) => offer_ref)).size > 1;
+  if (!compatible) return { ...result, reason: "incompatible_conditions" };
+  if (result.candidates.length === 0) return { ...result, reason: "no_applicable_price" };
+  const usable = result.candidates.some((candidate) => {
+    const offer = data.offers.find(({ id }) => id === candidate.offer_ref);
+    return (
+      candidate.terms.some(
+        (term) =>
+          term.variants.length > 0 &&
+          offer?.terms.find(({ id }) => id === term.id)?.kind === "rate",
+      ) ||
+      candidate.referenced_rates.some(({ variants }) => variants.length > 0) ||
+      candidate.states.some((index) =>
+        ["free", "included"].includes(offer?.states[index]?.state ?? ""),
+      )
+    );
+  });
+  if (!usable) {
+    const gaps = result.candidates.flatMap(({ gaps }) => gaps);
+    return {
+      ...result,
+      reason:
+        gaps.length > 0 && gaps.every(({ code }) => code === "outside_validity")
+          ? "no_applicable_price"
+          : "unresolved_price",
+    };
+  }
+  result.status =
+    result.missing_conditions.length > 0 ||
+    result.requires_offer_choice ||
+    result.candidates.some(({ gaps }) => gaps.length > 0)
+      ? "candidates"
+      : "matched";
+  return result;
+}
+
+export function inferenceSelectors(
+  rule: InferenceMatchData["rules"][number],
+  supplied: readonly PricingSelection[],
+): PricingSelection[] | undefined {
+  const fixed: PricingSelection[] = [
+    ...rule.fixed_selectors,
+    {
+      dimension: { namespace: "kmodels", value: "model" },
+      kind: "categorical",
+      value: { namespace: "kmodels", value: rule.model_ref },
+    },
+  ];
+  const selectors = new Map(supplied.map((value) => [canonicalJson(value.dimension), value]));
+  for (const value of fixed) {
+    const key = canonicalJson(value.dimension);
+    const previous = selectors.get(key);
+    if (previous !== undefined && canonicalJson(previous) !== canonicalJson(value)) return;
+    selectors.set(key, value);
+  }
+  return [...selectors.values()];
+}
+
+function selectOffer(
+  data: InferenceMatchData,
+  offer: InferenceMatchOffer,
+  rule_index: number,
+  model_ref: string,
+  selectors: PricingSelection[],
+  evaluatedAt: string,
+): InferenceMatchCandidate | undefined {
+  const offerRef = offer.id;
+  const candidate: InferenceMatchCandidate = {
+    rule_indexes: [rule_index],
+    model_ref,
+    offer_ref: offerRef,
+    selectors,
+    states: [],
+    relations: [],
+    terms: [],
+    referenced_rates: [],
+    missing_conditions: [],
+    gaps: [],
+  };
+  const applicable = <T extends Qualified & { semantics: number }>(
+    variants: T[],
+    termRef?: string,
+  ): number[] => {
+    validateSelectors(
+      selectors,
+      variants.map(({ applicability }) => applicability),
+    );
+    let outsideValidity = false;
+    const indexes: number[] = [];
+    const possible = variants.filter((variant, index) => {
+      const match = evaluateApplicability(variant.applicability, selectors);
+      if (match.state === "false") return false;
+      const gap = validityGap(variant, evaluatedAt, data.observed_at);
+      if (gap !== undefined) {
+        if (gap === "outside_validity") outsideValidity = true;
+        else candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: gap });
+        return false;
+      }
+      candidate.missing_conditions.push(...match.missing_dimensions);
+      indexes.push(index);
+      return true;
+    });
+    if (possible.length === 0 && outsideValidity)
+      candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: "outside_validity" });
+    if (
+      selectVariants(possible, selectors, ({ semantics }) => semantics).gap ===
+      "conflicting_variants"
+    )
+      candidate.gaps.push({
+        offerRef,
+        ...(termRef ? { termRef } : {}),
+        code: "conflicting_variants",
+      });
+    return indexes;
+  };
+  candidate.states = applicable(offer.states);
+  candidate.relations = offer.relations.flatMap((relation, index) =>
+    applicable([relation]).length ? [index] : [],
+  );
+  function selectTerm(term: InferenceMatchTerm): InferenceTermSelection[] {
+    const raw_variants = term.raw_variants.flatMap((variant, index) => {
+      const scope = variant.possible_scope ?? { any_of: [{ all_of: [] }] };
+      validateSelectors(selectors, [scope]);
+      const match = evaluateApplicability(scope, selectors);
+      if (match.state === "false") return [];
+      const gap = validityGap({ applicability: scope, ...variant }, evaluatedAt, data.observed_at);
+      if (gap === "outside_validity") return [];
+      if (variant.impact !== "informational") {
+        candidate.missing_conditions.push(...match.missing_dimensions);
+        if (gap !== undefined) candidate.gaps.push({ offerRef, termRef: term.id, code: gap });
+        candidate.gaps.push({
+          offerRef,
+          termRef: term.id,
+          code: "unsupported_structure",
+          reason: variant.reason,
+        });
+      }
+      return [index];
+    });
+    const variants = applicable(term.variants, term.id);
+    return variants.length + raw_variants.length === 0
+      ? []
+      : [{ id: term.id, variants, raw_variants }];
+  }
+  candidate.terms = offer.terms.flatMap(selectTerm);
+  const references = new Set(
+    candidate.terms.flatMap((selected) => {
+      const term = offer.terms.find(({ id }) => id === selected.id);
+      return term?.kind === "contribution"
+        ? selected.variants.flatMap((index) => term.variants[index]?.target_rate_refs ?? [])
+        : [];
+    }),
+  );
+  for (const ref of references) {
+    const rate = data.referenced_rates.find(({ id }) => id === ref);
+    if (rate === undefined) throw new Error(`Missing referenced price ${ref}`);
+    candidate.referenced_rates.push(...selectTerm(rate));
+  }
+  for (const index of candidate.states) {
+    const state = offer.states[index]?.state;
+    if (state !== undefined && !["numeric", "free", "included"].includes(state))
+      candidate.gaps.push({ offerRef, code: "unknown_price", reason: state });
+  }
+  candidate.missing_conditions = uniqueCanonicalValues(candidate.missing_conditions);
+  candidate.gaps = uniqueCanonicalValues(candidate.gaps);
+  if (
+    offer.terms.length > 0 &&
+    candidate.terms.length === 0 &&
+    candidate.gaps.length === 0 &&
+    candidate.states.every((index) => offer.states[index]?.state === "numeric")
+  )
+    return;
+  return candidate.states.length + candidate.terms.length + candidate.gaps.length === 0
+    ? undefined
+    : candidate;
+}

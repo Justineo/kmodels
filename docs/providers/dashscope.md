@@ -46,6 +46,30 @@ the source facts once, and replay can assemble services against the published ca
 the source's model observations are omitted. Required catalog and pricing model-count guards
 still reject empty or truncated source inventories.
 
+## Inference ID pricing
+
+The price book's literal model column establishes the inference ID and its existing model-scoped
+on-demand or Batch offers. Each published spelling remains exact, including snapshots and regional
+suffixes. Display aliases, recommended-model labels and similar family names do not establish
+additional request IDs or transfer prices. IDs found only in cache eligibility or tool compatibility
+lists do not establish a base inference tariff.
+
+The mapping fixes no region or deployment scope from an ID's spelling. The same ID can have multiple
+published regional prices; region, deployment scope, input-token bands and other commercial
+conditions remain on those prices. Missing conditions produce candidates. A supplied region outside
+the published price scope produces no applicable price. Private deployment names and unreviewed
+prefix or suffix variants remain unknown. Account plans and endpoint access are separate from this
+public pay-as-you-go lookup; these rates do not describe subscription entitlements.
+
+A parsed numeric context band is one condition, not both a token range and an independently
+selectable tier label. Unparsed labels remain categorical conditions; no numeric range is guessed.
+
+Literal price-table associations survive removal of optional API/accounting guides. Source refresh
+replaces the captured associations, so removing a model's price row withdraws its mapping even if a
+cache guide still mentions that ID. Independently published cache and tool facts keep their existing
+commercial ownership. The lookup reuses the shared matcher and never requires a protocol choice,
+request template or account configuration. Unresolved price evidence remains unresolved.
+
 ## Official source graph
 
 Production collection uses only Alibaba Cloud first-party sources:

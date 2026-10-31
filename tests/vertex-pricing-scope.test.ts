@@ -58,6 +58,13 @@ function parse(body: string, documents: { url: string; body: string }[] = []) {
 async function coherentPricing() {
   return (await nativePricing()).replaceAll("longer than or equal to", "longer than");
 }
+
+it("does not assign an unowned family price to the longest similar model ID", () => {
+  const result = parse(
+    "<main><table><tr><th>Model</th><th>Price (/1M tokens)</th></tr><tr><td>Gemini 4</td><td>Input: $2 Output: $10</td></tr></table></main>",
+  );
+  expect(result.models.flatMap((model) => model.price_facts)).toEqual([]);
+});
 function haiku(parsed: ReturnType<typeof parse>) {
   const model = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
   if (model === undefined) throw new Error("Missing Haiku fixture model");

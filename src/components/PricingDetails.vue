@@ -1,22 +1,19 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
 import { compareUtf8 } from "../catalog/canonical-value.ts";
-import { invocationPricingModelRef } from "../catalog/invocation-pricing-model.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
   WebsitePricingOffer,
   WebsiteProvider,
+  WebsiteInferencePrice,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import InferencePrices from "./InferencePrices.vue";
 import PricingServiceOffer from "./PricingServiceOffer.vue";
 import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiSelect from "./UiSelect.vue";
-import InvocationPriceInputs from "./InvocationPriceInputs.vue";
-import type { WebsiteInvocationSelection } from "../catalog/website-invocation-context.ts";
-import type { Selector } from "../pricing/schema.ts";
-import { resolveInvocationPriceSelectors } from "../pricing/v2/binding.ts";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -25,8 +22,7 @@ const props = defineProps<{
   detail: WebsitePricingDetail | undefined;
   loading: boolean;
   error: string | undefined;
-  invocation?: WebsiteInvocationSelection | undefined;
-  invocationRequired?: boolean;
+  inferencePrices?: WebsiteInferencePrice[] | undefined;
 }>();
 
 const emit = defineEmits<{ retry: [] }>();
@@ -34,43 +30,14 @@ const emit = defineEmits<{ retry: [] }>();
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
 const otherChargesOpen = ref(false);
-const initialPrice =
-  props.invocation?.binding === undefined
-    ? undefined
-    : resolveInvocationPriceSelectors(props.invocation.binding, {
-        selectors: [],
-        inputs: {},
-        observed: {},
-      });
-const boundPrice = ref<{ selectors: Selector[]; ready: boolean }>({
-  selectors: initialPrice?.selectors ?? [],
-  ready: initialPrice?.missingInputs.length === 0,
-});
-const invocationMessage = computed(() => {
-  if (!props.invocationRequired) return;
-  if (props.invocation === undefined)
-    return "Choose an invocation target and documented case to inspect its rates.";
-  const resolution = props.invocation.assessment?.resolution;
-  if (
-    resolution?.documented_support !== "supported" ||
-    resolution.context_match === "mismatched" ||
-    resolution.configuration === "conflicting"
-  )
-    return "No quote for this unsupported, conflicting or mismatched invocation context.";
-  if (props.invocation.binding === undefined)
-    return "No public price binding for this target and case in this snapshot.";
-});
-const offers = computed(() => {
-  const all = props.detail?.offers ?? [];
-  if (!props.invocationRequired) return all;
-  return invocationMessage.value === undefined
-    ? all.filter(({ id }) => props.invocation?.binding?.offer_refs.includes(id))
-    : [];
-});
-const pricingModelRef = computed(() =>
-  props.invocation === undefined
-    ? props.model.uid
-    : invocationPricingModelRef(props.invocation.target, props.invocation.binding),
+const offers = computed(() => props.detail?.offers ?? []);
+const hasKnownMapping = computed(() =>
+  props.inferencePrices?.some(
+    ({ candidates, matching, reason }) =>
+      candidates.length > 0 ||
+      (matching?.rules.length ?? 0) > 0 ||
+      (reason !== undefined && reason !== "unreviewed_id" && reason !== "ambiguous_identity"),
+  ),
 );
 interface CapacityGroup {
   key: string;
@@ -195,9 +162,7 @@ function toggleOtherCharges(event: Event): void {
       </span>
     </p>
 
-    <p v-if="invocationMessage" class="pricing-outcome" role="status">{{ invocationMessage }}</p>
-
-    <div v-else-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
+    <div v-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
       <strong>Not applicable</strong>
       <span>This provider publishes no public pricing offer for this model.</span>
     </div>
@@ -218,13 +183,16 @@ function toggleOtherCharges(event: Event): void {
     </div>
 
     <template v-else-if="detail">
-      <InvocationPriceInputs
-        v-if="invocationRequired && invocation?.binding"
-        :selection="invocation"
-        :offers
-        @resolve="boundPrice = $event"
+      <InferencePrices
+        v-if="inferencePrices?.length"
+        :model-ref="model.uid"
+        :prices="inferencePrices"
+        :offers="offers"
       />
-      <template v-if="!invocationRequired || boundPrice.ready">
+      <template v-if="!hasKnownMapping">
+        <p v-if="inferencePrices?.length" class="capacity-note">
+          The catalog prices below are not verified for this inference model ID.
+        </p>
         <section
           v-if="capacityGroups.length > 0"
           class="base-rates"
@@ -263,8 +231,7 @@ function toggleOtherCharges(event: Event): void {
             <PricingOfferBreakdown
               v-if="group.active"
               :offer="group.active"
-              :model-ref="pricingModelRef"
-              :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
+              :model-ref="model.uid"
             />
           </article>
         </section>
@@ -301,11 +268,7 @@ function toggleOtherCharges(event: Event): void {
               Run mode · {{ activeMechanism.title }}
             </small>
           </header>
-          <PricingOfferBreakdown
-            :offer="activeMechanism"
-            :model-ref="pricingModelRef"
-            :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
-          />
+          <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
         </section>
 
         <div
@@ -318,9 +281,7 @@ function toggleOtherCharges(event: Event): void {
     </template>
     <details
       v-if="
-        (!invocationRequired || (invocationMessage === undefined && boundPrice.ready)) &&
-        (supplementaryOffers.length > 0 ||
-          (provider?.pricing_coverage.standalone_resources ?? 0) > 0)
+        supplementaryOffers.length > 0 || (provider?.pricing_coverage.standalone_resources ?? 0) > 0
       "
       class="additional-costs"
       @toggle="toggleOtherCharges"
@@ -335,8 +296,7 @@ function toggleOtherCharges(event: Event): void {
           v-for="offer in supplementaryOffers"
           :key="offer.id"
           :offer
-          :model-ref="pricingModelRef"
-          :bound-selectors="invocationRequired ? boundPrice.selectors : undefined"
+          :model-ref="model.uid"
         />
         <ProviderServices
           v-if="provider && provider.pricing_coverage.standalone_resources > 0"
@@ -344,7 +304,7 @@ function toggleOtherCharges(event: Event): void {
           :provider
           :data-version
           :active="otherChargesOpen"
-          :excluded-offer-ids="(detail?.offers ?? []).map(({ id }) => id)"
+          :excluded-offer-ids="offers.map(({ id }) => id)"
         />
       </div>
     </details>

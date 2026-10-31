@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { linkedBundleSchema } from "./bundle.ts";
 import { extractDatabricksPricingInputs } from "./databricks-accounting.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
@@ -249,10 +249,6 @@ function parseModels(input: Input): ProviderModel[] {
   const ids = new Set(models.map((model) => model.model_id));
   if (ids.size !== models.length) throw new Error("Databricks catalog repeated an endpoint ID");
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
-}
-
-function requiredDocument(bundle: z.infer<typeof linkedBundleSchema>, path: string): string {
-  return linkedDocumentBody(bundle, path, `Databricks bundle expected one ${path} document`);
 }
 
 function document(bundle: z.infer<typeof linkedBundleSchema>, path: string): string | undefined {
@@ -742,6 +738,7 @@ function tieredPrices(
     if (
       tier === undefined ||
       ![
+        "Input",
         "Input|Output|Cache read",
         "Input|Output|Cache read|Cache write",
         "Input|Output|Cache read|Cache write|Cache write (1hr)",
@@ -1531,16 +1528,22 @@ function applyReleases(models: ProviderModel[], body: string): void {
 
 export function parseDatabricksCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const apiReference = requiredDocument(
+  const apiReference = document(
     bundle,
     "/aws/en/machine-learning/foundation-model-apis/api-reference",
   );
   const models = parseModels({ ...input, body: bundle.index.body });
-  applyApiSupport(
-    models,
-    requiredDocument(bundle, "/aws/en/machine-learning/model-serving/score-foundation-models"),
-    apiReference,
+  const modelTypes = document(
+    bundle,
+    "/aws/en/machine-learning/model-serving/score-foundation-models",
   );
+  if (apiReference !== undefined && modelTypes !== undefined) {
+    try {
+      applyApiSupport(models, modelTypes, apiReference);
+    } catch {
+      input.onContractFinding?.(contractExtensionEvidence(["/documents/api-support"]));
+    }
+  }
   const regions =
     document(bundle, "/aws/en/unity-gateway/model-region-availability") ??
     document(bundle, "/aws/en/machine-learning/model-serving/foundation-model-overview");
@@ -1555,7 +1558,14 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
     bundle,
     "/aws/en/machine-learning/foundation-model-apis/priority-mode",
   );
-  const priority = priorityBody === undefined ? new Map() : priorityModels(models, priorityBody);
+  let priority = new Map<string, SourcePriceFact["conditions"]>();
+  if (priorityBody !== undefined) {
+    try {
+      priority = priorityModels(models, priorityBody);
+    } catch {
+      input.onContractFinding?.(contractExtensionEvidence(["/documents/priority-mode"]));
+    }
+  }
   const rates = new Map<string, Map<string, SourcePriceFact>>();
   let exactPriority = new Set<string>();
   const open = document(bundle, "/product/pricing/foundation-model-serving");
@@ -1638,13 +1648,34 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
       price_facts: pricing,
     };
   });
-  const pricingInputs = extractDatabricksPricingInputs(
-    apiReference,
-    input.source.id,
-    input.onContractFinding,
-    input.onPricingReconciliation,
-  );
-  return { models: result, pricing_inputs: pricingInputs };
+  const pricingInputs =
+    apiReference === undefined
+      ? []
+      : extractDatabricksPricingInputs(
+          apiReference,
+          input.source.id,
+          input.onContractFinding,
+          input.onPricingReconciliation,
+        );
+  return {
+    models: result,
+    pricing_inputs: pricingInputs,
+    inference_prices: result
+      .filter((model) => model.price_facts.length + model.raw_price_facts.length > 0)
+      .map((model) => ({
+        model_id: model.model_id,
+        model_ref: model.uid,
+        offer_key: "pay-per-token",
+        source_ref: input.source.id,
+        fixed_selectors: [],
+        evidence: [
+          {
+            source_ref: input.source.id,
+            locator: { kind: "provider_key" as const, value: `Endpoint name: ${model.model_id}` },
+          },
+        ],
+      })),
+  };
 }
 
 function apiTask(value: string | undefined): {

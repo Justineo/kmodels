@@ -45,33 +45,28 @@ budget is normalized from decimal `k` tokens. The separate state-plus-longest-qu
 constraint remains in the model-card context label; it is not a global maximum-input field.
 The current table lists 64k total and 32k for state plus the longest question.
 
-## Invocation evidence
+## Inference ID and price mapping
 
-The parser emits separate internal invocation facts. The owned System One OpenAPI operation must
-declare the reviewed server, a string `model` request field, and its bearer-authentication scheme.
-Operation or path server overrides require review. The fenced specification URL alone does not
-establish an API origin. Missing or changed wire evidence leaves identity and pricing intact but
-emits no invocation targets. Historical MDX excerpts retain their existing model and usage facts;
-they do not establish the new invocation wire contract.
+The official Models page states that its model IDs select the request's `model` field and that
+aliases point to versioned model IDs accepted in that field. Its model table also publishes the
+token price. These statements establish direct price associations without validating API origins,
+authentication, request templates, release stages or capability coverage.
 
-Each accepted versioned name and request alias has a separate target. An alias is rolling only when
-its table meaning explicitly describes the most recent release. The current alias destination is
-an observed model relation. A version-looking name does not by itself establish immutable weights.
-Cases are scoped to classification on System One, with explicit authentication requirements and
-case-linked structured-output and request-context facts. The fixed API has no request-region,
-inference-mode, or deployment selector; execution geography remains unknown. Coverage is partial.
-The strict invocation assessment therefore retains unknown context and does not generate a fully
-qualified request template. The documented ID and API remain inspectable, and independently bound
-prices can be evaluated without claiming a verified execution location or account access.
-Each evidence record hashes the exact child document, rather than claiming its bundle hash is that
-document's hash. Collection retains unavailable companion evidence only for addresses still named by
-the current model page. Wire drift removes the invocation claim without erasing independent prices.
+The parser emits one direct ID-to-`systemone` offer association for every established versioned ID
+and alias, retaining the model's exact catalog reference and source locator. Alias destinations
+follow the explicit current table, not string similarity, equal amounts or an assumed latest
+version. The mapping describes its collected snapshot; a historical request using a rolling alias
+may require the actual version returned by that response.
 
-The parser also emits a reviewed commercial join to the model's `systemone` offer. Canonical v2
-bindings resolve that join to exact offer IDs after price assembly; no model's first offer is selected
-implicitly. Parsed compilation inputs preserve the join, and retained bindings require unchanged
-address, scope, surface, facts, evidence, and resolvable offers. V1 price books remain unchanged.
-These paths and their website controls are implemented; durable data has not yet adopted them.
+A missing or changed request-ID statement withholds that class of association and records a source
+contract finding. Independent catalog prices remain available. Missing optional API documentation
+does not remove price associations; response-usage extraction remains a separate accounting concern.
+
+The published long-context option costs the same per token. It therefore introduces no additional
+pricing selector. No region, protocol or service-tier choice is needed for the documented System One
+tariff. Unknown private or unreviewed IDs have no implicit association. The reviewed
+`models-id-pricing.md` fixture preserves the relevant model table, alias table and long-context
+statement from the [official Models page](https://docs.typesafe.ai/models.md).
 
 ## Pricing and accounting
 

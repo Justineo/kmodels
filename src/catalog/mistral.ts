@@ -1329,7 +1329,7 @@ function relatedRate(candidate: SourcePriceFact, selected: SourcePriceFact): boo
   );
 }
 
-export function parseMistralCatalog(input: Input): ProviderModel[] {
+export function parseMistralCatalog(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "mistral-catalog")
     throw new Error("Wrong Mistral catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
@@ -1460,7 +1460,31 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     input.source.extractor.maxModels,
   );
   if (modelCount === 0) throw new Error("Mistral catalog contained no callable models");
-  return models.sort((left, right) => left.uid.localeCompare(right.uid));
+  return {
+    models: models.sort((left, right) => left.uid.localeCompare(right.uid)),
+    inference_prices: models
+      .filter((model) => model.status !== "retired")
+      .flatMap((model) =>
+        [...new Set([model.model_id, ...model.aliases])].flatMap((model_id) =>
+          (["sync", "batch"] as const).map((offer_key) => ({
+            model_id,
+            model_ref: model.uid,
+            source_ref: input.source.id,
+            offer_key,
+            fixed_selectors: [],
+            evidence: [
+              {
+                source_ref: input.source.id,
+                locator: {
+                  kind: "provider_key" as const,
+                  value: JSON.stringify([model.model_id, model_id]),
+                },
+              },
+            ],
+          })),
+        ),
+      ),
+  };
 }
 
 function pricingModel(

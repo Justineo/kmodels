@@ -1,0 +1,265 @@
+import { gunzipSync } from "node:zlib";
+import { z } from "zod";
+import { beforeAll, expect, it, vi } from "vite-plus/test";
+import type { LinkedBundle } from "../src/catalog/bundle.ts";
+import { collectProvider } from "../src/catalog/collector.ts";
+import { fetchSource } from "../src/catalog/fetch.ts";
+import { manifests } from "../src/catalog/manifests.ts";
+import { sha256 } from "../src/catalog/io.ts";
+import { composeCatalogPair, coreCatalogVersion } from "../src/catalog/pricing-pair-transition.ts";
+import {
+  prepareCatalogPair,
+  type CatalogPairCandidate,
+} from "../src/catalog/pricing-publication.ts";
+import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
+import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import type { Selector } from "../src/pricing/schema.ts";
+import { projectCatalogPair } from "../src/catalog/projections.ts";
+import { compressedAsset } from "../src/catalog/asset-pack.ts";
+import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
+import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import type { Catalog } from "../src/catalog/schema.ts";
+import { vercelInferenceBundle } from "./vercel-inference-fixture.ts";
+
+vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
+  fetchSource: vi.fn(),
+}));
+const at = "2026-10-30T18:30:00.000Z";
+async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
+  const manifest = manifests.find(({ provider }) => provider.id === "vercel");
+  const catalog = manifest?.sources.find(({ id }) => id === "vercel-models");
+  if (!manifest || !catalog) throw new Error("Missing Vercel source");
+  const bundle = await vercelInferenceBundle();
+  change?.(bundle);
+  const bodies = new Map([[catalog.id, JSON.stringify(bundle)]]);
+  vi.mocked(fetchSource).mockImplementation(async (source) => {
+    const body = bodies.get(source.id);
+    if (!body) throw new Error("Missing fixture");
+    return {
+      body,
+      contentHash: sha256(body),
+      etag: undefined,
+      lastModified: undefined,
+      dependencies: [],
+    };
+  });
+  const result = await collectProvider(
+    { ...manifest, sources: [catalog] },
+    previous?.catalog,
+    { sources: {} },
+    at,
+  );
+  if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
+  const core: Catalog = {
+    catalog_version: coreCatalogVersion([result.provider]),
+    generated_at: at,
+    providers: [result.provider],
+    models: result.models,
+    sources: result.sources,
+    coverage: [result.coverage],
+    warnings: result.warnings,
+  };
+  const composed = composeCatalogPair(
+    previous?.catalog,
+    core,
+    previous?.pricing.data ?? emptyPricingCatalog(),
+    [{ kind: "fresh", partition: result.pricing }],
+  );
+  return {
+    candidate: compileInferencePriceMapping(
+      prepareCatalogPair(composed.catalog, composed.pricing),
+      result.inferencePriceSources ?? [],
+      previous,
+    ),
+    facts: result.inferencePriceSources?.flatMap(({ rules }) => rules) ?? [],
+  };
+}
+let baseline: CatalogPairCandidate;
+beforeAll(async () => {
+  baseline = (await collect()).candidate;
+}, 15000);
+
+function lookup(candidate: CatalogPairCandidate) {
+  return createInferencePriceLookup(
+    calculationExport(candidate.catalog, candidate.pricing),
+    candidate.inference?.mapping,
+  );
+}
+
+function condition(
+  dimension: "operation" | "route_provider" | "region" | "speed" | "served_service_tier",
+  value: string,
+): Selector {
+  return {
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: dimension },
+    value: { namespace: "provider", provider_id: "vercel", value },
+  };
+}
+function amounts(result: ReturnType<ReturnType<typeof lookup>>, meter = "input_text") {
+  return result.candidates.flatMap(({ offer }) =>
+    offer.terms.flatMap((term) =>
+      term.kind === "rate" && term.meter.value === meter
+        ? term.variants.map(({ price }) => price.value)
+        : [],
+    ),
+  );
+}
+
+it("looks up a native gateway ID without treating the creator as the serving route", async () => {
+  const candidate = baseline;
+  const query = lookup(candidate);
+  const args = { provider_id: "vercel", model_id: "alibaba/qwen3-embedding-0.6b" };
+  const result = query({ ...args, selectors: [condition("route_provider", "deepinfra")] });
+  expect(
+    result.status,
+    JSON.stringify({ missing: result.missing_conditions, reason: result.reason }),
+  ).toBe("matched");
+  expect(amounts(result, "embedding")).toEqual([{ numerator: "1", denominator: "100000000" }]);
+  expect(result.candidates.every(({ offer }) => offer.offer_key === "usage")).toBe(true);
+  for (const model_id of [
+    "qwen3-embedding-0.6b",
+    "deepinfra/qwen3-embedding-0.6b",
+    "eu.alibaba/qwen3-embedding-0.6b",
+    "vmc/abc-123",
+  ])
+    expect(query({ provider_id: "vercel", model_id }).reason).toBe("unreviewed_id");
+});
+
+it("keeps native Fast context tiers and regional amounts instead of extending the short rate", async () => {
+  const candidate = baseline;
+  const query = lookup(candidate);
+  for (const [region, numerator, denominator] of [
+    ["default", "1", "25000"],
+    ["us", "11", "250000"],
+  ] as const) {
+    const result = query({
+      provider_id: "vercel",
+      model_id: "openai/gpt-6-astra",
+      selectors: [
+        condition("operation", "sync"),
+        condition("speed", "fast"),
+        condition("served_service_tier", "standard"),
+        condition("region", region),
+        {
+          kind: "decimal",
+          dimension: { namespace: "kmodels", value: "context_tokens" },
+          value: "300000",
+          unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+        },
+      ],
+    });
+    expect(result.status).toBe("matched");
+    expect(amounts(result)).toEqual([{ numerator, denominator }]);
+  }
+});
+
+it("associates Batch IDs and base IDs with the same published Batch rates", async () => {
+  const candidate = baseline;
+  const query = lookup(candidate);
+  for (const model_id of ["anthropic/claude-opus-5", "anthropic/claude-opus-5-batch"]) {
+    for (const [region, numerator, denominator] of [
+      ["default", "1", "400000"],
+      ["us", "11", "4000000"],
+    ] as const) {
+      const result = query({
+        provider_id: "vercel",
+        model_id,
+        selectors: [
+          condition("operation", "batch"),
+          condition("route_provider", "anthropic"),
+          condition("region", region),
+        ],
+      });
+      expect(result.status).toBe("matched");
+      expect(amounts(result)).toEqual([{ numerator, denominator }]);
+    }
+  }
+  expect(
+    query({
+      provider_id: "vercel",
+      model_id: "anthropic/claude-opus-5-batch",
+      selectors: [condition("operation", "sync")],
+    }).reason,
+  ).toBe("incompatible_conditions");
+  expect(
+    query({
+      provider_id: "vercel",
+      model_id: "anthropic/claude-opus-5",
+      selectors: [condition("operation", "batch"), condition("route_provider", "bedrock")],
+    }).reason,
+  ).toBe("no_applicable_price");
+});
+
+it("withdraws Batch-dependent associations when its commercial evidence disappears", async () => {
+  const previous = baseline;
+  const { candidate } = await collect((bundle) => {
+    bundle.documents = bundle.documents.filter(({ url }) => !url.endsWith("batch-processing.md"));
+  }, previous);
+  const query = lookup(candidate);
+  for (const model_id of ["anthropic/claude-opus-5", "anthropic/claude-opus-5-batch"])
+    expect(query({ provider_id: "vercel", model_id }).reason).toBe("unreviewed_id");
+  expect(
+    query({
+      provider_id: "vercel",
+      model_id: "alibaba/qwen3-embedding-0.6b",
+      selectors: [condition("route_provider", "deepinfra")],
+    }).status,
+  ).toBe("matched");
+}, 15000);
+
+it("does not require optional accounting documents for independently published ID prices", async () => {
+  const { candidate } = await collect((bundle) => {
+    bundle.documents = bundle.documents.filter(
+      ({ url }) => !url.endsWith(".md") || url.endsWith("batch-processing.md"),
+    );
+  });
+  const result = lookup(candidate)({
+    provider_id: "vercel",
+    model_id: "anthropic/claude-opus-5-batch",
+    selectors: [condition("route_provider", "anthropic"), condition("region", "default")],
+  });
+  expect(result.status).toBe("matched");
+}, 15000);
+
+it("withdraws a removed public ID without borrowing a surviving model's price", async () => {
+  const { candidate } = await collect((bundle) => {
+    const inventory = z
+      .object({ object: z.literal("list"), data: z.array(z.object({ id: z.string() }).loose()) })
+      .parse(JSON.parse(bundle.index.body));
+    inventory.data = inventory.data.filter(({ id }) => id !== "alibaba/qwen3-embedding-0.6b");
+    bundle.index.body = JSON.stringify(inventory);
+  }, baseline);
+  expect(
+    lookup(candidate)({ provider_id: "vercel", model_id: "alibaba/qwen3-embedding-0.6b" }).reason,
+  ).toBe("unreviewed_id");
+}, 15000);
+
+it("exports the same conditions to the UI without audit payloads or invocation targets", async () => {
+  const candidate = baseline;
+  const projected = await projectCatalogPair(candidate);
+  const details = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap(
+      (asset) =>
+        websiteDetailChunkSchema.parse(
+          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
+        ).details,
+    );
+  const model = candidate.catalog.models.find(
+    ({ model_id }) => model_id === "anthropic/claude-opus-5-batch",
+  );
+  const price = details.find(({ model_ref }) => model_ref === model?.uid)?.inference_prices?.[0];
+  if (!price) throw new Error("Missing Batch UI mapping");
+  expect(
+    queryWebsiteInferencePrice(
+      price,
+      [condition("route_provider", "anthropic"), condition("region", "us")],
+      at,
+    ).status,
+  ).toBe("matched");
+  expect(JSON.stringify(price)).not.toMatch(/content_hash|invocation_target/);
+});

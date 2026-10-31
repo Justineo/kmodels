@@ -4,10 +4,9 @@ Status: current
 
 ## Boundary
 
-Meta is both the publisher of downloadable Llama weights and the operator of a
-limited Llama API. The catalog records official model artifacts because they are
-valid deployment candidates. The Meta price book records only direct calls to
-Meta-operated generation or moderation routes.
+Meta publishes downloadable Llama weights and operates Meta Model API. The catalog keeps the
+existing `llama` provider identity and artifact descriptors. A separate public source adds hosted
+Model API IDs and their direct request prices; it does not rename or merge existing artifacts.
 
 Artifact downloads, licenses, acceptable-use terms, local inference, training,
 storage, reserved compute, deployment partners, grants, credits, and settlement are
@@ -41,7 +40,44 @@ provider that operates and bills that route.
 
 ## Hosted pricing
 
-The reviewed public SDK proves two exact Chat identities—
+The public [Models](https://dev.meta.ai/docs/models) and
+[Pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits) pages establish exact hosted
+IDs and current tariffs. The old Llama developer documentation entry point now redirects to this
+Model API documentation. The `meta-model-api` source reads these two public HTML pages; no account,
+protocol discovery, SDK or request template is required to associate their prices.
+
+- Muse Wonder and Muse Spark publish cached input, uncached input and output token prices.
+  Standard and Contributor are distinct literal request IDs. The model availability row and the
+  pricing declaration must agree on the mode; a `-contributor` suffix alone establishes nothing.
+  Contributor mode permits Meta to use submitted content and responses to train future models.
+  This distinction is described on the model, rather than exposed as a redundant price selector.
+- Muse Image is priced per successfully generated and returned image. Failed or safety-filtered
+  images do not count. Built-in search is included; response token counts do not add token charges.
+- Muse Voice Transcribe is priced per hour of processed audio, rounded down to whole seconds.
+  Streaming and file transcription have the same price. Zero data retention has no premium.
+- SAM 3.1 has separate per-image and per-video-frame rates. Video quantities are already-billed
+  frames, including the 50-frame request minimum, rather than the raw clip's frame count.
+  The model description exposes this minimum in the website; the unit price alone is insufficient.
+- Text-model web search is an independent service rate per 1,000 queries. It is not attached to
+  an arbitrary model row and is not part of Muse Image's separately included search.
+
+The parser emits exact-ID associations to the existing canonical model usage offers. All numbers
+come from the current tables; no rate is inferred from a related family, partner, prefix or amount.
+The website and portable lookup share these associations. An absent price declaration withdraws
+that ID's association while preserving the independent catalog identity. An unknown pricing mode,
+unit, new unreviewed hosted line or changed accounting rule rejects the source for review.
+
+The price book binds caller-supplied billable quantities. It does not currently publish extraction
+formulas for all Model API response protocols. In particular, callers must supply uncached and
+cached input separately, floored audio seconds, and minimum-adjusted video frames. This limit does
+not prevent publishing an independently established rate. Registry creation timestamps are not
+release dates; country access restrictions are not regional pricing without commercial evidence.
+Muse Spark Open, Muse Glimmer, Muse Code subscriptions and partner-operated endpoints have no
+direct Model API tariff through this source.
+
+## Earlier Llama API evidence
+
+The reviewed public Llama SDK proves two exact Chat identities—
 `Llama-3.3-70B-Instruct` and
 `Llama-4-Maverick-17B-128E-Instruct-FP8`—and one exact Moderations identity,
 `Llama-Guard-4-12B`. Each resolves to an existing registry row and receives its exact
@@ -51,9 +87,8 @@ The reviewed sources establish these hosted routes without a public numeric rate
 non-publication claim. Pricing therefore remains `unknown` for hosted identities and other registry
 artifacts, and produces no price book. A route's existence cannot establish `not_published`, free
 usage or any other commercial state. Never project a hosted example or route to siblings.
-The registry/SDK source is catalog evidence rather than a pricing source. Meta has no canonical
-commercial partition or calculator-provider export until an admitted commercial source exists;
-the complete catalog still exposes every model with unknown pricing.
+The registry/SDK source remains catalog evidence rather than pricing evidence. The new Model API
+price book does not establish tariffs for these earlier hosted IDs or downloadable Llama artifacts.
 
 Dated limited-preview announcements cannot establish current free usage. Partner-operated
 routes have their prices under the provider that operates and bills them.
@@ -86,6 +121,7 @@ official rate evidence.
 - Hosted route proofs require the reviewed HTTPS `api.llama.com` origin without a custom port.
   Another SDK origin suppresses the dependent routes while independently verified registry facts
   survive. Generic metrics and unknown prices are deliberate source limits, not failed rate parsing.
-- Refresh is deterministic and uses only first-party repository, SDK, release-page,
-  and optional authenticated API inputs. No comparator catalog, inference, or LLM is
-  needed.
+- Refresh is deterministic and uses first-party repository, SDK, release-page, public Model API
+  documentation, and optional authenticated API inputs. No comparator catalog, inference, or LLM is
+  needed. Model API fixtures exercise collection, canonical rates, static lookup, UI projection,
+  price withdrawal and commercial-rule drift. Stored-data adoption remains a separate operation.

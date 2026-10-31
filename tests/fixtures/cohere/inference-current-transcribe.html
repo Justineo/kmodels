@@ -1,0 +1,129 @@
+<main>
+  <h1 class="fern-page-heading text-balance wrap-anywhere">Cohere Transcribe</h1>
+  <div class="fern-prose prose break-words prose-h1:mt-[1.5em] first:prose-h1:mt-0 max-w-full">
+    <div>
+      This page is for version v2 API (default). For other versions, use one of these documentation
+      indexes: - v2 API (default): https://docs.cohere.com/v2/llms.txt - v1 API:
+      https://docs.cohere.com/v1/llms.txt
+    </div>
+    <!--$-->
+    <div style="display: contents">
+      <h2 class="max-md:pr-4" style="cursor: pointer">About the Cohere Transcribe model</h2>
+      <p>
+        Cohere Transcribe is an open source research release of a 2B parameters dedicated audio-in,
+        text-out, automatic speech recognition (ASR) model. The model supports a total of 14
+        languages.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Model details</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class=""><strong class="font-semibold">Input</strong>: Audio waveform</li>
+        <li class=""><strong class="font-semibold">Output</strong>: Text</li>
+        <li class="">
+          <strong class="font-semibold">Model name</strong>: <code>cohere-transcribe-03-2026</code>
+        </li>
+        <li class="">
+          <strong class="font-semibold">Languages covered</strong>: English, German, French,
+          Italian, Spanish, Portuguese, Greek, Dutch, Polish, Vietnamese, Chinese, Arabic, Japanese,
+          Korean.
+        </li>
+        <li class=""><strong class="font-semibold">Maximum file size</strong>: 25MB</li>
+        <li class="">
+          <strong class="font-semibold">License</strong>:
+          <a class="fern-mdx-link" href="https://www.apache.org/licenses/LICENSE-2.0"
+            >Apache 2.0<svg class="lucide lucide-external-link external-link-icon">
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </li>
+      </ul>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Availability</h2>
+      <p>
+        You can access Cohere Transcribe via our
+        <a class="fern-mdx-link" href="https://dashboard.cohere.com/"
+          >API<svg class="lucide lucide-external-link external-link-icon">
+            <path></path>
+            <path></path>
+            <path></path></svg
+        ></a>
+        for free, low-setup experimentation subject to
+        <a class="fern-mdx-link" href="/v2/docs/rate-limits">rate limits</a>.
+      </p>
+      <p>
+        For production deployment without rate limits, provision a dedicated
+        <a class="fern-mdx-link" href="/v2/docs/model-vault">Model Vault</a>. This enables
+        low-latency, private cloud inference without having to manage infrastructure. Pricing is
+        calculated per hour-instance, with discounted plans for longer-term commitments.
+        <a class="fern-mdx-link" href="https://cohere.com/contact-sales"
+          >Contact our team<svg class="lucide lucide-external-link external-link-icon">
+            <path></path>
+            <path></path>
+            <path></path></svg
+        ></a>
+        to discuss your requirements.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Strengths</h2>
+      <p>
+        Cohere Transcribe demonstrates best-in-class transcription accuracy on 14 languages. As a
+        dedicated speech recognition model, it is also efficient, benefitting from a real-time
+        factor up to three times faster than that of other, dedicated ASR models in the same size
+        range. The model was trained from scratch, and from the outset, we deliberately focused on
+        minimizing word error rate (WER) while keeping production readiness top-of-mind.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Limitations</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class="">
+          <p>
+            <strong class="font-semibold">Single language</strong>: The model performs best when
+            remaining in-distribution of a single, pre-specified language amongst the 14 in the
+            range it supports. It does not feature explicit, automatic language detection.
+          </p>
+        </li>
+        <li class="">
+          <p>
+            <strong class="font-semibold">Timestamps/speaker diarization</strong>: The model does
+            not feature either of these.
+          </p>
+        </li>
+      </ul>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Model architecture</h2>
+      <p>
+        Cohere Transcribe is built on a speech-optimized Transformer variant: a Conformer. Input
+        audio waveforms are converted into a Mel spectrogram and then processed by a Conformer
+        encoder that holds the majority of the model’s parameters. The encoder’s representations are
+        then passed to a lightweight Transformer decoder that generates text tokens. Cohere
+        Transcribe is trained using standard supervised cross-entropy.
+      </p>
+      <h2 class="max-md:pr-4" style="cursor: pointer">Further Resources</h2>
+      <ul
+        class="[&amp;&gt;li]:relative [&amp;&gt;li]:before:text-(color:--grayscale-a10) mb-3 list-none pl-3 [&amp;&gt;li]:pl-3 [&amp;&gt;li]:before:absolute [&amp;&gt;li]:before:ml-[-22px] [&amp;&gt;li]:before:mt-[-1px] [&amp;&gt;li]:before:content-['⦁'] [&amp;&gt;li]:before:self-center"
+      >
+        <li class="">
+          <a class="fern-mdx-link" href="/v2/docs/audio-transcription-quickstart"
+            >Audio Transcriptions quickstart</a
+          >
+        </li>
+        <li class="">
+          <a class="fern-mdx-link" href="/v2/reference/create-audio-transcription"
+            >Audio Transcriptions API reference documentation</a
+          >
+        </li>
+        <li class="">
+          <a
+            class="fern-mdx-link"
+            href="https://github.com/cohere-ai/cohere-developer-experience/blob/main/notebooks/guides/audio/audio_transcription.ipynb"
+            >Jupyter notebook<svg class="lucide lucide-external-link external-link-icon">
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </li>
+      </ul>
+    </div>
+    <!--/$-->
+  </div>
+</main>

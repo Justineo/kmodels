@@ -73,6 +73,36 @@ a freshness warning.
 - Optional account inventory contributes only positive, non-secret facts to an existing public
   identity. Missing credentials or a failed region leaves public facts unchanged.
 
+## Inference model ID pricing
+
+The request's `model` value usually names an account-created deployment. Microsoft's
+[endpoint guide](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/endpoints)
+and [deployment guide](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/deploy-foundry-models)
+define that routing alias separately from the catalog model/version. A default deployment name
+that resembles a model ID does not establish its identity, version, deployment type or tariff.
+Region, a date suffix and a Global/Data Zone-looking prefix cannot supply that missing association.
+
+[Instant Access](https://learn.microsoft.com/en-us/azure/foundry/concepts/instant-models) is a
+distinct public name-based path with no deployment requirement. Its preview is limited to West US 3;
+bare names select the latest evergreen version and documented version suffixes permit pinning.
+The public examples are not an exhaustive inventory. Existing deployments with colliding names
+take precedence, so a raw name alone does not establish that the request used Instant Access.
+
+The reviewed Instant Access guide, deployment comparison, cost guide and public price pages do not
+establish a tariff association for that path. Sharing a global quota pool with Global Standard is
+not evidence of equal pricing, and the deployment comparison explicitly excludes Instant Access
+from its deployment-type table. Do not copy Global Standard rates or pick the newest catalog row
+to fill that evidence gap. The current lack of an association is not a claim that Instant Access
+is unsupported or has no price.
+
+The Retail, public-page and delegated Claude pricing sources therefore emit explicit empty
+inference-ID association sets. Lookup returns `unknown / unreviewed_id` for deployment names and
+unmapped public names; ordinary model/version prices remain available with the shared unverified-ID
+explanation. No account discovery, deployment wizard or protocol graph is required. Account
+inventory and accounting-contract enrichment cannot create a public deployment-to-price mapping.
+An eventual Instant Access mapping needs independently reviewed commercial scope and unambiguous
+identity evidence; default names, global quota and numeric catalog rates are insufficient.
+
 ## Pricing mapping
 
 All Azure parsers return the explicit source envelope. Public tool prices and accounting contracts

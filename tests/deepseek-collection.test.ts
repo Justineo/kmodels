@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { load } from "cheerio";
-import { htmlText } from "../src/catalog/html.ts";
+import { deepseekBundle as catalogBundle } from "./deepseek-fixture.ts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { collectProvider, pricingCompilationEntries } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
-import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
+import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
@@ -34,47 +33,6 @@ function core(result: Awaited<ReturnType<typeof collectProvider>>, at: string): 
 
 async function fixture(name: string): Promise<string> {
   return readFile(new URL(`./fixtures/deepseek/${name}.html`, import.meta.url), "utf8");
-}
-
-async function catalogBundle(source: SourceManifest) {
-  const bundle = {
-    index: { url: source.url, body: await fixture("catalog") },
-    documents: await Promise.all(
-      [
-        ["api/create-chat-completion", "chat"],
-        ["api/create-response", "responses"],
-        ["api/create-completion", "fim"],
-        ["guides/anthropic_api", "anthropic"],
-        ["guides/vision", "vision"],
-        ["api/list-models", "list-models"],
-        ["zh-cn/quick_start/pricing/", "catalog-cny"],
-      ].map(async ([path, name]) => {
-        if (path === undefined || name === undefined) throw new Error("Invalid fixture mapping");
-        return { url: `https://api-docs.deepseek.com/${path}`, body: await fixture(name) };
-      }),
-    ),
-  };
-  for (const [body, name, heading] of [
-    [bundle.index, "services-catalog", "Search & Fetch Pricing"],
-    [
-      bundle.documents.find((doc) => doc.url.includes("/zh-cn/")),
-      "services-cny",
-      "网页搜索与抓取价格",
-    ],
-  ] as const) {
-    if (body === undefined) throw new Error("Missing service pricing owner");
-    const $ = load(await fixture(name));
-    const title = $("h2").filter((_, node) => htmlText($(node).text()) === heading);
-    if (title.length !== 1) throw new Error("Missing native service heading");
-    const target = load(body.body);
-    target("article").append(title.toString() + title.nextUntil("h1,h2").toString());
-    body.body = target.html();
-  }
-  bundle.documents.push({
-    url: "https://api-docs.deepseek.com/guides/search/",
-    body: await fixture("search-billing"),
-  });
-  return bundle;
 }
 
 describe("DeepSeek commercial dependency isolation", () => {

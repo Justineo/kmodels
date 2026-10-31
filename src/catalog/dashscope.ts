@@ -1184,7 +1184,9 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
     ...(exclusiveMinimum === undefined ? {} : { context_min_tokens: exclusiveMinimum + 1 }),
     ...(range?.[2] === undefined ? {} : { context_max_tokens: tokenCount(range[2]) }),
-    ...(tier === undefined || /No tiered|flat-rate/i.test(tier) ? {} : { context_tier: tier }),
+    ...(tier === undefined || range?.[2] !== undefined || /No tiered|flat-rate/i.test(tier)
+      ? {}
+      : { context_tier: tier }),
     ...(operation === undefined
       ? {}
       : { operation: text(operation).toLowerCase().replace(/\W+/g, "_") }),
@@ -2233,6 +2235,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const evidence = commercialEvidence(input, bundle);
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
+  const inferenceIds = new Set<string>();
   const findings: string[] = [];
   let observedRows = 0;
   let coveredRows = 0;
@@ -2272,6 +2275,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
       const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
       const customQuote = row.some((cell) => /contact (?:sales|us)/i.test(cell.text));
       for (const id of rowIds) {
+        inferenceIds.add(id);
         const tasks = priceOperations(id, table.headings, table.headers);
         // A new operation column cannot disappear into an unconditional model rate.
         const billingItem = value(table, row, /^Billing item$/i);
@@ -2488,8 +2492,31 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     input.onPricingReconciliation,
   );
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
+  const values = bounded(models, 1, extractor.maxModels, "DashScope pricing");
   return {
-    models: bounded(models, 1, extractor.maxModels, "DashScope pricing"),
+    models: values,
+    inference_prices: values.flatMap((model) => {
+      if (!inferenceIds.has(model.model_id)) return [];
+      const hasBatchPrice = [...model.price_facts, ...model.raw_price_facts].some(
+        ({ conditions }) => conditions.service_tier === "batch",
+      );
+      return ["sync", ...(hasBatchPrice ? ["batch"] : [])].map((offer_key) => ({
+        model_id: model.model_id,
+        model_ref: model.uid,
+        offer_key,
+        source_ref: input.source.id,
+        fixed_selectors: [],
+        evidence: [
+          {
+            source_ref: input.source.id,
+            locator: {
+              kind: "provider_key" as const,
+              value: `${input.source.url} model ID ${model.model_id}`,
+            },
+          },
+        ],
+      }));
+    }),
     commercial_facts: commercialFacts,
     pricing_inputs: pricingInputs,
   };

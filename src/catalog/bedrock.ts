@@ -2,6 +2,10 @@ import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedr
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { markdownTable } from "./bedrock-markdown.ts";
+import { bedrockInferencePrices } from "./bedrock-inference-pricing.ts";
+import { uniqueCanonicalValues } from "./canonical-value.ts";
+import { bedrockCardIdentity, bedrockPublicIds } from "./bedrock-model-ids.ts";
 import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
 import {
   bedrockGroundingFact,
@@ -34,6 +38,7 @@ import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } fr
 import { classifyModelTasks } from "./task.ts";
 
 interface CardId {
+  idKind?: "api_id" | "source_generated";
   aliases: Set<string>;
   endpoints: Set<BedrockModelEndpoint>;
   deploymentTypes: Set<DeploymentType>;
@@ -387,7 +392,7 @@ function plain(value: string): string {
 }
 
 function fact(body: string, label: string): string | undefined {
-  return body.match(new RegExp(`^\\+ \\*\\*${label}:\\*\\* ([^\\n]+)$`, "m"))?.[1]?.trim();
+  return body.match(new RegExp(`^[-+*] \\*\\*${label}:\\*\\* ([^\\n]+)$`, "m"))?.[1]?.trim();
 }
 
 function humanDate(value: string): string | undefined {
@@ -435,50 +440,6 @@ function tokens(value: string | undefined): number | undefined {
   return Number(match[1]) * multiplier;
 }
 
-function markdownCells(line: string): string[] {
-  const escapedPipe = "\u0000";
-  const value = line.trim();
-  if (!value.startsWith("|")) return [];
-  return value
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .replaceAll("\\|", escapedPipe)
-    .split("|")
-    .map((cell) =>
-      cell.replaceAll(escapedPipe, "|").replaceAll("**", "").replaceAll("`", "").trim(),
-    );
-}
-
-function markdownTable(
-  body: string,
-  requiredHeaders: string[],
-): { header: string[]; rows: string[][] } | undefined {
-  const lines = body.split(/\r?\n/);
-  const matches: { header: string[]; rows: string[][] }[] = [];
-  for (let index = 0; index + 1 < lines.length; index += 1) {
-    const header = markdownCells(lines[index] ?? "");
-    if (header.length === 0 || !requiredHeaders.every((required) => header.includes(required)))
-      continue;
-    const separator = markdownCells(lines[index + 1] ?? "");
-    if (separator.length < header.length || !separator.every((cell) => /^:?-{3,}:?$/.test(cell)))
-      continue;
-    const rows: string[][] = [];
-    let cursor = index + 2;
-    while (lines[cursor]?.trim().startsWith("|")) {
-      const cells = markdownCells(lines[cursor] ?? "");
-      if (cells.length !== header.length)
-        throw new Error("Bedrock Markdown table contained an irregular row");
-      rows.push(cells);
-      cursor += 1;
-    }
-    matches.push({ header, rows });
-    index = cursor - 1;
-  }
-  if (matches.length > 1)
-    throw new Error(`Bedrock document duplicated Markdown table: ${requiredHeaders.join(", ")}`);
-  return matches[0];
-}
-
 function tableLabel(cell: string): string | undefined {
   const value = cell.match(/\)\s*([^)]*?)\s*$/)?.[1]?.trim();
   return value === "" ? undefined : value;
@@ -488,7 +449,7 @@ function supported(cell: string): boolean {
   return cell.includes("icon-yes.png");
 }
 
-function isCardEndpoint(value: string | undefined): value is BedrockModelEndpoint {
+function isCardEndpoint(value: string | undefined): value is "bedrock-runtime" | "bedrock-mantle" {
   return value === "bedrock-runtime" || value === "bedrock-mantle";
 }
 
@@ -675,22 +636,7 @@ function cardTable(
   };
 }
 
-function ids(cell: string): string[] {
-  return unique(
-    cell
-      .replace(/<br\s*\/?>/gi, "\n")
-      .split("\n")
-      .map((value) => value.replace(/[`*]/g, "").trim())
-      .filter(
-        (value) =>
-          value === value.toLowerCase() &&
-          value.includes(".") &&
-          modelIdSchema.safeParse(value).success,
-      ),
-  );
-}
-
-function programmaticAccess(body: string, name: string): Map<string, CardId> {
+function programmaticAccess(body: string, name: string, url: string): Map<string, CardId> {
   const content = section(body, "Programmatic Access");
   if (content === undefined)
     throw new Error(`Bedrock model card omitted Programmatic Access for ${name}`);
@@ -703,24 +649,23 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
   for (const cells of table.rows) {
     const endpoint = cells[endpointIndex];
     if (!isCardEndpoint(endpoint)) continue;
-    const modelId = cells[idIndex];
-    if (
-      modelId === undefined ||
-      modelId !== modelId.toLowerCase() ||
-      !modelId.includes(".") ||
-      !modelIdSchema.safeParse(modelId).success
-    )
-      continue;
+    const profiles = [...inferenceIdColumns].flatMap(([, heading]) =>
+      bedrockPublicIds(cells[header.indexOf(heading)] ?? ""),
+    );
+    const identity = bedrockCardIdentity(url, endpoint, cells[idIndex], profiles);
+    if (identity === undefined) continue;
+    const { modelId } = identity;
     const current = result.get(modelId) ?? {
       aliases: new Set<string>(),
       endpoints: new Set<BedrockModelEndpoint>(),
-      deploymentTypes: new Set<DeploymentType>(["in-region"]),
+      deploymentTypes: new Set<DeploymentType>(identity.idKind === "api_id" ? ["in-region"] : []),
+      idKind: identity.idKind,
     };
     current.endpoints.add(endpoint);
     for (const [deploymentType, heading] of inferenceIdColumns) {
       const index = header.indexOf(heading);
       if (index < 0) continue;
-      const observedAliases = ids(cells[index] ?? "");
+      const observedAliases = bedrockPublicIds(cells[index] ?? "");
       if (observedAliases.length > 0) current.deploymentTypes.add(deploymentType);
       for (const alias of observedAliases) if (alias !== modelId) current.aliases.add(alias);
     }
@@ -1102,7 +1047,11 @@ function openAiModelCardPricing(
   return { rates, rawFacts };
 }
 
-function cardAvailability(body: string, observedAt: string): BedrockAvailability[] {
+function cardAvailability(
+  body: string,
+  observedAt: string,
+  retired: boolean,
+): BedrockAvailability[] {
   const content = section(body, "Regional Availability");
   if (content === undefined) throw new Error("Bedrock model card omitted Regional Availability");
   const availability: BedrockAvailability[] = [];
@@ -1147,7 +1096,7 @@ function cardAvailability(body: string, observedAt: string): BedrockAvailability
       }
     }
   }
-  if (availability.length === 0)
+  if (availability.length === 0 && !retired)
     throw new Error("Bedrock model card contained no regional availability");
   return availability;
 }
@@ -1298,6 +1247,7 @@ function cardIdentityKeys(
 
 function parseCard(
   body: string,
+  url: string,
   observedAt: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
 ): Card {
@@ -1309,7 +1259,13 @@ function parseCard(
   const description = details
     ?.split("\n")
     .map((line) => line.trim())
-    .find((line) => line !== "" && !line.startsWith("<a ") && !line.startsWith("+ "));
+    .find(
+      (line) =>
+        line !== "" &&
+        !line.startsWith("<a ") &&
+        !/^[-+*] /.test(line) &&
+        !/^\*\*(?:Important|Note|Tip|Warning)\*\*$/.test(line),
+    );
   const cardSupport = cardTable(body, onPricingReconciliation);
   const documentedResponsePath =
     body.match(/available on the `([^`]+)` path on the `bedrock-mantle` endpoint/i)?.[1] ??
@@ -1340,7 +1296,7 @@ function parseCard(
       return responsePath === undefined ? [] : [{ ...endpoint, path: responsePath }];
     return openAiMantleBase ? [{ ...endpoint, path: `openai/${endpoint.path}` }] : [endpoint];
   });
-  const cardIds = programmaticAccess(body, name);
+  const cardIds = programmaticAccess(body, name, url);
   const programmaticEndpoints = new Set(
     [...cardIds.values()].flatMap(({ endpoints }) => [...endpoints]),
   );
@@ -1426,7 +1382,7 @@ function parseCard(
     ids: cardIds,
     modalities: cardSupport.modalities,
     apiEndpoints,
-    availability: cardAvailability(body, observedAt),
+    availability: cardAvailability(body, observedAt, status === "retired"),
     capabilities,
     limits,
     releaseDate,
@@ -3163,7 +3119,9 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
     })
     .flatMap((document): Card[] => {
       try {
-        return [parseCard(document.body, input.observedAt, input.onPricingReconciliation)];
+        return [
+          parseCard(document.body, document.url, input.observedAt, input.onPricingReconciliation),
+        ];
       } catch (error) {
         input.onPricingReconciliation?.({
           disposition: "excluded",
@@ -3268,6 +3226,7 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
           observedAt: input.observedAt,
         }),
         description: card.description,
+        id_kind: access.idKind ?? "api_id",
         aliases: [...access.aliases].sort(),
         tasks: card.tasks,
         api_endpoints: apiEndpoints.length > 0 ? apiEndpoints : undefined,
@@ -3294,11 +3253,13 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
     }
   }
   const result = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const inference = bedrockInferencePrices(input, result, bundle.documents);
   return {
     models: result,
+    inference_prices: inference.inference_prices,
     commercial_facts: prices.commercialFacts,
     pricing_inputs: pricingInputs,
-    vocabulary: prices.vocabulary,
+    vocabulary: uniqueCanonicalValues([...prices.vocabulary, ...inference.vocabulary]),
   };
 }
 

@@ -103,7 +103,8 @@ pricing joins remain required.
 - Current pricing pages separate Standard and Priority DBU-per-million-token tables from hourly
   Provisioned Throughput and Batch Inference tables. Read the reviewed token headers and their
   column order, including the optional row qualifier and one-hour cache-write column; discard
-  hourly compute tables. Comma-separated version labels expand to exact catalog matches.
+  hourly compute tables. A token table may publish only an Input column, as in the Jev row;
+  that establishes an input rate without inventing an output rate. Comma-separated version labels expand to exact catalog matches.
   The capacity heading may qualify DBU per hour with an explicit number of model units; that
   remains excluded capacity pricing and must not invalidate neighboring token tables.
 - Token cells normalize with their complete published applicability. Regional-processing markers
@@ -163,6 +164,34 @@ scope, shared conflict resolution preserves the quotes as `conflicting_values` r
 
 ## Canonical projection
 
+### Inference model ID lookup
+
+The producer associates each literal `Endpoint name:` with its existing `pay-per-token` offer
+when that exact catalog model has numeric or raw price evidence. This relation uses the labeled
+public endpoint and the reviewed unique price-row join; it does not derive an endpoint from the
+display name, an upstream ID, a regional prefix or a similar private deployment name. It preserves
+the full original endpoint string, including the `databricks-` prefix. A freshly withdrawn tariff
+row withdraws its association unless independent price evidence still establishes one.
+
+The public lookup and website use the shared matcher. Served tier, regional processing, context,
+cache retention, promotions and price validity remain on existing rates; missing conditions return
+candidates. DBU stays DBU, and a published input-only rate does not imply free output. Date-only
+promotions retain the shared unresolved-validity limitation; known raw or conflicting prices stay
+explicitly unresolved. A mapping therefore does not promise a complete numeric quote for every ID.
+
+Protocol references and the task-route matrix are optional metadata. Their absence or drift
+withholds the affected endpoints, streaming claims or usage-field acquisition paths and emits a
+contract signal for drift; independently established ID-to-price associations survive. An invalid
+Priority support contract likewise loses only its supplemental scope and unknown-amount claims;
+independently published model-qualified Standard and Priority tariffs survive. The matcher never
+uses a requested Priority tier or the response's request echo as proof of the billed tier.
+Private endpoints and unverified aliases return unknown without a deployment-discovery flow.
+
+Native public fixtures cover collection, static publication, exact lookup and compact UI parity,
+including tariff withdrawal and optional protocol omission. Stored-data adoption remains separate.
+
+### Offers and usage
+
 Every priced model has one `pay-per-token` offer. Endpoint geography, context band, Priority,
 promotion, and validity remain applicability dimensions rather than separate offers. There are no
 Databricks provider-resource books, capacity books, settlement facts, allowances, resource edges,
@@ -211,7 +240,8 @@ an invoice.
 
 ## Resilience and refresh
 
-Catalog support tables remain strict where they claim exhaustive identity or invocation contracts.
+Catalog identity remains strict. Optional API/task support tables validate their own claims;
+drift withdraws that enrichment without suppressing independent prices.
 Individual response usage fields are field-local contracts: drift removes only the affected
 `pricing_input` locator while retaining the known Claude cache subtraction and any surviving
 mappings. The caller must supply missing signals; independent catalog and rate facts remain.

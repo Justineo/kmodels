@@ -12,51 +12,15 @@ One component represents one billing aggregation instance. Exact offers are sele
 
 Rate selector sources remain qualified by their variant's applicability and validity. Contribution discovery carries referenced rate contracts within the contribution scope. Allowance discovery retains benefit, target and reset, and reports statically unsupported mechanisms. Charges retain the applied binding, unit price and combined contribution/rate/binding evidence. Public component types describe input; parsed components stay internal. Results and requirements use discriminated unions so consumers can safely narrow complete totals and term-specific metadata.
 
-Package `1.0.0` accepts data/request schema `2.0` at its default entry and preserves the synchronous
-schema `1.0` reader at `@kmodels/pricing/v1`. Both entries share the exact monetary evaluator. V2
-initialization is asynchronous; its results preserve the complete v2 snapshot and invocation selections.
-The package contract documents migration and the explicit compatibility entry.
+Package `0.2.0` records these pre-1.0 API type changes and additive result metadata. Data/request schema `1.0` and monetary evaluation remain unchanged; malformed selector mappings now fail initialization. The package contract documents migration implications for mocks, type extensions, optional arrays and strict output decoders.
 
-## V2 implementation boundary
+## Calculation export
 
-The source entry `src/pricing/v2/index.ts` and default package entry accept only calculation schema
-`2.0`. The compatibility entry `src/pricing/index.ts` / `@kmodels/pricing/v1` accepts only `1.0`.
-Registry publication is a separate release step. Durable data has not adopted v2.
-
-V2 initialization uses `await validatePriceData(data)` or `await createCalculator(data)`. Web Crypto
-verifies observed-selector contract references without a Node dependency or network access.
-Calculations remain synchronous after initialization and reuse the exact evaluator. The internal
-evaluator view is not a legacy publication: returned results retain the complete v2 snapshot.
-
-The v2 snapshot adds `coreDataSha256` and `pricingAssetSha256`, respectively identifying complete C2
-data and the exact P2 response. Selected provider partitions retain the parent metadata. Each provider
-includes `invocation`, `invocation_bindings`, and `invocation_sources`; invocation sources remain
-separate from retained price source revisions. Reference, provider, public-source and selector
-validation is shared with canonical publication. These metadata fields do not authenticate arbitrary
-input: clients still verify downloaded resource hashes against their accepted publication manifest.
-
-`listInvocationBindings()` exposes exact target/case/offer joins. An offer with published bindings
-requires explicit `invocation: { targetRef, caseRef, inputs?, observed? }` selection in requirements
-and calculation components. `bindInvocation()` derives fixed selectors and reports missing context
-or observed inputs. Fixed selectors may be categorical or boolean. Context and observed input values
-are normalized categorical values under their declared dimension;
-the caller follows the acquisition contract when collecting and normalizing observations. Ordinary
-selectors cannot bypass those inputs or override a fixed value. Unknown cases, unrelated offers,
-undeclared inputs and conflicting selectors fail. Requirements/calculation reject unresolved
-invocation pricing inputs. Offers without invocation bindings retain ordinary explicit offer
-calculation; absence of bindings does not establish callability.
-
-Results record each component's selected target and case. A conditional price calculation does not
-establish account access, runtime configuration, lifecycle eligibility or successful execution.
-Those conclusions remain the responsibility of invocation resolution and selection policy.
-
-New pairs also publish `/pricing/v2/calculation/index.json`, complete provider partitions under
-`/pricing/v2/calculation/providers/`, and `/pricing/v2/calculation/coverage.json`. Coverage has schema
-version `2.0`, the full v2 snapshot, and the existing per-provider calculation coverage plus
-`targetCoverage` and `invocationBindings` (target, case and offer references). All response hashes
-participate in `catalog/publication.json`. Legacy paths and strict schemas remain unchanged.
-
-## Legacy calculation export
+The default package entry and the single calculation export retain schema `1.0`. Frozen schema,
+request, conformance and contract hashes protect the original interface. The additive
+[inference ID lookup](inference-pricing.md) does not replace the calculator or require a request
+protocol/configuration to inspect prices. Its matching function also serves the interactive website;
+full price records and evidence remain in the portable output, outside the UI's compact projection.
 
 Pair publication and `vp run prepare:assets` generate these separate export-pack assets:
 
@@ -92,23 +56,26 @@ Canonical and packaged evaluation share rational arithmetic, quantity graphs, ap
 
 `vp run package:build` emits the neutral ESM bundle/declarations, JSON Schemas, and synthetic conformance fixtures. `vp run package:check` packs the artifact, checks its allowlist and dependency boundary, blocks network access, and executes calculation and error vectors in Node and a bundled browser-like ESM context. Generated-data tests validate every provider export against the canonical pair. CI runs package checks alongside repository checks. Nothing in those commands publishes to a registry.
 
+## Inference ID lookup
+
+`createInferencePriceLookup(priceData, mappingData)` is an additive export. It accepts the same
+portable calculation snapshot and a separately supplied ID mapping. The returned function takes
+`provider_id`, the exact request `model_id`, optional `selectors`, optional `offer_ref`, and optional
+`evaluated_at`. The offer reference selects an existing candidate, such as Messages or Batch;
+omission preserves all candidates and their `requires_offer_choice` result.
+It returns `matched`, `candidates`, or `unknown`, together with all applicable candidate offers,
+referenced contribution rates, missing conditions, evidence, and freshness. It does not require
+usage quantities or replace `createCalculator`.
+
+The optional `/pricing/inference.json` resource and its snapshot binding are defined in
+[Inference model ID pricing](inference-pricing.md). Callers own retrieval of both inputs. Neither
+model display aliases nor regional-looking prefixes create an implicit association. The package's
+existing calculation schema, request schema and exact calculation contract remain unchanged.
+
 ## Code organization
 
-The default package entry point `src/pricing/v2/index.ts` exports the v2 reader and invocation-aware
-calculator; `src/pricing/index.ts` exports the explicit v1 compatibility surface.
-`src/pricing/calculator.ts` exposes the shared evaluator, and `errors.ts` defines the stable error
-codes. `snapshot.ts` owns the immutable data index and term traversal; `requirements.ts` owns
-discovery. Request validation is in `request.ts`, while `validation.ts`,
-`validation-vocabulary.ts`, and `validation-quantity.ts` validate supplied price data.
+The package entry point `src/pricing/index.ts` re-exports the public surface; `src/pricing/calculator.ts` initializes the snapshot and exposes the instance methods, and `errors.ts` defines the stable error codes. `snapshot.ts` owns the immutable data index and term traversal; `requirements.ts` owns discovery. Request validation is in `request.ts`, while `validation.ts`, `validation-vocabulary.ts`, and `validation-quantity.ts` validate supplied price data.
 
 `evaluation.ts` assembles request results. `component-evaluation.ts` handles one billing instance, `composition.ts` checks component relationships, and `allowances.ts` applies supported benefits. `selection.ts` resolves applicability and validity. Public result/interface types live in `types.ts`; wire schemas remain in `schema.ts`.
 
-The package checker runs explicit stages: pack and inspect the artifact, verify frozen v1 contract
-hashes, compile consumers of both entries against packed declarations in NodeNext and
-bundler-compatible module modes, load each version's synthetic conformance data, and verify Node
-and browser runtimes through the same conformance runner. Consumer checks cover asynchronous v2
-initialization, optional component inputs, complete/incomplete result narrowing and term-specific
-requirement fields. Frozen schemas, numerical vectors and contract text are tied to the pre-migration
-commit in `tests/fixtures/calculator/v1-contract-hashes.json`; regeneration cannot silently widen
-the v1 reader. V2 vectors add explicit fixed/context/observed selection, cross-version rejection,
-missing inputs, conflicting values and unresolved acquisition references.
+The package checker runs explicit stages: pack and inspect the artifact, compile a consumer against the packed declarations in NodeNext and bundler-compatible module modes, load synthetic conformance data, and verify Node and browser runtimes through the same conformance runner. Consumer checks cover optional component inputs, complete/incomplete result narrowing and term-specific requirement fields. Helpers are named for those stages so the execution order and boundaries are visible in the code.

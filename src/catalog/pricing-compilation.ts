@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
+import { captureInferencePriceSources } from "./inference-pricing-source.ts";
+import { compileInferencePriceMapping } from "./inference-pricing-compilation.ts";
 import { assertCanonicalJson, canonicalJsonBytes } from "./canonical-json.ts";
 import { compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { atomicWrite, rootDirectory } from "./io.ts";
@@ -35,7 +37,6 @@ import {
 import { providerPartition } from "./pricing-transition.ts";
 import type { SourceRecord } from "./schema.ts";
 import { runWorkerPool } from "./worker-pool.ts";
-import { reconcileInvocationBindings } from "./invocation-pricing.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const pricingReplaySourceSchema = sourcePricingFactsSchema.extend({
@@ -53,7 +54,10 @@ function hasSourceProvenance(facts: SourcePricingFacts, sourceId: string): boole
   return [
     ...(facts.pricing_inputs ?? []).map(({ source_ref }) => source_ref),
     ...(facts.commercial_facts ?? []).flatMap(commercialFactSourceRefs),
-    ...(facts.invocation_pricing ?? []).map(({ source_ref }) => source_ref),
+    ...(facts.inference_prices ?? []).flatMap((rule) => [
+      rule.source_ref,
+      ...rule.evidence.map(({ source_ref }) => source_ref),
+    ]),
   ].every((sourceRef) => sourceRef === sourceId);
 }
 export const pricingCompilationSnapshotSchema = z
@@ -192,7 +196,10 @@ export function capturePricingReplaySources(
   sources: readonly ParsedPricingSource[],
   sourceRecords: readonly SourceRecord[],
 ): PricingReplaySource[] | undefined {
-  const dependencies = sources.filter(({ source }) => isPricingDependencySource(source));
+  const dependencies = sources.filter(
+    ({ source, inference_prices }) =>
+      isPricingDependencySource(source) || inference_prices !== undefined,
+  );
   if (
     dependencies.length === 0 ||
     dependencies.some(({ source }) => source.access !== "public" || source.auth !== undefined)
@@ -374,27 +381,30 @@ export async function compilePricingSnapshot(
       return partition;
     }),
   );
-  const invocation = current.catalog.invocation;
-  const bindings =
-    invocation === undefined
-      ? []
-      : reconcileInvocationBindings(
-          invocation,
-          pricing,
-          tasks
-            .filter(({ providerId }) => replayedProviders.includes(providerId))
-            .flatMap(({ sources }) =>
-              sources.flatMap(({ invocation_pricing }) => invocation_pricing ?? []),
-            ),
-          current.v2 === undefined
-            ? undefined
-            : { invocation, bindings: current.v2.pricing.data.invocation_bindings },
-        );
+  const prepared =
+    replayedProviders.length === 0
+      ? current
+      : await prepareCatalogPairInParallel(current.catalog, pricing);
+  const inferenceSources = tasks
+    .filter(({ providerId }) => replayedProviders.includes(providerId))
+    .flatMap(({ providerId, sources }) =>
+      captureInferencePriceSources(
+        sources.filter(({ source }) => {
+          const replay = replayByProvider
+            .get(providerId)
+            ?.sources.find(({ source_id }) => source_id === source.id);
+          const record = current.catalog.sources.find(({ id }) => id === source.id);
+          return (
+            record !== undefined &&
+            replay?.content_hash === record.content_hash &&
+            replay.extractor_version === record.extractor_version
+          );
+        }),
+        current.catalog.sources,
+      ),
+    );
   return {
-    candidate:
-      replayedProviders.length === 0
-        ? current
-        : await prepareCatalogPairInParallel(current.catalog, pricing, bindings),
+    candidate: compileInferencePriceMapping(prepared, inferenceSources, current),
     replayedProviders: replayedProviders.sort(compareUtf8),
     preservedProviders: preservedProviders.sort(compareUtf8),
     replayFailures: replayFailures.sort((left, right) =>
@@ -494,7 +504,10 @@ function replaySources(
 
   return replay.sources.map((source) => {
     const configured = manifestSources.get(source.source_id);
-    if (configured === undefined || !isPricingDependencySource(configured))
+    if (
+      configured === undefined ||
+      (!isPricingDependencySource(configured) && source.inference_prices === undefined)
+    )
       throw new Error(`Pricing replay source ${source.source_id} is not configured for pricing`);
     if (configured.access !== "public" || configured.auth !== undefined)
       throw new Error(`Pricing replay source ${source.source_id} is not public`);
@@ -515,7 +528,7 @@ function replaySources(
       (facts.commercial_facts?.length ?? 0) > 0 ||
       (facts.pricing_inputs?.length ?? 0) > 0 ||
       (facts.vocabulary?.length ?? 0) > 0 ||
-      (facts.invocation_pricing?.length ?? 0) > 0 ||
+      (facts.inference_prices?.length ?? 0) > 0 ||
       source.models.some(
         ({ pricing_state, price_facts, raw_price_facts, state_facts }) =>
           pricing_state !== "unknown" ||

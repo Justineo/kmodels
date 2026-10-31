@@ -179,7 +179,8 @@ export function parseSagemakerPricing(input: Input): SourceParseResult {
   }
   if (seenListings.size !== refs.size)
     throw new Error("SageMaker Marketplace price bundle was incomplete");
-  return { models, commercial_facts: facts };
+  // JumpStart/listing identities do not establish an account-created runtime endpoint or target.
+  return { models, commercial_facts: facts, inference_prices: [] };
 }
 
 function record(

@@ -61,8 +61,6 @@ after each test, including failures.
 - Keep explicit upper bounds on payload size, chunk size, offer count, and preview length: those
   protect consumer resource contracts. Test their behavior with synthetic inputs and verify the
   current published assets stay within the same bounds.
-  The atomic export pack allows 64 MiB compressed for the complete parallel v1 and v2 trees;
-  the UI pack remains limited to 16 MiB. Per-resource decoded limits remain unchanged.
   Website core data splits at complete model/price row boundaries into 128 KiB UTF-8 chunks.
   Verify per-chunk bounds, complete round trips, local dictionary remapping, deterministic order,
   and rejection of missing, reordered or mixed-version chunks. Normal inventory growth creates
@@ -138,6 +136,9 @@ or the PR base. The same planner is used inside repair and by its trusted latest
 - Shared configuration, runtime, lockfile and test-setup changes select one complete test run,
   the production build and package gates. An unavailable/initial comparison also selects this
   complete gate. `collect:fixtures` is a convenience subset, never a second gate after full tests.
+- Package generation must preserve the prepared package source tree. Compare content and modes
+  before and after generation, including intentional uncommitted edits and new source artifacts;
+  ignore generated runtime output. An intentional schema/entry restoration is not a build mutation.
 - Documentation-only changes need formatting. Unchanged passing checks are not rerun while
   awaiting delivery. Re-run a failed check after its cause changes, then validate the affected
   result; a different checkout or trust boundary needs its own relevant proof.
@@ -159,9 +160,6 @@ retention. These are deterministic harness regressions; they do not measure whet
 or interpreted the right evidence. Review real agent traces to assess investigation quality.
 
 Calculator/package inputs select `vp run package:build` and `vp run package:check`.
-Both package entries are checked independently: the default schema 2.0 reader uses asynchronous
-initialization and the explicit `/v1` reader retains synchronous schema 1.0 initialization.
-The v1 JSON schemas, conformance data and contract text must match the frozen pre-migration hashes.
 Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
 checks pack an allowlisted artifact, reject frontend/collection/transport dependencies and real
 provider data, and execute the same vectors in Node and a browser-like ESM context with network
@@ -170,6 +168,9 @@ all provider exports against the canonical pair. `vp run test:data` runs that pr
 
 The package checker also compiles consumer fixtures against the packed declarations using NodeNext
 and bundler-compatible module modes. These assertions cover optional input arrays and discriminated
-result/requirement types, including invalid complete and incomplete result mocks. Production builds
+result/requirement types, including invalid complete and incomplete result mocks. The additive
+inference lookup is exercised through the packed declarations and Node/browser runtimes with known
+and unreviewed literal IDs. Publication tests cover the optional mapping's accepted-pair binding,
+recovery, missing evidence revisions and unchanged canonical payloads. Production builds
 verify the materialized calculation endpoints, coverage parity and initialization of every provider
 partition, so checking the exporter in memory cannot hide a stale checked-in export pack.

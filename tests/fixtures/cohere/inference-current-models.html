@@ -1,0 +1,858 @@
+<main>
+  <h2>What can These Models Be Used For?</h2>
+  <h2>Command</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Modality</th>
+        <th>Context Length</th>
+        <th>Maximum Output Tokens</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>command-a-plus-05-2026</code></td>
+        <td>Live</td>
+        <td>
+          Command A+ offers the last model in the Command A family, while being Cohere’s first
+          Mixture of Experts model, simultaneously combining vision input support, agentic,
+          reasoning, and world-class translation capabilities into single model weights. It also can
+          fit on 1 x B200 or 2 x H100 GPUs, while providing significant latency and throughput
+          improvements over Command A Reasoning, making it an ideal model for any enterprise to
+          deploy at scale.
+        </td>
+        <td>Text, Images</td>
+        <td>128k</td>
+        <td>64k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-a-03-2025</code></td>
+        <td>Live</td>
+        <td>
+          Command A is our most performant model to date, excelling at tool use, agents, retrieval
+          augmented generation (RAG), and multilingual use cases. Command A has a context length of
+          256K, only requires two GPUs to run, and has 150% higher throughput compared to Command R+
+          08-2024.
+        </td>
+        <td>Text</td>
+        <td>256k</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r7b-12-2024</code></td>
+        <td>Live</td>
+        <td>
+          <code>command-r7b-12-2024</code> is a small, fast update delivered in December 2024. It
+          excels at RAG, tool use, agents, and similar tasks requiring complex reasoning and
+          multiple steps.
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-a-translate-08-2025</code></td>
+        <td>Live</td>
+        <td>
+          Command A Translate is Cohere’s state of the art machine translation model, excelling at a
+          variety of translation tasks on 23 languages: English, French, Spanish, Italian, German,
+          Portuguese, Japanese, Korean, Chinese, Arabic, Russian, Polish, Turkish, Vietnamese,
+          Dutch, Czech, Indonesian, Ukrainian, Romanian, Greek, Hindi, Hebrew, Persian.
+        </td>
+        <td>Text</td>
+        <td>8K</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-a-reasoning-08-2025</code></td>
+        <td>Live</td>
+        <td>
+          Command A Reasoning is Cohere’s first reasoning model, able to ‘think’ before generating
+          an output in a way that allows it to perform well in certain kinds of nuanced
+          problem-solving and agent-based tasks in 23 languages.
+        </td>
+        <td>Text</td>
+        <td>256k</td>
+        <td>32k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-a-vision-07-2025</code></td>
+        <td>Live</td>
+        <td>
+          Command A Vision is our first model capable of processing images, excelling in enterprise
+          use cases such as analyzing charts, graphs, and diagrams, table understanding, OCR,
+          document Q&amp;A, and object detection. It officially supports English, Portuguese,
+          Italian, French, German, and Spanish.
+        </td>
+        <td>Text, Images</td>
+        <td>128K</td>
+        <td>8K</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r-08-2024</code></td>
+        <td>Live</td>
+        <td>
+          <code>command-r-08-2024</code> is an update of the Command R model, delivered in August
+          2024. Find more information in the
+          <a href="https://docs.cohere.com/changelog/command-gets-refreshed">changelog</a>
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r-plus-08-2024</code></td>
+        <td>Live</td>
+        <td>
+          <code>command-r-plus-08-2024</code> is an update of the Command R+ model, delivered in
+          August 2024. Find more information in the
+          <a href="https://docs.cohere.com/changelog/command-gets-refreshed">changelog</a>
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r-03-2024</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>
+          Command R is an instruction-following conversational model that performs language tasks at
+          a higher quality, more reliably, and with a longer context than previous models. It can be
+          used for complex workflows like code generation, retrieval augmented generation (RAG),
+          tool use, and agents.
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r-plus-04-2024</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>
+          Command R+ is an instruction-following conversational model that performs language tasks
+          at a higher quality, more reliably, and with a longer context than previous models. It is
+          best suited for complex RAG workflows and multi-step tool use.
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r-plus</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>Alias for <code>command-r-plus-04-2024</code></td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-r</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>Alias for <code>command-r-03-2024</code></td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command-light</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>
+          A smaller, faster version of <code>command</code>. Almost as capable, but a lot faster.
+        </td>
+        <td>Text</td>
+        <td>4k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>command</code></td>
+        <td>Deprecated Sept 15, 2025</td>
+        <td>
+          An instruction-following conversational model that performs language tasks with high
+          quality, more reliably and with a longer context than our base generative models.
+        </td>
+        <td>Text</td>
+        <td>4k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Amazon Bedrock Model ID</th>
+        <th>Amazon SageMaker</th>
+        <th>Azure AI Foundry</th>
+        <th>Oracle OCI Generative AI Service</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>command-a-plus-05-2026</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>’coherelabs-command-a-plus-05-2026-w4a4’</td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>command-a-03-2025</code></td>
+        <td>(Coming Soon)</td>
+        <td>Unique per deployment</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere.command-a-03-2025</code></td>
+      </tr>
+      <tr>
+        <td><code>command-r7b-12-2024</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>command-r-plus</code></td>
+        <td><code>cohere.command-r-plus-v1:0</code></td>
+        <td>Unique per deployment</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere.command-r-plus v1.2</code></td>
+      </tr>
+      <tr>
+        <td><code>command-r</code></td>
+        <td><code>cohere.command-r-v1:0</code></td>
+        <td>Unique per deployment</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere.command-r-16k v1.2</code></td>
+      </tr>
+      <tr>
+        <td><code>command</code></td>
+        <td><code>cohere.command-text-v14</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td><code>cohere.command v15.6</code></td>
+      </tr>
+      <tr>
+        <td><code>command-nightly</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>command-light</code></td>
+        <td><code>cohere.command-light-text-v14</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td><code>cohere.command-light v15.6</code></td>
+      </tr>
+      <tr>
+        <td><code>command-light-nightly</code></td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+        <td>N/A</td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>North</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Modality</th>
+        <th>Context Length</th>
+        <th>Maximum Output Tokens</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>north-small-translate-1.0</code></td>
+        <td>Live</td>
+        <td>
+          <a href="/docs/north-small-translate-1.0">North Small Translate</a> is a 218B total / 25B
+          active parameter MoE model purpose-built for machine translation across more than 50
+          languages.
+        </td>
+        <td>Text</td>
+        <td>16k</td>
+        <td>16k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>north-mini-code-1.0</code></td>
+        <td>Live</td>
+        <td>
+          <a href="/docs/north-mini-code-1.0">North Mini Code</a> is a 30B total / 3B active
+          parameter MoE model trained for agentic coding.
+        </td>
+        <td>Text</td>
+        <td>256k</td>
+        <td>64k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Embed</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Description</th>
+        <th>Modalities</th>
+        <th>Dimensions</th>
+        <th>Context Length</th>
+        <th>Similarity Metric</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>embed-v5.0-pro</code></td>
+        <td>
+          Our most capable embedding model, for text and images. Higher quality than
+          <code>embed-v5.0-fast</code>, at higher latency.
+        </td>
+        <td>Text, Images, Mixed texts/images (i.e. PDFs)</td>
+        <td>One of ‘[256, 512, 768, 1024, 1536, 2048 (default)]‘</td>
+        <td>128k</td>
+        <td>Cosine Similarity, Dot Product Similarity, Euclidean Distance</td>
+        <td><a href="/reference/embed">Embed</a></td>
+      </tr>
+      <tr>
+        <td><code>embed-v5.0-fast</code></td>
+        <td>
+          A faster, lighter version of <code>embed-v5.0-pro</code>. Allows for text and images to be
+          classified or turned into embeddings
+        </td>
+        <td>Text, Images, Mixed texts/images (i.e. PDFs)</td>
+        <td>One of ‘[256, 512, 768, 1024, 1536, 2048 (default)]‘</td>
+        <td>128k</td>
+        <td>Cosine Similarity, Dot Product Similarity, Euclidean Distance</td>
+        <td><a href="/reference/embed">Embed</a></td>
+      </tr>
+      <tr>
+        <td><code>embed-v4.0</code></td>
+        <td>A model that allows for text and images to be classified or turned into embeddings</td>
+        <td>Text, Images, Mixed texts/images (i.e. PDFs)</td>
+        <td>One of ‘[256, 512, 1024, 1536 (default)]‘</td>
+        <td>128k</td>
+        <td>Cosine Similarity, Dot Product Similarity, Euclidean Distance</td>
+        <td>
+          <a href="/reference/embed">Embed</a>, <br /><a href="/reference/embed-jobs">Embed Jobs</a>
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-english-v3.0</code></td>
+        <td>
+          A model that allows for text to be classified or turned into embeddings. English only.
+        </td>
+        <td>Text, Images</td>
+        <td>1024</td>
+        <td>512</td>
+        <td>Cosine Similarity</td>
+        <td>
+          <a href="/reference/embed">Embed</a>, <br /><a href="/reference/embed-jobs">Embed Jobs</a>
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-english-light-v3.0</code></td>
+        <td>
+          A smaller, faster version of <code>embed-english-v3.0</code>. Almost as capable, but a lot
+          faster. English only.
+        </td>
+        <td>Text, Images</td>
+        <td>384</td>
+        <td>512</td>
+        <td>Cosine Similarity</td>
+        <td>
+          <a href="/reference/embed">Embed</a>, <br /><a href="/reference/embed-jobs">Embed Jobs</a>
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-multilingual-v3.0</code></td>
+        <td>
+          Provides multilingual classification and embedding support.
+          <a href="/docs/supported-languages">See supported languages here.</a>
+        </td>
+        <td>Text, Images</td>
+        <td>1024</td>
+        <td>512</td>
+        <td>Cosine Similarity</td>
+        <td>
+          <a href="/reference/embed">Embed</a>, <a href="/reference/embed-jobs">Embed Jobs</a>
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-multilingual-light-v3.0</code></td>
+        <td>
+          A smaller, faster version of <code>embed-multilingual-v3.0</code>. Almost as capable, but
+          a lot faster. Supports multiple languages.
+        </td>
+        <td>Text, Images</td>
+        <td>384</td>
+        <td>512</td>
+        <td>Cosine Similarity</td>
+        <td>
+          <a href="/reference/embed">Embed</a>, <br /><a href="/reference/embed-jobs">Embed Jobs</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Amazon Bedrock Model ID</th>
+        <th>Amazon SageMaker</th>
+        <th>Azure AI Foundry</th>
+        <th>Oracle OCI Generative AI Service</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>embed-v5.0-pro</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>
+          <a href="https://ai.azure.com/catalog/models/Cohere-Embed-V5-Pro"
+            ><code>Cohere-Embed-V5-Pro</code
+            ><svg>
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>embed-v5.0-fast</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>
+          <a href="https://ai.azure.com/catalog/models/Cohere-Embed-V5-Fast"
+            ><code>Cohere-Embed-V5-Fast</code
+            ><svg>
+              <path></path>
+              <path></path>
+              <path></path></svg
+          ></a>
+        </td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>embed-v4.0</code></td>
+        <td>(Coming Soon)</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere-embed-v-4-plan</code></td>
+        <td>(Coming Soon)</td>
+      </tr>
+      <tr>
+        <td><code>embed-english-v3.0</code></td>
+        <td><code>cohere.embed-english-v3</code></td>
+        <td>Unique per deployment</td>
+        <td>Unique per deployment</td>
+        <td>
+          <code>cohere.embed-english-image-v3.0</code> (for images),
+          <code>cohere.embed-english-v3.0</code> (for text)
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-english-light-v3.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>N/A</td>
+        <td>
+          <code>cohere.embed-english-light-image-v3.0</code> (for images),
+          <code>cohere.embed-english-light-v3.0</code> (for text)
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-multilingual-v3.0</code></td>
+        <td><code>cohere.embed-multilingual-v3</code></td>
+        <td>Unique per deployment</td>
+        <td>Unique per deployment</td>
+        <td>
+          <code>cohere.embed-multilingual-image-v3.0</code> (for images),
+          <code>cohere.embed-multilingual-v3.0</code> (for text)
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-multilingual-light-v3.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>N/A</td>
+        <td>
+          <code>cohere.embed-multilingual-light-image-v3.0</code> (for images),
+          <code>cohere.embed-multilingual-light-v3.0</code> (for text)
+        </td>
+      </tr>
+      <tr>
+        <td><code>embed-english-v2.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>N/A</td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>embed-english-light-v2.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>N/A</td>
+        <td><code>cohere.embed-english-light-v2.0</code></td>
+      </tr>
+      <tr>
+        <td><code>embed-multilingual-v2.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td>N/A</td>
+        <td>N/A</td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Rerank</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Description</th>
+        <th>Modalities</th>
+        <th>Context Length</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>rerank-v5.0-pro</code></td>
+        <td>
+          Our highest-quality reranker. A multilingual model that allows for re-ranking English and
+          non-English documents and semi-structured data (JSON). This is better suited for complex,
+          reasoning-heavy queries and long or domain-specific documents than its
+          <code>fast</code> variant. Supports Context Focus and calibrated relevance scores.
+        </td>
+        <td>Text</td>
+        <td>32k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-v5.0-fast</code></td>
+        <td>
+          A light version of <code>rerank-v5.0-pro</code>, this is a multilingual model that allows
+          for re-ranking English and non-English documents and semi-structured data (JSON). This
+          model is better suited for low latency and high throughput use-cases than its
+          <code>pro</code> variant. Supports Context Focus and calibrated relevance scores.
+        </td>
+        <td>Text</td>
+        <td>32k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-v4.0-pro</code></td>
+        <td>
+          Previous generation. A highly performant multilingual model for English and non-English
+          documents and semi-structured data (JSON). For new projects, we recommend using
+          <code>rerank-v5.0-pro</code>.
+        </td>
+        <td>Text</td>
+        <td>32k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-v4.0-fast</code></td>
+        <td>
+          A lighter version of <code>rerank-v4.0-pro</code> for low latency and high throughput
+          use-cases. For new projects, use <code>rerank-v5.0-fast</code>.
+        </td>
+        <td>Text</td>
+        <td>32k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-v3.5</code></td>
+        <td>
+          A performance upgrade to Rerank v3 series. Supports English and the same non-English
+          languages as <code>embed-multilingual-v3.0</code>.
+        </td>
+        <td>Text</td>
+        <td>4k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-english-v3.0</code></td>
+        <td>Our third-generation flagship model. English only.</td>
+        <td>Text</td>
+        <td>4k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+      <tr>
+        <td><code>rerank-multilingual-v3.0</code></td>
+        <td>
+          For non-English documents; supports the same languages as
+          <code>embed-multilingual-v3.0</code>.
+        </td>
+        <td>Text</td>
+        <td>4k</td>
+        <td><a href="/reference/rerank">Rerank</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Amazon Bedrock Model ID</th>
+        <th>Amazon SageMaker</th>
+        <th>Azure AI Foundry</th>
+        <th>Oracle OCI Generative AI Service</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>rerank-v5.0-pro</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>Cohere-rerank-v5-pro</code></td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>rerank-v5.0-fast</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>Cohere-rerank-v5-fast</code></td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>rerank-v4.0-pro</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere-rerank-v4-pro</code></td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>rerank-v4.0-fast</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>cohere-rerank-v4-fast</code></td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>rerank-v3.5</code></td>
+        <td><code>cohere.rerank-v3-5:0</code></td>
+        <td>Unique per deployment</td>
+        <td><code>Cohere-rerank-v3.5</code></td>
+        <td><code>cohere.rerank.3-5</code></td>
+      </tr>
+      <tr>
+        <td><code>rerank-english-v3.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>Cohere-rerank-v3-english</code></td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><code>rerank-multilingual-v3.0</code></td>
+        <td>N/A</td>
+        <td>Unique per deployment</td>
+        <td><code>Cohere-rerank-v3-multilingual</code></td>
+        <td>N/A</td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Parse</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>parse-v5.0</code></td>
+        <td>Live</td>
+        <td>For document intelligence workloads that demand accurate, high-volume parsing</td>
+        <td><a href="/v2/reference/parse">Parse</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Amazon SageMaker</th>
+        <th>Azure AI Foundry</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>parse-v5.0</code></td>
+        <td>Unique per deployment</td>
+        <td><code>cohere-parse-v5.0</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Audio</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Maximum file size</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>cohere-transcribe-03-2026</code></td>
+        <td>Live</td>
+        <td>Open source model focused on high-accuracy, multilingual speech transcription.</td>
+        <td>25MB</td>
+        <td><a href="/v2/reference/create-audio-transcription">Audio Transcriptions</a></td>
+      </tr>
+      <tr>
+        <td><code>cohere-transcribe-arabic-07-2026</code></td>
+        <td>Live</td>
+        <td>Finetune optimized for Arabic audio inputs</td>
+        <td>25MB</td>
+        <td><a href="/v2/reference/create-audio-transcription">Audio Transcriptions</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Aya</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model Name</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Modality</th>
+        <th>Context Length</th>
+        <th>Maximum Output Tokens</th>
+        <th>Endpoints</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>tiny-aya-global</code></td>
+        <td>Live</td>
+        <td>
+          Tiny Aya Global is a 3.35B instruction-tuned multilingual model with the best balance
+          across languages and regions. Supports 70 languages.
+        </td>
+        <td>Text</td>
+        <td>8k</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>tiny-aya-earth</code></td>
+        <td>Live</td>
+        <td>
+          Tiny Aya Earth is a 3.35B region-specialized multilingual model, best for West Asian and
+          African languages. Supports 70 languages.
+        </td>
+        <td>Text</td>
+        <td>8k</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>tiny-aya-fire</code></td>
+        <td>Live</td>
+        <td>
+          Tiny Aya Fire is a 3.35B region-specialized multilingual model, best for South Asian
+          languages. Supports 70 languages.
+        </td>
+        <td>Text</td>
+        <td>8k</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>tiny-aya-water</code></td>
+        <td>Live</td>
+        <td>
+          Tiny Aya Water is a 3.35B region-specialized multilingual model, best for European and
+          Asia-Pacific languages. Supports 70 languages.
+        </td>
+        <td>Text</td>
+        <td>8k</td>
+        <td>8k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>c4ai-aya-expanse-32b</code></td>
+        <td>Live</td>
+        <td>
+          Aya Expanse is a highly performant 32B multilingual model, designed to rival monolingual
+          performance through innovations in instruction tuning with data arbitrage, preference
+          training, and model merging. Serves 23 languages.
+        </td>
+        <td>Text</td>
+        <td>128k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>c4ai-aya-vision-32b</code></td>
+        <td>Live</td>
+        <td>
+          Aya Vision is a state-of-the-art multimodal model excelling at a variety of critical
+          benchmarks for language, text, and image capabilities. Serves 23 languages. This 32
+          billion parameter variant is focused on state-of-art multilingual performance.
+        </td>
+        <td>Text, Images</td>
+        <td>16k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>c4ai-aya-expanse-8b</code></td>
+        <td>Retired Apr 4, 2026</td>
+        <td>
+          Aya Expanse is a highly performant 8B multilingual model, designed to rival monolingual
+          performance through innovations in instruction tuning with data arbitrage, preference
+          training, and model merging. Serves 23 languages.
+        </td>
+        <td>Text</td>
+        <td>8k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+      <tr>
+        <td><code>c4ai-aya-vision-8b</code></td>
+        <td>Retired Apr 4, 2026</td>
+        <td>
+          Aya Vision is a state-of-the-art multimodal model excelling at a variety of critical
+          benchmarks for language, text, and image capabilities. This 8 billion parameter variant is
+          focused on low latency and best-in-class performance.
+        </td>
+        <td>Text, Images</td>
+        <td>16k</td>
+        <td>4k</td>
+        <td><a href="/reference/chat">Chat</a></td>
+      </tr>
+    </tbody>
+  </table>
+</main>

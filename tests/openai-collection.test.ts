@@ -155,6 +155,7 @@ describe("OpenAI optional accounting collection", () => {
         return;
       }
       expect(next.pricingReplaySources?.map(({ source_id }) => source_id)).toEqual([
+        "openai-models",
         "openai-overview",
         "openai-pricing",
       ]);

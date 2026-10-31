@@ -19,8 +19,9 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.
-- [Catalog schema upgrade](docs/catalog-schema-upgrade.md): accepted separation of model
-  identity, conditional invocation targets, and price applicability; provider research and migration.
+- [Inference model ID pricing](docs/inference-pricing.md): minimal ID-to-price
+  relation, candidate/missing-condition semantics, direct UI and compatibility boundary.
+- [Catalog schema scope](docs/catalog-schema-upgrade.md): additive pricing associations and compatibility.
 - [Collection](docs/collection.md): source trust, scopes, matching, validation, fallback, provenance, and generated data.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
