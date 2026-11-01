@@ -689,7 +689,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-deprecations" },
-        extractorVersion: "openai-deprecations-v5",
+        extractorVersion: "openai-deprecations-v6",
         fields: ["aliases", "status", "release_stage", "retired_at", "replacement_model_ids"],
         allowedHosts: ["developers.openai.com"],
         maxResponseBytes: mebibytes(24),
