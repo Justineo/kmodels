@@ -1965,6 +1965,20 @@ function openAiShutdownDate(value: string): string | undefined {
   return z.iso.date().safeParse(date).success ? date : undefined;
 }
 
+/**
+ * A shutdown bound states the earliest possible retirement. The shared lifecycle rule forbids
+ * earliest dates from triggering a transition, so a readable bound is a reviewed source form
+ * that yields no retirement date rather than unresolved contract drift.
+ */
+function openAiBoundedShutdownDate(value: string): boolean {
+  const normalized = normalizedText(value).replace(/[‐‑‒–—−]/g, "-");
+  const prefix = "at earliest ";
+  return (
+    normalized.startsWith(prefix) &&
+    openAiShutdownDate(normalized.slice(prefix.length)) !== undefined
+  );
+}
+
 export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   const models = new Map<string, ProviderModel>();
   const knownModelIds = new Set(input.catalogModels?.map(({ model_id }) => model_id) ?? []);
@@ -2004,7 +2018,7 @@ export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
         continue;
       }
       const retiredAt = openAiShutdownDate(cells[dateIndex] ?? "");
-      if (retiredAt === undefined)
+      if (retiredAt === undefined && !openAiBoundedShutdownDate(cells[dateIndex] ?? ""))
         input.onContractFinding?.(contractExtensionEvidence(["/deprecations/shutdown-date"]));
       if (retiredAt !== undefined) {
         const replacements =
