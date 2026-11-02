@@ -20,6 +20,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -295,11 +296,10 @@ it("projects the same ID, conditions and price selection to the website", async 
     file_name.includes("details"),
   );
   const price = details
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
     )
     .find(({ model_ref }) => model_ref === "openai/gpt-5.4")
     ?.inference_prices?.find(({ model_id }) => model_id === "gpt-5.4");

@@ -8,6 +8,7 @@ import {
   type AzureArmSku,
 } from "./azure-commercial.ts";
 import { azureCommercialFacts } from "./azure-commercial-source.ts";
+import { anthropicPromptScope } from "./anthropic-price-row.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -1304,15 +1305,21 @@ function azureClaudeDate(value: string): string | undefined {
 function azureClaudeIdentity(label: string):
   | {
       id: string;
-      conditions: SourcePriceFact["conditions"];
+      conditions: SourcePriceFact["conditions"] | undefined;
     }
   | undefined {
-  const value = plain(label)
-    .replace(/\s+\([^)]*\)/g, "")
+  const scoped = anthropicPromptScope(plain(label));
+  let scopeKnown = scoped !== undefined;
+  const value = (scoped?.label ?? plain(label))
+    .replace(/\s+\(([^)]*)\)/g, (_match, annotation: string) => {
+      if (!/^(?:limited availability|legacy|deprecated|retired(?:, except .*)?)$/i.test(annotation))
+        scopeKnown = false;
+      return "";
+    })
     .trim();
   const validity = value.match(/\s+(through|starting) ([A-Z][a-z]+ \d{1,2}, \d{4})$/);
   const date = validity?.[2] === undefined ? undefined : azureClaudeDate(validity[2]);
-  if (validity !== null && date === undefined) return;
+  if (validity !== null && date === undefined) scopeKnown = false;
   const name = value.slice(0, validity?.index ?? value.length).trim();
   if (!/^Claude [A-Za-z]+ \d+(?:[.]\d+)?$/.test(name)) return;
   const id = modelIdSchema.safeParse(
@@ -1325,12 +1332,16 @@ function azureClaudeIdentity(label: string):
   if (!id.success) return;
   return {
     id: id.data,
-    conditions:
-      validity?.[1] === "through" && date !== undefined
-        ? { effective_until: date, promotion: true }
-        : validity?.[1] === "starting" && date !== undefined
-          ? { effective_from: date }
-          : {},
+    conditions: scopeKnown
+      ? {
+          ...scoped?.conditions,
+          ...(validity?.[1] === "through" && date !== undefined
+            ? { effective_until: date, promotion: true }
+            : validity?.[1] === "starting" && date !== undefined
+              ? { effective_from: date }
+              : {}),
+        }
+      : undefined,
   };
 }
 
@@ -1469,7 +1480,7 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
     const rates = columns.flatMap(({ index, meter, ttl }) => {
       const price = azureClaudeAmount(row[index] ?? "");
       if (price !== undefined)
-        return [azureClaudeRate(meter, price, identity.conditions, input.source.id, ttl)];
+        return [azureClaudeRate(meter, price, identity.conditions ?? {}, input.source.id, ttl)];
       input.onPricingReconciliation?.({
         disposition: "unsupported",
         reason_code: "claude_price_cell_unreadable",
@@ -1493,11 +1504,33 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
         pricing_state: "numeric",
         price_facts: [],
       } satisfies ProviderModel);
-    current.price_facts.push(...rates);
+    if (identity.conditions === undefined) {
+      current.raw_price_facts.push(
+        ...rates.map((rate) => ({
+          term_key: `unparsed:${rate.meter}${rate.conditions.cache_ttl_seconds === undefined ? "" : `:${rate.conditions.cache_ttl_seconds}`}`,
+          impact: "base_price" as const,
+          reason: "unknown_applicability" as const,
+          conditions: rate.conditions,
+          source_ref: input.source.id,
+          raw: {
+            label: plain(row[modelColumn] ?? ""),
+            amount: rate.price,
+            denomination: rate.currency,
+            meter: rate.meter,
+            unit: "MTok",
+            ...(rate.derivation === undefined ? {} : { formula: rate.derivation }),
+          },
+        })),
+      );
+    } else current.price_facts.push(...rates);
+    current.pricing_state = current.price_facts.length > 0 ? "numeric" : "unknown";
     models.set(uid, current);
     input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "claude_public_rate_row",
+      disposition: identity.conditions === undefined ? "unresolved" : "normalized",
+      reason_code:
+        identity.conditions === undefined
+          ? "claude_price_scope_unresolved"
+          : "claude_public_rate_row",
       sample: identity.id,
     });
   }
@@ -1965,7 +1998,7 @@ function retailLabelConditions(
         ? { service_tier: "priority" }
         : flex
           ? { service_tier: "flex" }
-          : openAi
+          : openAi || /\bstandard (?:pricing|processing)\b/.test(sku)
             ? { service_tier: "standard" }
             : {}),
     ...(/\b(?:longco|long context)\b/.test(sku)

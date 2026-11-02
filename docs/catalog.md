@@ -90,6 +90,11 @@ with provenance.
 - Merge repeated observations of one tuple. Union additive sets and conditioned facts; apply overlays only to declared fields. Reject incompatible facts from one source.
 - Never merge bare IDs across providers, collapse a canonical ID through an alias, or merge distinct callable IDs that share a display name.
 - An exact catalog ID always owns a row even when another row lists it as an alias.
+- Catalog identity identifies a provider product record, not an inferred shared underlying model.
+  An alternate identifier is a catalog relationship; a request ID is an evidenced invocation role.
+  One value may have both roles. Neither the primary ID nor an alias alone proves callability,
+  a pinned version, or a tariff. ID-fixed pricing conditions belong to the
+  [inference price association](inference-pricing.md), not to catalog identity.
 - A source row outside the reviewed catalog boundary is discarded before model
   construction. It cannot survive as a hidden model, route, offer, raw price
   fallback, or historical catalog row. Collection audit may retain only bounded

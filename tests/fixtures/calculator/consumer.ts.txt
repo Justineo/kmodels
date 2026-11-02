@@ -32,9 +32,14 @@ void [readTotals, invalidComplete, invalidPartial];
 declare const mapping: InferencePriceMapping;
 const lookup = createInferencePriceLookup(data, mapping);
 const inference: InferencePriceResult = lookup({ provider_id: "example", model_id: "actual-request-id" });
+inference.snapshot.pricingDataVersion;
+inference.snapshot.coreCatalogVersion;
+inference.evaluated_at;
 for (const candidate of inference.candidates) {
+  candidate.book_ref;
   candidate.offer.terms;
   candidate.missing_conditions;
   candidate.evidence;
   lookup({ provider_id: "example", model_id: "actual-request-id", offer_ref: candidate.offer.id });
+  calculator.requirements({ offerRef: candidate.offer.id, selectors: candidate.selectors });
 }

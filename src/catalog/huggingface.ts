@@ -1432,6 +1432,47 @@ function zaiRows(body: string): { prices: Map<string, NativePrice[]>; free: Set<
   return { prices, free };
 }
 
+function groqSafeguardTable(body: string): NativePrice | undefined {
+  const $ = load(body);
+  const prices: NativePrice[] = [];
+  $("table").each((_index, table) => {
+    const headers = $(table)
+      .find("thead th")
+      .map((_i, cell) => $(cell).text().replace(/\s+/g, " ").trim())
+      .get();
+    const modelIndex = headers.indexOf("MODEL ID");
+    const priceIndex = headers.indexOf("PRICE PER 1M TOKENS");
+    if (modelIndex < 0 || priceIndex < 0) return;
+    $(table)
+      .find("tbody tr")
+      .each((_i, row) => {
+        const cells = $(row).children("td");
+        const model = cells.eq(modelIndex);
+        if (
+          !model.find('[id="openai/gpt-oss-safeguard-20b"]').length ||
+          !model.find('a[href="/docs/model/openai/gpt-oss-safeguard-20b"]').length
+        )
+          return;
+        const fragment = cells.eq(priceIndex).text().replace(/\s+/g, " ").trim();
+        const amount = fragment.match(/^\$([\d.]+)\s*input\s*\$([\d.]+)\s*output$/i);
+        const input = amount?.[1],
+          output = amount?.[2];
+        if (
+          input !== undefined &&
+          output !== undefined &&
+          pricedToken(`$${input}`) !== undefined &&
+          pricedToken(`$${output}`) !== undefined
+        )
+          prices.push({ input, output, locator: "groq:models:openai/gpt-oss-safeguard-20b" });
+      });
+  });
+  const first = prices[0];
+  return first !== undefined &&
+    prices.every((p) => p.input === first.input && p.output === first.output)
+    ? first
+    : undefined;
+}
+
 function groqSafeguardRow(body: string): NativePrice | undefined {
   const $ = load(body);
   const rawText = $.root().text();
@@ -1681,8 +1722,11 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
     "console.groq.com",
     "/docs/model/openai/gpt-oss-safeguard-20b",
   );
-  if (groq !== undefined) {
-    const row = groqSafeguardRow(groq);
+  const groqModels = nativeDocument(input, bundle, "console.groq.com", "/docs/models");
+  if (groq !== undefined || groqModels !== undefined) {
+    const row =
+      (groqModels === undefined ? undefined : groqSafeguardTable(groqModels)) ??
+      (groq === undefined ? undefined : groqSafeguardRow(groq));
     for (const route of routes.filter(
       ({ provider, providerModelId }) =>
         provider === "groq" && providerModelId === "openai/gpt-oss-safeguard-20b",

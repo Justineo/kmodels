@@ -53,6 +53,7 @@ interface LabeledPrice {
 type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
 interface PricingTableContext {
+  section?: string;
   labels: string[];
   location: string | undefined;
   processingTier: string | undefined;
@@ -288,6 +289,16 @@ function pricingTableContext($: LoadedDocument, table: Selection): PricingTableC
         break;
       }
     }
+  } else {
+    const section = table.closest(".cws-jump-section[data-cws-menu-text]");
+    const ownedTables = section
+      .find("table")
+      .filter(
+        (_index, node) =>
+          $(node).closest("blockquote,pre,code,template").length === 0 &&
+          $(node).closest(".cws-jump-section[data-cws-menu-text]").get(0) === section.get(0),
+      );
+    if (ownedTables.length === 1) notes = notesFor(section.find("p"));
   }
   return { labels, location, processingTier, notes };
 }
@@ -295,12 +306,22 @@ function pricingTableContext($: LoadedDocument, table: Selection): PricingTableC
 function pricingDocument(body: string): { $: LoadedDocument; tableContexts: PricingTableContexts } {
   const source = load(body);
   const tableContexts = new Map<NonNullable<Selection[0]>, PricingTableContext>();
-  if (source(".devsite-article-body").length > 0) {
-    source("table").each((_index, node) => {
-      tableContexts.set(node, pricingTableContext(source, source(node)));
-    });
-    return { $: source, tableContexts };
-  }
+  const existingArticle = source(".devsite-article-body");
+  const elements =
+    existingArticle.length > 0
+      ? existingArticle.find("h1,h2,h3,h4,table")
+      : source("h1,h2,h3,h4,table");
+  let section = "";
+  elements.each((_index, node) => {
+    const item = source(node);
+    if (item.closest("blockquote,pre,code,template").length > 0) return;
+    if (node.tagName !== "table") {
+      section = text(item.text());
+      return;
+    }
+    tableContexts.set(node, { ...pricingTableContext(source, item), section });
+  });
+  if (existingArticle.length > 0) return { $: source, tableContexts };
   const normalized = load('<main><div class="devsite-article-body"></div></main>');
   const article = normalized(".devsite-article-body");
   source("h1,h2,h3,h4,table").each((_index, element) => {
@@ -313,7 +334,10 @@ function pricingDocument(body: string): { $: LoadedDocument; tableContexts: Pric
     if (item.closest("blockquote,pre,code,template").length > 0) return;
     const table = item.clone();
     const node = table.get(0);
-    if (node !== undefined) tableContexts.set(node, pricingTableContext(source, item));
+    if (node !== undefined) {
+      const context = tableContexts.get(element);
+      if (context !== undefined) tableContexts.set(node, context);
+    }
     table.find('button,[role="status"]').remove();
     const headers = table.find("tr").first().find("th,td");
     const omitted = new Set<number>();
@@ -616,6 +640,13 @@ function regions($: LoadedDocument, table: Selection): ProviderModel["availabili
 
 function pageName(title: string, heading: string, count: number): string {
   if (count === 1 || heading === "") return title;
+  const media = title.match(/^(Imagen|Veo)(?:\s+(\d+(?:\.\d+)?))?$/i);
+  const generation = heading.match(
+    /^(?:(\d+(?:\.\d+)?)\s+)?(?:(Fast|Ultra|Lite)\s+)?Generate(?:\s+\d+)?$/i,
+  );
+  const version = generation?.[1] ?? media?.[2];
+  if (media !== null && generation !== null && version !== undefined)
+    return `${media[1]} ${version}${generation[2] === undefined ? "" : ` ${generation[2]}`}`;
   if (/deprecations?|\bmodels$/i.test(title)) return heading;
   const first = title.split(" ")[0] ?? title;
   return /^\d/.test(heading) ? `${first} ${heading}` : `${title} ${heading}`;
@@ -1444,6 +1475,27 @@ function modelQuoteIssue(label: string, notes: readonly string[]): PriceQuoteIss
   return "account_credit";
 }
 
+function postPreviewValidity(
+  label: string,
+  notes: readonly string[],
+): SourcePriceFact["conditions"] | undefined {
+  const markers = unique([...label.matchAll(/\*+/g)].map(([marker]) => marker));
+  if (markers.length !== 1) return;
+  const owned = notes.filter((note) => note.match(/^\*+/)?.[0] === markers[0]);
+  if (owned.length !== 1) return;
+  const value = owned[0]?.match(
+    /^\*+ Available at no charge until ([A-Z][a-z]{2,8} \d{1,2}, \d{4})\.$/,
+  )?.[1];
+  const date = value === undefined ? undefined : modelDate(value);
+  if (date === undefined) return;
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return;
+  // "Until" does not establish the cutover day's inclusivity. Admit the listed paid tariff
+  // only from the following calendar date, preserving date precision and leaving that day open.
+  parsed.setUTCDate(parsed.getUTCDate() + 1);
+  return { effective_from: parsed.toISOString().slice(0, 10) };
+}
+
 function modelPriceQuotes(
   models: Map<string, Evidence>,
   label: string,
@@ -1460,8 +1512,9 @@ function modelPriceQuotes(
         reason_code: "pricing_model_unbound",
         sample: label.trim().slice(0, 256),
       });
-    const conditions = pricingValidity(label);
-    const issue = modelQuoteIssue(label, context.notes);
+    const previewValidity = postPreviewValidity(label, context.notes);
+    const conditions = { ...pricingValidity(label), ...previewValidity };
+    const issue = previewValidity === undefined ? modelQuoteIssue(label, context.notes) : undefined;
     return targets.map((model) => ({
       model,
       label: label.trim(),
@@ -1984,19 +2037,41 @@ function mediaPriceUnit(value: string): SourcePriceFact["unit"] | undefined {
   if (/1,000 characters|1k characters/i.test(value)) return "thousand_characters";
 }
 
+function veoCountUnit(
+  model: ProviderModel,
+  section: string,
+  operation: string,
+  raw: string,
+): "second" | undefined {
+  // The public Cloud calculator defines generated seconds for these exact managed models.
+  // Its generic count label does not establish that contract for other models or operations.
+  if (
+    section === "Veo" &&
+    /^Video(?: \+ Audio)? generation$/.test(operation) &&
+    /^\$\d+(?:\.\d+)? \/ 1 count$/.test(raw) &&
+    model.service_families?.includes("publishers/google") === true &&
+    ((model.model_id === "veo-3.1-generate-001" && model.name === "Veo 3.1") ||
+      (model.model_id === "veo-3.1-fast-generate-001" && model.name === "Veo 3.1 Fast"))
+  )
+    return "second";
+}
+
 function mediaTables(
   models: Map<string, Evidence>,
   sourceId: string,
   $: LoadedDocument,
+  tableContexts: PricingTableContexts,
   reconcile?: Reconcile,
 ): void {
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
     const headers = tableHeaders($, table);
-    const section = text(table.prevAll("h2,h3,h4").first().text());
+    const section = tableContexts.get(tableElement)?.section ?? "";
     if (
       !/^(?:Model|Open Source Model)$/.test(headers[0] ?? "") ||
       !/(Imagen|Veo|Lyria|Embedding)/i.test(section) ||
+      (/Embedding/i.test(section) &&
+        headers.some((header) => /1M tokens|million tokens/i.test(header))) ||
       embeddingCountRows($, table) !== undefined
     )
       return;
@@ -2029,13 +2104,20 @@ function mediaTables(
               )
           : priceTargets(models, label, hinted);
         if (targets.length > 0) current = targets;
-        else if (fullRow) current = [];
+        else if (fullRow && label !== "") {
+          current = [];
+          reconcile?.({
+            disposition: "unbound",
+            reason_code: "pricing_model_unbound",
+            sample: label.slice(0, 256),
+          });
+        }
         if (rowOperation !== "") operation = rowOperation;
         if (current.length === 0) return;
         const raw = cellText(cells.last());
         const rowText = text($(row).text());
         const lyriaCount = section === "Lyria" && /^\$[\d.]+ \/ 1 count$/.test(raw);
-        const unit: SourcePriceFact["unit"] | undefined = lyriaCount
+        const explicitUnit: SourcePriceFact["unit"] | undefined = lyriaCount
           ? "thousand_items"
           : (mediaPriceUnit(raw) ??
             (/\/|\bper\b/i.test(raw) ? undefined : mediaPriceUnit(headers.at(-1) ?? "")));
@@ -2058,6 +2140,7 @@ function mediaTables(
         for (const item of money(raw))
           for (const resolution of resolutions.length === 0 ? [undefined] : resolutions)
             for (const model of current) {
+              const unit = explicitUnit ?? veoCountUnit(model, section, operation, raw);
               const conditions: SourcePriceFact["conditions"] = {
                 operation: operation || undefined,
                 resolution,
@@ -2563,7 +2646,7 @@ function applyPricing(
   const claims: VertexGroundingClaim[] = [];
   tokenTables(models, sourceId, $, tableContexts, evidence, reconcile);
   labeledTables(models, sourceId, $, tableContexts, evidence, reconcile);
-  mediaTables(models, sourceId, $, reconcile);
+  mediaTables(models, sourceId, $, tableContexts, reconcile);
   embeddingCountTables(models, sourceId, $, reconcile);
   inlineUnitTables(models, sourceId, $, reconcile);
   if (groundingReferences !== undefined)

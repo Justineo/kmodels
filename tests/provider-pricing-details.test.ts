@@ -135,6 +135,57 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
+  it("groups conflicting quotes by meter while preserving each amount and scope", async () => {
+    const offer = pricingOffer();
+    offer.unnormalized = ["Input text", "Output text"].flatMap((label) =>
+      [true, false].map((value) => ({
+        key: `${label}:${value}`,
+        label,
+        impact: "base_price" as const,
+        reason: "Conflicting values",
+        details: [`${label} quote ${value ? "$1.20" : "$2.40"}`],
+        possible_scope: promotion(value),
+      })),
+    );
+    offer.unnormalized_count = offer.unnormalized.length;
+    const html = await renderComponent(PricingOfferBreakdown, { offer });
+    expect(html).toContain("Conflicting published prices");
+    expect(html).not.toContain("Additional provider conditions may affect this rate");
+    expect(html.match(/2 conflicting quotes/g)).toHaveLength(2);
+    expect(html.match(/<strong[^>]*>Input text<\/strong>/g)).toHaveLength(1);
+    expect(html.match(/<strong[^>]*>Output text<\/strong>/g)).toHaveLength(1);
+    const groups = html.match(/<details[^>]*class="pricing-note-group"[^>]*>/g);
+    expect(groups).toHaveLength(2);
+    expect(groups?.every((tag) => !tag.includes("open"))).toBe(true);
+    for (const note of offer.unnormalized)
+      for (const detail of note.details ?? []) expect(html).toContain(detail);
+    expect(html).toContain("Promotion");
+    expect(html).toContain("No promotion");
+
+    const filtered = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      boundSelectors: [
+        { kind: "boolean", dimension: { namespace: "kmodels", value: "promotion" }, value: true },
+      ],
+    });
+    expect(filtered).toContain("$1.20");
+    expect(filtered).not.toContain("$2.40");
+    expect(filtered).not.toContain("2 conflicting quotes");
+  });
+
+  it("keeps other incomplete pricing and informational notes distinct from price conflicts", async () => {
+    const offer = pricingOffer();
+    offer.unnormalized = [
+      { key: "incomplete", label: "Unreviewed unit", impact: "base_price", reason: "Unknown unit" },
+      { key: "information", label: "Billing policy", impact: "informational", reason: "Other" },
+    ];
+    const html = await renderComponent(PricingOfferBreakdown, { offer });
+    expect(html).toContain("Additional provider conditions may affect this rate");
+    expect(html).not.toContain("Conflicting published prices");
+    expect(html).toContain("Unreviewed unit");
+    expect(html).toContain("Billing policy");
+  });
+
   it("uses the shared context controls for conditional service pricing", async () => {
     const html = await renderComponent(PricingOfferBreakdown, {
       offer: pricingOffer(),

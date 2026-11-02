@@ -9,6 +9,7 @@ import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { createCalculator } from "../src/pricing/calculator.ts";
 import type { InferencePriceMapping, InferencePriceRule } from "../src/pricing/inference-schema.ts";
 import type { CalculationEnvelope, Selector } from "../src/pricing/schema.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
@@ -17,6 +18,7 @@ import {
   websiteInferencePrice,
 } from "../src/catalog/website-inference-pricing.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
+import { restoreInferencePrices } from "../src/catalog/website-inference-storage.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import type { PricingCatalogEnvelope } from "../src/catalog/pricing-schema.ts";
 import { renderComponent } from "./render-component.ts";
@@ -27,6 +29,7 @@ import { inferenceMatchData } from "../src/pricing/inference-matching-data.ts";
 import { createPricingSnapshot } from "../src/pricing/snapshot.ts";
 import { formatDimension } from "../src/catalog/pricing-presentation.ts";
 import { pricingSelection } from "../src/catalog/pricing-selector-input.ts";
+import { multiplyRationals } from "../src/catalog/pricing-rational.ts";
 
 const at = "2026-10-30T00:00:00.000Z";
 const fixture = (name: string) => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -279,6 +282,117 @@ it("explains contradictory supplied geography without replacing it", () => {
   ).toMatchObject({ status: "unknown", reason: "incompatible_conditions", candidates: [] });
 });
 
+it("carries ID-fixed regional prices into exact calculation without changing catalog identity", async () => {
+  const suite = conformanceSchema.parse(JSON.parse(await fixture("calculator/conformance.json")));
+  const data = suite.datasets.base;
+  const request = suite.cases.find(
+    ({ name }) => name === "cache partitions are charged once",
+  )?.request;
+  const provider = data?.providers[0];
+  const book = provider?.books[0];
+  const offer = book?.offers[0];
+  const modelRef = book?.scope.model_refs[0];
+  if (!data || !request || !provider || !book || !offer || !modelRef)
+    throw new Error("Missing regional runtime fixture");
+  const dimension = { namespace: "kmodels", value: "region" } as const;
+  const regions = ["eu-west-1", "us-east-1"].map((value) => ({
+    namespace: "provider" as const,
+    provider_id: provider.snapshot.provider_id,
+    value,
+  }));
+  for (const region of regions)
+    provider.vocabulary.atoms.push({
+      kind: "categorical_value",
+      key: region.value,
+      dimension,
+      definition: `Synthetic billing Region ${region.value}`,
+    });
+  for (const term of offer.terms) {
+    if (term.kind !== "rate") continue;
+    term.variants = term.variants.flatMap((variant) =>
+      regions.map((region, index) => ({
+        ...structuredClone(variant),
+        price: {
+          ...variant.price,
+          value: multiplyRationals(variant.price.value, {
+            numerator: String(index + 1),
+            denominator: "1",
+          }),
+        },
+        applicability: {
+          any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [region] }] }],
+        },
+      })),
+    );
+  }
+  const rules = regions.map((region): InferencePriceRule => ({
+    provider_id: provider.snapshot.provider_id,
+    model_id: `request-${region.value}`,
+    model_ref: modelRef,
+    offer_refs: [offer.id],
+    fixed_selectors: [{ kind: "categorical", dimension, value: region }],
+    evidence: book.evidence,
+  }));
+  const unscoped = rules[0];
+  if (!unscoped) throw new Error("Missing regional association");
+  const lookup = createInferencePriceLookup(
+    data,
+    mapping(data, [...rules, { ...unscoped, model_id: "unscoped-request", fixed_selectors: [] }]),
+  );
+  const calculator = createCalculator(data);
+  expect(lookup({ provider_id: "example", model_id: "unscoped-request" })).toMatchObject({
+    status: "candidates",
+    missing_conditions: [dimension],
+  });
+  expect(calculator.calculate(request).unresolved).toContainEqual(
+    expect.objectContaining({ code: "missing_selector", dimensions: [dimension] }),
+  );
+  for (const [index, rule] of rules.entries()) {
+    const result = lookup({
+      provider_id: rule.provider_id,
+      model_id: rule.model_id,
+      evaluated_at: request.evaluatedAt,
+    });
+    expect(result).toMatchObject({
+      status: "matched",
+      snapshot: data.snapshot,
+      missing_conditions: [],
+    });
+    expect(result.candidates).toHaveLength(1);
+    const candidate = result.candidates[0];
+    if (!candidate) throw new Error("Missing regional candidate");
+    expect(candidate).toMatchObject({
+      model_ref: modelRef,
+      book_ref: book.id,
+      offer: { id: offer.id },
+    });
+    expect(candidate.selectors).toEqual(expect.arrayContaining(rule.fixed_selectors));
+    const calculated = calculator.calculate({
+      ...request,
+      components: request.components.map((component) => ({
+        ...component,
+        offerRef: candidate.offer.id,
+        selectors: candidate.selectors,
+      })),
+    });
+    expect(calculated).toMatchObject({
+      status: "calculated",
+      snapshot: result.snapshot,
+      evaluatedAt: result.evaluated_at,
+      totals: [{ amount: { numerator: index === 0 ? "51" : "102", denominator: "5" } }],
+    });
+    const conflicting = rules.find(({ model_id }) => model_id !== rule.model_id);
+    if (!conflicting) throw new Error("Missing conflicting Region");
+    expect(
+      lookup({
+        provider_id: rule.provider_id,
+        model_id: rule.model_id,
+        selectors: conflicting.fixed_selectors,
+      }),
+    ).toMatchObject({ status: "unknown", reason: "incompatible_conditions", candidates: [] });
+  }
+});
+
 it("selects the separately published US and Global tariffs using the same commercial conditions", () => {
   const lookup = createInferencePriceLookup(
     bedrock,
@@ -500,9 +614,50 @@ it("isolates reusable lookup inputs and results from caller mutation", () => {
   const original = lookup(query);
   const changed = lookup(query);
   changed.candidates.length = 0;
+  changed.snapshot.pricingDataVersion = "f".repeat(64);
   associations.rules.length = 0;
   data.providers.length = 0;
   expect(lookup(query)).toEqual(original);
+});
+
+it("shares calculator time normalization and retains snapshot identity for unknown IDs", () => {
+  const lookup = createInferencePriceLookup(typesafe, mapping(typesafe, [typesafeRule()]));
+  const evaluatedAt = "2026-10-30T08:00:00.00012300+08:00";
+  const result = lookup({
+    provider_id: "typesafe",
+    model_id: "jev-1.13.0",
+    evaluated_at: evaluatedAt,
+  });
+  const candidate = result.candidates[0];
+  if (!candidate) throw new Error("Missing timed candidate");
+  const calculation = createCalculator(typesafe).calculate({
+    evaluatedAt,
+    components: [
+      {
+        id: "attempt",
+        offerRef: candidate.offer.id,
+        selectors: candidate.selectors,
+        quantities: [],
+      },
+    ],
+  });
+  expect(result.query.evaluated_at).toBe(evaluatedAt);
+  expect(result.evaluated_at).toBe("2026-10-30T00:00:00.000123Z");
+  expect(calculation.evaluatedAt).toBe(result.evaluated_at);
+  for (const invalid of ["2026-02-30T00:00:00Z", "2026-10-30T08:00:00-00:00"])
+    expect(() =>
+      lookup({ provider_id: "typesafe", model_id: "jev-1.13.0", evaluated_at: invalid }),
+    ).toThrow(/RFC 3339/);
+  const unknown = lookup({ provider_id: "typesafe", model_id: "unreviewed-id" });
+  expect(unknown).toMatchObject({
+    reason: "unreviewed_id",
+    snapshot: typesafe.snapshot,
+    evaluated_at: typesafe.snapshot.generatedAt,
+  });
+  unknown.snapshot.coreCatalogVersion = "f".repeat(64);
+  expect(lookup({ provider_id: "typesafe", model_id: "unreviewed-id" }).snapshot).toEqual(
+    typesafe.snapshot,
+  );
 });
 
 it("distinguishes an unknown ID from known conditions that exclude every price in output and UI", async () => {
@@ -643,12 +798,16 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(regional?.candidates).toEqual(
     lookup.candidates.map(({ offer, selectors }) => ({ offer_ref: offer.id, selectors })),
   );
-  expect(rows?.find(({ model_id }) => model_id === "openai.gpt-6-astra")?.status).toBe("unknown");
+  expect(rows?.map(({ model_id }) => model_id)).toEqual([
+    "us.openai.gpt-6-astra",
+    "global.openai.gpt-6-astra",
+  ]);
   const website = websitePublication(pair.catalog, pair.envelope.data, "a".repeat(64), results);
   const detail = website.details
     .flatMap(({ details }) => details)
     .find(({ model_ref }) => model_ref === "amazon-bedrock/openai.gpt-6-astra");
-  expect(detail?.inference_prices).toEqual(rows);
+  if (detail?.inference_prices === undefined) throw new Error("Missing stored inference prices");
+  expect(restoreInferencePrices(detail.inference_prices)).toEqual(rows);
   if (!regional) throw new Error("Missing regional result");
   const html = await renderComponent(InferencePrices, {
     modelRef: "amazon-bedrock/openai.gpt-6-astra",
@@ -656,6 +815,7 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
     offers: website.offers.flatMap(({ offers }) => offers),
   });
   expect(html).toContain("us.openai.gpt-6-astra");
+  expect(html).toContain("Inference model ID");
   expect(html).toContain("Candidate prices");
   expect(html).toContain("$66");
   expect(html).toContain("Geo cross region");
@@ -683,11 +843,7 @@ it("keeps interactive regional selection, exclusions and displayed rows aligned 
         }
       : selector,
   );
-  for (const model_id of [
-    "us.openai.gpt-6-astra",
-    "global.openai.gpt-6-astra",
-    "openai.gpt-6-astra",
-  ]) {
+  for (const model_id of ["us.openai.gpt-6-astra", "global.openai.gpt-6-astra"]) {
     const price = prices.find((price) => price.model_id === model_id);
     if (!price) throw new Error(`Missing ${model_id}`);
     for (const selectors of [[], selected.slice(0, 1), selected, excluded]) {

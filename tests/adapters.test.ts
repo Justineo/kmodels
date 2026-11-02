@@ -4253,7 +4253,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v17",
+      extractorVersion: "vertex-pricing-v20",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -8871,7 +8871,7 @@ describe("Vercel adapter", () => {
     expect(preserved?.raw_price_facts).toContainEqual(
       expect.objectContaining({
         reason: "unknown_unit",
-        conditions: { route_provider: "acme" },
+        conditions: { route_provider: "acme", operation: "x_search_post" },
         raw: expect.objectContaining({
           meter: "x_search_post",
           amount: "0.005",
@@ -8882,6 +8882,7 @@ describe("Vercel adapter", () => {
     expect(preserved?.raw_price_facts).toContainEqual(
       expect.objectContaining({
         reason: "unknown_amount",
+        conditions: { route_provider: "acme", operation: "x_search_user" },
         raw: expect.objectContaining({ meter: "x_search_user", fragment: '"unreviewed"' }),
       }),
     );
@@ -10574,7 +10575,7 @@ describe("Hugging Face adapter", () => {
       transport: { kind: "featherless-models", pageSize: 1000 },
     });
     expect(sources[3]).toMatchObject({
-      extractorVersion: "huggingface-native-pricing-v2",
+      extractorVersion: "huggingface-native-pricing-v3",
       optional: true,
       extractor: { kind: "huggingface-native-pricing" },
     });
@@ -10582,6 +10583,7 @@ describe("Hugging Face adapter", () => {
       "fireworks-models",
       "zai-pricing",
       "groq-safeguard",
+      "groq-models",
       "cohere-pricing",
       "cohere-command-a",
       "cohere-routes",
@@ -13227,7 +13229,7 @@ describe("DashScope adapters", () => {
       ).toThrow();
   });
 
-  it("reads annotated preview IDs without inventing unscoped billing-item rates", async () => {
+  it("reads annotated preview IDs with operation-scoped HappyOyster rates", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = parse(
       source("dashscope-pricing"),
@@ -13237,10 +13239,30 @@ describe("DashScope adapters", () => {
     expect(models.find(({ model_id }) => model_id === "happyoyster-1.0-acting")).toMatchObject({
       model_id: "happyoyster-1.0-acting",
       release_stage: "preview",
-      pricing_state: "unknown",
-      price_facts: [],
+      pricing_state: "numeric",
+      price_facts: expect.arrayContaining([
+        expect.objectContaining({
+          meter: "inference",
+          unit: "request",
+          conditions: {
+            region: "Singapore",
+            deployment_scope: "International",
+            operation: "world_creation",
+          },
+        }),
+        expect.objectContaining({
+          meter: "session_runtime",
+          unit: "second",
+          conditions: {
+            region: "Singapore",
+            deployment_scope: "International",
+            operation: "world_experience",
+            resolution: "480P",
+          },
+        }),
+      ]),
     });
-    expect(reconciliation).toContainEqual(
+    expect(reconciliation).not.toContainEqual(
       expect.objectContaining({
         reason_code: "pricing_billing_item_unsupported",
         sample: "happyoyster-1.0-acting:World creation",
@@ -13682,7 +13704,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v24",
+      extractorVersion: "dashscope-pricing-v25",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
@@ -15661,7 +15683,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v14",
+      extractorVersion: "ollama-cloud-v16",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });

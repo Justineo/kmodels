@@ -1375,6 +1375,21 @@ function rateApplicability(
       upper: { value: exact, inclusive: true },
     });
   }
+  if (
+    conditions.duration_over_seconds !== undefined ||
+    conditions.duration_max_seconds !== undefined
+  )
+    predicates.push({
+      kind: "decimal_range",
+      dimension: { namespace: "kmodels", value: "duration_seconds" },
+      unit: standardUnit("second"),
+      ...(conditions.duration_over_seconds === undefined
+        ? {}
+        : { lower: { value: conditions.duration_over_seconds, inclusive: false } }),
+      ...(conditions.duration_max_seconds === undefined
+        ? {}
+        : { upper: { value: conditions.duration_max_seconds, inclusive: true } }),
+    });
   return { any_of: [{ all_of: predicates }] };
 }
 

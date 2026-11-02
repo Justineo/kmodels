@@ -301,6 +301,35 @@ function modelBinding(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
 ): ChargeBinding | undefined {
+  if (
+    meter.namespace === "provider" &&
+    meter.value === "inference" &&
+    isStandardUnit(variant.price.per, "request")
+  ) {
+    const operations = categoricalValues(variant.applicability, "operation").map(
+      ({ value }) => value,
+    );
+    const operation = operations[0];
+    if (
+      operations.length === 1 &&
+      operation !== undefined &&
+      [
+        "world_creation",
+        "world_creation_without_reference_image",
+        "world_creation_with_reference_image",
+        "instruction_injection",
+      ].includes(operation)
+    ) {
+      const signal = providerSignal(
+        input,
+        `${operation}_calls`,
+        `Billable HappyOyster ${operation.replaceAll("_", " ")} calls; supplied by the caller`,
+        unit("request"),
+        "outcome",
+      );
+      return quantityBinding(signal, "request", emptyMethods(), variant);
+    }
+  }
   if (meter.namespace !== "kmodels") return;
   const aggregation: ChargeBinding["aggregation"] =
     mechanism === "batch"
@@ -308,6 +337,17 @@ function modelBinding(
       : meter.value === "image_generation" || meter.value === "video_generation"
         ? "job"
         : "request";
+
+  if (meter.value === "session_runtime" && isStandardUnit(variant.price.per, "second")) {
+    const signal = providerSignal(
+      input,
+      "world_experience_seconds",
+      "Billable HappyOyster world-experience session duration in seconds; supplied by the caller",
+      secondUnit,
+      "outcome",
+    );
+    return quantityBinding(signal, "session", emptyMethods(), variant);
+  }
 
   if (isStandardUnit(variant.price.per, "token")) {
     if (meter.value === "embedding") {
@@ -909,6 +949,6 @@ function providerSignal(
   return { namespace: "provider", provider_id: input.provider_id, value: key };
 }
 
-function unit(value: "event" | "second" | "token"): UnitExpression {
+function unit(value: "event" | "second" | "token" | "request"): UnitExpression {
   return { factors: [{ unit: { namespace: "kmodels", value }, power: 1 }] };
 }

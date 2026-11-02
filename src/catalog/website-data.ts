@@ -1,4 +1,5 @@
 import { canonicalJsonHash } from "./canonical-json.ts";
+import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
@@ -289,18 +290,17 @@ function websiteDeferredAssets(
     const providerDetails = catalog.models
       .filter((model) => model.provider_id === provider.id)
       .map((model) => {
-        const { pricing, ...detail } = websiteModelDetailFromView(
-          view(model),
-          model,
-          labels,
-          atoms,
-        );
+        const {
+          pricing,
+          inference_prices: _inferencePrices,
+          ...detail
+        } = websiteModelDetailFromView(view(model), model, labels, atoms);
         return {
           detail: {
             ...detail,
             ...(inferencePrices?.get(model.uid) === undefined
               ? {}
-              : { inference_prices: inferencePrices.get(model.uid) }),
+              : { inference_prices: storeInferencePrices(inferencePrices.get(model.uid) ?? []) }),
           },
           ...(pricing === undefined
             ? {}
@@ -359,7 +359,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: 6,
+            schema_version: 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,

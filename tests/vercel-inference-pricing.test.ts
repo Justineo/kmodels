@@ -1,7 +1,8 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
-import type { LinkedBundle } from "../src/catalog/bundle.ts";
+import { linkedBundleSchema, type LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests } from "../src/catalog/manifests.ts";
@@ -20,6 +21,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { vercelInferenceBundle } from "./vercel-inference-fixture.ts";
 
@@ -90,7 +92,14 @@ function lookup(candidate: CatalogPairCandidate) {
 }
 
 function condition(
-  dimension: "operation" | "route_provider" | "region" | "speed" | "served_service_tier",
+  dimension:
+    | "operation"
+    | "route_provider"
+    | "region"
+    | "speed"
+    | "served_service_tier"
+    | "quality"
+    | "resolution",
   value: string,
 ): Selector {
   return {
@@ -128,6 +137,70 @@ it("looks up a native gateway ID without treating the creator as the serving rou
   ])
     expect(query({ provider_id: "vercel", model_id }).reason).toBe("unreviewed_id");
 });
+
+it("publishes HeyGen duration boundaries identically to the public lookup and website", async () => {
+  const reviewed = linkedBundleSchema.parse(
+    JSON.parse(
+      await readFile(
+        new URL("./fixtures/vercel/heygen-duration-tiers.json", import.meta.url),
+        "utf8",
+      ),
+    ),
+  );
+  const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
+  const { candidate } = await collect((bundle) => {
+    const list = listSchema.parse(JSON.parse(bundle.index.body));
+    list.data.push(...listSchema.parse(JSON.parse(reviewed.index.body)).data);
+    bundle.index.body = JSON.stringify(list);
+    for (const doc of reviewed.documents) {
+      const existing = bundle.documents.find(({ url }) => url === doc.url);
+      if (existing === undefined) bundle.documents.push(doc);
+      else existing.body = doc.body;
+    }
+  });
+  const query = lookup(candidate);
+  const model_id = "heygen/heygen-video-1";
+  const fixed = [
+    condition("route_provider", "heygen"),
+    condition("quality", "text_to_video"),
+    condition("resolution", "480p"),
+  ];
+  const pending = query({ provider_id: "vercel", model_id, selectors: fixed });
+  expect(pending.status).toBe("candidates");
+  expect(pending.missing_conditions).toContainEqual({
+    namespace: "kmodels",
+    value: "duration_seconds",
+  });
+  const projected = await projectCatalogPair(candidate);
+  const detail = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === `vercel/${model_id}`);
+  const price = detail?.inference_prices?.find((entry) => entry.model_id === model_id);
+  if (price === undefined) throw new Error("Missing HeyGen website lookup");
+  for (const [seconds, numerator, denominator] of [
+    ["15", "1", "100"],
+    ["15.1", "9", "200"],
+  ] as const) {
+    const selectors: Selector[] = [
+      ...fixed,
+      {
+        kind: "decimal",
+        dimension: { namespace: "kmodels", value: "duration_seconds" },
+        value: seconds,
+        unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+      },
+    ];
+    const result = query({ provider_id: "vercel", model_id, selectors });
+    expect(result.status).toBe("matched");
+    expect(amounts(result, "video_generation")).toEqual([{ numerator, denominator }]);
+    expect(queryWebsiteInferencePrice(price, selectors, at).status).toBe(result.status);
+  }
+}, 15000);
 
 it("keeps native Fast context tiers and regional amounts instead of extending the short rate", async () => {
   const candidate = baseline;
@@ -243,11 +316,10 @@ it("exports the same conditions to the UI without audit payloads or invocation t
   const projected = await projectCatalogPair(candidate);
   const details = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
     );
   const model = candidate.catalog.models.find(
     ({ model_id }) => model_id === "anthropic/claude-opus-5-batch",

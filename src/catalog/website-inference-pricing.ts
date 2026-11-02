@@ -31,10 +31,12 @@ export function websiteInferencePrices(
       ...sources.map(({ id, url }) => [id, url] as const),
     ]);
     for (const model of catalog.models.filter(({ provider_id }) => provider_id === providerId)) {
+      const modelRules = rules.filter(({ model_ref }) => model_ref === model.uid);
       const ids = new Set([
-        model.model_id,
-        ...rules.filter(({ model_ref }) => model_ref === model.uid).map(({ model_id }) => model_id),
+        ...(modelRules.some(({ model_id }) => model_id === model.model_id) ? [model.model_id] : []),
+        ...modelRules.map(({ model_id }) => model_id),
       ]);
+      if (ids.size === 0) ids.add(model.model_id);
       results.set(
         model.uid,
         [...ids].map((model_id) => {

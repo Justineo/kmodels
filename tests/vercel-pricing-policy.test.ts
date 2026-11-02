@@ -6,6 +6,11 @@ import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts
 import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.ts";
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
+import { normalizeVercelModelPage, normalizeVercelPricingScript } from "../src/catalog/fetch.ts";
+import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
+import { vercelPageSearchPrices } from "../src/catalog/vercel-pricing-contracts.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
+import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
 
 const manifest = manifests.find((m) => m.provider.id === "vercel");
 const configured = manifest?.sources[0];
@@ -52,9 +57,11 @@ function endpoint(name: string, prompt = "0.000002", peak?: unknown) {
 }
 function parse(
   pricing: Record<string, unknown>,
-  endpoints: ReturnType<typeof endpoint>[] = [],
+  endpoints: readonly unknown[] = [],
   responseId = model.id,
   metadata: Record<string, unknown> = {},
+  registry?: string,
+  page?: Record<string, unknown>,
 ) {
   const diagnostics: PricingReconciliationItem[] = [];
   const result = parseSource({
@@ -66,8 +73,19 @@ function parse(
         url: source.url,
         body: JSON.stringify({ object: "list", data: [{ ...model, ...metadata, pricing }] }),
       },
-      documents:
-        endpoints.length === 0
+      documents: [
+        ...(page === undefined
+          ? []
+          : [{ url: "https://vercel.com/ai-gateway/models/text-1", body: JSON.stringify(page) }]),
+        ...(registry === undefined
+          ? []
+          : [
+              {
+                url: "https://vercel.com/vc-ap-vercel-marketing/_next/static/immutable/chunks/pricing.js",
+                body: registry,
+              },
+            ]),
+        ...(endpoints.length === 0
           ? []
           : [
               {
@@ -84,13 +102,108 @@ function parse(
                   },
                 }),
               },
-            ],
+            ]),
+      ],
     }),
     onPricingReconciliation: (item) => diagnostics.push(item),
   });
   return { result, diagnostics };
 }
 describe("Vercel price authority", () => {
+  it("preserves HeyGen duration tiers and their exact 15-second boundary through assembly", async () => {
+    const result = parseSource({
+      provider,
+      source,
+      observedAt,
+      body: await readFile(
+        new URL("./fixtures/vercel/heygen-duration-tiers.json", import.meta.url),
+        "utf8",
+      ),
+    });
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const offer = partition?.books.find(
+      ({ book_key }) => book_key === "model:vercel/heygen/heygen-video-1",
+    )?.offers[0];
+    const term = offer?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "video_generation",
+    );
+    if (term?.kind !== "rate") throw new Error("Missing HeyGen duration prices");
+    expect(term.raw_variants).toEqual([]);
+    const fixed = (
+      [
+        ["quality", "text_to_video"],
+        ["resolution", "480p"],
+        ["route_provider", "heygen"],
+      ] as const
+    ).map(([value, option]) => ({
+      kind: "categorical" as const,
+      dimension: { namespace: "kmodels" as const, value },
+      value: { namespace: "provider" as const, provider_id: "vercel", value: option },
+    }));
+    for (const [seconds, numerator, denominator] of [
+      ["15", "1", "100"],
+      ["15.1", "9", "200"],
+    ] as const) {
+      const matched = term.variants.filter(
+        ({ applicability }) =>
+          evaluateApplicability(applicability, [
+            ...fixed,
+            {
+              kind: "decimal",
+              dimension: { namespace: "kmodels", value: "duration_seconds" },
+              value: seconds,
+              unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+            },
+          ]).state === "true",
+      );
+      expect(matched).toHaveLength(1);
+      const rate = matched[0];
+      if (rate === undefined) throw new Error("Missing exact duration tariff");
+      expect(rate.price.value).toEqual({ numerator, denominator });
+      if (rate.charge_binding === undefined) throw new Error("Missing generated-seconds binding");
+      expect(
+        evaluateRateCost(rate, [
+          {
+            signal: {
+              namespace: "provider",
+              provider_id: "vercel",
+              value: "requested_video_seconds",
+            },
+            value: rationalFromDecimal(seconds),
+          },
+          {
+            signal: { namespace: "kmodels", value: "generated_items" },
+            value: { numerator: "1", denominator: "1" },
+          },
+        ]),
+      ).toMatchObject({
+        kind: "resolved",
+        amount: {
+          numerator: seconds === "15" ? "3" : "1359",
+          denominator: seconds === "15" ? "20" : "2000",
+        },
+      });
+    }
+    const reference = term.variants.filter(
+      ({ applicability }) =>
+        evaluateApplicability(applicability, [
+          ...fixed.filter(({ dimension }) => dimension.value !== "quality"),
+          {
+            kind: "categorical",
+            dimension: { namespace: "kmodels", value: "quality" },
+            value: { namespace: "provider", provider_id: "vercel", value: "reference_to_video" },
+          },
+        ]).state === "true",
+    );
+    expect(reference).toHaveLength(1);
+    expect(reference[0]?.price.value).toEqual({ numerator: "7", denominator: "200" });
+  });
+
   it("preserves the hourly transcription denominator and audio quantity through assembly", async () => {
     const fixture = await readFile(
       new URL("./fixtures/vercel/unpriced-transcription.json", import.meta.url),
@@ -304,6 +417,197 @@ describe("Vercel price authority", () => {
       reason: "unknown_applicability",
       raw: { amount: "0.000001" },
     });
+  });
+  it("keeps documented peak and off-peak prices conditional without inventing a holiday calendar", async () => {
+    const body = await readFile(
+      new URL("./fixtures/vercel/pricing-contracts.txt", import.meta.url),
+      "utf8",
+    );
+    const registry = normalizeVercelPricingScript(body);
+    expect(registry).toBeDefined();
+    const { result } = parse(
+      { varies_by_provider: true },
+      [endpoint("metered", "0.000001", peak), endpoint("fixed")],
+      model.id,
+      {},
+      registry,
+    );
+    const metered =
+      result.models[0]?.price_facts.filter((f) => f.conditions.route_provider === "metered") ?? [];
+    expect(
+      metered
+        .filter((f) => f.meter === "input_text")
+        .map((f) => [f.conditions.billing_period, f.price]),
+    ).toEqual([
+      ["off_peak", "1"],
+      ["peak", "2"],
+    ]);
+    expect(result.models[0]?.raw_price_facts).toEqual([]);
+    expect(
+      result.models[0]?.price_facts
+        .filter((f) => f.conditions.route_provider === "fixed")
+        .every((f) => f.conditions.billing_period === undefined),
+    ).toBe(true);
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const variant = partition?.books
+      .flatMap((b) =>
+        b.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))),
+      )
+      .find((v) => v.price.value.numerator === "1" && v.price.value.denominator === "500000");
+    if (variant?.charge_binding === undefined) throw new Error("Missing peak input rate");
+    expect(
+      evaluateRateCost(variant, [
+        {
+          signal: variant.charge_binding.signal,
+          value: { numerator: "1000000", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "2", denominator: "1" } });
+    const drift = normalizeVercelPricingScript(
+      body.replace(
+        "Listed prices are the off-peak rate.",
+        "Listed prices have an unspecified basis.",
+      ),
+    );
+    const unresolved = parse({ input: "0.000001", peak_pricing: peak }, [], model.id, {}, drift);
+    expect(unresolved.result.models[0]?.raw_price_facts.length).toBeGreaterThan(0);
+  });
+  it("separates native X Search item prices from the model's token charges", async () => {
+    const body = await readFile(
+      new URL("./fixtures/vercel/pricing-contracts.txt", import.meta.url),
+      "utf8",
+    );
+    const route = endpoint("xai");
+    const { result } = parse(
+      { varies_by_provider: true },
+      [
+        {
+          ...route,
+          pricing: {
+            ...route.pricing,
+            web_search: "0.005",
+            x_search_post: "0.005",
+            x_search_user: "0.01",
+          },
+        },
+      ],
+      model.id,
+      {},
+      normalizeVercelPricingScript(body),
+      {
+        title: model.name,
+        search_prices: [
+          {
+            model_id: model.id,
+            provider: "xai",
+            posts_per_thousand: "5",
+            profiles_per_thousand: "10",
+          },
+        ],
+      },
+    );
+    expect(result.models[0]?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "web_search",
+          unit: "thousand_items",
+          price: "5",
+          conditions: { route_provider: "xai", operation: "x_search_post" },
+        }),
+        expect.objectContaining({
+          meter: "web_search",
+          unit: "thousand_items",
+          price: "10",
+          conditions: { route_provider: "xai", operation: "x_search_user" },
+        }),
+      ]),
+    );
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const inference = partition?.books.find((b) => b.scope.kind === "models");
+    expect(
+      inference?.offers
+        .flatMap((o) => o.terms)
+        .every((t) => t.kind !== "rate" || t.meter.value !== "web_search"),
+    ).toBe(true);
+    const search = partition?.books.find((b) => b.book_key === "service:native-web-search");
+    expect(
+      search?.offers
+        .flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : [])))
+        .map((v) => v.charge_binding?.signal.value)
+        .sort(),
+    ).toEqual(["billable_x_posts_fetched", "billable_x_profiles_fetched"]);
+    const rawSearch = search?.offers
+      .flatMap((o) => o.terms)
+      .find((t) => t.term_key === "endpoint_web_search");
+    if (rawSearch?.kind !== "raw" || rawSearch.variants[0]?.possible_scope === undefined)
+      throw new Error("Missing unknown-unit ordinary web-search quote");
+    const scope = rawSearch.variants[0].possible_scope;
+    const routeSelection = {
+      kind: "categorical" as const,
+      dimension: { namespace: "kmodels" as const, value: "route_provider" as const },
+      value: { namespace: "provider" as const, provider_id: "vercel", value: "xai" },
+    };
+    for (const operation of ["web_search", "x_search_post", "x_search_user"]) {
+      expect(
+        evaluateApplicability(scope, [
+          routeSelection,
+          {
+            kind: "categorical",
+            dimension: { namespace: "kmodels", value: "operation" },
+            value: { namespace: "provider", provider_id: "vercel", value: operation },
+          },
+        ]).state,
+      ).toBe(operation === "web_search" ? "true" : "false");
+    }
+    const missingPage = parse(
+      { varies_by_provider: true },
+      [{ ...route, pricing: { ...route.pricing, x_search_post: "0.005" } }],
+      model.id,
+      {},
+      normalizeVercelPricingScript(body),
+    );
+    expect(missingPage.result.models[0]?.raw_price_facts).toContainEqual(
+      expect.objectContaining({ reason: "unknown_unit" }),
+    );
+  });
+  it("reads exact model/route search amounts from the canonical model-detail payload", () => {
+    const payload =
+      '169:["$","$L171",null,{"backingModels":[{"chef":"spacexai","primaryModel":"grok-4.6","provider":"xai","xSearchPostCost":"5","xSearchUserCost":"10"}]}]\n';
+    const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/grok-4.6"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+    expect(vercelPageSearchPrices(html)).toEqual([
+      {
+        model_id: "spacexai/grok-4.6",
+        provider: "xai",
+        posts_per_thousand: "5",
+        profiles_per_thousand: "10",
+      },
+    ]);
+    expect(JSON.parse(normalizeVercelModelPage(`<h1>Grok 4.6</h1>${html}`, true))).toMatchObject({
+      title: "Grok 4.6",
+      search_prices: [{ model_id: "spacexai/grok-4.6", provider: "xai", posts_per_thousand: "5" }],
+    });
+    expect(() => normalizeVercelModelPage("<h1>Grok 4.6</h1>", true)).toThrow(
+      "omitted exact search prices",
+    );
+    expect(
+      vercelPageSearchPrices(html.replace("https://vercel.com/", "https://example.test/")),
+    ).toEqual([]);
+    expect(vercelPageSearchPrices(html.replace("/models/grok-4.6", "/models/other"))).toEqual([]);
+    expect(
+      vercelPageSearchPrices(
+        html.replace('\\"xSearchPostCost\\":\\"5\\"', '\\"xSearchPostCost\\":\\"unknown\\"'),
+      ),
+    ).toEqual([]);
   });
   it("retains contradictory tier quotes for canonical conflict resolution", () => {
     const { result } = parse({

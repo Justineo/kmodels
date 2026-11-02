@@ -489,9 +489,17 @@ function cloudModel(
 function pagePricing(
   input: ParseInput,
   pages: readonly z.infer<typeof pageEntrySchema>[],
-): { pricing: Map<string, SourcePriceFact[]>; pageModels: Set<string> } {
+  listed: ReadonlyMap<string, ListClaims>,
+): {
+  pricing: Map<string, SourcePriceFact[]>;
+  pageModels: Set<string>;
+  priceAliases: Map<string, string>;
+  inputOnlyModels: Set<string>;
+} {
   const pricing = new Map<string, SourcePriceFact[]>();
   const pageModels = new Set<string>();
+  const priceAliases = new Map<string, string>();
+  const inputOnlyModels = new Set<string>();
   for (const page of pages) {
     const url = new URL(page.url);
     if (
@@ -518,7 +526,10 @@ function pagePricing(
       continue;
     }
     pageModels.add(page.model);
+    if (Reflect.get(page.body, "billing") === "total_input_tokens_only")
+      inputOnlyModels.add(page.model);
     const tags = Reflect.get(page.body, "tags");
+    const tagged = new Set<string>();
     if (Array.isArray(tags))
       for (const tag of tags) {
         if (tag === null || typeof tag !== "object") {
@@ -531,8 +542,18 @@ function pagePricing(
           continue;
         }
         pageModels.add(parsedId.data);
+        tagged.add(parsedId.data);
       }
     else if (tags !== undefined) diagnostic(input, "/pages/tags");
+    const apiModel = Reflect.get(page.body, "apiModel");
+    const pricedApiModel =
+      typeof apiModel === "string" &&
+      apiModel !== page.model &&
+      apiModel.startsWith(`${page.model}:`) &&
+      tagged.has(apiModel) &&
+      listed.has(apiModel)
+        ? apiModel
+        : undefined;
     const rawCost = Reflect.get(page.body, "cost");
     if (rawCost === undefined) continue;
     const cost = pageCostSchema.safeParse(rawCost);
@@ -540,8 +561,10 @@ function pagePricing(
       diagnostic(input, "/pages/cost");
       continue;
     }
-    const value = pricing.get(page.model) ?? [];
-    pricing.set(page.model, value);
+    const value: SourcePriceFact[] = [];
+    if (pricedApiModel !== undefined) {
+      priceAliases.set(page.model, pricedApiModel);
+    }
     const variants = recognizedRows(input, cost.data.variants, pageRateSchema, () => undefined);
     for (const variant of variants) {
       const conditions =
@@ -566,8 +589,11 @@ function pagePricing(
         else if (amount !== undefined) diagnostic(input, `/pages/cost/variants/${field}`);
       }
     }
+    pricing.set(page.model, [...(pricing.get(page.model) ?? []), ...value]);
+    if (pricedApiModel !== undefined)
+      pricing.set(pricedApiModel, [...(pricing.get(pricedApiModel) ?? []), ...value]);
   }
-  return { pricing, pageModels };
+  return { pricing, pageModels, priceAliases, inputOnlyModels };
 }
 
 function applyPagePricing(
@@ -666,7 +692,11 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
   );
 
   const pageRows = recognizedRows(input, bundle.pages, pageEntrySchema, rawModelId);
-  const { pricing, pageModels } = pagePricing(input, pageRows);
+  const { pricing, pageModels, priceAliases, inputOnlyModels } = pagePricing(
+    input,
+    pageRows,
+    listed,
+  );
   const detailRows = recognizedRows(input, bundle.details, detailSchema, rawModelId);
   const details = new Map<string, z.infer<typeof detailSchema>>();
   for (const detail of detailRows) {
@@ -701,7 +731,9 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
   });
   const publicPricing = docs.get(ollamaPricingUrl);
   const vocabulary =
-    publicPricing === undefined ? [] : applyOllamaPublicPricing(input, result, publicPricing);
+    publicPricing === undefined
+      ? []
+      : applyOllamaPublicPricing(input, result, publicPricing, priceAliases, inputOnlyModels);
   for (const model of result)
     input.onPricingReconciliation?.(
       model.price_facts.length > 0

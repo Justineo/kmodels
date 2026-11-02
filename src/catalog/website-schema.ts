@@ -2,6 +2,12 @@ import { z } from "zod";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
 import { inferenceMatchDataSchema } from "../pricing/inference-matching-schema.ts";
+import {
+  priceDecimalBoundSchema,
+  unitExpressionSchema as canonicalUnitExpressionSchema,
+  publishedValiditySchema as canonicalValiditySchema,
+} from "./pricing-schema.ts";
+import { pricingLimits } from "./pricing-constants.ts";
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
@@ -471,6 +477,76 @@ export const websiteInferencePriceSchema = z.strictObject({
   ),
 });
 
+const matchingIndex = z.number().int().nonnegative();
+const matchingProviderAtom = z.tuple([nonEmpty, nonEmpty]);
+const matchingDimension = z.union([standardPriceDimensionSchema, matchingProviderAtom]);
+const matchingAtom = z.union([nonEmpty, matchingProviderAtom]);
+const matchingCondition = z.union([
+  z.tuple([
+    z.literal(0),
+    matchingDimension,
+    z.array(matchingAtom).min(1).max(pricingLimits.categoricalValuesPerCondition),
+  ]),
+  z.tuple([z.literal(1), matchingDimension, z.boolean()]),
+  z
+    .tuple([
+      z.literal(2),
+      matchingDimension,
+      canonicalUnitExpressionSchema,
+      priceDecimalBoundSchema.nullable(),
+      priceDecimalBoundSchema.nullable(),
+    ])
+    .refine((value) => value[3] !== null || value[4] !== null),
+]);
+const matchingVariant = z.tuple([
+  matchingIndex,
+  matchingIndex,
+  canonicalValiditySchema.nullable(),
+  z.array(nonEmpty).nullable(),
+]);
+const matchingTerm = inferenceMatchDataSchema.shape.referenced_rates.element.extend({
+  variants: z.array(matchingVariant),
+  raw_variants: z.array(
+    z.tuple([
+      z.enum(rawPricingImpacts),
+      nonEmpty,
+      matchingIndex.nullable(),
+      canonicalValiditySchema.nullable(),
+    ]),
+  ),
+});
+const matchingOffer = inferenceMatchDataSchema.shape.offers.element.extend({
+  states: z.array(
+    z.tuple([
+      z.enum(priceStates),
+      matchingIndex,
+      matchingIndex,
+      canonicalValiditySchema.nullable(),
+    ]),
+  ),
+  relations: z.array(matchingVariant),
+  terms: z.array(matchingTerm),
+});
+const websiteStoredInferencePriceSchema = websiteInferencePriceSchema.extend({
+  matching: inferenceMatchDataSchema
+    .extend({
+      offers: z.array(matchingOffer),
+      referenced_rates: z.array(matchingTerm).optional(),
+    })
+    .optional(),
+  matching_conditions: z.array(matchingCondition).optional(),
+  matching_applicabilities: z
+    .array(
+      z
+        .array(z.array(matchingIndex).max(pricingLimits.conditionsPerClause))
+        .min(1)
+        .max(pricingLimits.applicabilityClauses),
+    )
+    .optional(),
+  matching_ref: z.number().int().nonnegative().optional(),
+  pricing_options_ref: matchingIndex.optional(),
+});
+
 const websiteModelDetailShape = {
   inference_prices: z.array(websiteInferencePriceSchema).optional(),
   model_ref: nonEmpty,
@@ -524,6 +600,7 @@ export const websiteModelDetailSchema = z.strictObject({
 
 const websiteStoredModelDetailSchema = z.strictObject({
   ...websiteModelDetailShape,
+  inference_prices: z.array(websiteStoredInferencePriceSchema).optional(),
   pricing: z
     .strictObject({
       snapshot: websitePricingSnapshotSchema.optional(),
@@ -533,7 +610,7 @@ const websiteStoredModelDetailSchema = z.strictObject({
 });
 
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(6),
+  schema_version: z.literal(7),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),

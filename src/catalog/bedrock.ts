@@ -1577,6 +1577,12 @@ function tier(attributes: Record<string, string>, text: string): string | undefi
   if (/priority/.test(value)) return "priority";
   if (/flex/.test(value)) return "flex";
   if (/standard|on-demand/.test(value)) return "standard";
+  if (
+    /-(?:(?:input|output)-tokens|cache-(?:read|write)-input-token-count)-cross-region-global$/i.test(
+      attributes.usagetype ?? "",
+    )
+  )
+    return "standard";
 }
 
 function nativeTokenSpeed(attributes: Record<string, string>): string | undefined {
@@ -1640,6 +1646,12 @@ function conditions(
         ? "grounding"
         : undefined);
   const resolution =
+    (attributes.provider === "Luma AI" && attributes.model === "Ray v2"
+      ? /(?:videoMediumFps|Ray-V2-Medfps-)(StandardRes|HdRes|HDRes)(?:-Units)?$/
+          .exec(attributes.usagetype ?? "")?.[1]
+          ?.replace(/^StandardRes$/, "Standard")
+          .replace(/^(?:HdRes|HDRes)$/, "HD")
+      : undefined) ??
     inference.match(/\b(512|1024|2048)\b/)?.[1] ??
     inference.match(/\b(SD|HD|FHD)\s+Resolution\b/i)?.[1]?.toUpperCase() ??
     attributes.imageresolution;
@@ -2121,8 +2133,13 @@ function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): Pr
 
 function cohereEmbedMarketplaceRates(body: string, sourceId: string): SourcePriceFact[] {
   const page = load(body);
+  const title = page("title").text().trim();
   if (
-    page("title").text().trim() !== "AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)"
+    title !== "AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)" &&
+    !(
+      title === "Cohere Embed 4 Model (Amazon Bedrock Edition) | AWS Marketplace" &&
+      page("h1").text().trim() === "Cohere Embed 4 Model (Amazon Bedrock Edition)"
+    )
   )
     throw new Error("Bedrock Cohere Embed 4 Marketplace identity changed");
   const contexts = page("script#vike_pageContext")

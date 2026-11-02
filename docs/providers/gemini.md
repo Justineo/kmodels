@@ -159,7 +159,15 @@ Pricing returns independent service facts, acquisition inputs and reviewed vocab
 grounding cells produce typed shared-pool claims and canonical allowance terms at the source
 boundary. The commercial adapter binds quantities and compatible offers without reparsing raw
 fragments. Explicit query/prompt denominators and model-local Search footnotes establish units;
-model-name prefixes never select them. Distinct source prices survive extraction for ordinary
+The optional [Search billing guide](https://ai.google.dev/gemini-api/docs/google-search) also
+establishes per-query billing for a row that explicitly joins its shared monthly program and agrees
+on both quota and overage price. Missing, duplicate or disagreeing guide evidence leaves those
+request-worded rates raw. Model-name prefixes never select units.
+`Grounding with Google Web and Image Search` belongs to that same independent Search service and
+allowance pool, with its distinct `google_web_image_search` operation. Its per-query price is known,
+but its combined web/image quantity remains caller-owned: the documented unique non-empty web-query
+rule does not establish how `imageSearchQueries` combines with `webSearchQueries`. A web-only counter
+is not assigned to the composite charge. Distinct source prices survive extraction for ordinary
 conflict assembly. A target-price conflict keeps the separate allowance record unresolved without
 rejecting unrelated provider pricing or inventing a free state.
 

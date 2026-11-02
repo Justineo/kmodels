@@ -106,10 +106,13 @@ with an unreviewed denominator stays raw in its native-search service book, pres
 token rates in the inference book. A missing or unfamiliar companion field is local; a contradictory
 model/route identity or duplicate route owner raises a structured constraint failure so a refresh
 cannot silently replace the accepted partition with misbound or incomplete route prices.
-The explicit `x_search_post` and `x_search_user` endpoint amounts likewise survive as raw quotes
-within their exact model/route scope. Their field names do not establish a denominator or authorize
-another seller's accounting contract. An unreadable value remains bounded raw evidence and cannot
-discard sibling rates.
+The current model-detail payload publishes exact model/route search amounts, while its linked pricing
+component labels X posts and profiles fetched per 1K items. Both owned contracts are required: a
+canonical page and one matching backing model establish amounts; the reviewed component establishes
+units. These become independent native-search fees with caller-supplied fetched-post/profile counts.
+They do not borrow another seller's usage fields. Endpoint `x_search_post`/`x_search_user` observations
+converge only when they agree exactly after scaling; absent, duplicate, malformed or disagreeing page
+claims retain the endpoint's raw evidence. Field names alone do not establish a denominator.
 
 The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
 returned array is the completed-image quantity. Older examples that expose the same result as
@@ -151,6 +154,12 @@ use the source's `default` selector value, as image rows do. They are not wildca
 resolutions or qualities, and `default` does not infer a particular physical resolution.
 Boolean audio and voice-control conditions require their own published values; a missing flag does
 not become false because a sibling is true. Unresolved overlaps use the shared conflict fallback.
+Native `duration_over_seconds` rows form ordered duration tiers within the same resolution, mode,
+audio and voice-control scope. Preserve their strict lower bound and close the preceding band
+inclusively at that threshold using the shared `duration_seconds` dimension. Fractional durations
+remain exact: a tier over 15 seconds starts above 15, not at 16. A tier in one operation cannot
+qualify another operation, and amounts never establish the threshold. This keeps HeyGen's normal
+and extended-duration prices disjoint without treating advertised generation limits as tariff bounds.
 Video model pages may publish a flat `$N/video` output rate instead of a duration rate; retain its
 provider-published `video` unit rather than treating it as seconds. A transcription model page may
 publish its input as `$N/hr` or `$N/sec`. These become `input_audio` quotes with the `hour` or
@@ -177,11 +186,19 @@ whose own price is zero. A missing endpoint cannot turn the catalog's minimum or
 route-independent fee. Equal-scope contradictory amounts survive extraction for canonical conflict
 resolution; parsing order never chooses the winning quote.
 
-An unreviewed `peak_pricing` schedule retains each affected amount, original unit, scope and policy
-parameters as raw `unknown_applicability`. Weekdays, holiday calendars and billed-period semantics
-must be established before those quotes become executable. A policy on one endpoint does not
-modify other fixed-price routes. Kmodels does not substitute request time or another provider's
-schedule. Raw-only service charges likewise carry no invented `not_published` state.
+Topaz Proteus, Starlight Precise 2.6 and Wonder 3.5 publish approximate prices subject to credit
+rounding. Their detailed duration/resolution amounts remain evidence until a rounding contract
+establishes executable USD charges. Kling's audio rows cannot acquire
+`voice_control=false` merely because a separate row explicitly prices `voice_control=true`;
+the public voice parameter guide does not establish that missing billing predicate.
+
+The reviewed pricing component says listed token prices are off-peak and the published multiplier
+applies during peak periods. With that claim and a valid native policy, publish distinct off-peak and
+derived peak rates, retaining the policy as source evidence. The caller must supply the actual billing
+period. The weekday/UTC/Chinese-holiday policy is not an executable calendar, and request time never
+substitutes for a billed-period observation. A policy on one route cannot modify fixed-price siblings.
+Missing or changed basis wording and unsupported policy fields retain affected quotes as raw
+`unknown_applicability`; independent non-token prices survive a recognized token policy.
 The reviewed image-detail registry may put the price object directly under the model slug or
 inside its `model` property. Both literal structures are parsed without executing JavaScript;
 the wrapper cannot create a fictitious model named `model`.
@@ -198,7 +215,13 @@ amount authority for the full search schedule.
 Provider-native web and Maps prices live in shared service books whose model references define
 compatibility. Independently callable generic search tools are provider resources without a model
 compatibility assertion. They appear in provider pricing and cannot make an unpriced model look
-priced or add unrelated search services to every model detail. Their books publish:
+priced or add unrelated search services to every model detail.
+
+Endpoint Web Search and X Search raw quotes retain their exact operation as well as route scope.
+A missing denominator for ordinary Web Search cannot block a separately selected, known X Search
+item charge. Selecting ordinary Web Search still exposes its own unresolved quote.
+
+Independent search service books publish:
 
 - Perplexity: `$5 / 1,000` successful requests;
 - Exa: `$7 / 1,000` successful requests plus `$1 / 1,000` requested results above ten;
@@ -211,6 +234,11 @@ unit-qualified constant and a zero-floor subtraction. Tako effort is the dedicat
 `search_effort` selector rather than an overloaded operation or service tier. Tako data export is
 retained beside the numeric request rates as a raw variable surcharge because the amount depends on
 requested rows and each result card's `content.export_pricing`.
+The linked [Tako tariff](https://docs.tako.com/documentation/integrating-tako/contents/pricing)
+defines a baseline plus source-dependent row charges, premium record classes and possible variable
+minimums, with account-specific returned prices overriding list prices. Its current first-row
+billing rule also disagrees with the gateway guide's twenty-free-row wording. Neither the minimum
+row price nor a fixed request fee can resolve that surcharge for a gateway result card.
 
 ## Published pricing inputs
 

@@ -36,6 +36,8 @@ import {
   type DependencyFailure,
 } from "./source-failure.ts";
 import { cohereModelDocumentUrls } from "./cohere-documents.ts";
+import { ollamaPricedModelPageIds, ollamaPricingUrl } from "./ollama-pricing.ts";
+import { vercelPageSearchPrices, vercelPricingContracts } from "./vercel-pricing-contracts.ts";
 
 const execute = promisify(execFile);
 
@@ -1943,31 +1945,58 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
   if (modelPageBase.href !== "https://vercel.com/ai-gateway/models/")
     throw new Error("Vercel model-page base URL is not reviewed");
-  const missing = list.data.filter(({ pricing }) => Object.keys(pricing).length === 0);
+  const searchModels = new Set(
+    endpointDocuments.flatMap((document) => {
+      if ("dependency_id" in document) return [];
+      const parsed = vercelEndpointTransportSchema.safeParse(json(document.payload.body));
+      return parsed.success &&
+        parsed.data.data.endpoints.some((endpoint) => {
+          const pricing = endpoint.pricing;
+          return (
+            pricing !== null &&
+            typeof pricing === "object" &&
+            (Reflect.get(pricing, "x_search_post") !== undefined ||
+              Reflect.get(pricing, "x_search_user") !== undefined)
+          );
+        })
+        ? [parsed.data.data.id]
+        : [];
+    }),
+  );
+  const missing = list.data.filter(
+    ({ id, pricing }) => Object.keys(pricing).length === 0 || searchModels.has(id),
+  );
   assertItemCount(
     "Vercel model pricing pages",
     missing.length,
     transport.minModelPages,
     transport.maxModelPages,
   );
-  const modelPages = await mapConcurrent(missing, transport.concurrency, async ({ id }) => {
-    const slug = id.split("/")[1];
-    assertSourceConstraint("Vercel model ID omitted its page slug", slug !== undefined, id);
-    const key = `${source.id}/model-page/${sha256(id)}`;
-    const url = checkedUrl(new URL(slug, modelPageBase).href, source);
-    if (url.hostname !== "vercel.com" || url.pathname !== `/ai-gateway/models/${slug}`)
-      throw new Error("Vercel model page left the reviewed path");
-    try {
-      const raw = await fetchPayload(
-        requestSource(source, key, url, "html", transport.maxModelPageBytes),
-      );
-      const body = normalizeVercelModelPage(raw.body);
-      const payload = { ...raw, body, contentHash: sha256(body) };
-      return { key, url: url.href, payload, rawBody: raw.body };
-    } catch (error) {
-      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
-    }
-  });
+  const modelPages = await mapConcurrent(
+    missing,
+    transport.concurrency,
+    async ({ id, pricing }) => {
+      const slug = id.split("/")[1];
+      assertSourceConstraint("Vercel model ID omitted its page slug", slug !== undefined, id);
+      const key = `${source.id}/model-page/${sha256(id)}`;
+      const url = checkedUrl(new URL(slug, modelPageBase).href, source);
+      if (url.hostname !== "vercel.com" || url.pathname !== `/ai-gateway/models/${slug}`)
+        throw new Error("Vercel model page left the reviewed path");
+      try {
+        const raw = await fetchPayload(
+          requestSource(source, key, url, "html", transport.maxModelPageBytes),
+        );
+        const body = normalizeVercelModelPage(
+          raw.body,
+          Object.keys(pricing).length > 0 && searchModels.has(id),
+        );
+        const payload = { ...raw, body, contentHash: sha256(body) };
+        return { key, url: url.href, payload, rawBody: raw.body };
+      } catch (error) {
+        return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
+      }
+    },
+  );
 
   const fetchedModelPages = modelPages.flatMap((document) =>
     "dependency_id" in document ? [] : [document],
@@ -2076,9 +2105,18 @@ function normalizedText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-export function normalizeVercelModelPage(body: string): string {
+export function normalizeVercelModelPage(body: string, searchOnly = false): string {
   const $ = load(body);
   const title = normalizedText($("h1").first().text());
+  const searchPrices = vercelPageSearchPrices(body);
+  if (searchOnly) {
+    assertSourceConstraint(
+      "Vercel model page omitted exact search prices",
+      title !== "" && searchPrices.length > 0,
+      body,
+    );
+    return JSON.stringify({ title, search_prices: searchPrices });
+  }
   const tables = $("table");
   assertSourceConstraint(
     "Vercel model page changed its primary pricing table",
@@ -2132,7 +2170,14 @@ export function normalizeVercelModelPage(body: string): string {
         .get()
         .filter((value) => value !== ""),
     );
-  return JSON.stringify({ title, provider, headers, values, titles });
+  return JSON.stringify({
+    title,
+    provider,
+    headers,
+    values,
+    titles,
+    ...(searchPrices.length === 0 ? {} : { search_prices: searchPrices }),
+  });
 }
 
 const vercelPricingScriptPath =
@@ -2203,6 +2248,7 @@ function setVercelPricingDetail(
 
 export function normalizeVercelPricingScript(body: string): string | undefined {
   const models = new Map<string, Record<string, unknown>>();
+  const contracts = vercelPricingContracts(body);
   const videoRegistry = new RegExp(
     String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{videoCost:"(${vercelDecimalPattern})",videoDimensionPricing:\[([^\]]+)\]\}`,
     "gu",
@@ -2295,9 +2341,10 @@ export function normalizeVercelPricingScript(body: string): string | undefined {
     setVercelPricingDetail(models, slug, "web_search", items);
   }
 
-  if (models.size === 0) return undefined;
+  if (models.size === 0 && Object.keys(contracts).length === 0) return undefined;
   return JSON.stringify({
     models: Object.fromEntries([...models].sort(([left], [right]) => left.localeCompare(right))),
+    ...(Object.keys(contracts).length === 0 ? {} : { contracts }),
   });
 }
 
@@ -2405,6 +2452,28 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
     })
     .sort((left, right) => left.model.localeCompare(right.model));
   const page = normalizedText($.root().text());
+  const inputOnlyBilling = $("#display > p")
+    .toArray()
+    .some((element) => {
+      const paragraph = $(element);
+      return (
+        normalizedText(paragraph.text()).endsWith(
+          "Usage is billed per input token at the listed price.",
+        ) && paragraph.find('a[href="https://ollama.com/pricing"]').text() === "listed price"
+      );
+    });
+  const apiModels = new Set(
+    $("pre")
+      .toArray()
+      .flatMap((element) => {
+        const code = $(element).text().trim();
+        if (!/^curl\s+https:\/\/ollama\.com\/api\/(?:chat|generate)(?:\s|$)/.test(code)) return [];
+        return [...code.matchAll(/"model"\s*:\s*"([a-z0-9][a-z0-9._:-]*)"/gi)].flatMap(
+          (match) => match[1] ?? [],
+        );
+      }),
+  );
+  const [apiModel] = apiModels;
   const costCard = /\bCost \/1M tokens\b/.test(page);
   const fields = ["input", "cached", "output"] as const;
   const periods = new Map<string, Set<string>>();
@@ -2458,6 +2527,8 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
     model: family,
     ...(title === "" ? {} : { title }),
     tags,
+    ...(apiModels.size === 1 && apiModel !== undefined ? { apiModel } : {}),
+    ...(inputOnlyBilling ? { billing: "total_input_tokens_only" } : {}),
     ...(!costCard
       ? {}
       : {
@@ -2567,10 +2638,15 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
   if (modelPageBase.href !== "https://ollama.com/library/")
     throw new Error("Ollama model-page base URL is not reviewed");
-  const pageResults = await mapConcurrent(catalogIds, transport.concurrency, async (model) => {
+  const pricingDocument = documentation.documents.find(({ url }) => url === ollamaPricingUrl);
+  const pageIds = [
+    ...new Set([...catalogIds, ...ollamaPricedModelPageIds(pricingDocument?.payload.body ?? "")]),
+  ].sort();
+  assertItemCount("Ollama cloud transport model pages", pageIds.length, 0, transport.maxModels);
+  const pageResults = await mapConcurrent(pageIds, transport.concurrency, async (model) => {
     const key = `${source.id}/model-page/${sha256(model)}`;
     try {
-      const url = checkedUrl(new URL(model, modelPageBase).href, source);
+      const url = checkedUrl(new URL(`/library/${model}`, modelPageBase).href, source);
       if (url.hostname !== "ollama.com" || url.pathname !== `/library/${model}`) return;
       const raw = await fetchPayload(
         requestSource(source, key, url, "html", transport.maxModelPageBytes),

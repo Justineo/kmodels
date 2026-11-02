@@ -30,8 +30,10 @@ export interface GeminiGroundingClaim {
 }
 
 export function geminiGroundingOperation(row: string): GeminiGroundingOperation | undefined {
-  const operation = row.match(/^Grounding with Google (Search|Maps)\**$/i)?.[1]?.toLowerCase();
-  return operation === "search"
+  const operation = row
+    .match(/^Grounding with Google (Search|Web and Image Search|Maps)\**$/i)?.[1]
+    ?.toLowerCase();
+  return operation === "search" || operation === "web and image search"
     ? "google_search"
     : operation === "maps"
       ? "google_maps"

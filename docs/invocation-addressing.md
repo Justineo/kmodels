@@ -51,10 +51,15 @@ provider evidence described in each provider guide.
 
 ## UI projection
 
-The UI labels the original catalog identifier as `Model ID`, keeps it directly copyable, places static aliases in a
+The UI labels the original catalog identifier as `Catalog ID`, keeps it directly copyable, places static aliases in a
 collapsed disclosure, and summarizes positive deployment/region tuples as
 `Availability details`. It explains that listed regions are documented facts,
 not an exhaustive support matrix.
+
+Pricing lists the independently evidenced request IDs when associations exist. It does not add the
+catalog ID to that list unless it has its own association. Without an association, the lookup value
+remains labeled `Catalog ID`, with unknown mapping status and ordinary catalog prices. An alternate
+identifier may also be a request ID; the roles overlap without becoming identity equivalence.
 
 ## Price lookup boundary
 

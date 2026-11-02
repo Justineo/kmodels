@@ -191,7 +191,7 @@ function toggleOtherCharges(event: Event): void {
       />
       <template v-if="!hasKnownMapping">
         <p v-if="inferencePrices?.length" class="capacity-note">
-          The catalog prices below are not verified for this inference model ID.
+          The catalog prices below are not verified for an inference model ID.
         </p>
         <section
           v-if="capacityGroups.length > 0"

@@ -53,6 +53,11 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   unit survive as raw evidence alongside ordinary page, minute, and character rates. An ambiguous
   identity cannot assign that quote to multiple models. Raw cached prices do not borrow token-cache
   counters, establish an uncached/total partition, or become a free offer when their amount is zero.
+  The [current caching guide](https://docs.mistral.ai/studio/conversations/advanced/prompt-caching)
+  defines cached prompt tokens, 64-token blocks and token subtraction. It supplies no corresponding
+  cached-minute, cached-page or cached-character billing rule. Its token percentage and
+  `cached_tokens` field therefore cannot determine those cells' eligibility or the billable
+  ordinary-versus-cached partition.
   A row may mix units, as `Voxtral Small` does: per-minute audio input cells beside a `$0.4 /M
   Tokens` output cell. Each cell's own suffix owns its meter and quantity, so the output cell
   becomes an ordinary `output_text`/million-token rate instead of an unsupported price shape.

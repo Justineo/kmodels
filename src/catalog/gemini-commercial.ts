@@ -667,14 +667,19 @@ function groundingBinding(
   inputIndex: PricingInputIndex,
 ): ChargeBinding {
   const maps = resourceKey === "google-maps";
+  const webImage = applicabilityHasValue(
+    variant.applicability,
+    "operation",
+    "google_web_image_search",
+  );
   const request = isStandardUnit(variant.price.per, "request");
-  const key = `${maps ? "maps" : "search"}_${request ? "grounded_prompts" : "executed_queries"}`;
+  const key = `${maps ? "maps" : webImage ? "search_web_image" : "search"}_${request ? "grounded_prompts" : "executed_queries"}`;
   addAtom(input, {
     kind: "usage_signal",
     key,
     definition: request
       ? `Qualifying Gemini ${maps ? "Maps" : "Search"} grounded prompts reported by the interaction or generated result`
-      : `Gemini ${maps ? "Maps" : "Search"} queries reported by the interaction or generated result`,
+      : `Gemini ${maps ? "Maps" : webImage ? "Web and Image Search" : "Search"} queries performed for the generated result`,
     unit: variant.price.per,
     resolution_phase: "outcome",
   });
@@ -682,7 +687,7 @@ function groundingBinding(
   // Interactions' generic tool count does not establish billed query cardinality.
   const keys = request
     ? [`generate.grounding.${maps ? "google_maps_result" : "google_search_result"}`]
-    : maps
+    : maps || webImage
       ? []
       : ["generate.grounding.google_search_queries"];
   const mechanism = applicabilityHasValue(variant.applicability, "service_tier", "batch")

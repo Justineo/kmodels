@@ -6,6 +6,7 @@ import { manifests } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
+import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import type {
   ParsedProviderModel,
   SourceCommercialPricingFact,
@@ -797,5 +798,70 @@ The count field usage.plugins.search.count indicates intent detection and is not
         }),
       }),
     );
+  });
+  it("separates HappyOyster call operations from real-time world experience", async () => {
+    const body = await readFile(
+      new URL("./fixtures/dashscope/happyoyster-pricing.html", import.meta.url),
+      "utf8",
+    );
+    const { result } = parse(body, {});
+    const rates = result.models.flatMap((m) => m.price_facts);
+    expect(rates).toHaveLength(7);
+    expect(result.models.flatMap((m) => m.raw_price_facts)).toEqual([]);
+    expect(rates).toContainEqual(
+      expect.objectContaining({
+        meter: "session_runtime",
+        unit: "second",
+        price: "0.0858",
+        conditions: {
+          region: "Singapore",
+          deployment_scope: "International",
+          operation: "world_experience",
+          resolution: "720P",
+        },
+      }),
+    );
+    for (const [operation, price] of [
+      ["world_creation_without_reference_image", "0.3113"],
+      ["world_creation_with_reference_image", "0.0077"],
+      ["instruction_injection", "0.0154"],
+    ])
+      expect(rates).toContainEqual(
+        expect.objectContaining({
+          meter: "inference",
+          unit: "request",
+          price,
+          conditions: expect.objectContaining({ operation }),
+        }),
+      );
+    const partition = assembleParsedProviderPricing(
+      provider.id,
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const variants =
+      partition?.books.flatMap((b) =>
+        b.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))),
+      ) ?? [];
+    expect(variants).toHaveLength(7);
+    expect(
+      variants.every(
+        (v) => v.charge_binding !== undefined && v.charge_binding.quantity_methods === undefined,
+      ),
+    ).toBe(true);
+    const experience = variants.find(
+      (v) =>
+        v.charge_binding?.signal.value === "world_experience_seconds" &&
+        v.price.value.numerator === "429",
+    );
+    if (experience?.charge_binding === undefined)
+      throw new Error("Missing Directing world duration rate");
+    expect(
+      evaluateRateCost(experience, [
+        { signal: experience.charge_binding.signal, value: { numerator: "12", denominator: "1" } },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "1287", denominator: "1250" } });
+    expect(evaluateRateCost(experience, [])).toMatchObject({ kind: "missing_input" });
   });
 });

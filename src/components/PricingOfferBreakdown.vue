@@ -144,6 +144,27 @@ const visibleUnnormalized = computed(() =>
 const hasIncompletePricing = computed(() =>
   visibleUnnormalized.value.some(({ impact }) => impact === "base_price"),
 );
+const hasConflictingPrices = computed(() =>
+  visibleUnnormalized.value.some(
+    ({ impact, reason }) => impact === "base_price" && reason === "Conflicting values",
+  ),
+);
+const pricingNoteGroups = computed(() => {
+  const groups = new Map<
+    string,
+    { key: string; label: string; notes: typeof visibleUnnormalized.value }
+  >();
+  for (const note of visibleUnnormalized.value) {
+    const key =
+      note.impact === "base_price" && note.reason === "Conflicting values"
+        ? `conflict:${note.label}`
+        : note.key;
+    const group = groups.get(key) ?? { key, label: note.label, notes: [] };
+    group.notes.push(note);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+});
 const showOfferStates = computed(
   () => visibleStates.value.length > 0 && displayOffer.value.states.length > 1,
 );
@@ -369,6 +390,8 @@ function selection(selector: WebsitePricingSelector): PricingSelection | undefin
 }
 
 function noteExplanation(reason: string, impact: string): string {
+  if (impact === "base_price" && reason === "Conflicting values")
+    return "Published prices conflict in this context. No single rate is available.";
   if (impact === "base_price") return "May change the price in the matching context.";
   if (impact === "allowance") return "May change the included usage in the matching context.";
   if (reason === "Requires usage aggregation")
@@ -435,7 +458,11 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <strong>{{ displayOffer.state_summary }}</strong>
     </div>
 
-    <div v-if="hasIncompletePricing" class="pricing-warning" role="status">
+    <div v-if="hasConflictingPrices" class="pricing-warning" role="status">
+      <strong>Conflicting published prices</strong>
+      <span>No single rate is available for the affected contexts. Review the pricing notes.</span>
+    </div>
+    <div v-else-if="hasIncompletePricing" class="pricing-warning" role="status">
       <strong>Additional provider conditions may affect this rate</strong>
       <span>Review the pricing notes before comparing costs.</span>
     </div>
@@ -495,16 +522,28 @@ function showNoteScope(scope: ScopeCopy): boolean {
     <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
       <summary>
         <span><UiIcon name="chevron-right" />Pricing notes</span>
-        <strong>{{ visibleUnnormalized.length }}</strong>
+        <strong>{{ pricingNoteGroups.length }}</strong>
       </summary>
       <div class="raw-fact-list">
-        <div v-for="fact in visibleUnnormalized" :key="fact.key">
-          <strong>{{ fact.label }}</strong>
-          <small v-for="detail in fact.details ?? []" :key="detail">{{ detail }}</small>
-          <small>{{ noteExplanation(fact.reason, fact.impact) }}</small>
-          <small v-if="showNoteScope(fact.scope)">Applies when: {{ fact.scope.primary }}</small>
-          <small v-if="fact.scope.secondary">{{ fact.scope.secondary }}</small>
-        </div>
+        <details
+          v-for="group in pricingNoteGroups"
+          :key="group.key"
+          class="pricing-note-group"
+          :open="group.notes.length === 1"
+        >
+          <summary>
+            <span
+              ><UiIcon name="chevron-right" /><strong>{{ group.label }}</strong></span
+            >
+            <small v-if="group.notes.length > 1">{{ group.notes.length }} conflicting quotes</small>
+          </summary>
+          <div v-for="fact in group.notes" :key="fact.key" class="pricing-note">
+            <small v-for="detail in fact.details ?? []" :key="detail">{{ detail }}</small>
+            <small>{{ noteExplanation(fact.reason, fact.impact) }}</small>
+            <small v-if="showNoteScope(fact.scope)">Applies when: {{ fact.scope.primary }}</small>
+            <small v-if="fact.scope.secondary">{{ fact.scope.secondary }}</small>
+          </div>
+        </details>
       </div>
     </details>
 
@@ -525,6 +564,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
 .pricing-subheading,
 .state-row,
 .allowance-list > div,
+.pricing-note-group > summary,
 .pricing-disclosure > summary {
   display: flex;
   align-items: center;
@@ -646,7 +686,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
 
 .state-row,
 .allowance-list > div,
-.raw-fact-list > div {
+.pricing-note-group {
   gap: var(--space-3);
   padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--color-border-subtle);
@@ -721,23 +761,33 @@ function showNoteScope(scope: ScopeCopy): boolean {
   display: none;
 }
 
-.pricing-disclosure > summary > span {
+.pricing-disclosure > summary > span,
+.pricing-note-group > summary > span {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
 }
 
-.pricing-disclosure > summary .ui-icon {
+.pricing-disclosure > summary .ui-icon,
+.pricing-note-group > summary .ui-icon {
   transition: transform var(--duration-fast) var(--easing-standard);
 }
 
-.pricing-disclosure[open] > summary .ui-icon {
+.pricing-disclosure[open] > summary .ui-icon,
+.pricing-note-group[open] > summary .ui-icon {
   transform: rotate(90deg);
 }
 
-.raw-fact-list > div > small {
-  display: block;
-  margin-top: var(--space-1);
+.pricing-note {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.pricing-note-group > summary {
+  min-height: var(--control-height-compact);
+  gap: var(--space-3);
+  cursor: pointer;
 }
 
 @media (max-width: 640px) {

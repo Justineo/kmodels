@@ -99,6 +99,7 @@ function serviceKind(term: AtomicPricingTerm): NativeOffer["kind"] | undefined {
   }
   if (term.kind !== "raw") return;
   if (term.term_key.includes("web_search")) return "web-search";
+  if (term.term_key.includes("x_search_")) return "web-search";
   if (term.term_key.includes("maps_search")) return "maps-search";
 }
 
@@ -380,7 +381,7 @@ function nativeBooks(
     return [
       {
         book_key: `service:native-${kind}`,
-        name: kind === "web-search" ? "Provider-native web search" : "Provider-native Maps search",
+        name: kind === "web-search" ? "Provider-native search" : "Provider-native Maps search",
         scope,
         scope_observations: [
           {
@@ -394,7 +395,7 @@ function nativeBooks(
         ],
         offers: selected.map(({ modelRefs: refs, sourceBook, sourceOffer, terms }) => ({
           offer_key: sourceBook.book_key,
-          name: `${kind === "web-search" ? "Web search" : "Maps search"} for ${refs.join(", ")}`,
+          name: `${kind === "web-search" ? "Search" : "Maps search"} for ${refs.join(", ")}`,
           ...(refs.length === 0 ? {} : { model_refs: refs }),
           billing_mode: { namespace: "kmodels" as const, value: "usage" as const },
           states: statesForTerms(sourceOffer, terms),
@@ -421,6 +422,22 @@ function bindNativeServiceTerm(
     ...term,
     variants: term.variants.map((variant) => {
       const charge_binding = (() => {
+        if (kind === "web-search" && isStandardUnit(variant.price.per, "item")) {
+          const operation = categorical(variant.applicability, "operation");
+          if (operation !== "x_search_post" && operation !== "x_search_user") return;
+          const signal = providerSignal(
+            input,
+            operation === "x_search_post"
+              ? "billable_x_posts_fetched"
+              : "billable_x_profiles_fetched",
+            operation === "x_search_post"
+              ? "Billable X posts fetched by provider-native X Search"
+              : "Billable X user profiles fetched by provider-native X Search",
+            itemUnit,
+            "outcome",
+          );
+          return quantityBinding(signal, "attempt", emptyMethods(), variant);
+        }
         if (kind !== "web-search" || !isStandardUnit(variant.price.per, "request")) return;
         const signal = providerSignal(
           input,

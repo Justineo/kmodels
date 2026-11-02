@@ -27,6 +27,11 @@ import { modalitySchema, type ModelRoute, type ModelTask, unknownCapabilities } 
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { vercelCommercialFacts } from "./vercel-commercial-source.ts";
 import { extractVercelPricingInputs } from "./vercel-accounting.ts";
+import {
+  vercelPricingContractsSchema,
+  vercelPageSearchPriceSchema,
+  type VercelPricingContracts,
+} from "./vercel-pricing-contracts.ts";
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
@@ -83,6 +88,7 @@ const videoPriceSchema = z
     mode: z.string().min(1).optional(),
     audio: z.boolean().optional(),
     voice_control: z.boolean().optional(),
+    duration_over_seconds: z.number().finite().nonnegative().optional(),
   })
   .strip();
 
@@ -309,13 +315,14 @@ const endpointDocumentSchema = z
   })
   .strip();
 
-const modelPageDocumentSchema = z
+const modelPageRateDocumentSchema = z
   .object({
     title: z.string().min(1),
     provider: z.string().min(1),
     headers: z.array(z.string().min(1)).min(2),
     values: z.array(z.string()),
     titles: z.array(z.array(z.string().min(1))),
+    search_prices: z.array(vercelPageSearchPriceSchema).optional(),
   })
   .strict()
   .refine(
@@ -323,6 +330,13 @@ const modelPageDocumentSchema = z
       headers.length === values.length && values.length === titles.length,
     "Model-page pricing columns must align",
   );
+const modelPageDocumentSchema = z.union([
+  modelPageRateDocumentSchema,
+  z.strictObject({
+    title: z.string().min(1),
+    search_prices: z.array(vercelPageSearchPriceSchema).min(1),
+  }),
+]);
 
 const modelPagePricingDetailSchema = z
   .object({
@@ -360,7 +374,10 @@ const modelPagePricingDetailSchema = z
   .refine((value) => Object.keys(value).length > 0, "Model-page pricing detail is empty");
 
 const modelPagePricingRegistrySchema = z
-  .object({ models: z.record(z.string().min(1), modelPagePricingDetailSchema) })
+  .object({
+    models: z.record(z.string().min(1), modelPagePricingDetailSchema),
+    contracts: vercelPricingContractsSchema.optional(),
+  })
   .strict();
 
 const bundleSchema = z
@@ -593,12 +610,34 @@ function videoConditions(variants: z.infer<typeof videoPriceSchema>[]) {
     resolution: variants.some(({ resolution }) => resolution !== undefined),
     quality: variants.some(({ mode }) => mode !== undefined),
   };
-  return (variant: z.infer<typeof videoPriceSchema>): SourcePriceFact["conditions"] => ({
-    resolution: dimensions.resolution ? (variant.resolution ?? "default") : undefined,
-    quality: dimensions.quality ? (variant.mode ?? "default") : undefined,
-    audio: variant.audio,
-    voice_control: variant.voice_control,
-  });
+  return (variant: z.infer<typeof videoPriceSchema>): SourcePriceFact["conditions"] => {
+    const nextThreshold = variants
+      .filter(
+        (other) =>
+          other.resolution === variant.resolution &&
+          other.mode === variant.mode &&
+          other.audio === variant.audio &&
+          other.voice_control === variant.voice_control,
+      )
+      .flatMap(({ duration_over_seconds }) =>
+        duration_over_seconds !== undefined &&
+        (variant.duration_over_seconds === undefined ||
+          duration_over_seconds > variant.duration_over_seconds)
+          ? [duration_over_seconds]
+          : [],
+      )
+      .sort((left, right) => left - right)[0];
+    return {
+      resolution: dimensions.resolution ? (variant.resolution ?? "default") : undefined,
+      quality: dimensions.quality ? (variant.mode ?? "default") : undefined,
+      audio: variant.audio,
+      voice_control: variant.voice_control,
+      ...(variant.duration_over_seconds === undefined
+        ? {}
+        : { duration_over_seconds: String(variant.duration_over_seconds) }),
+      ...(nextThreshold === undefined ? {} : { duration_max_seconds: String(nextThreshold) }),
+    };
+  };
 }
 
 function endpointRates(
@@ -794,8 +833,49 @@ function uniqueRates(rates: SourcePriceFact[]): SourcePriceFact[] {
 function peakPricingFacts(
   rates: SourcePriceFact[],
   policy: unknown,
+  contracts: VercelPricingContracts = {},
 ): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
   if (policy === undefined) return { rates, raw: [] };
+  const parsed = z
+    .strictObject({
+      multiplier: z.number().finite().positive(),
+      windows: z
+        .array(
+          z.strictObject({
+            start_minute_utc: z.number().int().min(0).max(1440),
+            end_minute_utc: z.number().int().min(0).max(1440),
+            days_of_week: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+          }),
+        )
+        .min(1),
+      holiday_calendar: z.literal("cn").optional(),
+    })
+    .safeParse(policy);
+  const factor = parsed.success ? String(parsed.data.multiplier) : "";
+  if (
+    contracts.token_peak_basis !== undefined &&
+    parsed.success &&
+    decimal.safeParse(factor).success
+  ) {
+    return {
+      rates: rates.flatMap((rate) => {
+        if (rate.unit !== "million_tokens") return [rate];
+        const raw_unit = `${rate.raw_unit ?? rate.unit}; listed off-peak; peak policy: ${JSON.stringify(policy)}`;
+        return [
+          { ...rate, raw_unit, conditions: { ...rate.conditions, billing_period: "off_peak" } },
+          {
+            ...rate,
+            raw_unit,
+            price: multiplyDecimal(rate.price, factor),
+            derived: true,
+            derivation: `${factor} × published off-peak token price during the provider's peak period`,
+            conditions: { ...rate.conditions, billing_period: "peak" },
+          },
+        ];
+      }),
+      raw: [],
+    };
+  }
   // The schedule may depend on weekdays or a provider holiday calendar. Neither
   // the request clock nor another route establishes its billed period.
   const fragment = `Unreviewed peak pricing: ${JSON.stringify(policy)}`.slice(0, 4096);
@@ -845,9 +925,50 @@ function endpointRawPrices(endpoint: Endpoint, sourceId: string): SourceRawPrici
             ? `The endpoint publishes a ${meter} amount without a reviewed denominator.`
             : (JSON.stringify(value) ?? "null").slice(0, 1000),
         },
-        { route_provider: endpoint.provider_name },
+        { route_provider: endpoint.provider_name, operation: meter },
       ),
     ];
+  });
+}
+
+function endpointXSearchPrices(
+  item: Item,
+  endpoint: Endpoint,
+  sourceId: string,
+  contracts: VercelPricingContracts,
+  page: ModelPageDocument | undefined,
+): SourcePriceFact[] {
+  if (contracts.x_search_units === undefined || page?.title !== item.name) return [];
+  const prices = page?.search_prices?.filter(
+    (price) => price.model_id === item.id && price.provider === endpoint.provider_name,
+  );
+  if (prices?.length !== 1) return [];
+  const price = prices[0];
+  return (["x_search_post", "x_search_user"] as const).flatMap((operation) => {
+    const amount = decimal.safeParse(
+      operation === "x_search_post" ? price?.posts_per_thousand : price?.profiles_per_thousand,
+    );
+    return amount.success
+      ? [
+          {
+            ...publishedRate(
+              "web_search",
+              amount.data,
+              "thousand_items",
+              sourceId,
+              operation === "x_search_post"
+                ? "USD per 1K fetched X posts"
+                : "USD per 1K fetched X profiles",
+              { route_provider: endpoint.provider_name, operation },
+            ),
+            raw_price: amount.data,
+            source_locator: {
+              kind: "provider_key",
+              value: `model-page:${item.id}:${endpoint.provider_name}:${operation}`,
+            },
+          },
+        ]
+      : [];
   });
 }
 
@@ -869,7 +990,7 @@ function rawPageRate(
 
 function modelPageRates(
   item: Item,
-  page: ModelPageDocument,
+  page: z.infer<typeof modelPageRateDocumentSchema>,
   details: ModelPagePricingDetail | undefined,
   sourceId: string,
 ): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[]; free: boolean } {
@@ -1215,6 +1336,7 @@ function model(
   pageDetails: ModelPagePricingDetail | undefined,
   fastSlug = false,
   videoInputs?: z.infer<typeof videoInputPricingSchema>,
+  contracts: VercelPricingContracts = {},
 ): ProviderModel {
   const creator = item.id.split("/")[0];
   if (creator !== item.owned_by) throw new Error(`Vercel owner mismatch for ${item.id}`);
@@ -1233,22 +1355,41 @@ function model(
   const catalogPricing =
     item.pricing.varies_by_provider === true
       ? { rates: [], raw: [] }
-      : peakPricingFacts(pricing(item, input.source.id, fastSlug), item.pricing.peak_pricing);
+      : peakPricingFacts(
+          pricing(item, input.source.id, fastSlug),
+          item.pricing.peak_pricing,
+          contracts,
+        );
   const catalogRates = [...catalogPricing.rates, ...videoInputRates(videoInputs, input.source.id)];
   const routeRateGroups = endpointValues.map((endpoint) => {
     const facts = peakPricingFacts(
       endpointRates(item, endpoint, input.source.id, fastSlug),
       endpoint.pricing.peak_pricing,
+      contracts,
     );
+    const searchRates = endpointXSearchPrices(item, endpoint, input.source.id, contracts, page);
     return {
       endpoint,
       ...facts,
-      raw: [...facts.raw, ...endpointRawPrices(endpoint, input.source.id)],
+      rates: [...facts.rates, ...searchRates],
+      raw: [
+        ...facts.raw,
+        ...endpointRawPrices(endpoint, input.source.id).filter(
+          (raw) =>
+            !searchRates.some(
+              (rate) =>
+                rate.conditions.operation === raw.raw.meter &&
+                raw.raw.amount !== undefined &&
+                decimal.safeParse(raw.raw.amount).success &&
+                decimalsEqual(rate.price, multiplyDecimal(raw.raw.amount, "1000")),
+            ),
+        ),
+      ],
     };
   });
   const routeRates = routeRateGroups.flatMap(({ rates: values }) => values);
   const pagePricing =
-    page === undefined
+    page === undefined || !("provider" in page)
       ? { rates: [], raw: [], free: false }
       : modelPageRates(item, page, pageDetails, input.source.id);
   const catalogFree = tags.includes("free") && item.pricing.varies_by_provider !== true;
@@ -1487,6 +1628,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
   const pages = new Map<string, ModelPageDocument>();
   const pagePricingDetails = new Map<string, ModelPagePricingDetail>();
   const documentation = new Map<string, string>();
+  const contracts: VercelPricingContracts = {};
   for (const document of bundled.data.documents) {
     const url = new URL(document.url);
     const endpointMatch = url.pathname.match(/^\/v1\/models\/([^/]+\/[^/]+)\/endpoints$/);
@@ -1558,6 +1700,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
     ) {
       const registry = modelPagePricingRegistrySchema.safeParse(JSON.parse(document.body));
       if (!registry.success) continue;
+      Object.assign(contracts, registry.data.contracts);
       for (const [slug, details] of Object.entries(registry.data.models)) {
         const previous = pagePricingDetails.get(slug);
         if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(details))
@@ -1586,6 +1729,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
       slug === undefined ? undefined : pagePricingDetails.get(slug),
       isFastSlug(item, byId, endpoints.get(item.id) ?? []),
       videoInputs.get(item.id),
+      contracts,
     );
   });
   const batchIds = applyBatchPrices(result, byId, documentation, input.source.id);

@@ -2,6 +2,24 @@ import { publishedRate } from "./pricing.ts";
 import type { SourcePriceFact, SourceRawPricingFact } from "./pricing-source.ts";
 
 export type AnthropicPriceKind = "base" | "batch" | "fast";
+
+export function anthropicPromptScope(
+  value: string,
+): { label: string; conditions: SourcePriceFact["conditions"] } | undefined {
+  const prompt = value.match(/ \(for prompts (up to|over) ([^()]+) tokens\)/);
+  if (prompt === null) return { label: value, conditions: {} };
+  const raw = prompt[2] ?? "";
+  if (!/^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(raw)) return;
+  const count = Number(raw.replaceAll(",", ""));
+  if (!Number.isSafeInteger(count) || (prompt[1] === "over" && count === Number.MAX_SAFE_INTEGER))
+    return;
+  return {
+    label: value.replace(prompt[0], ""),
+    conditions:
+      prompt[1] === "up to" ? { context_max_tokens: count } : { context_min_tokens: count + 1 },
+  };
+}
+
 interface Column {
   header: string;
   meter: SourcePriceFact["meter"];

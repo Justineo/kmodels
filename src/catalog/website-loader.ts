@@ -1,3 +1,4 @@
+import { restoreInferencePrices } from "./website-inference-storage.ts";
 import type {
   WebsiteDetailChunk,
   WebsiteModel,
@@ -144,7 +145,13 @@ async function hydrateModelDetail(
   providerId: string,
   stored: WebsiteStoredModelDetail,
 ): Promise<WebsiteModelDetail> {
-  const { pricing, ...detail } = stored;
+  const { pricing, inference_prices, ...base } = stored;
+  const detail = {
+    ...base,
+    ...(inference_prices === undefined
+      ? {}
+      : { inference_prices: restoreInferencePrices(inference_prices) }),
+  };
   if (pricing === undefined) return detail;
   return {
     ...detail,

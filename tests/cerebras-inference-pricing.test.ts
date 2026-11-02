@@ -23,6 +23,7 @@ import {
   websiteOfferChunkSchema,
 } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -183,7 +184,9 @@ it("renders the direct ID and applicable rates without adding configuration cont
     JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString());
   const details = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap((asset) => websiteDetailChunkSchema.parse(parse(asset)).details);
+    .flatMap((asset) =>
+      websiteDetailChunkSchema.parse(parse(asset)).details.map(restoreWebsiteInferenceDetail),
+    );
   const offers = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/offers/"))
     .flatMap((asset) => websiteOfferChunkSchema.parse(parse(asset)).offers);

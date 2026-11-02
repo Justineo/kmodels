@@ -21,6 +21,7 @@ import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
+import { restoreInferencePrices } from "../src/catalog/website-inference-storage.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
@@ -35,6 +36,11 @@ const bundleSchema = z.object({
   index: z.object({ url: z.string(), body: z.string() }),
   documents: z.array(z.object({ url: z.string(), body: z.string() })),
 });
+const priceListSchema = z.object({
+  offerCode: z.string(),
+  products: z.record(z.string(), z.unknown()),
+  terms: z.object({ OnDemand: z.record(z.string(), z.unknown()) }),
+});
 type Bundle = z.infer<typeof bundleSchema>;
 async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPairCandidate) {
   const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
@@ -44,18 +50,13 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
   const reviewed = bundleSchema.parse(
     JSON.parse(await fixture("document/bedrock-pricing-identity.json")),
   );
-  const priceSchema = z.object({
-    offerCode: z.string(),
-    products: z.record(z.string(), z.unknown()),
-    terms: z.object({ OnDemand: z.record(z.string(), z.unknown()) }),
-  });
   for (const doc of bundle.documents.filter(({ url }) =>
     url.includes("/AmazonBedrockFoundationModels/current/index.json"),
   )) {
     const extra = reviewed.documents.find(({ url }) => url === doc.url);
     if (!extra) throw new Error("Missing reviewed Rerank prices");
-    const prices = priceSchema.parse(JSON.parse(doc.body));
-    const additional = priceSchema.parse(JSON.parse(extra.body));
+    const prices = priceListSchema.parse(JSON.parse(doc.body));
+    const additional = priceListSchema.parse(JSON.parse(extra.body));
     prices.products.RERANK = additional.products.RERANK;
     prices.terms.OnDemand.RERANK = additional.terms.OnDemand.RERANK;
     doc.body = JSON.stringify(prices);
@@ -77,13 +78,7 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
   }
   const list = bundle.documents.find(({ url }) => url.includes("/AmazonBedrock/current/"));
   if (!list) throw new Error("Missing price list");
-  const priceList = z
-    .object({
-      offerCode: z.string(),
-      products: z.record(z.string(), z.unknown()),
-      terms: z.object({ OnDemand: z.record(z.string(), z.unknown()) }),
-    })
-    .parse(JSON.parse(list.body));
+  const priceList = priceListSchema.parse(JSON.parse(list.body));
   priceList.products.ROUTING = {
     sku: "ROUTING",
     attributes: {
@@ -214,9 +209,13 @@ it("collects actual IDs through static output and uses the same commercial condi
           JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString("utf8")),
         ).details,
     );
-  const id = details
-    .find(({ model_ref }) => model_ref === "amazon-bedrock/openai.gpt-6-astra")
-    ?.inference_prices?.find(({ model_id }) => model_id === "us.openai.gpt-6-astra");
+  const stored = details.find(
+    ({ model_ref }) => model_ref === "amazon-bedrock/openai.gpt-6-astra",
+  )?.inference_prices;
+  if (stored === undefined) throw new Error("Missing stored inference prices");
+  const id = restoreInferencePrices(stored).find(
+    ({ model_id }) => model_id === "us.openai.gpt-6-astra",
+  );
   if (!id) throw new Error("Missing projected ID");
   expect(queryWebsiteInferencePrice(id, conditions, at).status).toBe("matched");
   const excluded = conditions.map((condition) =>
@@ -228,6 +227,82 @@ it("collects actual IDs through static output and uses the same commercial condi
   ).toBe("no_applicable_price");
   expect(JSON.stringify(id)).not.toContain("content_hash");
 });
+it("keeps Nova Global Standard, Priority and Flex token tariffs disjoint through publication", async () => {
+  const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-global-tiers.json")));
+  const candidate = await collect((bundle) => {
+    for (const doc of reviewed.documents) {
+      const previous = bundle.documents.find(({ url }) => url === doc.url);
+      if (previous === undefined) bundle.documents.push(doc);
+      else if (doc.url.includes("pricing.us-east-1")) {
+        const prices = priceListSchema.parse(JSON.parse(previous.body));
+        const extra = priceListSchema.parse(JSON.parse(doc.body));
+        Object.assign(prices.products, extra.products);
+        Object.assign(prices.terms.OnDemand, extra.terms.OnDemand);
+        previous.body = JSON.stringify(prices);
+      } else previous.body = doc.body;
+    }
+  });
+  const query = lookup(candidate);
+  const model_id = "global.amazon.nova-2-lite-v1:0";
+  const undecided = query({ provider_id: "amazon-bedrock", model_id });
+  expect(undecided.status).toBe("candidates");
+  expect(undecided.missing_conditions).toContainEqual({
+    namespace: "kmodels",
+    value: "service_tier",
+  });
+  const projected = await projectCatalogPair(candidate);
+  const details = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap(
+      (asset) =>
+        websiteDetailChunkSchema.parse(
+          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString("utf8")),
+        ).details,
+    );
+  const stored = details.find(
+    ({ model_ref }) => model_ref === "amazon-bedrock/amazon.nova-2-lite-v1:0",
+  )?.inference_prices;
+  if (stored === undefined) throw new Error("Missing Nova Global inference prices");
+  const id = restoreInferencePrices(stored).find((entry) => entry.model_id === model_id);
+  if (id === undefined) throw new Error("Missing Nova Global inference ID");
+  for (const [tier, numerator, denominator] of [
+    ["standard", "9", "25000000"],
+    ["priority", "63", "100000000"],
+    ["flex", "9", "50000000"],
+  ] as const) {
+    const selectors: Selector[] = [
+      select("region", "ap-east-2"),
+      select("service_tier", tier),
+      {
+        kind: "decimal",
+        dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+        value: "300",
+        unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+      },
+    ];
+    const result = query({ provider_id: "amazon-bedrock", model_id, selectors });
+    expect(result.status).toBe("matched");
+    expect(result.candidates).toHaveLength(1);
+    const terms = result.candidates.flatMap(({ offer }) => offer.terms);
+    expect(
+      terms.flatMap((term) => (term.kind === "raw" ? term.variants : term.raw_variants)),
+    ).toEqual([]);
+    const rates = terms.filter((term) => term.kind === "rate");
+    expect(rates.map(({ meter }) => meter.value).sort()).toEqual([
+      "cache_read_text",
+      "cache_write_text",
+      "input_text",
+      "output_text",
+    ]);
+    expect(
+      rates
+        .find(({ meter }) => meter.value === "input_text")
+        ?.variants.map(({ price }) => price.value),
+    ).toEqual([{ numerator, denominator }]);
+    expect(queryWebsiteInferencePrice(id, selectors, at).status).toBe(result.status);
+  }
+});
+
 it("does not infer private resource IDs, regional prefixes, or reranker ARNs", async () => {
   const candidate = await collect();
   const query = lookup(candidate);
