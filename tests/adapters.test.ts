@@ -9085,6 +9085,43 @@ describe("Vercel adapter", () => {
       }),
     ]);
   });
+  it("publishes a per-second generated-audio price on speech models", async () => {
+    const models = await vercelCatalog("vercel/speech-output-per-second.json");
+    const audio = (modelId: string) =>
+      models
+        .find(({ model_id }) => model_id === modelId)
+        ?.price_facts.filter(({ meter }) => meter === "output_audio");
+    expect({
+      music: audio("elevenlabs/music-v2"),
+      musicV25: audio("elevenlabs/music-v2.5"),
+      effects: audio("elevenlabs/sound-effects-v2"),
+    }).toEqual({
+      music: [expect.objectContaining({ meter: "output_audio", price: "0.00125", unit: "second" })],
+      musicV25: [
+        expect.objectContaining({ meter: "output_audio", price: "0.00125", unit: "second" }),
+      ],
+      effects: [expect.objectContaining({ meter: "output_audio", price: "0.001", unit: "second" })],
+    });
+  });
+
+  it("keeps generated-audio pricing disjoint from character and transcription scope", async () => {
+    const models = await vercelCatalog("vercel/speech-output-per-second.json");
+    const facts = (modelId: string) =>
+      models.find(({ model_id }) => model_id === modelId)?.price_facts;
+    expect(facts("elevenlabs/eleven-flash-v2")).toEqual([
+      expect.objectContaining({ meter: "input_text", price: "0.00002", unit: "character" }),
+    ]);
+    expect(facts("microsoft/mai-transcribe-2")).toEqual([
+      expect.objectContaining({ meter: "input_audio", price: "0.00002778", unit: "second" }),
+    ]);
+    expect(
+      models
+        .filter(({ model_id }) => model_id.startsWith("elevenlabs/"))
+        .flatMap(({ price_facts }) => price_facts)
+        .some(({ meter }) => meter !== "output_audio" && meter !== "input_text"),
+    ).toBe(false);
+  });
+
   it.each(["hr", "sec"])(
     "binds transcription model-page prices per %s to audio duration",
     async (unit) => {

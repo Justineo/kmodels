@@ -178,6 +178,12 @@ function modelBinding(
   }
   if (
     meter.namespace === "kmodels" &&
+    meter.value === "output_audio" &&
+    isStandardUnit(variant.price.per, "second")
+  )
+    return quantityBinding(standardSignal("generated_seconds"), "job", emptyMethods(), variant);
+  if (
+    meter.namespace === "kmodels" &&
     meter.value === "input_image" &&
     isStandardUnit(variant.price.per, "image")
   )

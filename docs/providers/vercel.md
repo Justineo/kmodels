@@ -126,6 +126,11 @@ publish its input as `$N/hr` or `$N/sec`. These become `input_audio` quotes with
 The denominator is read from the cell itself, so a priced
 sibling keeps its own published unit; an unrecognized denominator still rejects the page rather than
 silently dropping the model.
+Speech models may also publish `speech_output_cost_per_second`, which bills generated audio rather
+than supplied input. Both the catalog entry and its endpoint may carry it; the amount becomes an
+`output_audio` quote with the `second` unit that binds to generated audio seconds per job. It stays
+independent of `speech_input_character_cost`, which remains a character-billed input rate, so a
+model publishing either field keeps that rate instead of being reported as unpriced.
 `capabilities.pricing.image_input_cost_per_image_usd` and
 `video_input_cost_per_second_usd` add independently charged input-image and input-video terms.
 Their bindings take billable input images and input-video seconds per generation job; they do not
@@ -236,6 +241,7 @@ Vercel contracts do not establish an exact public input for:
 
 - provider-native Maps call counts;
 - character billing for text-to-speech;
+- generated audio duration for speech synthesis, which no reviewed Vercel response field reports;
 - realtime client-message or active-session duration counts;
 - per-modality audio, image, or video token partitions when aggregate native counters are ambiguous;
 - output video-token counts;
