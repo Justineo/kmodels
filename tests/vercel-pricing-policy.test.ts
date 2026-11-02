@@ -8,7 +8,6 @@ import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.t
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { normalizeVercelModelPage, normalizeVercelPricingScript } from "../src/catalog/fetch.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { vercelPageSearchPrices } from "../src/catalog/vercel-pricing-contracts.ts";
 import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
 import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
