@@ -615,6 +615,8 @@ it("isolates reusable lookup inputs and results from caller mutation", () => {
   const changed = lookup(query);
   changed.candidates.length = 0;
   changed.snapshot.pricingDataVersion = "f".repeat(64);
+  if (changed.freshness === undefined) throw new Error("Missing fixture freshness");
+  changed.freshness.observed_at = "2026-01-01T00:00:00.000Z";
   associations.rules.length = 0;
   data.providers.length = 0;
   expect(lookup(query)).toEqual(original);
