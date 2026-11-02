@@ -121,6 +121,7 @@ const pricingSchema = tokenPriceSchema
     video_duration_pricing: z.array(videoPriceSchema).optional(),
     video_token_pricing: videoTokenPricingSchema.optional(),
     speech_input_character_cost: decimal.optional(),
+    speech_output_cost_per_second: decimal.optional(),
     transcription_duration_cost_per_second: decimal.optional(),
     realtime_client_message_cost: decimal.optional(),
     realtime_session_duration_cost_per_second: decimal.optional(),
@@ -247,6 +248,7 @@ const endpointPricingSchema = endpointTokenPriceSchema
     video_duration_pricing: z.array(videoPriceSchema).optional(),
     video_token_pricing: videoTokenPricingSchema.optional(),
     speech_input_character_cost: decimal.optional(),
+    speech_output_cost_per_second: decimal.optional(),
     transcription_duration_cost_per_second: decimal.optional(),
     realtime_client_message_cost: decimal.optional(),
     realtime_session_duration_cost_per_second: decimal.optional(),
@@ -720,6 +722,17 @@ function endpointRates(
         baseConditions,
       ),
     );
+  if (value.speech_output_cost_per_second !== undefined)
+    rates.push(
+      publishedRate(
+        "output_audio",
+        value.speech_output_cost_per_second,
+        "second",
+        sourceId,
+        "second",
+        baseConditions,
+      ),
+    );
   if (value.transcription_duration_cost_per_second !== undefined)
     rates.push(
       publishedRate(
@@ -1147,6 +1160,16 @@ function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFac
         "character",
         sourceId,
         "character",
+      ),
+    );
+  if (value.speech_output_cost_per_second !== undefined)
+    rates.push(
+      publishedRate(
+        "output_audio",
+        value.speech_output_cost_per_second,
+        "second",
+        sourceId,
+        "second",
       ),
     );
   if (value.transcription_duration_cost_per_second !== undefined)

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.ts";
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
@@ -131,6 +132,59 @@ describe("Vercel price authority", () => {
         }),
       ],
       raw_variants: [],
+    });
+  });
+  it("binds generated audio duration to the per-second speech output price", async () => {
+    const fixture = await readFile(
+      new URL("./fixtures/vercel/speech-output-per-second.json", import.meta.url),
+      "utf8",
+    );
+    const result = parseSource({ provider, source, observedAt, body: fixture });
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const terms = partition?.books
+      .find(({ book_key }) => book_key === "model:vercel/elevenlabs/sound-effects-v2")
+      ?.offers.flatMap(({ terms }) => terms);
+    expect(terms).toHaveLength(1);
+    expect(terms?.[0]).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "output_audio" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "job",
+            signal: { namespace: "kmodels", value: "generated_seconds" },
+          }),
+          price: {
+            denomination: { kind: "fiat", currency: "USD" },
+            value: { numerator: "1", denominator: "1000" },
+            per: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+          },
+        }),
+      ],
+      raw_variants: [],
+    });
+    const variant = terms?.[0]?.kind === "rate" ? terms[0].variants[0] : undefined;
+    if (variant === undefined) throw new Error("Missing speech output rate");
+    expect(
+      evaluateRateCost(variant, [
+        {
+          signal: { namespace: "kmodels", value: "generated_seconds" },
+          value: { numerator: "10", denominator: "1" },
+        },
+      ]),
+    ).toEqual({
+      kind: "resolved",
+      amount: { numerator: "1", denominator: "100" },
+      denomination: { kind: "fiat", currency: "USD" },
+    });
+    expect(evaluateRateCost(variant, [])).toEqual({
+      kind: "missing_input",
+      alternatives: [[{ namespace: "kmodels", value: "generated_seconds" }]],
     });
   });
   it("keeps independently callable search tools outside model inference-price resolution", () => {
