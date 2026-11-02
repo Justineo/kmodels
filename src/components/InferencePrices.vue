@@ -23,9 +23,7 @@ const evaluatedAt = ref(new Date().toISOString());
 const selectedPrice = computed(
   () => props.prices.find(({ model_id }) => model_id === selectedId.value) ?? props.prices[0],
 );
-const identifierLabel = computed(() =>
-  selectedPrice.value?.reason === "unreviewed_id" ? "Catalog ID" : "Inference model ID",
-);
+const isCatalogId = computed(() => selectedPrice.value?.reason === "unreviewed_id");
 const offerOptions = computed(() => {
   const refs = new Set(
     selectedPrice.value?.matching?.rules.flatMap(({ offer_refs }) => offer_refs),
@@ -168,7 +166,9 @@ async function copyId(): Promise<void> {
 <template>
   <div v-if="selected" class="inference-prices">
     <div class="id-control">
-      <label for="inference-model-id">{{ identifierLabel }}</label>
+      <label for="inference-model-id">{{
+        isCatalogId ? "Catalog ID" : "Inference model ID"
+      }}</label>
       <div class="id-value">
         <UiSelect
           v-if="prices.length > 1"
@@ -181,7 +181,7 @@ async function copyId(): Promise<void> {
         <code v-else id="inference-model-id">{{ selected.model_id }}</code>
         <button
           type="button"
-          :aria-label="`${identifierLabel === 'Catalog ID' ? 'Copy catalog ID' : 'Copy inference model ID'} ${selected.model_id}`"
+          :aria-label="`Copy ${isCatalogId ? 'catalog' : 'inference model'} ID ${selected.model_id}`"
           @click="copyId"
         >
           {{ copied ? "Copied" : "Copy" }}

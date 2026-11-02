@@ -104,7 +104,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
             validateSelectors(selectors, offerApplicabilities(snapshot, owner.offer));
         }
       }
-      result.freshness = structuredClone(provider.snapshot);
+      result.freshness = provider.snapshot;
     }
     const matched = matchInferencePrices(
       inferenceMatchData(snapshot, rules),
