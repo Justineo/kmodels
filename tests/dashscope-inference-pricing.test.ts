@@ -22,6 +22,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -188,9 +189,10 @@ it("distinguishes known price exclusions from unknown prices and IDs", () => {
   });
   expect(excluded.reason).toBe("no_applicable_price");
   expect(excluded.candidates).toEqual([]);
-  const raw = lookup()({ provider_id: "dashscope", model_id: "happyoyster-1.0-acting" });
-  expect(raw.reason).toBe("unresolved_price");
-  expect(raw.evidence.length).toBeGreaterThan(0);
+  const world = lookup()({ provider_id: "dashscope", model_id: "happyoyster-1.0-acting" });
+  expect(world.reason).toBeUndefined();
+  expect(world.candidates.length).toBeGreaterThan(0);
+  expect(world.candidates.flatMap((c) => c.offer.terms).some((t) => t.kind === "rate")).toBe(true);
 });
 
 it("does not require protocol or accounting documents for literal price-table mappings", async () => {
@@ -251,11 +253,10 @@ it("uses the same conditions and reasons in static output and compact UI data", 
   ).toBe(true);
   const details = projection.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
     );
   const detail = details.find(({ model_ref }) => model_ref === "dashscope/qwen-plus");
   const price = detail?.inference_prices?.find(({ model_id }) => model_id === "qwen-plus");

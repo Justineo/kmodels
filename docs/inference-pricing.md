@@ -33,9 +33,23 @@ evidence representations when implementing it. Do not add surface IDs, case IDs,
 HTTP paths, authentication configuration, account confirmations or lifecycle policy to this relation.
 
 An ID can have multiple rules and multiple applicable prices. Do not choose the first rule, first
-catalog row or first offer. Known constraints, such as an explicitly documented commercial profile
-geography, are fixed selectors. Other commercial conditions remain on the canonical prices. The
-mapping cannot create an otherwise absent commercial restriction or override conflicting evidence.
+catalog row or first offer. Associations select exact offers rather than an entire book: one book
+can contain distinct invocation mechanisms. They do not copy prices or permanently select one
+rate variant. `model_ref` preserves catalog ownership and validation; lookup goes directly from the
+exact request ID to the associated offers without alias resolution or a catalog-name join.
+
+`fixed_selectors` contains exact pricing values established by the ID mapping, such as a billing
+Region, deployment scope or commercial profile geography. These are constraints, not defaults.
+Combine them with runtime selectors by conjunction: equal values agree, absent values are filled,
+and conflicting values exclude that rule. A caller cannot override an ID-fixed value. Other
+commercial conditions remain on canonical price applicability. A scope such as Regions A or B does
+not establish one fixed Region; retain its evidenced alternatives rather than selecting one or
+inventing a categorical value. Do not add a general constraint engine without a consumed source
+contract that requires it. The mapping cannot create an otherwise absent commercial restriction.
+
+Routing geography, source/billing Region and physical execution location are distinct facts.
+Likewise, an ID or requested tier establishes a served tier only when explicit commercial evidence
+says so. ID-fixed conditions never create additional catalog identities or version rows.
 
 Associations reference model-scoped offers. A service book's related model references (for example,
 fine-tuned inference or tool charges) do not establish the base model's request-ID tariff. Independent
@@ -89,6 +103,26 @@ Observed charge selectors remain observed: a requested route does not establish 
 The matcher can report the missing commercial value and its reviewed acquisition source without
 requiring a full protocol model. Never use an arbitrary model row to attach a provider-wide fee.
 
+## Runtime handoff
+
+Lookup returns the calculation `snapshot` identity and canonical `evaluated_at` even for an unknown
+ID. Evaluation time accepts the same RFC 3339 input as the calculator, normalizes offsets to UTC
+without losing sub-millisecond precision, and defaults to the snapshot generation time when omitted.
+The original query remains unchanged. Each candidate includes its owning `book_ref`, selected
+`offer` with applicable terms/variants, referenced contribution
+rates, effective `selectors`, mapping evidence and remaining gaps. Effective selectors include both
+ID-fixed and caller-supplied values. Preserve them when passing `offer.id` to calculator discovery
+or calculation; passing only the original query selectors would lose the conditions fixed by the ID.
+
+Initialize lookup and calculator from the same complete calculation export and its bound mapping.
+The application supplies the request's evaluation instant to lookup and passes the returned
+`evaluated_at` to calculation. It resolves offer choices and missing pricing conditions before
+treating candidates as applicable prices, then
+supplies separately observed billable quantities. A matched mapping is not a complete cost result.
+The application replaces lookup and calculator together after validating a refreshed pair and may
+retain the snapshot identity with its request accounting record. No second price store, universal
+invocation registry, account discovery or model-name resolution is required for this handoff.
+
 ## Provider evidence requirements
 
 Provider guides own official sources and semantics. Deterministic fixtures verify those rules;
@@ -113,6 +147,11 @@ Use existing rate units and commercial offer groups. Expose a selector or compar
 changes the candidate prices; do not concatenate task, URL, Region, lifecycle and execution scope
 into opaque target/case options. Multiple IDs that share prices can be grouped without losing their
 individual copyable values.
+
+The header labels the catalog's primary identifier `Catalog ID`. The pricing ID selector contains
+only identifiers with explicit associations when any exist for that record. If none exist, show
+the original identifier as `Catalog ID` with unknown mapping status; do not present it as a verified
+inference ID. Static alternate identifiers remain independently searchable and copyable.
 
 Missing conditions remain visible beside candidate prices. Unknown mappings are labeled unknown.
 Condition controls update after every selection. An unfilled condition disappears when the shared
@@ -147,6 +186,17 @@ identify their corresponding rows, preserving conflicts even when formatted amou
 The UI recomputes status, missing conditions and visible rows together as conditions change, and
 reevaluates at precise validity boundaries. A decimal bucket selects the published range; it does
 not invent a representative token count. Public query inputs retain exact decimal selectors.
+
+The stored model-detail payload shares identical offer-matching data across that model's request
+IDs. Each ID retains its own rules and fixed selectors; the loader restores the complete matcher
+input before any query. References point only to an earlier full entry with matching clocks.
+This keeps repeated regional/profile IDs within the existing detail-size budget without dropping
+conditions, alias evidence, unknown prices, or canonical variant indexes.
+Repeated applicability clauses and their typed conditions use local dictionaries; compact
+variant tuples preserve validity and contribution targets. Identical selector options share
+an earlier entry independently. Every reference is restored and checked before public matching.
+Empty referenced-rate arrays are omitted from storage and restored before matching; nonempty
+contribution targets retain their complete referenced terms.
 
 Coverage is limited to explicit adapter associations. Unmapped identifiers remain unknown. Provider
 parsers emit direct ID/offer associations without an invocation graph. Public model labels on services

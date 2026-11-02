@@ -105,3 +105,44 @@ it("requires an explicit Groq token denominator instead of deriving it from a ro
   );
   expect(rows).toEqual([]);
 });
+
+it("uses Groq's exact model table denominator when the individual card omits it", async () => {
+  const table = await fixture("huggingface/native-groq-models.html");
+  for (const mutation of ["owned", "unit", "identity", "conflict"]) {
+    let body = table;
+    if (mutation === "unit") body = body.replace("PRICE PER 1M TOKENS", "PRICE PER HOUR");
+    if (mutation === "identity") body = body.replaceAll("gpt-oss-safeguard-20b", "unrelated");
+    if (mutation === "conflict") body = table + table.replace("$0.075", "$0.08");
+    const model = {
+      ...baseModel({
+        providerId: provider.id,
+        id: "openai/gpt-oss-safeguard-20b",
+        name: "Safeguard",
+        sourceId: "huggingface-hf-inference",
+        observedAt,
+      }),
+      routes: [
+        {
+          provider: "groq",
+          provider_model_id: "openai/gpt-oss-safeguard-20b",
+          source_ref: "huggingface-hf-inference",
+          task: "conversational",
+          status: "live" as const,
+        },
+      ],
+    };
+    const parsed = parseSource({
+      provider,
+      source,
+      observedAt,
+      catalogModels: [model],
+      body: JSON.stringify({
+        index: { url: source.url, body: await fixture("huggingface/pricing.md") },
+        documents: [{ url: "https://console.groq.com/docs/models", body }],
+      }),
+    }).models;
+    expect(parsed.flatMap((m) => m.price_facts).map((f) => f.price)).toEqual(
+      mutation === "owned" ? ["0.075", "0.30"] : [],
+    );
+  }
+});

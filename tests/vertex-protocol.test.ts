@@ -210,11 +210,12 @@ describe("Vertex protocol ownership", () => {
 
 describe("Vertex media price units", () => {
   function parse(price: string, header = "Price") {
+    // Lite has no reviewed calculator unit contract; ordinary unit rules still apply.
     const target = {
       ...model(["video_generation"], [predict]),
-      model_id: "veo-3.1-generate-001",
-      uid: "vertex/veo-3.1-generate-001",
-      name: "Veo 3.1",
+      model_id: "veo-3.1-lite-generate-001",
+      uid: "vertex/veo-3.1-lite-generate-001",
+      name: "Veo 3.1 Lite",
     };
     const findings: unknown[] = [];
     const result = parseSource({
@@ -225,7 +226,7 @@ describe("Vertex media price units", () => {
       body: JSON.stringify({
         index: {
           url: source.url,
-          body: `<div class="devsite-article-body"><h2>Veo</h2><table><thead><tr><th>Model</th><th>Feature</th><th>Description</th><th>Input</th><th>Output</th><th>Output Resolution</th><th>${header}</th></tr></thead><tbody><tr><td>Veo 3.1</td><td>Video + Audio generation</td><td>Generate videos from a text prompt or reference image</td><td>Text/Image prompt</td><td>Video + Audio</td><td>720p</td><td>${price}</td></tr></tbody></table></div>`,
+          body: `<div class="devsite-article-body"><h2>Veo</h2><table><thead><tr><th>Model</th><th>Feature</th><th>Description</th><th>Input</th><th>Output</th><th>Output Resolution</th><th>${header}</th></tr></thead><tbody><tr><td>Veo 3.1 Lite</td><td>Video + Audio generation</td><td>Generate videos from a text prompt or reference image</td><td>Text/Image prompt</td><td>Video + Audio</td><td>720p</td><td>${price}</td></tr></tbody></table></div>`,
         },
         documents: [],
       }),

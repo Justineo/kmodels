@@ -64,6 +64,15 @@ informational Price List differs, so an exact page row may replace only the same
 The losing Price List amount remains informational evidence. Unequal observations within the same
 reviewed page retain equal authority and become a bounded canonical conflict; their order cannot
 select a winner.
+The Embed 4 reader accepts the current product-name-first Marketplace title only alongside its
+exact product heading and listing ID. A title-layout change cannot disable the authoritative
+product tariff while leaving conflicting bulk SKUs as the only visible current rates.
+
+Ray v2 resolution follows the exact native usage-type suffix (`StandardRes` or `HdRes`/`HDRes`)
+across the Foundation Models and Service feeds. The Foundation Models `inferenceType` labels both
+SKUs HD, so using that broad label conflates separate tariffs. The pricing page's owned metered-unit
+map joins those exact SKUs to 540p and 720p respectively. The public selector preserves the native
+`Standard`/`HD` vocabulary; amounts never determine a resolution or resolve a conflicting rate.
 If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
 reported for the panel while a recognized sibling panel can still contribute exact rates.
 Exact model-card Pricing tables supplement the Price Lists when the card states the unit and
@@ -265,6 +274,16 @@ a separately authorized refresh.
 A model book contains separate on-demand and batch offers. Batch is removed from the service-tier
 dimension after it becomes the offer mechanism. Standard, Priority, Flex, resolved speed, Region,
 routing scope, cache behavior, and context thresholds remain ordinary applicability dimensions.
+
+Native Global token SKUs ending in `input-tokens-cross-region-global`,
+`output-tokens-cross-region-global`, or `cache-read/write-input-token-count-cross-region-global`
+identify the ordinary Standard tariff. The exact meter suffix supplies this scope independently of
+amounts and sibling quotes; explicit Priority, Flex, and Batch labels retain their own scope.
+Unreviewed suffixes remain unclassified. Leaving Standard unqualified would overlap every tier and
+turn otherwise disjoint tariffs into false price conflicts. This is service-tier scope, not latency
+speed. The model card's Service Tiers section and the
+[service-tier guide](https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.html)
+establish Standard as the ordinary pay-per-token tier.
 
 Native `On-demand Inference` input/output token SKUs establish their own latency class: the
 `-latency-optimized` suffix means optimized, and the ordinary token SKU means standard. This

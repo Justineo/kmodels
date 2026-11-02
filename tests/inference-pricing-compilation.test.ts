@@ -27,6 +27,7 @@ import {
 } from "../src/catalog/website-schema.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -142,8 +143,10 @@ describe("direct inference price source-to-consumer compilation", () => {
     }
     const details = projected.ui.manifest.assets
       .filter(({ file_name }) => file_name.includes("/details/"))
-      .flatMap(
-        ({ file_name }) => websiteDetailChunkSchema.parse(asset(projected.ui, file_name)).details,
+      .flatMap(({ file_name }) =>
+        websiteDetailChunkSchema
+          .parse(asset(projected.ui, file_name))
+          .details.map(restoreWebsiteInferenceDetail),
       );
     const offers = projected.ui.manifest.assets
       .filter(({ file_name }) => file_name.includes("/offers/"))

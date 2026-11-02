@@ -18,6 +18,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { ollamaInferenceFixtures, type OllamaInferenceBundle } from "./ollama-inference-fixture.ts";
 
@@ -210,11 +211,10 @@ it("projects the same ID and period conditions to the website without audit data
   const projected = await projectCatalogPair(baseline);
   const details = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
     );
   const price = details.find(({ model_ref }) => model_ref === "ollama/deepseek-v4.1-flash")
     ?.inference_prices?.[0];

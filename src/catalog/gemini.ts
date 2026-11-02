@@ -61,6 +61,11 @@ interface MapsGroundingBilling {
   monthlyQueries: string | undefined;
 }
 
+interface SearchGroundingBilling {
+  monthlyQueries: string;
+  overagePrice: string;
+}
+
 interface PriceCandidates {
   values: PriceCandidate[];
   unknownUnits: string[];
@@ -744,7 +749,8 @@ function conditions(
     account_eligibility: accountEligibility,
   };
   const grounding = geminiGroundingOperation(row);
-  if (grounding !== undefined) result.operation = grounding;
+  if (grounding !== undefined)
+    result.operation = /Web and Image Search/i.test(row) ? "google_web_image_search" : grounding;
   const normalizedTier = tier.toLowerCase();
   if (normalizedTier === "contributor")
     result.account_eligibility = `${accountEligibility}_contributor`;
@@ -783,7 +789,7 @@ function meterRates(
         meter: "tool_call",
         conditions: {
           ...baseConditions,
-          operation: grounding,
+          operation: baseConditions.operation ?? grounding,
         },
       },
     ];
@@ -1059,6 +1065,7 @@ function applyPricing(
   body: string,
   onPricingReconciliation: Input["onPricingReconciliation"],
   mapsBilling: MapsGroundingBilling,
+  searchBilling: SearchGroundingBilling | undefined,
 ): { claims: GeminiGroundingClaim[]; ids: Map<string, string> } {
   const $ = load(body);
   const claims: GeminiGroundingClaim[] = [];
@@ -1164,7 +1171,20 @@ function applyPricing(
             });
             return;
           }
-          const parsed = candidates(header, row, cells.eq(2), searchPerQuery);
+          const paidCell = text(cells.eq(2).text());
+          const monthlySearch = paidCell.match(
+            /^([\d,]+) free search requests per month \(shared across all Gemini (?:3\.x models|3 and newer models)\), then \$([\d.]+) per 1,000 requests\b/i,
+          );
+          const sharedSearchQueries =
+            searchBilling !== undefined &&
+            geminiGroundingQuantity(monthlySearch?.[1]) === searchBilling.monthlyQueries &&
+            monthlySearch?.[2] === searchBilling.overagePrice;
+          const parsed = candidates(
+            header,
+            row,
+            cells.eq(2),
+            searchPerQuery || sharedSearchQueries,
+          );
           const paid = selectedCandidates(header, parsed.values);
           const selectedModels = targets(codes, row).flatMap((id) => {
             const model = pricingModel(models, id);
@@ -1947,6 +1967,28 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   return values;
 }
 
+function geminiSearchBilling(
+  body: string,
+  onFinding: Input["onContractFinding"],
+): SearchGroundingBilling | undefined {
+  if (body.length === 0) return;
+  const $ = load(body);
+  const headings = $(".devsite-article-body h2").filter(
+    (_index, element) => text($(element).text()) === "Pricing",
+  );
+  const fragment = text(headings.first().nextUntil("h2").filter("p").text());
+  const policy = fragment.match(
+    /When you use Grounding with Google Search with Gemini 3 and newer models, your project is billed for each search query that the model decides to execute\. This per-query billing model includes ([\d,]+) free search requests per month shared across all Gemini 3 and newer models, and then costs \$([\d.]+) per 1,000 search requests\./,
+  );
+  const monthlyQueries = geminiGroundingQuantity(policy?.[1]);
+  const overagePrice = policy?.[2];
+  if (headings.length !== 1 || monthlyQueries === undefined || overagePrice === undefined) {
+    onFinding?.(contractExtensionEvidence(["/pricing/search/billing/monthly_queries"]));
+    return;
+  }
+  return { monthlyQueries, overagePrice };
+}
+
 function geminiMapsBilling(
   body: string,
   onFinding: Input["onContractFinding"],
@@ -2024,12 +2066,22 @@ export function parseGeminiPricing(input: Input): SourceParseResult {
   );
   if (mapsGuides.length > 1)
     input.onContractFinding?.(contractExtensionEvidence(["/pricing/maps/billing/duplicate"]));
+  const searchGuides = bundle.documents.filter(
+    ({ url }) => url === "https://ai.google.dev/gemini-api/docs/google-search",
+  );
+  const searchBilling = geminiSearchBilling(
+    searchGuides.length === 1 ? (searchGuides[0]?.body ?? "") : "",
+    input.onContractFinding,
+  );
+  if (searchGuides.length > 1)
+    input.onContractFinding?.(contractExtensionEvidence(["/pricing/search/billing/duplicate"]));
   const { claims, ids } = applyPricing(
     models,
     input.source.id,
     bundle.index.body,
     input.onPricingReconciliation,
     mapsBilling,
+    searchBilling,
   );
   const commercial = geminiGroundingAllowances(
     extractGeminiCommercialFacts(models, input.source.id, claims),

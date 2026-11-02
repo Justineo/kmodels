@@ -19,6 +19,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { xaiInferenceBundle } from "./xai-inference-fixture.ts";
 
@@ -296,7 +297,8 @@ it("uses identical conditional matching in the static UI with compact evidence",
         websiteDetailChunkSchema.parse(
           JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
         ).details,
-    );
+    )
+    .map(restoreWebsiteInferenceDetail);
   const price = details.find(({ model_ref }) => model_ref === "xai/grok-4.7@1.0")
     ?.inference_prices?.[0];
   if (!price) throw new Error("Missing website mapping");

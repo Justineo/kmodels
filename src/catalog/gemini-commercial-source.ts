@@ -21,7 +21,10 @@ export function extractGeminiCommercialFacts(
     model.price_facts = model.price_facts.filter((rate) => {
       if (rate.meter === "cache_storage") return false;
       if (rate.meter !== "tool_call") return true;
-      const operation = rate.conditions.operation;
+      const operation =
+        rate.conditions.operation === "google_web_image_search"
+          ? "google_search"
+          : rate.conditions.operation;
       if (operation !== "google_search" && operation !== "google_maps") return true;
       const fact = groundingFact(facts, model, operation);
       const mapped: SourcePriceFact = {
@@ -33,7 +36,10 @@ export function extractGeminiCommercialFacts(
     });
     model.raw_price_facts = model.raw_price_facts.filter((raw) => {
       if (raw.term_key === "agent_usage_formula") return false;
-      const operation = raw.conditions.operation;
+      const operation =
+        raw.conditions.operation === "google_web_image_search"
+          ? "google_search"
+          : raw.conditions.operation;
       if (operation !== "google_search" && operation !== "google_maps") return true;
       groundingFact(facts, model, operation).raw_price_facts.push(raw);
       return false;

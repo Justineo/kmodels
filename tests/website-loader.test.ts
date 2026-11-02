@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "../src/catalog/website-schema.ts";
+import { storeInferencePrices } from "../src/catalog/website-inference-storage.ts";
 import {
   loadWebsiteModelDetail,
   loadWebsiteProviderPricing,
@@ -8,6 +9,7 @@ import {
 } from "../src/catalog/website-loader.ts";
 import type {
   WebsiteDetailChunk,
+  WebsiteInferencePrice,
   WebsiteModel,
   WebsiteModelDetail,
   WebsiteOfferChunk,
@@ -109,7 +111,7 @@ function providerPricingChunk(
 
 function detailChunk(dataVersion: string, description: string): WebsiteDetailChunk {
   return {
-    schema_version: 6,
+    schema_version: 7,
     data_version: dataVersion,
     provider_id: model.provider_id,
     chunk: model.detail_chunk,
@@ -138,6 +140,55 @@ function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOffe
 afterEach(() => vi.unstubAllGlobals());
 
 describe("website detail loading", () => {
+  it("restores shared ID tariffs before returning model details", async () => {
+    const dataVersion = "03".repeat(32);
+    const at = "2026-11-02T00:00:00.000Z";
+    const prices: WebsiteInferencePrice[] = ["us", "global"].map((region) => ({
+      model_id: `${region}.model`,
+      status: "unknown",
+      explanation: "No applicable price",
+      missing_conditions: [],
+      evidence_urls: [],
+      candidates: [],
+      matching: {
+        generated_at: at,
+        observed_at: at,
+        rules: [
+          {
+            model_ref: model.uid,
+            offer_refs: ["a".repeat(64)],
+            fixed_selectors: [
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "region" },
+                value: { namespace: "provider", provider_id: "test", value: region },
+              },
+            ],
+          },
+        ],
+        offers: [
+          {
+            id: "a".repeat(64),
+            states: [
+              { state: "not_published", semantics: 0, applicability: { any_of: [{ all_of: [] }] } },
+            ],
+            relations: [],
+            terms: [],
+          },
+        ],
+        referenced_rates: [],
+      },
+    }));
+    const detail = detailChunk(dataVersion, "Shared ID tariffs");
+    const stored = detail.details[0];
+    if (stored === undefined) throw new Error("Missing test model detail");
+    stored.inference_prices = storeInferencePrices(prices);
+    expect(stored.inference_prices[1]?.matching_ref).toBe(0);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(detail)));
+    const loaded = await loadWebsiteModelDetail(dataVersion, model);
+    expect(loaded.inference_prices).toEqual(prices);
+  });
+
   it("rejects oversized deferred details before parsing", async () => {
     const version = "02".repeat(32);
     vi.stubGlobal(

@@ -1,6 +1,10 @@
 import { z } from "zod";
-import { calculationProviderSchema, evidenceSchema, selectorSchema } from "./schema.ts";
-import { isCanonicalInstant } from "../catalog/pricing-time.ts";
+import {
+  calculationProviderSchema,
+  calculationRequestSchema,
+  evidenceSchema,
+  selectorSchema,
+} from "./schema.ts";
 
 const identifier = z.string().min(1).max(4096);
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
@@ -36,7 +40,7 @@ export const inferencePriceQuerySchema = z.strictObject({
   model_id: identifier,
   offer_ref: hash.optional(),
   selectors: z.array(selectorSchema).max(128).default([]),
-  evaluated_at: z.string().refine(isCanonicalInstant).optional(),
+  evaluated_at: calculationRequestSchema.shape.evaluatedAt.optional(),
 });
 
 export type InferencePriceRule = z.infer<typeof inferencePriceRuleSchema>;

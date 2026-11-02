@@ -161,7 +161,7 @@ describe("model pricing details", () => {
           model_id: "model",
           status: "unknown",
           reason: "unreviewed_id",
-          explanation: "No verified price mapping is available for this inference model ID.",
+          explanation: "No verified inference price mapping is available for this identifier.",
           missing_conditions: [],
           evidence_urls: [],
           candidates: [],
@@ -169,9 +169,9 @@ describe("model pricing details", () => {
       ],
     });
     expect(html).toContain("Price mapping unknown");
-    expect(html).toContain(
-      "The catalog prices below are not verified for this inference model ID.",
-    );
+    expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
+    expect(html).toContain("Catalog ID");
+    expect(html).not.toContain("Inference model ID");
     expect(html).toContain("$2");
     expect(html).not.toContain("Applicable prices");
   });

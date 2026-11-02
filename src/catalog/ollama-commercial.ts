@@ -46,13 +46,21 @@ export function applyOllamaCommercialTopology(
       if (book.scope.kind !== "models") return [];
       const model = published.get(book.scope.model_refs[0] ?? "");
       return model?.service_families?.includes("Ollama Cloud")
-        ? [includePricingInputSourceRefs(modelBook(book, inputIndex))]
+        ? [
+            includePricingInputSourceRefs(
+              modelBook(book, inputIndex, model.tasks.includes("classification")),
+            ),
+          ]
         : [];
     }),
   };
 }
 
-function modelBook(book: AtomicPricingBook, inputIndex: PricingInputIndex): AtomicPricingBook {
+function modelBook(
+  book: AtomicPricingBook,
+  inputIndex: PricingInputIndex,
+  decision: boolean,
+): AtomicPricingBook {
   return {
     ...book,
     offers: book.offers.map((offer) => {
@@ -68,7 +76,7 @@ function modelBook(book: AtomicPricingBook, inputIndex: PricingInputIndex): Atom
         offer_key: "cloud-inference",
         name: "Ollama Cloud inference",
         enrollment: [],
-        terms: offer.terms.map((term) => bindTerm(term, inputIndex, hasCacheRate)),
+        terms: offer.terms.map((term) => bindTerm(term, inputIndex, hasCacheRate, decision)),
         relations: [],
         settlement: [],
       };
@@ -80,8 +88,11 @@ function bindTerm(
   term: AtomicPricingTerm,
   inputIndex: PricingInputIndex,
   hasCacheRate: boolean,
+  decision: boolean,
 ): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) => binding(meter, variant, inputIndex, hasCacheRate));
+  return bindRateTerm(term, (meter, variant) =>
+    binding(meter, variant, inputIndex, hasCacheRate, decision),
+  );
 }
 
 function binding(
@@ -89,6 +100,7 @@ function binding(
   variant: AtomicRateVariant,
   inputIndex: PricingInputIndex,
   hasCacheRate: boolean,
+  decision: boolean,
 ): ChargeBinding | undefined {
   if (!isStandardUnit(variant.price.per, "token") || meter.namespace !== "kmodels") return;
   const publishedInputSignal = variant.charge_binding?.signal;
@@ -107,8 +119,9 @@ function binding(
           ? standardSignal("output_tokens")
           : undefined;
   if (signal === undefined) return;
-  const mapped =
-    signal.value === "uncached_input_tokens"
+  const mapped = decision
+    ? { methods: [], facts: [] }
+    : signal.value === "uncached_input_tokens"
       ? uncachedInputMethods(inputIndex)
       : directMethods(signal, inputIndex);
   return {

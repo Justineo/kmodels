@@ -64,8 +64,15 @@ portable calculation snapshot and a separately supplied ID mapping. The returned
 `evaluated_at`. The offer reference selects an existing candidate, such as Messages or Batch;
 omission preserves all candidates and their `requires_offer_choice` result.
 It returns `matched`, `candidates`, or `unknown`, together with all applicable candidate offers,
-referenced contribution rates, missing conditions, evidence, and freshness. It does not require
-usage quantities or replace `createCalculator`.
+their owning `book_ref`, referenced contribution rates, missing conditions, evidence, freshness and
+the calculation snapshot identity and canonical `evaluated_at`. Evaluation time accepts the same
+RFC 3339 inputs and exact UTC normalization as calculation; omission uses the snapshot generation
+time. Candidate selectors combine the ID's fixed pricing values with
+the supplied runtime values; conflicts reject that rule rather than overwriting either value.
+Pass the candidate's `offer.id` and complete `selectors` to calculator discovery/calculation, with
+the returned `evaluated_at` and separately captured quantities. Replace calculator and
+lookup together from a validated refreshed pair. Lookup does not require usage quantities or
+replace `createCalculator`.
 
 The optional `/pricing/inference.json` resource and its snapshot binding are defined in
 [Inference model ID pricing](inference-pricing.md). Callers own retrieval of both inputs. Neither

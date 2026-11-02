@@ -7,27 +7,57 @@ these existing prices. Supply the optional `/pricing/inference.json` mapping fro
 and price snapshot. The lookup returns applicable candidates, missing pricing conditions, evidence,
 and a `matched`, `candidates`, or `unknown` status; it does not infer price identity from names.
 Usage quantities and exact cost calculation remain separate.
-Pass `offer_ref` from a returned candidate to select a commercial offer, such as Messages or Batch.
+Pass the candidate's `offer.id` as `offer_ref` to select a commercial offer, such as Messages or Batch.
 Without it, multiple offers remain candidates with `requires_offer_choice: true`.
+Each candidate identifies its owning `book_ref` and contains applicable offer terms/variants.
+Its `selectors` combine ID-fixed pricing conditions with your runtime conditions; conflicting
+values reject the association. Use those complete selectors for calculation, including conditions
+you did not need to supply because the ID already fixes them. Every lookup result includes its
+calculation `snapshot` identity and normalized `evaluated_at`. A catalog ID or alternate identifier
+alone does not establish a request-ID mapping.
 
 **The package contains no provider prices.** Your application supplies a calculation export, owns its retrieval and retention, and replaces the calculator when that data changes. There is no fetch client, automatic refresh, cache, persistence, or default catalog.
 
 ```ts
-import { createCalculator, type CalculationRequest } from "@kmodels/pricing";
+import {
+  createCalculator,
+  createInferencePriceLookup,
+  type CalculationRequest,
+} from "@kmodels/pricing";
 
-// priceData is JSON obtained and retained by your application.
-const calculator = createCalculator(priceData);
-const offers = calculator.listOffers({ modelRef: "provider/exact-model-id" });
-// Select an exact offer and obtain its selectors from your request/accounting context.
-const requirements = calculator.requirements({ offerRef: selectedOfferId, selectors });
+// Your application obtains and retains a complete price export and its bound mapping.
+let runtime = {
+  calculator: createCalculator(priceData),
+  lookup: createInferencePriceLookup(priceData, mappingData),
+};
+const evaluatedAt = "2026-09-05T12:00:00Z";
+const current = runtime;
+const resolution = current.lookup({
+  provider_id: "provider",
+  model_id: "exact-request-id",
+  selectors: runtimeSelectors,
+  evaluated_at: evaluatedAt,
+  // If needed, supply offer_ref after choosing an offer from an earlier result.
+});
+if (resolution.status !== "matched" || resolution.candidates.length !== 1) {
+  // Handle unknown evidence, missing conditions, offer choices or price conflicts.
+  throw new Error("Resolve the pricing candidates before calculation");
+}
+const [candidate] = resolution.candidates;
+if (candidate === undefined) throw new Error("Missing matched price candidate");
+const { calculator } = current;
+const requirements = calculator.requirements({
+  offerRef: candidate.offer.id,
+  selectors: candidate.selectors,
+});
 
 const request: CalculationRequest = {
-  evaluatedAt: "2026-09-05T12:00:00Z",
+  evaluatedAt: resolution.evaluated_at,
   components: [
     {
       id: "attempt-1",
-      offerRef: selectedOfferId,
-      selectors,
+      offerRef: candidate.offer.id,
+      selectors: candidate.selectors,
       quantities: [
         {
           signal: { namespace: "kmodels", value: "input_tokens" },
@@ -41,8 +71,12 @@ const result = calculator.calculate(request);
 // Missing required output/cache/tool measurements produce unresolved requirements.
 // result.subtotals contains known amounts; result.totals exists only when complete.
 
-const replacement = createCalculator(updatedPriceData);
-// Your application can atomically replace its reference to calculator with replacement.
+const replacement = {
+  calculator: createCalculator(updatedPriceData),
+  lookup: createInferencePriceLookup(updatedPriceData, updatedMappingData),
+};
+runtime = replacement;
+// Keep each request's lookup and calculation on the same captured runtime instance.
 ```
 
 `createCalculator(unknown)` validates and privately clones the supplied data. `validatePriceData(unknown)` exposes the same validation separately. Returned offers and results cannot mutate the snapshot. `listOffers` never chooses a default or cheapest offer.

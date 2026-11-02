@@ -21,6 +21,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -212,11 +213,10 @@ it("exports the same direct ID lookup to the website without protocol or audit p
   const projected = await projectCatalogPair(baseline);
   const details = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
     );
   const price = details.find(({ model_ref }) => model_ref === "llama/muse-spark-1.3-contributor")
     ?.inference_prices?.[0];

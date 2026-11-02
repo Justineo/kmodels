@@ -233,11 +233,12 @@ onUnmounted(() => {
           </p>
           <h2 id="details-title">{{ model.name }}</h2>
           <div class="model-identifier-line">
+            <span>Catalog ID</span>
             <button
               class="identifier-copy"
               type="button"
               :data-copied="copiedIdentifier === model.model_id || undefined"
-              :aria-label="`Copy model ID ${model.model_id}`"
+              :aria-label="`Copy catalog ID ${model.model_id}`"
               @click="copyIdentifier(model.model_id)"
             >
               <code>{{ model.model_id }}</code>

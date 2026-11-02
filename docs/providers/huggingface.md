@@ -73,7 +73,9 @@ catalog presence, and repository creation time is not treated as model release t
   Fireworks joins the published card slug to the native route ID suffix; display titles never
   establish an alias. Cohere uses the shared structured pricing parser and central pricing quotes;
   the Command A card is a fallback only when the central page has no usable quote. Groq requires
-  an explicit per-million-token denominator in the owned pricing section; rounded tokens-per-dollar
+  an explicit per-million-token denominator in the owned pricing section or the exact row of its
+  [Supported Models tariff](https://console.groq.com/docs/models). The tariff's ID and card link must
+  both identify Safeguard 20B, and repeated rows must agree. Rounded tokens-per-dollar
   summaries cannot establish that unit.
 
 models.dev, LiteLLM, Portkey, gateways, and marketplaces are comparison inputs only. They may reveal
@@ -96,6 +98,13 @@ rates and an exact validity boundary never overrides a router route explicitly m
 that disagreement remains a local raw unknown. Missing prices without an exact paid join remain
 local raw unknowns. Cached-input and cache-storage columns stay outside this overlay because the
 routed product evidence binds only prompt and completion usage counters.
+
+For Cohere's Aya Vision, Arabic Command R7B, Command A Reasoning/Translate, and four Tiny Aya
+routes, exact partner identity does not by itself supply an HF-routed tariff. Cohere's native
+trial/free-call limits and dedicated hourly Model Vault product have different eligibility and
+billing boundaries. The HF guide promises provider-price pass-through but does not delegate
+native account eligibility. Non-free router entries without an exact routed numeric tariff
+therefore retain their missing amounts; they cannot inherit free native trials or hourly prices.
 
 Featherless publishes both per-token and per-million-token fields. Kmodels normalizes the exact
 per-token value and uses it as the deterministic winner when the redundant fields conflict. The

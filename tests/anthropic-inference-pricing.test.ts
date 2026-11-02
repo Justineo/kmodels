@@ -23,6 +23,7 @@ import {
   websiteOfferChunkSchema,
 } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -178,7 +179,8 @@ it("uses the same selected offer in public static output and the interactive UI"
     JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString("utf8"));
   const details = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap((asset) => websiteDetailChunkSchema.parse(parseAsset(asset)).details);
+    .flatMap((asset) => websiteDetailChunkSchema.parse(parseAsset(asset)).details)
+    .map(restoreWebsiteInferenceDetail);
   const offers = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/offers/"))
     .flatMap((asset) => websiteOfferChunkSchema.parse(parseAsset(asset)).offers);

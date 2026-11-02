@@ -140,6 +140,16 @@ while absence never removes a public model.
 
 ## Catalog mapping
 
+HappyOyster 1.0's exact Adventure, Directing and Acting price rows distinguish world creation,
+instruction injection and world experience. The [overview](https://www.alibabacloud.com/help/en/model-studio/happyoyster-overview)
+defines reusable Worlds and real-time Travel sessions. Creation and injection use the published
+per-call denominator; Directing creation with and without a reference image are distinct operations.
+World experience is a `session_runtime` rate per second with its published 480P/720P condition.
+Unknown operations or incompatible denominators remain raw. These quantities are caller-owned:
+the reviewed public contract does not establish an exact request/result billing-duration counter
+or a pause/rewind accounting rule. The calculator retains the known price and quantity unit without
+assigning an unrelated video usage field.
+
 Task pages are independent regional catalogs. The collector recognizes exact IDs only in labeled
 model columns under reviewed model sections. It does not infer identities from prose family names,
 examples, or nearby specification tables. Exact IDs remain distinct; regional suffixes and

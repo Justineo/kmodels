@@ -9,9 +9,10 @@ import {
   type InferencePriceRule,
   type InferencePriceReason,
 } from "./inference-schema.ts";
-import { parseRequest, validateSelectorVocabulary } from "./request.ts";
+import { parseEvaluationTime, parseRequest, validateSelectorVocabulary } from "./request.ts";
 import {
   selectorSchema,
+  type CalculationEnvelope,
   type CalculationOffer,
   type CalculationProvider,
   type CalculationTerm,
@@ -28,6 +29,7 @@ import { createPricingSnapshot, offerApplicabilities, type PricingSnapshot } fro
 
 export interface InferencePriceCandidate {
   model_ref: string;
+  book_ref: string;
   offer: CalculationOffer;
   referenced_rates: Extract<CalculationTerm, { kind: "rate" }>[];
   selectors: Selector[];
@@ -38,6 +40,8 @@ export interface InferencePriceCandidate {
 
 export interface InferencePriceResult {
   query: InferencePriceQuery;
+  snapshot: CalculationEnvelope["snapshot"];
+  evaluated_at: string;
   status: "matched" | "candidates" | "unknown";
   reason?: InferencePriceReason;
   evidence: InferencePriceRule["evidence"];
@@ -62,12 +66,18 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
 
   return (input: InferencePriceQuery): InferencePriceResult => {
     const query = parseRequest(inferencePriceQuerySchema, input);
+    const evaluatedAt =
+      query.evaluated_at === undefined
+        ? snapshot.data.snapshot.generatedAt
+        : parseEvaluationTime(query.evaluated_at);
     validateSelectors(query.selectors, []);
     const rules = mapping.rules.filter(
       (rule) => rule.provider_id === query.provider_id && rule.model_id === query.model_id,
     );
     const result: InferencePriceResult = {
       query,
+      snapshot: { ...snapshot.data.snapshot },
+      evaluated_at: evaluatedAt,
       status: "unknown",
       evidence: [],
       candidates: [],
@@ -99,7 +109,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
     const matched = matchInferencePrices(
       inferenceMatchData(snapshot, rules),
       query.selectors,
-      query.evaluated_at ?? snapshot.data.snapshot.generatedAt,
+      evaluatedAt,
       query.offer_ref,
     );
     return structuredClone({
@@ -113,6 +123,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
             throw new PricingError("INVALID_DATA", "Missing matched offer or rule");
           return {
             model_ref: candidate.model_ref,
+            book_ref: owner.book.id,
             selectors: selectorSchema.array().parse(candidate.selectors),
             evidence: uniqueCanonicalValues(matchedRules.flatMap((rule) => rule?.evidence ?? [])),
             missing_conditions: candidate.missing_conditions,

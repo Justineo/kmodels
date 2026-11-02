@@ -6,6 +6,9 @@ Status: implemented core; provider pricing convergence is in progress
 
 When the accepted snapshot includes inference ID mappings, model pricing begins with an exact
 **Inference model ID** selector. Its options contain only the raw IDs.
+Include only independently associated IDs for the model; the primary catalog ID is not an implicit
+request ID. With no association, show that value as **Catalog ID** and preserve unknown mapping
+status and ordinary catalog prices. Static alternate identifiers remain separate catalog metadata.
 When an ID has multiple commercial offers, a **Pricing plan** selector uses their
 existing names. Selecting an offer clears old condition inputs and limits the displayed conditions
 and rates to that offer; it does not select a protocol or provide account configuration. Publication runs the
@@ -19,6 +22,13 @@ notice; known exclusions do not fall back to unfiltered rates. Snapshots without
 catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
 messages and rate annotations; namespace-qualified machine identifiers remain in structured data.
 See [Inference model ID pricing](inference-pricing.md) for producer limits.
+
+Pricing notes distinguish conflicting published prices from other unnormalized provider conditions.
+A conflict warning states that no single rate is available for the affected contexts. Group visible
+conflicting quotes by billing meter in collapsed disclosures; count those groups in the notes summary
+and show the quote count on each group. Expanding a group preserves every displayed quote, its
+amount, and its applicability. Non-conflict notes remain individually visible. This presentation
+does not resolve conflicts, alter canonical evidence, or merge the quotes into a selected price.
 
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
 - One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The localized relative generation time shows its complete timestamp in the viewer's current time zone in a tooltip and links to the catalog-producing GitHub Actions run when recorded on the commit; otherwise it links to the catalog-producing commit.
@@ -35,7 +45,7 @@ See [Inference model ID pricing](inference-pricing.md) for producer limits.
 ## Table and details
 
 - Give each inspector fact one home. The header owns provider, display name, and the original catalog
-  identifier. Primary lifecycle/release status and catalog scope begin the content in one compact
+  identifier, labeled `Catalog ID`. Primary lifecycle/release status and catalog scope begin the content in one compact
   metadata line; Overview does not repeat those fields. Keep the exact model ID as a compact copy
   control even when it repeats the display name, and show a distinct version beside it without
   including that separate field in the copied ID.
@@ -388,6 +398,11 @@ See [Inference model ID pricing](inference-pricing.md) for producer limits.
   copying the same display-ready offer into every applicable model. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
   bound and are requested only for a selected or window-preloaded model.
+  Schema 7 model details share identical inference-matching tariffs across a model's
+  request IDs while retaining each ID's own fixed selectors. The loader restores
+  those references before use; the transport version participates in `data_version`.
+  Local condition dictionaries, variant tuples, and shared selector options preserve the same
+  matching input while keeping the existing detail and aggregate regression budgets.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.

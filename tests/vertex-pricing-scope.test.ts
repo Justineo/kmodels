@@ -65,6 +65,56 @@ it("does not assign an unowned family price to the longest similar model ID", ()
   );
   expect(result.models.flatMap((model) => model.price_facts)).toEqual([]);
 });
+
+it.each(["October 16, 2026", "February 28, 2028"])(
+  "admits a listed post-preview tariff after the ambiguous cutover date (%s)",
+  (date) => {
+    const result = parse(
+      `<main><table><tr><th>Model</th><th>Price (/1M tokens)</th></tr><tr><td>Gemini 4 Argon*</td><td>Input: $2 Output: $10</td></tr></table><p>* Available at no charge until ${date}.</p></main>`,
+    );
+    const model = result.models.find(({ model_id }) => model_id === "gemini-4-argon");
+    if (model === undefined) throw new Error("Missing Argon model");
+    expect(
+      model.price_facts.map(({ price, conditions }) => [price, conditions.effective_from]),
+    ).toEqual([
+      ["2", date.startsWith("October") ? "2026-10-17" : "2028-02-29"],
+      ["10", date.startsWith("October") ? "2026-10-17" : "2028-02-29"],
+    ]);
+    expect(model.raw_price_facts).toEqual([]);
+  },
+);
+
+it("keeps an invalid free-preview boundary unresolved", () => {
+  const result = parse(
+    "<main><table><tr><th>Model</th><th>Price (/1M tokens)</th></tr><tr><td>Gemini 4 Argon*</td><td>Input: $2 Output: $10</td></tr></table><p>* Available at no charge until February 30, 2026.</p></main>",
+  );
+  const model = result.models.find(({ model_id }) => model_id === "gemini-4-argon");
+  if (model === undefined) throw new Error("Missing Argon model");
+  expect(model.price_facts).toEqual([]);
+  expect(model.raw_price_facts.length).toBeGreaterThan(0);
+});
+
+it.each(["owned", "neighbor", "quoted", "multiple tables"])(
+  "respects wrapped partner-table footnote ownership (%s)",
+  (placement) => {
+    const table =
+      '<div><div role="region"><table><tr><th>Model</th><th>Type</th><th>Price (/1M tokens)</th></tr><tr><td>Gemini 4 Argon *</td><td>Input</td><td>$2</td></tr></table></div></div>';
+    const note = "<div><p>* Available at no charge until Oct 16, 2026.</p></div>";
+    const body = `<main><div class="cws-jump-section" data-cws-menu-text="Google's models"><h2>Google's models</h2>${table}${placement === "owned" ? note : placement === "quoted" ? `<blockquote>${note}</blockquote>` : placement === "multiple tables" ? `${table}${note}` : ""}</div>${placement === "neighbor" ? `<div class="cws-jump-section" data-cws-menu-text="Other models">${note}</div>` : ""}</main>`;
+    const result = parse(body);
+    const model = result.models.find(({ model_id }) => model_id === "gemini-4-argon");
+    if (model === undefined) throw new Error("Missing Argon model");
+    if (placement === "owned") {
+      expect(model.price_facts).toEqual([
+        expect.objectContaining({ price: "2", conditions: { effective_from: "2026-10-17" } }),
+      ]);
+      expect(model.raw_price_facts).toEqual([]);
+    } else {
+      expect(model.price_facts).toEqual([]);
+      expect(model.raw_price_facts.length).toBeGreaterThan(0);
+    }
+  },
+);
 function haiku(parsed: ReturnType<typeof parse>) {
   const model = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
   if (model === undefined) throw new Error("Missing Haiku fixture model");

@@ -42,7 +42,7 @@ export function prepareCalculationRequest(snapshot: PricingSnapshot, input: unkn
   return { evaluatedAt, components };
 }
 
-function parseEvaluationTime(value: string): string {
+export function parseEvaluationTime(value: string): string {
   try {
     return canonicalizeInstant(value);
   } catch {

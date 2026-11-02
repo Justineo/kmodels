@@ -24,6 +24,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -256,11 +257,10 @@ it("projects the same direct lookup into static exports and compact UI data", as
   ).toBe(true);
   const details = projection.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
     );
   const detail = details.find(({ model_ref }) => model_ref === "databricks/databricks-gpt-oss-20b");
   const price = detail?.inference_prices?.[0];

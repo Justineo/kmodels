@@ -209,6 +209,15 @@ cannot create a Standard or short-context selector on it. Unequal overlapping qu
 original evidence as bounded conflicts. A model's context window or a direct provider's threshold
 does not supply an Azure tariff bound.
 
+The public price page's explicit Standard Pricing or Standard Processing header establishes
+`service_tier=standard` independently of the deployment's Global Standard or Data Zone Standard
+scope. An unqualified price header remains unqualified; a neighboring Priority column cannot
+supply its tier. Delegated Claude rows retain their own prompt-length annotations before model
+name normalization, including the inclusive 100K short band and strictly greater long band.
+These boundaries count the full prompt, including cache reads and writes, as the owning pricing
+page defines it. Malformed or unreviewed annotations preserve the known quote as raw applicability
+evidence alongside valid sibling bands and the independently established Data Zone multiplier.
+
 Normalized meters include input/output/cache token classes, embeddings, rerank searches, image,
 audio, video, pages, requests, and duration units used directly by inference. A numeric rate remains
 useful without a charge binding; a missing signal is local to that term.

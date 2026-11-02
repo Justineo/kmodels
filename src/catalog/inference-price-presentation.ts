@@ -12,7 +12,7 @@ export function inferencePriceExplanation(result: {
   requires_offer_choice?: boolean;
 }): string {
   const explanations: Record<InferencePriceReason, string> = {
-    unreviewed_id: "No verified price mapping is available for this inference model ID.",
+    unreviewed_id: "No verified inference price mapping is available for this identifier.",
     ambiguous_identity:
       "This ID has more than one evidenced model identity; its price mapping is unresolved.",
     incompatible_conditions:

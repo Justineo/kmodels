@@ -22,6 +22,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -221,11 +222,10 @@ it("uses the same applicable price and compact evidence in the static website pr
   const projected = await projectCatalogPair(candidate);
   const price = projected.ui.manifest.assets
     .filter(({ file_name }) => file_name.includes("/details/"))
-    .flatMap(
-      (asset) =>
-        websiteDetailChunkSchema.parse(
-          JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
-        ).details,
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
     )
     .find(({ model_ref }) => model_ref === "deepseek/deepseek-flash")
     ?.inference_prices?.find(({ model_id }) => model_id === "deepseek-flash");

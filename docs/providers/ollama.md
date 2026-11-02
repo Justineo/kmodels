@@ -57,6 +57,16 @@ document order. Collection does not discover arbitrary commercial pages through 
 
 ## Catalog and identity rules
 
+A family page's exact Cloud API cURL example can establish a price association to a tagged ID
+when its own Cloud-tag link agrees and the same ID appears in the current API list. The page must
+also publish a valid token cost card. For example, the priced `mistral-large-3` page explicitly
+invokes `mistral-large-3:675b`. Its page and central family prices then cover that documented route,
+including unresolved cached-input cells. This does not create a general family-to-size rule:
+missing, conflicting or unlisted API examples establish no tagged price association.
+Page discovery takes the union of Cloud search links and exact first-party model links in the
+owned central tariff. Search omission therefore does not hide a still-listed, still-priced route.
+The existing page count and byte bounds still apply.
+
 - Library family IDs are accepted exactly as published. The collector does not enumerate arbitrary
   community namespaces or tags from a local daemon and does not invent size, quantization,
   `:cloud`, or `-cloud` identities.
@@ -137,6 +147,13 @@ current labels and schedules are never assigned to historical observations.
 An unrecognized or missing component quote, including a table dash, remains raw unknown evidence
 rather than zero. The central table separates Input from Cached input; its input rates retain the
 uncached-input binding even when the cache amount itself is unavailable.
+
+An exact model page can independently define input-only Cloud billing. Clef's Cloud limits say
+that usage is billed per input token at the linked central price. With that owned claim, its
+cache/output dashes indicate no separate charge: publish the input rate against total input tokens
+and do not create cache/output prices or missing-price records. Missing, quoted, differently linked
+or identity-mismatched claims cannot establish this exception. Decision models use System One;
+Generate/Chat acquisition methods do not bind their input quantity, which remains caller-supplied.
 
 The Pro/Max access gate and extra-usage-credit settlement do not qualify list rates and are not price
 dimensions. An ordinal Low/Medium/High usage class is an allowance-consumption label, not a currency

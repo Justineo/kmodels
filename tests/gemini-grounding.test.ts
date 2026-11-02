@@ -25,7 +25,7 @@ const catalogModels = ["gemini-4-argon", "gemini-3.8-flash", "gemini-2.5-pro"].m
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/gemini/${name}`, import.meta.url), "utf8");
 
-async function parse(pricing?: string, maps?: string) {
+async function parse(pricing?: string, maps?: string, search?: string, discovery?: string) {
   return parseSource({
     provider,
     source,
@@ -34,6 +34,22 @@ async function parse(pricing?: string, maps?: string) {
     body: JSON.stringify({
       index: { url: source.url, body: pricing ?? (await fixture("grounding-current.html")) },
       documents: [
+        ...(discovery === undefined
+          ? []
+          : [
+              {
+                url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+                body: discovery,
+              },
+            ]),
+        ...(search === undefined
+          ? []
+          : [
+              {
+                url: "https://ai.google.dev/gemini-api/docs/google-search",
+                body: search,
+              },
+            ]),
         {
           url: "https://ai.google.dev/gemini-api/docs/maps-grounding",
           body: maps ?? (await fixture("maps-grounding-current.html")),
@@ -95,6 +111,58 @@ function assembleParsed(parsed: SourceParseResult) {
 }
 
 describe("Gemini grounding source policies", () => {
+  it("resolves an explicitly shared Search program only with an agreeing owned billing guide", async () => {
+    const body = (await fixture("grounding-current.html")).replace(/<p>[\s\S]*?<\/p>/, "");
+    const guide = await fixture("search-grounding-current.html");
+    for (const search of [
+      undefined,
+      guide,
+      guide.replace("$14", "$15"),
+      guide.replace("5,000", "6,000"),
+    ]) {
+      const parsed = await parse(body, undefined, search);
+      const rates =
+        parsed.commercial_facts
+          ?.filter((f) => f.resource_key === "google-search")
+          .flatMap((f) => f.price_facts) ?? [];
+      expect(rates.length > 0).toBe(search === guide);
+      expect(rates.every((f) => f.unit === "thousand_search_units")).toBe(true);
+    }
+  });
+
+  it("keeps Web and Image Search prices independent of the web-only response counter", async () => {
+    const body = (await fixture("grounding-current.html")).replace(
+      "Google Search<sup>",
+      "Google Web and Image Search<sup>",
+    );
+    const parsed = await parse(body, undefined, undefined, await fixture("discovery.json"));
+    const rates =
+      parsed.commercial_facts
+        ?.filter((f) => f.resource_key === "google-search")
+        .flatMap((f) => f.price_facts) ?? [];
+    expect(rates).toHaveLength(2);
+    expect(
+      rates.every(
+        (f) =>
+          f.conditions.operation === "google_web_image_search" &&
+          f.unit === "thousand_search_units",
+      ),
+    ).toBe(true);
+    const partition = assembleParsed(parsed);
+    const variants =
+      partition.books
+        .find((b) => b.book_key === "service:google-search")
+        ?.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))) ??
+      [];
+    expect(variants).toHaveLength(2);
+    expect(
+      variants.every(
+        (v) =>
+          v.charge_binding?.signal.value === "search_web_image_executed_queries" &&
+          v.charge_binding.quantity_methods === undefined,
+      ),
+    ).toBe(true);
+  });
   it.each([false, true])(
     "keeps GenerateContent Search counters on their own protocol (Live=%s)",
     async (live) => {

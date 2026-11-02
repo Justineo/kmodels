@@ -8,6 +8,9 @@ import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
+import { inferencePricingPublication } from "../src/catalog/inference-pricing.ts";
+import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import {
   PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
   WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH,
@@ -67,12 +70,34 @@ let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefine
 
 async function loadGeneratedPublication() {
   const { catalog, pricing } = await generatedData();
-  const dataVersion = websiteDataVersion(catalog.catalog_version, pricing.pricing_data_version);
+  const inferenceSource = await readFile(
+    new URL("../data/inference-pricing.json", import.meta.url),
+    "utf8",
+  ).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  const inference =
+    inferenceSource === undefined
+      ? undefined
+      : inferencePricingPublication(catalog, pricing, JSON.parse(inferenceSource));
+  const dataVersion = websiteDataVersion(
+    catalog.catalog_version,
+    pricing.pricing_data_version,
+    inference?.source,
+  );
   return {
     catalog,
     dataVersion,
     pricing: pricing.data,
-    publication: websitePublication(catalog, pricing.data, dataVersion),
+    publication: websitePublication(
+      catalog,
+      pricing.data,
+      dataVersion,
+      inference === undefined
+        ? undefined
+        : websiteInferencePrices(catalog, pricing, inference.mapping),
+    ),
   };
 }
 
@@ -86,7 +111,8 @@ function publishedModelDetails(publication: WebsitePublication): WebsiteModelDet
     publication.offers.map(({ provider_id, chunk, offers }) => [`${provider_id}/${chunk}`, offers]),
   );
   return publication.details.flatMap(({ provider_id, details }) =>
-    details.map(({ pricing, ...detail }) => {
+    details.map((stored) => {
+      const { pricing, ...detail } = restoreWebsiteInferenceDetail(stored);
       if (pricing === undefined) return detail;
       const offers = pricing.offer_refs.map(([chunk, index]) => {
         const offer = offerChunks.get(`${provider_id}/${chunk}`)?.[index];

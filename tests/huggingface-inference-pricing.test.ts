@@ -22,6 +22,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -231,7 +232,8 @@ it("exports literal and suffixed IDs with the same matching semantics in compact
         websiteDetailChunkSchema.parse(
           JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
         ).details,
-    );
+    )
+    .map(restoreWebsiteInferenceDetail);
   const detail = details.find(({ model_ref }) => model_ref === `huggingface/${model}`);
   for (const suffix of ["", ":groq", ":cheapest", ":featherless-ai"]) {
     const price = detail?.inference_prices?.find(({ model_id }) => model_id === model + suffix);

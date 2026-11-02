@@ -19,6 +19,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { mistralInferenceBundles } from "./mistral-inference-fixture.ts";
 
@@ -273,7 +274,8 @@ it("shares exact ID matching with the static UI while keeping audit data out", a
         websiteDetailChunkSchema.parse(
           JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
         ).details,
-    );
+    )
+    .map(restoreWebsiteInferenceDetail);
   const model = candidate.catalog.models.find(({ model_id }) => model_id === "mistral-large-4");
   const price = details
     .find(({ model_ref }) => model_ref === model?.uid)

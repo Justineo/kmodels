@@ -365,9 +365,7 @@ describe("SageMaker price books", () => {
       detail: websiteModelDetail(pricing, speechModel).pricing,
       inferencePrices,
     });
-    expect(html).toContain(
-      "The catalog prices below are not verified for this inference model ID.",
-    );
+    expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
     expect(html).toContain("Marketplace software");
     expect(html).toContain("$6");
     expect(html).not.toContain("Inspect target");

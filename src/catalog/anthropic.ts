@@ -10,7 +10,11 @@ import {
   anthropicSearchInput,
   anthropicIterationInputs,
 } from "./anthropic-accounting.ts";
-import { anthropicPriceKind, anthropicPriceRow } from "./anthropic-price-row.ts";
+import {
+  anthropicPriceKind,
+  anthropicPriceRow,
+  anthropicPromptScope,
+} from "./anthropic-price-row.ts";
 import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
 import {
   anthropicAtLeastGeneration as atLeastGeneration,
@@ -970,18 +974,10 @@ function validateRequestAccounting(
 }
 
 function rowScope(value: string): SourcePriceFact["conditions"] | undefined {
-  let context: SourcePriceFact["conditions"] = {};
-  const prompt = value.match(/ \(for prompts (up to|over) ([^()]+) tokens\)/);
-  if (prompt !== null) {
-    const raw = prompt[2] ?? "";
-    if (!/^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(raw)) return;
-    const count = Number(raw.replaceAll(",", ""));
-    if (!Number.isSafeInteger(count) || (prompt[1] === "over" && count === Number.MAX_SAFE_INTEGER))
-      return;
-    context =
-      prompt[1] === "up to" ? { context_max_tokens: count } : { context_min_tokens: count + 1 };
-    value = value.replace(prompt[0], "");
-  }
+  const scoped = anthropicPromptScope(value);
+  if (scoped === undefined) return;
+  const context = scoped.conditions;
+  value = scoped.label;
   if (/[()]/.test(value.replace(/ \((?:limited availability|legacy)\)/g, ""))) return;
   const clauses = [
     ...value.matchAll(/\b(through|starting)\b\s+(.+?)(?=\s+(?:through|starting)\b|$)/g),

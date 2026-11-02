@@ -21,6 +21,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -339,7 +340,8 @@ it("uses the same conditions in compact website data", async () => {
         websiteDetailChunkSchema.parse(
           JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()),
         ).details,
-    );
+    )
+    .map(restoreWebsiteInferenceDetail);
   const price = details
     .find(({ model_ref }) => model_ref === "gemini/gemini-3.1-pro-preview")
     ?.inference_prices?.find(({ model_id }) => model_id === "models/gemini-3.1-pro-preview");

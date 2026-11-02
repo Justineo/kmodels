@@ -809,6 +809,11 @@ values allowed by I-JSON, and use the schema's lossless numeric rules.
 The parsed-source boundary represents an absent optional pricing condition by
 omitting its property, even when a provider parser supplied it as `undefined`,
 so absent values never enter canonical sorting or hashing.
+Reviewed media-duration tiers retain their strict lower and inclusive upper bounds as
+`duration_seconds` decimal predicates in seconds. Parsed `duration_over_seconds` and
+`duration_max_seconds` values preserve that distinction through assembly and replay; a fractional
+duration never gets rounded into an integer band. Duration selects the rate independently of the
+billable generated-seconds quantity.
 
 RFC 8785 canonical JSON is used after semantic canonicalization. Set-like
 arrays have one schema-owned sort key and reject duplicate identities. Source

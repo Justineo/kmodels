@@ -3,7 +3,10 @@ import { expect, it } from "vite-plus/test";
 import { normalizeOllamaModelPage } from "../src/catalog/fetch.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
-import { applyOllamaPublicPricing } from "../src/catalog/ollama-pricing.ts";
+import {
+  applyOllamaPublicPricing,
+  ollamaPricedModelPageIds,
+} from "../src/catalog/ollama-pricing.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
@@ -19,6 +22,105 @@ const model = (id: string) => ({
   ...baseModel({ providerId: provider.id, id, name: id, sourceId: source.id, observedAt }),
   service_families: ["Ollama Cloud"],
 });
+
+it("binds a priced family page to its explicitly documented and listed Cloud API tag", async () => {
+  if (source.extractor.kind !== "ollama-cloud") throw new Error("Wrong Ollama source");
+  const page = await readFile(
+    new URL("./fixtures/ollama/mistral-cloud-page.html", import.meta.url),
+    "utf8",
+  );
+  for (const witness of [
+    "all",
+    "no-api-example",
+    "no-tag-link",
+    "no-list",
+    "conflicting-example",
+  ]) {
+    const body =
+      witness === "no-api-example"
+        ? page.replace(/<pre>[\s\S]*?<\/pre>/, "")
+        : witness === "no-tag-link"
+          ? page.replace(/<a[\s\S]*?<\/a>/, "")
+          : witness === "conflicting-example"
+            ? page.replace(
+                "</body>",
+                '<pre>curl https://ollama.com/api/chat -d \'{"model":"mistral-large-3:other"}\'</pre></body>',
+              )
+            : page;
+    const parsed = parseSource({
+      provider,
+      source: { ...source, extractor: { ...source.extractor, minModels: 1 } },
+      observedAt,
+      body: JSON.stringify({
+        list: { models: [{ model: witness === "no-list" ? "unrelated" : "mistral-large-3:675b" }] },
+        pages: [
+          {
+            model: "mistral-large-3",
+            url: "https://ollama.com/library/mistral-large-3",
+            body: JSON.parse(normalizeOllamaModelPage("mistral-large-3", body)),
+          },
+        ],
+      }),
+    });
+    const tagged = parsed.models.find((m) => m.model_id === "mistral-large-3:675b");
+    expect(tagged?.price_facts.length ?? 0).toBe(witness === "all" ? 2 : 0);
+    if (witness === "all")
+      expect(tagged?.price_facts.map((f) => [f.meter, f.price])).toEqual([
+        ["input_text", "0.50"],
+        ["output_text", "1.50"],
+      ]);
+  }
+});
+
+it("discovers model pages from the owned tariff even when the current Cloud search omits them", () => {
+  const table =
+    '<section id="model-pricing"><h2>Model pricing</h2><p>Prices are per million tokens.</p><table><tbody><tr><td><a href="/library/mistral-large-3">mistral-large-3</a></td></tr><tr><td><a href="/library/gpt-oss">gpt-oss:20b</a></td></tr><tr><td><a href="https://example.test/library/untrusted">untrusted</a></td></tr><tr><td><a href="/library/unrelated">different</a></td></tr></tbody></table></section><a href="/library/navigation">navigation</a>';
+  expect(ollamaPricedModelPageIds(table)).toEqual(["gpt-oss", "mistral-large-3"]);
+  expect(ollamaPricedModelPageIds(table.replace("per million tokens", "per request"))).toEqual([]);
+});
+
+it.each([false, true])(
+  "retains disagreeing family and exact-tag page quotes (reverse=%s)",
+  async (reverse) => {
+    if (source.extractor.kind !== "ollama-cloud") throw new Error("Wrong Ollama source");
+    const page = await readFile(
+      new URL("./fixtures/ollama/mistral-cloud-page.html", import.meta.url),
+      "utf8",
+    );
+    const pages = [
+      {
+        model: "mistral-large-3",
+        url: "https://ollama.com/library/mistral-large-3",
+        body: JSON.parse(normalizeOllamaModelPage("mistral-large-3", page)),
+      },
+      {
+        model: "mistral-large-3:675b",
+        url: "https://ollama.com/library/mistral-large-3:675b",
+        body: {
+          model: "mistral-large-3:675b",
+          title: "mistral-large-3:675b",
+          cost: { unit: "1M tokens", variants: [{ input: "0.60", output: "1.50" }] },
+        },
+      },
+    ];
+    const parsed = parseSource({
+      provider,
+      source: { ...source, extractor: { ...source.extractor, minModels: 1 } },
+      observedAt,
+      body: JSON.stringify({
+        list: { models: [{ model: "mistral-large-3:675b" }] },
+        pages: reverse ? pages.toReversed() : pages,
+      }),
+    });
+    expect(
+      parsed.models
+        .find((m) => m.model_id === "mistral-large-3:675b")
+        ?.price_facts.filter((f) => f.meter === "input_text")
+        .map((f) => f.price)
+        .sort(),
+    ).toEqual(["0.50", "0.60"]);
+  },
+);
 
 it("joins the independent model table exactly and publishes its owned weekly schedule", async () => {
   const models = [model("deepseek-v4.1-flash"), model("kimi-k3"), model("gpt-oss:20b")];
@@ -101,6 +203,56 @@ it("keeps missing component quotes unknown and preserves the published uncached-
     namespace: "kmodels",
     value: "uncached_input_tokens",
   });
+});
+
+it("uses an exact model's input-only Cloud billing contract without inventing cache or output rates", async () => {
+  if (source.extractor.kind !== "ollama-cloud") throw new Error("Wrong Ollama source");
+  const page = await readFile(
+    new URL("./fixtures/ollama/clef-billing.html", import.meta.url),
+    "utf8",
+  );
+  for (const witness of ["owned", "missing", "untrusted-link", "wrong-title", "quoted"]) {
+    const body =
+      witness === "missing"
+        ? page.replace("Usage is billed per input token", "Usage is measured in tokens")
+        : witness === "untrusted-link"
+          ? page.replace("https://ollama.com/pricing", "https://example.test/pricing")
+          : witness === "wrong-title"
+            ? page.replace("<title>clef</title>", "<title>other</title>")
+            : witness === "quoted"
+              ? page
+                  .replace('<div id="display">', '<div id="display"><blockquote>')
+                  .replace("</div>", "</blockquote></div>")
+              : page;
+    const parsed = parseSource({
+      provider,
+      source: { ...source, extractor: { ...source.extractor, minModels: 1 } },
+      observedAt,
+      body: JSON.stringify({
+        list: { models: [{ model: "clef" }] },
+        pages: [
+          {
+            model: "clef",
+            url: "https://ollama.com/library/clef",
+            body: JSON.parse(normalizeOllamaModelPage("clef", body)),
+          },
+        ],
+        documents: [{ url: "https://ollama.com/pricing", body: await publicPricing() }],
+      }),
+    });
+    const clef = parsed.models.find((m) => m.model_id === "clef");
+    expect(clef?.raw_price_facts).toHaveLength(witness === "owned" ? 0 : 2);
+    expect(clef?.price_facts.map((f) => [f.meter, f.price, f.charge_binding?.signal])).toEqual([
+      [
+        "input_text",
+        "0.24",
+        {
+          namespace: "kmodels",
+          value: witness === "owned" ? "input_tokens" : "uncached_input_tokens",
+        },
+      ],
+    ]);
+  }
 });
 
 it("withholds the structured rule when the owned schedule claim changes", async () => {

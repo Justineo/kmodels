@@ -11,10 +11,37 @@ const scheduleClaim =
 const text = (value: string) => value.replace(/\s+/g, " ").trim();
 const meters = ["input_text", "cache_read_text", "output_text"] as const;
 
+export function ollamaPricedModelPageIds(body: string): string[] {
+  const $ = load(body);
+  const section = $("section#model-pricing");
+  if (
+    section.length !== 1 ||
+    text(section.children("h2").text()) !== "Model pricing" ||
+    !text(section.children("p").text()).includes("Prices are per million tokens.")
+  )
+    return [];
+  return [
+    ...new Set(
+      section
+        .find("table tbody tr td:first-child a")
+        .toArray()
+        .flatMap((element) => {
+          const id = $(element)
+            .attr("href")
+            ?.match(/^\/library\/([a-z0-9][a-z0-9._:-]*)$/i)?.[1];
+          const label = text($(element).text()).replace(/ \(Off-Peak\)$/, "");
+          return id !== undefined && (label === id || label.startsWith(`${id}:`)) ? [id] : [];
+        }),
+    ),
+  ].sort();
+}
+
 export function applyOllamaPublicPricing(
   input: SourceParseInput,
   models: ParsedProviderModel[],
   body: string,
+  priceAliases: ReadonlyMap<string, string> = new Map(),
+  inputOnlyModels: ReadonlySet<string> = new Set(),
 ): ProviderAtomRegistryEntry[] {
   const $ = load(body),
     section = $("section#model-pricing");
@@ -73,8 +100,11 @@ export function applyOllamaPublicPricing(
   const paired = new Set(rows.filter((row) => row.offPeak).map((row) => row.id));
   const byId = new Map(models.map((model) => [model.model_id, model]));
   for (const row of rows) {
-    const model = byId.get(row.id);
-    if (model === undefined) {
+    const targets = [...new Set([row.id, priceAliases.get(row.id)])].flatMap((id) => {
+      const model = id === undefined ? undefined : byId.get(id);
+      return model === undefined ? [] : [model];
+    });
+    if (targets.length === 0) {
       input.onPricingReconciliation?.({
         disposition: "unbound",
         reason_code: "public_price_model_unbound",
@@ -82,59 +112,75 @@ export function applyOllamaPublicPricing(
       });
       continue;
     }
-    const conditions = paired.has(row.id)
-      ? { billing_period: row.offPeak ? "off_peak" : "peak" }
-      : {};
-    for (const [index, meter] of meters.entries()) {
-      const amount = row.amounts[index];
-      if (amount === undefined) continue;
-      const price = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/.exec(amount)?.[1];
-      const key = `public-pricing:${row.id}:${conditions.billing_period ?? "standard"}:${meter}`;
-      if (price === undefined) {
-        model.raw_price_facts.push(
-          rawPricingFact(
+    for (const model of targets) {
+      const inputOnly = inputOnlyModels.has(model.model_id);
+      const conditions = paired.has(row.id)
+        ? { billing_period: row.offPeak ? "off_peak" : "peak" }
+        : {};
+      for (const [index, meter] of meters.entries()) {
+        const amount = row.amounts[index];
+        if (amount === undefined) continue;
+        const price = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/.exec(amount)?.[1];
+        const key = `public-pricing:${row.id}:${conditions.billing_period ?? "standard"}:${meter}`;
+        if (price === undefined) {
+          if (inputOnly && meter !== "input_text" && amount === "-") continue;
+          model.raw_price_facts.push(
+            rawPricingFact(
+              input.source.id,
+              key,
+              "base_price",
+              "unknown_amount",
+              { amount, unit: "1M tokens", denomination: "USD", label: meter },
+              conditions,
+            ),
+          );
+          continue;
+        }
+        const rate: SourcePriceFact = {
+          ...publishedRate(
+            meter,
+            price,
+            "million_tokens",
             input.source.id,
-            key,
-            "base_price",
-            "unknown_amount",
-            { amount, unit: "1M tokens", denomination: "USD", label: meter },
+            "1M tokens",
             conditions,
           ),
-        );
-        continue;
-      }
-      const rate: SourcePriceFact = {
-        ...publishedRate(meter, price, "million_tokens", input.source.id, "1M tokens", conditions),
-        source_locator: { kind: "provider_key", value: key },
-        ...(meter !== "input_text"
-          ? {}
-          : {
-              charge_binding: {
-                signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-                aggregation: "request",
-                observations: [
-                  {
-                    source_ref: input.source.id,
-                    locator: { kind: "provider_key", value: key },
-                    raw: {
-                      label: "Input, separate from the Cached input column",
-                      unit: "1M tokens",
-                    },
+          source_locator: { kind: "provider_key", value: key },
+          ...(meter !== "input_text"
+            ? {}
+            : {
+                charge_binding: {
+                  signal: {
+                    namespace: "kmodels",
+                    value: inputOnly ? "input_tokens" : "uncached_input_tokens",
                   },
-                ],
-              },
-            }),
-      };
-      model.price_facts.push(rate);
-      // The same table header establishes the input meaning for matching card quotes.
-      if (rate.charge_binding !== undefined)
-        for (const fact of model.price_facts)
-          if (
-            fact.meter === meter &&
-            fact.source_ref === input.source.id &&
-            JSON.stringify(fact.conditions) === JSON.stringify(conditions)
-          )
-            fact.charge_binding = rate.charge_binding;
+                  aggregation: "request",
+                  observations: [
+                    {
+                      source_ref: input.source.id,
+                      locator: { kind: "provider_key", value: key },
+                      raw: {
+                        label: inputOnly
+                          ? "Cloud usage is billed per input token at the listed price"
+                          : "Input, separate from the Cached input column",
+                        unit: "1M tokens",
+                      },
+                    },
+                  ],
+                },
+              }),
+        };
+        model.price_facts.push(rate);
+        // The same table header establishes the input meaning for matching card quotes.
+        if (rate.charge_binding !== undefined)
+          for (const fact of model.price_facts)
+            if (
+              fact.meter === meter &&
+              fact.source_ref === input.source.id &&
+              JSON.stringify(fact.conditions) === JSON.stringify(conditions)
+            )
+              fact.charge_binding = rate.charge_binding;
+      }
     }
   }
   for (const model of models) {

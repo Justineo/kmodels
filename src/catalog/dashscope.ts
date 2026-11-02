@@ -2228,6 +2228,72 @@ function billingItemQuotes(
   });
 }
 
+function billingItemPrices(
+  input: ParseInput,
+  table: Table,
+  row: Cell[],
+  id: string,
+  billingItem: string,
+): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
+  const mode = id.match(/^happyoyster-1\.0-(adventure|directing|acting)$/)?.[1];
+  const operations = new Map([
+    ["World creation", "world_creation"],
+    ["World creation (without reference image)", "world_creation_without_reference_image"],
+    ["World creation (with reference image)", "world_creation_with_reference_image"],
+    ["Instruction injection", "instruction_injection"],
+  ]);
+  const resolution = billingItem.match(/^World experience \((480P|720P)\)$/)?.[1];
+  const operation = resolution === undefined ? operations.get(billingItem) : "world_experience";
+  const supported =
+    mode !== undefined &&
+    operation !== undefined &&
+    (mode === "directing" || !operation.startsWith("world_creation_")) &&
+    (mode !== "adventure" || (operation !== "instruction_injection" && resolution !== "720P"));
+  if (!supported) return { rates: [], raw: billingItemQuotes(input, table, row, billingItem) };
+  const rates: SourcePriceFact[] = [];
+  const raw = billingItemQuotes(input, table, row, billingItem);
+  for (const [index, header] of table.headers.entries()) {
+    const cell = row[index];
+    if (!/price/i.test(header) || cell === undefined) continue;
+    const evidence = `${header}; ${cell.text}`;
+    const rateUnit =
+      resolution === undefined
+        ? /per call|\/call\b/i.test(evidence) && unit(header, cell.text) === undefined
+          ? "request"
+          : undefined
+        : unit(header, cell.text) === "second" && !/per call|\/call\b/i.test(evidence)
+          ? "second"
+          : undefined;
+    if (rateUnit === undefined) continue;
+    for (const segment of priceSegments(cell, header)) {
+      rates.push(
+        publishedRate(
+          resolution === undefined ? "inference" : "session_runtime",
+          segment.price,
+          rateUnit,
+          input.source.id,
+          `${billingItem}; ${evidence}`,
+          {
+            ...priceConditions(table, row, header),
+            operation,
+            ...(resolution === undefined ? {} : { resolution }),
+          },
+        ),
+      );
+    }
+  }
+  return {
+    rates,
+    raw: raw.filter(
+      (quote) =>
+        !rates.some(
+          (rate) =>
+            rate.price === quote.raw.amount && rate.raw_unit?.includes(quote.raw.unit ?? ""),
+        ),
+    ),
+  };
+}
+
 export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-pricing") throw new Error("Wrong DashScope pricing extractor");
@@ -2282,9 +2348,9 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
         const parsed =
           billingItem === undefined
             ? rowPrices(input, table, row, tasks, id)
-            : { rates: [], raw: billingItemQuotes(input, table, row, billingItem) };
+            : billingItemPrices(input, table, row, id, billingItem);
         const parsedRates = parsed.rates;
-        if (billingItem !== undefined)
+        if (billingItem !== undefined && parsed.raw.length > 0)
           input.onPricingReconciliation?.({
             disposition: "unsupported",
             reason_code: "pricing_billing_item_unsupported",

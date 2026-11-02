@@ -43,6 +43,21 @@ Model discovery and pricing remain independent:
 - the Discovery schema and fixed first-party Batch, grounding, Claude, Grok Responses,
   OpenAI-compatible, Imagen, and Veo documents establish calculation inputs and selectors.
 
+For Imagen and Veo cards with several exact Model ID tables, the owned Generate, Fast Generate,
+Lite Generate, and Ultra Generate headings identify display variants within the page's named
+model family. Display names omit the procedural Generate suffix and its revision ordinal; literal
+model IDs and inference aliases stay unchanged. This preserves exact price-label matching without
+guessing a family tariff from an arbitrary similar model ID.
+
+The optional merged [Imagen 3 card](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/3-0-generate)
+retains exact revision tables, owned family names and discontinuation dates after their individual
+URLs redirect. It supplements discovery and preserves their family-quote association without
+reviving retired endpoints or resolving the price table's generic `count` denominator.
+Older Veo 2 and Veo 3 IDs discovered only through reference or deprecation inventory can retain
+literal-ID display names without a current model-card price-label association. Their former
+card URLs redirect to the model index. Family quotes alone do not establish the revision-specific
+join, so these models remain Unknown.
+
 The pricing source explicitly owns both `pricing` and `pricing_inputs`. Accounting contracts are not
 treated as rate evidence. The optional authenticated Model Garden API validates known public
 identities only; it cannot create rows, contribute private prices, or retain account data.
@@ -143,6 +158,12 @@ from source collection and mapping implementation.
   belongs only to its own item, so an undated Cyber model does not inherit another model's future
   start date or credit eligibility. Unknown members are reported without discarding readable members.
   Published date-only labels remain imprecise validity, not inferred UTC transition instants.
+- A model's uniquely owned, date-only `no charge until` note bounds its displayed paid tariff
+  from the following calendar date. Wrapped partner sections own their notes only when they
+  contain one pricing table; neighboring sections and quoted examples cannot supply that note.
+  This preserves the paid amounts without inventing a historical free rate or the cutover instant.
+  The calculator retains unresolved date-only validity, and a cache tariff alone does not establish
+  a managed partner model's cache quantity binding.
 - An output row under the cached-input price column still prices output tokens. It cannot create
   a cache-read charge. Identical output observations converge to one canonical price; inconsistent
   output amounts remain conflicting evidence rather than being added together.
@@ -185,15 +206,35 @@ from source collection and mapping implementation.
   IDs. No token or character unit is inferred from an example response that reports both counts.
 - Page alternatives are ignored only when a model card gives an exact token equivalence. Otherwise
   the token rate stays normalized and the unresolved alternative remains bounded raw evidence.
+- An exact owned `Available at no charge until <date>.` footnote does not make the listed paid
+  tariff permanently ambiguous. A wrapped partner pricing section owns its footnotes only when
+  it contains one table; neighboring sections and quoted paragraphs cannot supply them. Its
+  paid rates apply from the following calendar date, with date
+  precision. The cutover day remains uncovered because `until` does not establish inclusivity;
+  no historical free rate or timestamp is invented. Missing, conflicting, or invalid notes stay raw.
 - A price cell's explicit denominator overrides a token column heading for that amount. A video
   cell containing both a per-second price and a per-million-token price retains those distinct
   units. The parser does not reinterpret the per-second amount as a conflicting token price or
   charge both alternative measures of the same output. A provider-owned `billing_unit` selector
   separates the alternatives; consumers supply the applicable token or second billing basis.
-- Media denominators come only from the price cell or its price-column heading. Input/output labels
+- Media denominators normally come from the price cell or its price-column heading. The public
+  [Cloud calculator](https://cloud.google.com/products/calculator) independently establishes generated
+  seconds for exact managed `veo-3.1-generate-001` and `veo-3.1-fast-generate-001` generation rates,
+  including video with audio. Their `count` cells use seconds while retaining resolution and operation.
+  This reviewed unit contract does not extend to Lite, other revisions, or advanced operations.
+  Calculator estimates are not a new amount source or an additional collection dependency.
+  Input/output labels
   such as `Text/Image prompt` cannot establish a per-image unit. An unexplained `/ 1 count` Veo quote
   retains its amount, meter and scope as raw `unknown_unit` evidence with an explicit diagnostic;
   it does not imply images, seconds or one request.
+  The owning media section is captured from unquoted document headings before table wrappers or
+  display normalization are considered. Nested layout containers cannot hide a table or lend it
+  an unrelated caption. An empty model cell continues the last exact model's row; a new unbound
+  model label clears that owner and emits an identity diagnostic, so subsequent continuation
+  prices cannot leak onto the previous model.
+  Embedding tables with an explicit token unit stay owned by the token-table parser, which
+  retains Online/Batch request type and input modality across continuation rows. The media
+  parser cannot add a second unconditional quote over those scoped token rates.
 - Explicit `N/A` cells are local non-numeric evidence and do not reject another meter or model.
 
 ## Grounding prices and allowances

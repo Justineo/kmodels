@@ -23,6 +23,7 @@ import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -201,6 +202,7 @@ it("keeps context, served tier and published geography separate from request ID 
 });
 
 it("distinguishes evidence gaps and excluded known conditions from guessed or private identifiers", () => {
+  const query = lookup();
   for (const model_id of [
     "us.gemini-3.5-flash",
     "google/gemini-3.5-flash",
@@ -208,27 +210,27 @@ it("distinguishes evidence gaps and excluded known conditions from guessed or pr
     "projects/private/locations/us-central1/endpoints/123",
     "mistral-medium-latest",
   ])
-    expect(lookup()({ provider_id: "vertex", model_id }).reason).toBe("unreviewed_id");
+    expect(query({ provider_id: "vertex", model_id }).reason).toBe("unreviewed_id");
   expect(
-    lookup()({
+    query({
       provider_id: "vertex",
       model_id: "claude-sonnet-4-6",
       selectors: [standard, condition("region", "global")],
     }),
   ).toMatchObject({ status: "unknown", reason: "unresolved_price" });
   expect(
-    lookup()({
+    query({
       provider_id: "vertex",
       model_id: "mistral-medium-3",
       selectors: [condition("served_service_tier", "priority")],
     }).status,
   ).toBe("matched");
-  const batch = lookup()({ provider_id: "vertex", model_id: "deepseek-v3.2-maas" }).candidates.find(
+  const batch = query({ provider_id: "vertex", model_id: "deepseek-v3.2-maas" }).candidates.find(
     ({ offer }) => offer.offer_key === "batch",
   );
   if (!batch) throw new Error("Missing Batch offer");
   expect(
-    lookup()({
+    query({
       provider_id: "vertex",
       model_id: "deepseek-ai/deepseek-v3.2-maas",
       offer_ref: batch.offer.id,
@@ -322,7 +324,8 @@ it("publishes identical ID lookup semantics in the static and compact UI project
         websiteDetailChunkSchema.parse(
           JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
         ).details,
-    );
+    )
+    .map(restoreWebsiteInferenceDetail);
   const detail = details.find(({ model_ref }) => model_ref === "vertex/grok-4.20-reasoning");
   const price = detail?.inference_prices?.find(
     ({ model_id }) => model_id === "xai/grok-4.20-reasoning",

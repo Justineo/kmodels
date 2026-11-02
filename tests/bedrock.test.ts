@@ -138,6 +138,36 @@ function priceDimension(unit: string, usage: string) {
 }
 
 describe("Bedrock adapters", () => {
+  it.each(["-cross-region-global-preview", "-turbo-cross-region-global"])(
+    "does not default an unreviewed Global token SKU suffix to Standard (%s)",
+    async (suffix) => {
+      const bundle = linkedBundle(await fixture("bedrock/nova-global-tiers.json"));
+      const prices = bundle.documents.find(({ url }) => url.includes("pricing.us-east-1"));
+      if (prices === undefined) throw new Error("Missing Nova Global prices");
+      prices.body = prices.body.replaceAll("-cross-region-global", suffix);
+      const model = bedrockModels(bundle).find(
+        ({ model_id }) => model_id === "amazon.nova-2-lite-v1:0",
+      );
+      if (model === undefined) throw new Error("Missing Nova Lite model");
+      const ordinary = model.price_facts.filter(({ source_locator }) =>
+        ["Y4AEYVEPEQF37W7V", "MDSF3DD9G2Y8H2XT", "M7YGSJTF5SURAR9T", "VK3JN3SGJ5623F6Z"].some(
+          (sku) => source_locator?.value.startsWith(`AmazonBedrock:${sku}:`),
+        ),
+      );
+      expect(ordinary).toHaveLength(4);
+      expect(ordinary.every(({ conditions }) => conditions.service_tier === undefined)).toBe(true);
+      expect(model.price_facts.some(({ conditions }) => conditions.service_tier === "flex")).toBe(
+        true,
+      );
+      expect(
+        model.price_facts.some(({ conditions }) => conditions.service_tier === "priority"),
+      ).toBe(true);
+      expect(model.price_facts.some(({ conditions }) => conditions.service_tier === "batch")).toBe(
+        true,
+      );
+    },
+  );
+
   it("binds each native token SKU to its owning model-card context range", async () => {
     const models = bedrockModels(await contextBundle());
     for (const [id, threshold] of [
@@ -584,7 +614,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v42");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v44");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -715,6 +745,39 @@ describe("Bedrock adapters", () => {
         reason_code: "optional_catalog_source_drifted",
       }),
     );
+  });
+
+  it("keeps Ray v2 native Standard and HD usage types distinct despite the shared HD label", async () => {
+    const bundle = linkedBundle(await fixture("bedrock/ray-resolutions.json"));
+    const model = bedrockModels(bundle).find(({ model_id }) => model_id === "luma.ray-v2:0");
+    if (model === undefined) throw new Error("Missing Ray v2 fixture model");
+    expect(model.price_facts).toHaveLength(4);
+    expect(
+      model.price_facts
+        .map(({ price, conditions }) => [price, conditions.resolution])
+        .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    ).toEqual([
+      ["0.7500000000", "Standard"],
+      ["0.7500000000", "Standard"],
+      ["1.5000000000", "HD"],
+      ["1.5000000000", "HD"],
+    ]);
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models: [model] }],
+      [model],
+      value.pricingCategoricalLabels,
+    );
+    const raw = partition?.books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "raw" ? term.variants : term.raw_variants)),
+      ),
+    );
+    expect(raw?.filter(({ impact }) => impact === "base_price")).toEqual([]);
   });
 
   it("reads relocated Mantle regions without requiring the optional Price List", async () => {
@@ -1549,7 +1612,7 @@ describe("Bedrock adapters", () => {
     });
   });
 
-  it.each(["existing", "expanded", "asymmetric", "reordered"])(
+  it.each(["existing", "expanded", "asymmetric", "reordered", "current-title"])(
     "uses a complete Cohere Embed 4 Marketplace inventory (%s)",
     async (shape) => {
       const value = manifest("amazon-bedrock");
@@ -1614,7 +1677,7 @@ describe("Bedrock adapters", () => {
       };
       bundle.documents.push({
         url: "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
-        body: `<title>AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)</title><script id="vike_pageContext">${JSON.stringify(pageContext)}</script>`,
+        body: `${shape === "current-title" ? "<title>Cohere Embed 4 Model (Amazon Bedrock Edition) | AWS Marketplace</title><h1>Cohere Embed 4 Model (Amazon Bedrock Edition)</h1>" : "<title>AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)</title>"}<script id="vike_pageContext">${JSON.stringify(pageContext)}</script>`,
       });
       const models = parseSource({
         provider: provider(value),
@@ -1625,6 +1688,20 @@ describe("Bedrock adapters", () => {
       const model = models.find(({ model_id }) => model_id === "cohere.embed-v4:0");
       if (model === undefined) throw new Error("Missing Cohere Embed 4 fixture model");
       expect(model.price_facts).toHaveLength(rateCards.length);
+      if (shape === "current-title") {
+        const changed = {
+          ...bundle,
+          documents: bundle.documents.map((document) => ({
+            ...document,
+            body: document.body.replace("<h1>Cohere Embed 4 Model", "<h1>Another Model"),
+          })),
+        };
+        const rejected = bedrockModels(changed).find(
+          ({ model_id }) => model_id === "cohere.embed-v4:0",
+        );
+        if (rejected === undefined) throw new Error("Missing Cohere Embed 4 model");
+        expect(rejected.price_facts).toEqual([]);
+      }
       model.price_facts.push({
         meter: "input_text",
         price: "0.0000000200",

@@ -7,6 +7,8 @@ import { manifests, type ProviderManifest, type SourceManifest } from "../src/ca
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
+import { evaluateModelApplicability } from "../src/catalog/pricing-applicability.ts";
+import { transitionProviderPricing } from "../src/catalog/pricing-transition.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
@@ -1473,9 +1475,7 @@ describe("Azure adapters", () => {
       detail: websiteModelDetail(pricing, model).pricing,
       inferencePrices,
     });
-    expect(html).toContain(
-      "The catalog prices below are not verified for this inference model ID.",
-    );
+    expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
     expect(html).toContain("Model rates");
     expect(html).toContain("East US");
     expect(html).not.toContain("Inspect target");
@@ -1713,6 +1713,233 @@ describe("Azure adapters", () => {
       ["azure/mistral-ocr-4-0", [["input_image", "page"]]],
     ]);
   });
+
+  it.each([true, false])("preserves an owned public Standard header (explicit=%s)", (explicit) => {
+    const source = azurePublicPricingSource(1, 1);
+    const model = azurePricingModel("gpt-4.1", "2025-04-14");
+    const parsed = parseSource({
+      provider: provider(manifest("azure")),
+      source,
+      observedAt,
+      catalogModels: [model],
+      body: JSON.stringify({
+        index: {
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+          body: `<table aria-label="GPT-4.1 series">
+        <thead><tr><th>Model</th><th>${explicit ? "Standard Pricing" : "Pricing"} (1M Tokens)</th><th>Priority Processing (1M Tokens)</th></tr></thead>
+        <tbody><tr><td>GPT-4.1-2025-04-14 Global</td>
+        <td>Input: <span data-amount='{"regional":{"us-east":2}}'>$-</span></td>
+        <td>Input: <span data-amount='{"regional":{"us-east":3.5}}'>$-</span></td></tr></tbody></table>`,
+        },
+        documents: [],
+      }),
+    });
+    const prices = parsed.models[0]?.price_facts;
+    expect(prices?.map(({ conditions }) => conditions.service_tier)).toEqual([
+      explicit ? "standard" : undefined,
+      "priority",
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source, ...parsed }],
+      [model],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    if (term?.kind !== "rate" || partition === undefined)
+      throw new Error("Missing public input rate");
+    if (!explicit) {
+      expect(term.raw_variants.some(({ reason }) => reason === "conflicting_values")).toBe(true);
+      return;
+    }
+    expect(term.raw_variants).toEqual([]);
+    expect(term.variants).toHaveLength(2);
+    for (const tier of ["standard", "priority"]) {
+      const selected = term.variants.filter(
+        (variant) =>
+          evaluateModelApplicability(variant.applicability, model.uid, [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "region" },
+              value: { namespace: "provider", provider_id: "azure", value: "eastus" },
+            },
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "deployment_scope" },
+              value: { namespace: "provider", provider_id: "azure", value: "GlobalStandard" },
+            },
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "served_service_tier" },
+              value: { namespace: "provider", provider_id: "azure", value: tier },
+            },
+          ]).state === "true",
+      );
+      expect(selected).toHaveLength(1);
+      const variant = selected[0];
+      if (variant === undefined) throw new Error("Missing selected public rate");
+      expect(
+        evaluateRateCost(variant, [
+          {
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            value: { numerator: "1000000", denominator: "1" },
+          },
+          {
+            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+            value: { numerator: "1000000", denominator: "1" },
+          },
+        ]),
+      ).toMatchObject({
+        kind: "resolved",
+        amount:
+          tier === "standard"
+            ? { numerator: "2", denominator: "1" }
+            : { numerator: "7", denominator: "2" },
+      });
+    }
+    const old = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [
+        {
+          source,
+          ...parsed,
+          models: parsed.models.map((model) => ({
+            ...model,
+            price_facts: model.price_facts.map((rate) => ({
+              ...rate,
+              conditions: {
+                ...rate.conditions,
+                service_tier:
+                  rate.conditions.service_tier === "standard"
+                    ? undefined
+                    : rate.conditions.service_tier,
+              },
+            })),
+          })),
+        },
+      ],
+      [model],
+    );
+    if (old === undefined) throw new Error("Missing old public pricing");
+    expect(old.books[0]?.offers[0]?.terms[0]).toMatchObject({
+      raw_variants: [
+        expect.objectContaining({ reason: "conflicting_values" }),
+        expect.objectContaining({ reason: "conflicting_values" }),
+      ],
+    });
+    const advanced = transitionProviderPricing(
+      {
+        books: old.books,
+        provider_snapshots: [old.snapshot],
+        provider_vocabularies: [old.vocabulary],
+        model_dispositions: old.model_dispositions,
+      },
+      { kind: "fresh", partition },
+      () => "azure",
+    );
+    expect(advanced.books).toEqual(partition.books);
+    validateParsedPricing(manifest("azure"), source, [model], partition);
+  });
+
+  it.each([false, true])(
+    "keeps delegated Claude prompt bands and safe siblings (invalid=%s)",
+    async (invalid) => {
+      const value = manifest("azure");
+      const configured = value.sources.find(({ id }) => id === "azure-claude-pricing");
+      if (configured?.extractor.kind !== "azure-claude-pricing")
+        throw new Error("Missing Claude source");
+      const source = { ...configured, extractor: { ...configured.extractor, minModels: 1 } };
+      const model: ProviderModel = {
+        ...azurePricingModel("claude-haiku-5-5"),
+        status: "active",
+        service_families: ["Foundry Models from partners and community"],
+        availability: [{ region: "eastus2", deployment_type: "DataZoneStandard" }],
+      };
+      const original = await fixture("azure/claude-context-pricing.md");
+      const parsed = parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels: [model],
+        body: invalid ? original.replace("up to 100,000", "up to 100,00") : original,
+      });
+      const result = parsed.models[0];
+      if (result === undefined) throw new Error("Missing parsed Claude");
+      expect(result.price_facts).toContainEqual(
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.50",
+          conditions: expect.objectContaining({
+            context_min_tokens: 100001,
+            deployment_scope: "GlobalStandard",
+          }),
+        }),
+      );
+      if (invalid) {
+        expect(
+          result.price_facts.some(({ conditions }) => conditions.context_max_tokens !== undefined),
+        ).toBe(false);
+        expect(result.raw_price_facts).toContainEqual(
+          expect.objectContaining({
+            reason: "unknown_applicability",
+            raw: expect.objectContaining({ amount: "0.10", unit: "MTok" }),
+          }),
+        );
+        return;
+      }
+      expect(result.raw_price_facts).toEqual([]);
+      const partition = assembleParsedProviderPricing(
+        "azure",
+        observedAt,
+        [{ source, ...parsed }],
+        [model],
+      );
+      const input = partition?.books[0]?.offers[0]?.terms.find(
+        (term) => term.kind === "rate" && term.meter.value === "input_text",
+      );
+      if (input?.kind !== "rate") throw new Error("Missing Claude input term");
+      expect(input.raw_variants).toEqual([]);
+      for (const [context, deployment, numerator, denominator] of [
+        ["100000", "GlobalStandard", "1", "10000000"],
+        ["100001", "GlobalStandard", "1", "2000000"],
+        ["100000", "DataZoneStandard", "11", "100000000"],
+        ["100001", "DataZoneStandard", "11", "20000000"],
+      ]) {
+        if (
+          context === undefined ||
+          deployment === undefined ||
+          numerator === undefined ||
+          denominator === undefined
+        )
+          throw new Error("Missing case");
+        const selected = input.variants.filter(
+          (variant) =>
+            evaluateModelApplicability(variant.applicability, model.uid, [
+              {
+                kind: "decimal",
+                dimension: { namespace: "kmodels", value: "context_tokens" },
+                unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+                value: context,
+              },
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "deployment_scope" },
+                value: { namespace: "provider", provider_id: "azure", value: deployment },
+              },
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "inference_geo" },
+                value: { namespace: "provider", provider_id: "azure", value: "us" },
+              },
+            ]).state === "true",
+        );
+        expect(selected).toHaveLength(1);
+        expect(selected[0]?.price.value).toEqual({ numerator, denominator });
+      }
+      validateParsedPricing(value, source, [model], partition);
+    },
+  );
 
   it("imports Claude's delegated token rates without Marketplace settlement facts", async () => {
     const value = manifest("azure");
