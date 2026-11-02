@@ -1887,6 +1887,39 @@ describe("OpenAI adapters", () => {
     },
   );
 
+  it("skips a bounded shutdown date without unresolved contract drift", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-deprecations");
+    if (source === undefined) throw new Error("Missing OpenAI lifecycle source");
+    const body = await fixture("openai/deprecations.md");
+    const findings: SourceContractEvidence[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      onContractFinding: (evidence) => findings.push(evidence),
+    }).models;
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "gpt-4o-2024-05-13",
+      "gpt-5.4",
+      "text-embedding-3-large",
+    ]);
+    expect(findings).toEqual([]);
+
+    const unreadableFindings: SourceContractEvidence[] = [];
+    parseSource({
+      provider: provider(value),
+      source,
+      body: body.replace("at earliest 2024-06-13", "sometime soon"),
+      observedAt,
+      onContractFinding: (evidence) => unreadableFindings.push(evidence),
+    });
+    expect(
+      unreadableFindings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path)),
+    ).toEqual(["/deprecations/shutdown-date"]);
+  });
+
   it("parses lifecycle dates and replacements from deprecation tables", async () => {
     const models = await parsed("openai", "openai/deprecations.md", "openai-deprecations");
     expect(

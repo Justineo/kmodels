@@ -6,6 +6,7 @@
 | 2026‑02‑17    | `text-embedding-3-large`           | `text-embedding-3-small` |
 | 2026-08-26    | Assistants API                     | Responses API            |
 
-| Shutdown date    | Model snapshot      | Substitute model |
-| ---------------- | ------------------- | ---------------- |
-| October 23, 2026 | `gpt-4o-2024-05-13` | `gpt-5.6-sol`    |
+| Shutdown date          | Model snapshot      | Substitute model |
+| ---------------------- | ------------------- | ---------------- |
+| October 23, 2026       | `gpt-4o-2024-05-13` | `gpt-5.6-sol`    |
+| at earliest 2024-06-13 | `gpt-4-0314`        | `gpt-4o`         |

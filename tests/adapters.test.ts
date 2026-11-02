@@ -9098,6 +9098,43 @@ describe("Vercel adapter", () => {
       }),
     ]);
   });
+  it("publishes a per-second generated-audio price on speech models", async () => {
+    const models = await vercelCatalog("vercel/speech-output-per-second.json");
+    const audio = (modelId: string) =>
+      models
+        .find(({ model_id }) => model_id === modelId)
+        ?.price_facts.filter(({ meter }) => meter === "output_audio");
+    expect({
+      music: audio("elevenlabs/music-v2"),
+      musicV25: audio("elevenlabs/music-v2.5"),
+      effects: audio("elevenlabs/sound-effects-v2"),
+    }).toEqual({
+      music: [expect.objectContaining({ meter: "output_audio", price: "0.00125", unit: "second" })],
+      musicV25: [
+        expect.objectContaining({ meter: "output_audio", price: "0.00125", unit: "second" }),
+      ],
+      effects: [expect.objectContaining({ meter: "output_audio", price: "0.001", unit: "second" })],
+    });
+  });
+
+  it("keeps generated-audio pricing disjoint from character and transcription scope", async () => {
+    const models = await vercelCatalog("vercel/speech-output-per-second.json");
+    const facts = (modelId: string) =>
+      models.find(({ model_id }) => model_id === modelId)?.price_facts;
+    expect(facts("elevenlabs/eleven-flash-v2")).toEqual([
+      expect.objectContaining({ meter: "input_text", price: "0.00002", unit: "character" }),
+    ]);
+    expect(facts("microsoft/mai-transcribe-2")).toEqual([
+      expect.objectContaining({ meter: "input_audio", price: "0.00002778", unit: "second" }),
+    ]);
+    expect(
+      models
+        .filter(({ model_id }) => model_id.startsWith("elevenlabs/"))
+        .flatMap(({ price_facts }) => price_facts)
+        .some(({ meter }) => meter !== "output_audio" && meter !== "input_text"),
+    ).toBe(false);
+  });
+
   it.each(["hr", "sec"])(
     "binds transcription model-page prices per %s to audio duration",
     async (unit) => {
@@ -12340,6 +12377,70 @@ describe("DashScope adapters", () => {
     expect(models.map(({ model_id }) => model_id)).toEqual(["qwen-image-2.0-pro", "qwen3.7-plus"]);
   });
 
+  it("reads the region-linked recommended-model listing cards", async () => {
+    const models = parse(
+      source("dashscope-recommended"),
+      await fixture("dashscope/recommended-listing.html"),
+    );
+    expect(
+      models.map(({ model_id, availability, api_endpoints }) => ({
+        model_id,
+        availability,
+        api_endpoints,
+      })),
+    ).toEqual([
+      {
+        model_id: "happyoyster-1.0-adventure",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+      {
+        model_id: "MiniMax-M2.5",
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+      {
+        model_id: "ZHIPU/GLM-5.3",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+    ]);
+  });
+
+  it("reads the region-tabbed TTS model lists under the supported-models heading", async () => {
+    const models = parse(
+      source("dashscope-tts"),
+      await fixture("dashscope/tts-supported-models.html"),
+    );
+    expect(
+      models.map(({ model_id, tasks, modalities, availability }) => ({
+        model_id,
+        tasks,
+        modalities,
+        availability,
+      })),
+    ).toEqual([
+      {
+        model_id: "cosyvoice-v3.5-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-flash",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+      },
+    ]);
+  });
+
   it("validates Markdown recommended-model cards against their published routes", async () => {
     const body = await fixture("dashscope/recommended.md");
     const models = parse(source("dashscope-recommended"), body);
@@ -13685,7 +13786,7 @@ describe("DashScope adapters", () => {
     expect(catalogSources.length).toBeGreaterThan(0);
     expect(
       catalogSources.every(({ format, extractorVersion }) => {
-        return format === "html" && extractorVersion === "dashscope-catalog-v7";
+        return format === "html" && extractorVersion === "dashscope-catalog-v8";
       }),
     ).toBe(true);
     const markdownSources = value.sources.filter(
@@ -13698,7 +13799,7 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v7",
+      extractorVersion: "dashscope-recommended-v8",
       retainOmittedFacts: true,
     });
     expect(source("dashscope-pricing")).toMatchObject({
@@ -13867,7 +13968,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v16",
+      extractorVersion: "kimi-pricing-v18",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -15017,6 +15118,37 @@ describe("Kimi adapters", () => {
     ).toEqual(partition);
   });
 
+  it("reports the relocated web-search price page and its lost REST rows", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await pricing({
+      overrides: {
+        llms: await fixture("kimi/llms-websearch.txt"),
+        tools: await fixture("kimi/tools-websearch.md"),
+      },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(models.map(({ model_id }) => model_id)).toEqual(
+      expect.arrayContaining(["kimi-k3", "kimi-k2.6"]),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "kimi-k3")?.price_facts.length,
+    ).toBeGreaterThan(0);
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "commercial_index_drift",
+        sample: "Kimi documentation index has unreviewed commercial pages: /docs/pricing/websearch",
+      }),
+    );
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "rest_tool_pricing_drift",
+        sample: "Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints",
+      }),
+    );
+  });
+
   it("keeps independent prices when Batch accounting evidence drifts", async () => {
     const body = await fixture("kimi/batch-api.md");
     const reconciliation: PricingReconciliationItem[] = [];
@@ -15040,6 +15172,32 @@ describe("Kimi adapters", () => {
         sample: "2/4 Kimi commercial pricing inputs",
       }),
     );
+  });
+
+  it("stops expecting the retired Chat web-search accounting input", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const parsed = await pricingResult({
+      overrides: { tools: await fixture("kimi/tools-websearch.md") },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const keys = parsed.pricing_inputs?.map(({ key }) => key) ?? [];
+    expect(keys).toHaveLength(3);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        "batch.result.input_tokens",
+        "batch.result.output_tokens",
+        "web_search.formula.created_fibers",
+      ]),
+    );
+    expect(keys).not.toContain("web_search.chat.billable_calls");
+    expect(
+      reconciliation.filter(({ reason_code }) => reason_code === "pricing_input_contract_partial"),
+    ).toEqual([]);
+    expect(
+      parsed.models
+        .find(({ model_id }) => model_id === "kimi-k2.6")
+        ?.price_facts.some(({ meter }) => meter === "input_text"),
+    ).toBe(true);
   });
 
   it("rejects only a malformed price row and retains its valid siblings", async () => {
@@ -15070,12 +15228,12 @@ describe("Kimi adapters", () => {
     });
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
-      observed_items: 55,
+      observed_items: 56,
       disposition_counts: {
         normalized: 38,
         explicit_non_numeric: 12,
         excluded: 0,
-        unbound: 5,
+        unbound: 6,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -15115,6 +15273,11 @@ describe("Kimi adapters", () => {
           disposition: "unbound",
           reason_code: "web_search_documentation_outdated",
         }),
+        expect.objectContaining({
+          disposition: "unbound",
+          reason_code: "rest_tool_pricing_drift",
+          sample: "Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints",
+        }),
       ]),
     );
     const internationalReconciliation: PricingReconciliationItem[] = [];
@@ -15126,12 +15289,12 @@ describe("Kimi adapters", () => {
       sourcePricingReconciliation(international, internationalReconciliation, true),
     ).toMatchObject({
       basis: "source_item",
-      observed_items: 55,
+      observed_items: 56,
       disposition_counts: {
         normalized: 38,
         explicit_non_numeric: 12,
         excluded: 0,
-        unbound: 5,
+        unbound: 6,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
