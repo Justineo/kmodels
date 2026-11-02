@@ -26,6 +26,11 @@ interface DocumentRequirement {
   verify?: (body: string) => boolean;
 }
 
+type PricingInputContract = {
+  fact: Omit<SourcePricingInputFact, "source_ref">;
+  requirements: readonly DocumentRequirement[];
+};
+
 export interface KimiEndpointClaim {
   name: string;
   path: string;
@@ -141,33 +146,31 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
     bodies.push(body);
     documents.set(path, bodies);
   }
-  const contracts: ReadonlyArray<{
-    fact: Omit<SourcePricingInputFact, "source_ref">;
-    requirements: readonly DocumentRequirement[];
-  }> = [
+  const priceTools = documents.get("/docs/pricing/tools");
+  const priceToolsBody = priceTools?.length === 1 ? priceTools[0] : undefined;
+  const retiredChatWebSearch = priceToolsBody !== undefined && chatWebSearchRetired(priceToolsBody);
+  const chatWebSearchContract: PricingInputContract = {
+    fact: {
+      key: "web_search.chat.billable_calls",
+      channel: "response",
+      locator: {
+        kind: "provider_field",
+        value: "KimiChatResponse.billable_builtin_web_search_calls",
+      },
+      availability: "success_only",
+    },
+    requirements: [
+      {
+        path: "/docs/pricing/tools",
+        markers: [/finish_reason\s*=\s*tool_calls/, /tool_call\.function\.name\s*=\s*\$web_search/],
+      },
+      { path: "/docs/guide/use-web-search", markers: [/\$web_search/, /tool_calls?/] },
+    ],
+  };
+  const contracts: ReadonlyArray<PricingInputContract> = [
     batchContract("input_tokens", "prompt_tokens"),
     batchContract("output_tokens", "completion_tokens"),
-    {
-      fact: {
-        key: "web_search.chat.billable_calls",
-        channel: "response",
-        locator: {
-          kind: "provider_field",
-          value: "KimiChatResponse.billable_builtin_web_search_calls",
-        },
-        availability: "success_only",
-      },
-      requirements: [
-        {
-          path: "/docs/pricing/tools",
-          markers: [
-            /finish_reason\s*=\s*tool_calls/,
-            /tool_call\.function\.name\s*=\s*\$web_search/,
-          ],
-        },
-        { path: "/docs/guide/use-web-search", markers: [/\$web_search/, /tool_calls?/] },
-      ],
-    },
+    ...(retiredChatWebSearch ? [] : [chatWebSearchContract]),
     {
       fact: {
         key: "web_search.formula.created_fibers",
@@ -212,6 +215,20 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
     contracts.length,
     "Kimi commercial pricing inputs",
     input.onReconciliation,
+  );
+}
+
+/**
+ * Kimi retired the billed Chat `$web_search` tool on 2026-10-20. Once the pricing page documents
+ * the Responses `web_search` tool and the `/v1/tools` endpoints and drops the Chat trigger, the
+ * billed Chat route has no published price or applicability and its input must not be expected.
+ */
+function chatWebSearchRetired(priceTools: string): boolean {
+  const publishesChatTrigger =
+    /finish_reason\s*=\s*tool_calls/.test(priceTools) &&
+    /tool_call\.function\.name\s*=\s*\$web_search/.test(priceTools);
+  return (
+    !publishesChatTrigger && /web_search_call/.test(priceTools) && /\/v1\/tools\//.test(priceTools)
   );
 }
 
@@ -366,13 +383,7 @@ function openApiInput(
   };
 }
 
-function batchContract(
-  signal: string,
-  field: string,
-): {
-  fact: Omit<SourcePricingInputFact, "source_ref">;
-  requirements: readonly DocumentRequirement[];
-} {
+function batchContract(signal: string, field: string): PricingInputContract {
   return {
     fact: {
       key: `batch.result.${signal}`,

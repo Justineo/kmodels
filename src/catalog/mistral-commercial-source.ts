@@ -267,10 +267,8 @@ export function extractMistralCommercialFacts(
       "image_generation",
     ],
     ["library-retrieval", "Document Library retrieval", "search/libraries", "document_library"],
-  ];
+  ] as const;
   for (const [key, name, path, marker] of services) {
-    if (key === undefined || name === undefined || path === undefined || marker === undefined)
-      continue;
     if (facts.some((fact) => fact.resource_key === key)) continue;
     const documents =
       input.documents?.filter(({ url }) => url === `https://docs.mistral.ai/studio/${path}.md`) ??

@@ -102,7 +102,10 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   updates do not move that date and unknown changelog identities cannot create catalog rows.
   Month/day headings must establish a real calendar date. An unreadable heading clears the
   previous date so later entries cannot inherit it. An irregular deprecation row is signaled and
-  skipped locally. Repeated shutdown notices retain the latest date and all observed aliases,
+  skipped locally. A readable `at earliest` shutdown bound is a reviewed source form rather than
+  irregular drift: the shared lifecycle rule forbids earliest dates from triggering a transition,
+  so the row is skipped without an unresolved-contract signal while unrelated unreadable dates keep
+  signaling. Repeated shutdown notices retain the latest date and all observed aliases,
   independently of row order.
   Shutdown tables accept full or three-letter English month names and the explicit
   `Model family / snapshot` header. Calendar validation still rejects impossible dates; a family
