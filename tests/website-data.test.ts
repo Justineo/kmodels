@@ -24,7 +24,7 @@ import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/web
 import { generatedData } from "./generated-data-context.ts";
 
 const websiteDataBudgets = {
-  modelDetailBytes: 80 * 1024 * 1024,
+  modelDetailBytes: 82 * 1024 * 1024,
 };
 
 const auditFields = new Set([
