@@ -54,6 +54,19 @@ suffixes. Display aliases, recommended-model labels and similar family names do 
 additional request IDs or transfer prices. IDs found only in cache eligibility or tool compatibility
 lists do not establish a base inference tariff.
 
+The optional Alibaba Cloud mainland price book contributes Beijing input and output token
+rates from exact model rows with explicit CNY amounts. The same rate extraction and request mapping
+apply to flat rates, recognized thinking modes and bounded input-token bands. Preserve the explicit
+Batch discount when the row states it. Duplicate scopes,
+unreviewed commercial qualifiers and overlaps with primary prices are excluded at row scope.
+Missing or malformed companion evidence leaves the primary book usable.
+
+The authenticated deployment inventory supplies deployable base models and available capacity
+plans. The separate [inference inventory](https://help.aliyun.com/en/model-studio/list-models)
+requires an account key and, for Beijing and certain other regions, a workspace-specific origin.
+Its inference filters and optional price fields describe the queried region and account context.
+They cannot be substituted for deployment plans or treated as exhaustive public price evidence.
+
 The mapping fixes no region or deployment scope from an ID's spelling. The same ID can have multiple
 published regional prices; region, deployment scope, input-token bands and other commercial
 conditions remain on those prices. Missing conditions produce candidates. A supplied region outside

@@ -165,6 +165,8 @@ Status: implemented
   for compilation, including its supported `threat-detection.report-as-issue` switch. Compile with
   `--action-mode action --action-tag v0.91.6` to preserve the reviewed setup-action update. Keep the
   generated action pins synchronized with that compiler; v0.87.10 cannot express this policy.
+  The repair toolchain CI job compares the pinned compiler's frontmatter hash to the lock file
+  before accepting workflow changes. A mismatch would stop activation before an agent starts.
   Pin `sandbox.agent.version` to v0.28.27 so the Copilot Responses adapter normalizes replayed
   `apply_patch` item IDs from `ctc_` to `fc_` ([upstream fix](https://github.com/github/gh-aw-firewall/pull/8944)).
   Regenerate the lock file so the AWF binary, configuration schema, and container digests advance
@@ -305,6 +307,9 @@ Status: implemented
   inspect the raw links and first-party successor evidence before abandoning repair, and describe
   missing pricing sections as unresolved until relocation or withdrawal is established. Passing an
   existing fallback test does not establish that a current contract omission is unrepairable.
+  When a verified first-party public source relocates to a host already in the repair sandbox
+  network policy, the repair can update the exact source URL or host in the manifest and replay the
+  successor. A host outside that policy requires an independently reviewed policy change.
   The prepared context is read directly inside the sandbox; rerunning the preparation CLI there
   attempts to write runner-only summary/output paths and is unsupported.
   Public manifest hosts are explicitly admitted by the repair sandbox network configuration; keep
@@ -330,8 +335,9 @@ Status: implemented
   `node_modules/typescript/lib` as the workspace TypeScript SDK to use the same bridge.
 - The scheduled refresh runs hourly with jitter and commits the validated
   catalog, public-only parsed pricing compiler input, canonical pricing,
-  derived UI/export asset indexes and packs, fetch state, quarantine, and
-  refresh summary using a `chore(data): ...` commit. Its commit records the
+  inference request ID mappings, derived UI/export asset indexes and packs, fetch state,
+  quarantine, and refresh summary using a `chore(data): ...` commit. Publication fails if
+  collection leaves non-ignored data changes outside the staged commit. Its commit records the
   producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
   out full commit/tree history with `filter: blob:none` so the website generation-time
   link can resolve the latest catalog-producing commit without downloading historical

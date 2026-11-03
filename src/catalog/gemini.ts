@@ -331,6 +331,24 @@ function pageOperations(
 }
 
 function cards(body: string): Map<string, Card> {
+  const markdown = geminiStudioMarkdown(body);
+  if (markdown !== undefined) {
+    const result = new Map<string, Card>();
+    for (const match of markdown.matchAll(/{% card ([^%]*)%}([\s\S]*?){% \/card %}/g)) {
+      const attributes = match[1] ?? "";
+      const name = attributes.match(/\btitle="([^"]+)"/)?.[1];
+      const path = (match[2] ?? "").match(/\bhref="(\/docs\/models\/[a-z0-9.-]+)"/)?.[1];
+      if (name === undefined || path === undefined) continue;
+      const state = modelStateFromLabel(attributes.match(/\bbadge="([^"]+)"/)?.[1] ?? "");
+      result.set(path, {
+        name,
+        description: attributes.match(/\bdescription="([^"]+)"/)?.[1],
+        status: state.status,
+        releaseStage: state.release_stage,
+      });
+    }
+    return result;
+  }
   const $ = load(body);
   const result = new Map<string, Card>();
   $(".devsite-article-body a.gemini-card-centered[href], .gemini-model-row a[href]").each(
@@ -380,8 +398,95 @@ function description($: LoadedDocument): string | undefined {
   return result;
 }
 
+export function geminiStudioMarkdown(body: string): string | undefined {
+  if (!body.includes("https://aistudio.google.com/llms.txt")) return;
+  if (body.startsWith("> ## AI Agent Context")) return body;
+  const fallback = load(body, { scriptingEnabled: false })("noscript > pre");
+  const markdown = fallback.text();
+  if (fallback.length === 1 && markdown.startsWith("> ## AI Agent Context")) return markdown;
+}
+
+function studioMarkup(body: string, changelog = false): string {
+  const inline = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/{% badge type="([^"]+)" \/%}/g, (_match, badge: string) =>
+        badge === "supported" ? " Supported " : badge === "not-supported" ? " Not supported " : " ",
+      )
+      .replace(/{% section(?: [^%]*)? %}/g, "<section>")
+      .replace(/{% \/section %}/g, "</section>")
+      .replace(/{%[^%]*%}/g, " ")
+      .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+      .replace(/ {2,}\n[ \t]*/g, "<br>");
+  const renderTable = (rows: string[][], retired: boolean) => {
+    const [headers, ...values] = rows;
+    if (headers === undefined || headers.length < 2) return "";
+    return `<table><thead><tr>${headers.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${values
+      .filter((row) => row.length === headers.length || row.length === 1)
+      .map(
+        (row) =>
+          `<tr${retired ? ' class="row-gray"' : ""}>${row.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`,
+      )
+      .join("")}</tbody></table>`;
+  };
+  const title = body.match(/^# (.+)$/m)?.[1] ?? "";
+  let retired = false;
+  const parts = body.split(
+    /({% table[^%]*%}[\s\S]*?{% \/table %}|(?:^\|[^\n]*\n)+|^#{2,3} [^\n]*)/m,
+  );
+  const rendered = parts.map((part) => {
+    const heading = part.match(/^(#{2,3}) (.+)$/);
+    if (heading?.[2] !== undefined) {
+      const level = heading[1]?.length ?? 2;
+      if (level === 2) retired = /^Deprecated (?:models|agents)\b/i.test(heading[2]);
+      return `<h${level}>${inline(heading[2])}</h${level}>`;
+    }
+    if (part.startsWith("{% table")) {
+      const content = part.replace(/^{% table[^%]*%}|{% \/table %}$/g, "");
+      return renderTable(
+        content.split(/^\s{2}---\s*$/m).map((row) =>
+          row
+            .split(/^ {2}\* /m)
+            .slice(1)
+            .map((cell) => cell.trim()),
+        ),
+        retired,
+      );
+    }
+    if (part.startsWith("|")) {
+      const rows = part
+        .trim()
+        .split("\n")
+        .map((line) => line.trim().split("|").slice(1, -1));
+      if (rows[1]?.every((cell) => /^\s*:?-+:?\s*$/.test(cell)) === true)
+        return renderTable(
+          rows.filter((_row, index) => index !== 1),
+          retired,
+        );
+    }
+    return changelog
+      ? `<ul>${part
+          .split(/^\s*[-*] /m)
+          .slice(1)
+          .map((item) => `<li>${inline(item)}</li>`)
+          .join("")}</ul>`
+      : "";
+  });
+  const intro =
+    body
+      .split(/^# .+$/m)[1]
+      ?.trim()
+      .split(/\n\s*\n/)[0] ?? "";
+  return `<h1 class="devsite-page-title">${inline(title)}</h1><div class="devsite-article-body"><p>${inline(intro)}</p>${rendered.join("")}</div>`;
+}
+
 function pageModels(input: Input, body: string, card: Card | undefined): PageModel[] {
-  const $ = load(body);
+  const markdown = geminiStudioMarkdown(body);
+  const $ = load(markdown === undefined ? body : studioMarkup(markdown));
   const tables = $(".devsite-article-body table").filter(
     (_index, table) => property($, $(table), /(?:Model|Agent) code$/i) !== undefined,
   );
@@ -489,7 +594,8 @@ function ensure(
 }
 
 function applyLifecycle(models: Map<string, ProviderModel>, input: Input, body: string): void {
-  const $ = load(body);
+  const markdown = geminiStudioMarkdown(body);
+  const $ = load(markdown === undefined ? body : studioMarkup(markdown));
   $(".devsite-article-body h2").each((_index, heading) => {
     const section = text($(heading).text());
     const siblings = $(heading).nextUntil("h2");
@@ -1059,6 +1165,46 @@ function addRates(
   }
 }
 
+function studioPriceMarkup(body: string): string {
+  const $ = load('<div class="devsite-article-body"></div>');
+  const article = $(".devsite-article-body");
+  for (const section of body.split(/^## /m).slice(1)) {
+    const header = section.split(/{% hr \/%}|{% (?:tabs|table)\b/)[0] ?? "";
+    const ids = unique(
+      [...header.matchAll(/\[`([a-z0-9][a-z0-9.-]+)`\]\(\/docs\/models\/[a-z0-9.-]+\)/g)].flatMap(
+        (match) => match[1] ?? [],
+      ),
+    );
+    if (ids.length === 0) continue;
+    const group = $('<div class="models-section"><div class="heading-group"></div></div>');
+    for (const id of ids) group.children().append($("<code></code>").text(id));
+    article.append(group);
+    const tabs = [...section.matchAll(/{% tab title="([^"]+)" %}([\s\S]*?){% \/tab %}/g)];
+    const blocks =
+      tabs.length === 0
+        ? [["", section] as const]
+        : tabs.map((tab) => [tab[1] ?? "", tab[2] ?? ""] as const);
+    const searchNote = section.match(
+      /A customer-submitted request to Gemini may result in one or\s+more queries to Google Search\. You will be charged for each individual search\s+query performed\./,
+    )?.[0];
+    if (searchNote !== undefined) article.append($("<p></p>").text(text(searchNote)));
+    for (const [tier, block] of blocks) {
+      const parsed = load(studioMarkup(block));
+      const tables = parsed("table").addClass("pricing-table");
+      if (tables.length === 0) continue;
+      const panel = $("<section></section>");
+      if (tier !== "") panel.append($("<h3></h3>").text(tier));
+      const contributor = block.match(
+        /Contributor Tier is offered as a private preview on an invite-only basis/,
+      )?.[0];
+      if (contributor !== undefined) panel.append($("<p></p>").text(contributor));
+      panel.append(parsed.html(tables));
+      article.append(panel);
+    }
+  }
+  return $.html();
+}
+
 function applyPricing(
   models: Map<string, ProviderModel>,
   sourceId: string,
@@ -1067,7 +1213,8 @@ function applyPricing(
   mapsBilling: MapsGroundingBilling,
   searchBilling: SearchGroundingBilling | undefined,
 ): { claims: GeminiGroundingClaim[]; ids: Map<string, string> } {
-  const $ = load(body);
+  const markdown = geminiStudioMarkdown(body);
+  const $ = load(markdown === undefined ? body : studioPriceMarkup(markdown));
   const claims: GeminiGroundingClaim[] = [];
   const ids = new Map<string, string>();
   $(".devsite-article-body .models-section").each((_index, section) => {
@@ -1326,7 +1473,8 @@ function applyPricing(
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
-  const $ = load(body);
+  const markdown = geminiStudioMarkdown(body);
+  const $ = load(markdown === undefined ? body : studioMarkup(markdown, true));
   const aliases = new Map<string, string>();
   $(".devsite-article-body h2").each((_index, heading) => {
     const released = modelDate(text($(heading).text()));
@@ -1859,6 +2007,14 @@ function videoPricingInputs(body: string, sourceRef: string): SourcePricingInput
 }
 
 function interactionPath(body: string): string {
+  const markdown = geminiStudioMarkdown(body);
+  if (markdown !== undefined) {
+    const endpoint =
+      /^\{% mark class="http-post" %\}[^\n]*`POST`\{% \/mark %\} `https:\/\/generativelanguage\.googleapis\.com(\/v1beta\/interactions)`$/m.exec(
+        markdown,
+      )?.[1];
+    if (endpoint !== undefined) return endpoint;
+  }
   const $ = load(body);
   const heading = $("h2").filter((_index, element) =>
     ["Creating an interaction", "CreateInteraction"].includes(text($(element).text())),
@@ -1877,7 +2033,8 @@ function applyInteractions(
   overviewBody: string,
   apiBody: string,
 ): void {
-  const $ = load(overviewBody);
+  const markdown = geminiStudioMarkdown(overviewBody);
+  const $ = load(markdown === undefined ? overviewBody : studioMarkup(markdown));
   const heading = exactHeading($, "h2", "Supported models & agents");
   const siblings = heading.nextUntil("h2");
   const table = siblings.filter("table").add(siblings.find("table")).first();
@@ -1925,7 +2082,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const versionIds = new Map<string, string[]>();
   const modelDocuments = bundle.documents
     .filter((item) =>
-      /^\/gemini-api\/docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/.test(
+      /^\/(?:gemini-api\/)?docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/.test(
         new URL(item.url).pathname,
       ),
     )
@@ -1958,7 +2115,8 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   applyInteractions(
     models,
     document(bundle, "/gemini-api/docs/interactions-overview"),
-    document(bundle, "/api/interactions-api"),
+    optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??
+      document(bundle, "/api/interactions-api"),
   );
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),

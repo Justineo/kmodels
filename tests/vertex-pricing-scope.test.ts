@@ -13,6 +13,7 @@ import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts
 import { createCalculator, type Quantity } from "../src/pricing/index.ts";
 import { canonicalJson } from "../src/catalog/canonical-json.ts";
 import { requiredUsageSignals } from "../src/catalog/pricing-calculation.ts";
+import { vertexClaudeSkuSource } from "../src/catalog/vertex-claude-skus.ts";
 
 const observedAt = "2026-10-19T07:12:03.562Z";
 function configuration() {
@@ -58,6 +59,45 @@ function parse(body: string, documents: { url: string; body: string }[] = []) {
 async function coherentPricing() {
   return (await nativePricing()).replaceAll("longer than or equal to", "longer than");
 }
+
+it.each([
+  ["Claude Haiku 5.5(D364-3640-5C2F)", "Claude Haiku 5 5"],
+  ["Claude Haiku 5.5(D364-3640-5C2F)", "Claude Haiku 5.5"],
+  ["Vertex AI(C7E2-9256-1C43)", "Claude Haiku 5 5"],
+])(
+  "resolves a disputed boundary only for exact billing SKUs under %s with label %s",
+  async (service, modelLabel) => {
+    const row = (meter: string, min: number, max: number, sku: string) =>
+      `<tr><td>${service}</td><td>${modelLabel} — ${meter} — global — Context Window Size from ${min} to ${max} Tokens</td><td>${sku}</td><td></td></tr>`;
+    const skuTable = `<table><thead><tr><th>Service Name</th><th>SKU Name</th><th>SKU ID</th><th>Date Added</th></tr></thead><tbody>${row("Input Tokens", 0, 100000, "ABCD-0000-0001")}${row("Input Tokens", 100001, 1000000, "ABCD-0000-0002")}${row("Output Tokens", 0, 100000, "ABCD-0000-0003")}</tbody></table>`;
+    const result = parse(await nativePricing(), [{ url: vertexClaudeSkuSource, body: skuTable }]);
+    const haiku = result.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
+    expect(haiku?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        conditions: expect.objectContaining({ region: "global", context_max_tokens: 100_000 }),
+        source_locator: { kind: "provider_key", value: "ABCD-0000-0001 / ABCD-0000-0002" },
+      }),
+    );
+    expect(haiku?.raw_price_facts).not.toContainEqual(
+      expect.objectContaining({
+        raw: expect.objectContaining({ meter: "input_text" }),
+        conditions: expect.objectContaining({ region: "global", service_tier: "standard" }),
+      }),
+    );
+    for (const [meter, region] of [
+      ["output_text", "global"],
+      ["input_text", "us"],
+    ]) {
+      expect(haiku?.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          raw: expect.objectContaining({ meter }),
+          conditions: expect.objectContaining({ region, context_max_tokens: 100_000 }),
+        }),
+      );
+    }
+  },
+);
 
 it("does not assign an unowned family price to the longest similar model ID", () => {
   const result = parse(
@@ -232,10 +272,19 @@ describe("Vertex native tariff scopes", () => {
     },
   );
 
-  it("retains contradictory native threshold declarations as local raw evidence", async () => {
+  it("prices agreed context ranges and retains the disputed threshold as raw evidence", async () => {
     const parsed = parse(await nativePricing());
     const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
-    expect(haiku?.price_facts).toEqual([]);
+    expect(haiku?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          conditions: expect.objectContaining({ context_max_tokens: 99_999 }),
+        }),
+        expect.objectContaining({
+          conditions: expect.objectContaining({ context_min_tokens: 100_001 }),
+        }),
+      ]),
+    );
     expect(haiku?.raw_price_facts.length).toBeGreaterThan(0);
     expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
       true,
@@ -248,6 +297,10 @@ describe("Vertex native tariff scopes", () => {
     ).toBe(true);
     expect(haiku?.raw_price_facts).toContainEqual(
       expect.objectContaining({
+        conditions: expect.objectContaining({
+          context_min_tokens: 100_000,
+          context_max_tokens: 100_000,
+        }),
         raw: expect.objectContaining({
           amount: "0.10",
           denomination: "USD",
@@ -270,7 +323,12 @@ describe("Vertex native tariff scopes", () => {
       .replace("longer than 100k tokens", "longer than or equal to 100k tokens");
     const haiku = parse(body).models.find(({ model_id }) => model_id === "claude-haiku-5-5");
     expect(haiku?.price_facts.some(({ conditions }) => conditions.region === "us")).toBe(true);
-    expect(haiku?.price_facts.some(({ conditions }) => conditions.region === "global")).toBe(false);
+    expect(
+      haiku?.price_facts.some(
+        ({ conditions }) =>
+          conditions.region === "global" && conditions.context_max_tokens === 99_999,
+      ),
+    ).toBe(true);
     expect(haiku?.raw_price_facts.length).toBeGreaterThan(0);
     expect(haiku?.raw_price_facts.every(({ conditions }) => conditions?.region === "global")).toBe(
       true,

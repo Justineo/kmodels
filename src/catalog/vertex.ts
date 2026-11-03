@@ -3,6 +3,11 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractVertexPricingInputs } from "./vertex-accounting.ts";
 import { vertexInferencePrices } from "./vertex-inference-pricing.ts";
+import {
+  claudeContextSkuPair,
+  claudeContextSkus,
+  vertexClaudeSkuSource,
+} from "./vertex-claude-skus.ts";
 import { extractVertexCommercialFacts } from "./vertex-commercial-source.ts";
 import {
   vertexGroundingAllowance,
@@ -42,6 +47,7 @@ interface PageTokenEquivalence {
 
 interface PricingEvidence {
   pageTokenEquivalences: ReadonlyMap<string, PageTokenEquivalence>;
+  claudeSkus: ReturnType<typeof claudeContextSkus>;
 }
 
 interface LabeledPrice {
@@ -1232,7 +1238,9 @@ function pageTokenEquivalence(value: string): PageTokenEquivalence | undefined {
 
 function pricingEvidence(documents: LinkedDocument[]): PricingEvidence {
   const pageTokenEquivalences = new Map<string, PageTokenEquivalence>();
+  const skuDocuments = documents.filter(({ url }) => url === vertexClaudeSkuSource);
   for (const document of documents) {
+    if (document.url === vertexClaudeSkuSource) continue;
     const $ = load(document.body);
     $(".devsite-article-body table").each((_index, tableElement) => {
       const table = $(tableElement);
@@ -1244,7 +1252,11 @@ function pricingEvidence(documents: LinkedDocument[]): PricingEvidence {
         pageTokenEquivalences.set(id, equivalence);
     });
   }
-  return { pageTokenEquivalences };
+  const skuDocument = skuDocuments.length === 1 ? skuDocuments[0] : undefined;
+  return {
+    pageTokenEquivalences,
+    claudeSkus: skuDocument === undefined ? new Map() : claudeContextSkus(skuDocument.body),
+  };
 }
 
 function money(
@@ -1298,8 +1310,52 @@ function addPriceQuote(
   issue: PriceQuoteIssue | undefined,
   context: PricingTableContext,
   reconcile?: Reconcile,
+  dispute?: ContextDispute,
+  skus?: PricingEvidence["claudeSkus"],
 ): void {
-  if (issue === undefined) return addRate(model, rate, reconcile);
+  if (issue === undefined) {
+    const skuPair =
+      dispute?.headerMatchesSkuPartition &&
+      skus !== undefined &&
+      model.service_families?.includes("publishers/anthropic")
+        ? claudeContextSkuPair(skus, model.model_id, rate, dispute.count)
+        : undefined;
+    if (skuPair !== undefined && dispute !== undefined) {
+      addRate(
+        model,
+        {
+          ...rate,
+          conditions: {
+            ...rate.conditions,
+            ...(rate.conditions.context_max_tokens === undefined
+              ? {}
+              : { context_max_tokens: dispute.count }),
+          },
+          source_locator: { kind: "provider_key", value: skuPair },
+        },
+        reconcile,
+      );
+      return;
+    }
+    addRate(model, rate, reconcile);
+    if (dispute !== undefined)
+      addPriceQuote(
+        model,
+        {
+          ...rate,
+          conditions: {
+            ...rate.conditions,
+            context_min_tokens: dispute.count,
+            context_max_tokens: dispute.count,
+          },
+        },
+        fragment,
+        "context",
+        context,
+        reconcile,
+      );
+    return;
+  }
   model.raw_price_facts.push({
     term_key: "unparsed_base_rate",
     impact: "base_price",
@@ -1408,15 +1464,20 @@ function pageAlternativeVerified(
   );
 }
 
+interface ContextDispute {
+  count: number;
+  headerMatchesSkuPartition: boolean;
+}
+
 function contextTokenBounds(
   header: string,
   notes: readonly string[],
-): SourcePriceFact["conditions"] | undefined {
+): { conditions: SourcePriceFact["conditions"]; disputed?: ContextDispute } | undefined {
   const matches = [
     ...header.matchAll(/(<=|=<|>=|=>|≤|≥|<|>)\s*([^\s]+)\s+(?:(?:cached )?input )?tokens?\b/gi),
   ];
   const match = matches[0];
-  if (matches.length === 0) return /[<>=≤≥]/.test(header) ? undefined : {};
+  if (matches.length === 0) return /[<>=≤≥]/.test(header) ? undefined : { conditions: {} };
   if (matches.length !== 1 || match?.[1] === undefined || match[2] === undefined) return;
   const count = wholeTokenCount(match[2].toUpperCase());
   if (count === undefined) return;
@@ -1430,6 +1491,8 @@ function contextTokenBounds(
       ? notes.filter((note) => /query input context|long context rates/i.test(note))
       : notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
   if (marker !== undefined && ownedNotes.length === 0) return;
+  let agreedBoundary = boundary;
+  let disputed: ContextDispute | undefined;
   for (const note of ownedNotes) {
     const rule = note.match(
       /^(\*+)\s*If a query input context is longer than( or equal to)? ([^\s]+) tokens, all tokens \(input and output\) are charged at long context rates\.?$/i,
@@ -1438,9 +1501,22 @@ function contextTokenBounds(
     if (marker === undefined && noteCount !== count) continue;
     if (rule === null || noteCount !== count) return;
     const longMin = noteCount + (rule[2] === undefined ? 1 : 0);
-    if (!Number.isSafeInteger(longMin) || boundary !== (lower ? longMin : longMin - 1)) return;
+    const noteBoundary = lower ? longMin : longMin - 1;
+    if (!Number.isSafeInteger(longMin) || Math.abs(boundary - noteBoundary) > 1) return;
+    if (boundary !== noteBoundary) {
+      disputed = { count, headerMatchesSkuPartition: boundary === (lower ? count + 1 : count) };
+      agreedBoundary = lower
+        ? Math.max(agreedBoundary, noteBoundary)
+        : Math.min(agreedBoundary, noteBoundary);
+    }
   }
-  return lower ? { context_min_tokens: boundary } : { context_max_tokens: boundary };
+  if (agreedBoundary < 0) return;
+  return {
+    conditions: lower
+      ? { context_min_tokens: agreedBoundary }
+      : { context_max_tokens: agreedBoundary },
+    ...(disputed === undefined ? {} : { disputed }),
+  };
 }
 
 function pricingValidity(label: string): SourcePriceFact["conditions"] {
@@ -1505,7 +1581,14 @@ function modelPriceQuotes(
   const labels = label.split(/,\s*(?=Gemini\b)/i);
   return labels.flatMap((label) => {
     if (label.trim() === "") return [];
-    const targets = priceTargets(models, label);
+    const claudeFamilyLabel =
+      /^Anthropic[’']s Claude models$/i.test(context.section ?? "") &&
+      /^(?:Fable|Haiku|Opus|Sonnet) \d+(?:\.\d+)?$/i.test(label.trim());
+    const targets = claudeFamilyLabel
+      ? priceTargets(models, `Claude ${label.trim()}`).filter((model) =>
+          model.service_families?.includes("publishers/anthropic"),
+        )
+      : priceTargets(models, label);
     if (targets.length === 0)
       reconcile?.({
         disposition: "unbound",
@@ -1669,7 +1752,7 @@ function tokenTables(
                 for (const rateMeter of rateMeters) {
                   const conditions = {
                     ...scope?.conditions,
-                    ...context,
+                    ...context?.conditions,
                     service_tier: serviceTier,
                     ...(/\b5m\b/i.test(descriptor) ? { cache_ttl_seconds: 300 } : {}),
                     ...(/\b1h\b/i.test(descriptor) ? { cache_ttl_seconds: 3600 } : {}),
@@ -1696,6 +1779,8 @@ function tokenTables(
                     scope === undefined ? "location" : context === undefined ? "context" : issue,
                     tableContext,
                     reconcile,
+                    context?.disputed,
+                    evidence.claudeSkus,
                   );
                 }
           if (alternative >= 0)
@@ -1715,7 +1800,7 @@ function tokenTables(
                     raw,
                     {
                       ...scope?.conditions,
-                      ...context,
+                      ...context?.conditions,
                       ...validity,
                     },
                     "base_price",
@@ -1966,7 +2051,7 @@ function labeledTables(
                   {
                     ...scope?.conditions,
                     service_tier: lower.includes("batch") ? "batch" : undefined,
-                    ...context,
+                    ...context?.conditions,
                     cache_ttl_seconds: lower.startsWith("5m")
                       ? 300
                       : lower.startsWith("1h")
@@ -1979,6 +2064,8 @@ function labeledTables(
                 scope === undefined ? "location" : context === undefined ? "context" : issue,
                 tableContext,
                 reconcile,
+                context?.disputed,
+                evidence.claudeSkus,
               );
             }
           }
@@ -1990,7 +2077,7 @@ function labeledTables(
             (cacheDuplicate && !verifiedDefaultCacheDuplicate(matches));
           const dollarCount = (fragment.match(/\$/g) ?? []).length;
           for (const { model, conditions: validity } of targets) {
-            const conditions = { ...scope?.conditions, ...context, ...validity };
+            const conditions = { ...scope?.conditions, ...context?.conditions, ...validity };
             const pageTokenRelation = evidence.pageTokenEquivalences.get(model.model_id);
             const pageAlternativesVerified =
               pageTokenRelation !== undefined && exactPageAlternatives(fragment, pageTokenRelation);
@@ -2800,11 +2887,12 @@ export function parseVertexPricing(input: Input): SourceParseResult {
     groundingSearch === undefined || groundingMaps === undefined || groundingData === undefined
       ? undefined
       : { search: groundingSearch, maps: groundingMaps, data: groundingData };
+  const evidence = pricingEvidence(bundle.documents);
   const claims = applyPricing(
     models,
     input.source.id,
     bundle.index.body,
-    pricingEvidence(bundle.documents),
+    evidence,
     document("/gemini-enterprise-agent-platform/models/partner-models/claude/web-search")?.body,
     groundingReferences,
     input.onPricingReconciliation,
@@ -2825,7 +2913,7 @@ export function parseVertexPricing(input: Input): SourceParseResult {
         models,
         input.source.id,
         partnerPrice.body,
-        pricingEvidence(bundle.documents),
+        evidence,
         document("/gemini-enterprise-agent-platform/models/partner-models/claude/web-search")?.body,
         groundingReferences,
         input.onPricingReconciliation,

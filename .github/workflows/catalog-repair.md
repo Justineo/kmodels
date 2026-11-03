@@ -55,6 +55,7 @@ network:
     - ai-gateway.vercel.sh
     - ai.azure.com
     - ai.google.dev
+    - aistudio.google.com
     - ai.meta.com
     - dev.meta.ai
     - aiplatform.googleapis.com
@@ -616,7 +617,13 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    `src/catalog/*.ts` and `tests/*.test.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
    Workflow, script, dependency, generated-data, executable, symlink, and submodule changes are rejected.
-   If a new source host requires a workflow allowlist change, report it as incomplete.
+   A public redirect to a host already listed in this workflow's network policy can be a normal
+   source migration. Verify ownership from first-party navigation or documentation, then edit the
+   affected source's URL or exact host allowlist in `src/catalog/manifests.ts` and fetch again through
+   the reviewed evidence command. Save the successor response and replay the affected parser.
+   A redirect alone does not authorize the destination. If the host is outside the workflow
+   network policy, report the source, destination host and first-party ownership evidence as
+   incomplete. Keep workflow and network-policy changes outside automatic publication.
    Preserve strict identity joins, scope boundaries, source-integrity validation,
    and exact decimal price handling. Never infer a price from another model, family, provider, region,
    or service; never convert missing pricing to free or not-applicable; never weaken a source-coverage

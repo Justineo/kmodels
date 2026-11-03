@@ -2,6 +2,7 @@ import type { PriceDimension } from "./pricing-schema.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
 import { sagemakerCatalogUrl } from "./sagemaker.ts";
 import { vertexClaudeBatchSource, vertexClaudeIdSource } from "./vertex-inference-pricing.ts";
+import { vertexClaudeSkuSource } from "./vertex-claude-skus.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
@@ -1635,7 +1636,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v38",
+        extractorVersion: "vercel-catalog-v39",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -2162,13 +2163,13 @@ export const manifests = [
     sources: [
       {
         id: "gemini-models",
-        url: "https://ai.google.dev/gemini-api/docs/models",
+        url: "https://aistudio.google.com/docs/models",
         type: "website",
         access: "public",
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v11",
+        extractorVersion: "gemini-catalog-v12",
         fields: [
           "model_id",
           "name",
@@ -2189,6 +2190,7 @@ export const manifests = [
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
         allowedHosts: [
           "ai.google.dev",
+          "aistudio.google.com",
           "cloud.google.com",
           "docs.cloud.google.com",
           "generativelanguage.googleapis.com",
@@ -2198,7 +2200,8 @@ export const manifests = [
         exhaustive: true,
         role: "catalog",
         linkedDocuments: {
-          path: /^\/gemini-api\/docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/,
+          path: /^\/(?:gemini-api\/)?docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/,
+          indexFormat: "mixed",
           minDocuments: 30,
           maxDocuments: 60,
           concurrency: 8,
@@ -2212,23 +2215,27 @@ export const manifests = [
               "interactions-overview",
               "https://ai.google.dev/gemini-api/docs/interactions-overview",
             ],
-            ["interactions-api", "https://ai.google.dev/api/interactions-api", 2],
+            [
+              "interactions-api",
+              "https://aistudio.google.com/api-reference/interactions-api/create-interaction",
+              2,
+            ],
           ]),
         },
       },
       {
         id: "gemini-pricing",
-        url: "https://ai.google.dev/gemini-api/docs/pricing",
+        url: "https://aistudio.google.com/docs/pricing",
         type: "website",
         access: "public",
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v12",
+        extractorVersion: "gemini-pricing-v13",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
-        allowedHosts: ["ai.google.dev", "generativelanguage.googleapis.com"],
+        allowedHosts: ["ai.google.dev", "aistudio.google.com", "generativelanguage.googleapis.com"],
         maxResponseBytes: mebibytes(16),
         scope: "global",
         exhaustive: false,
@@ -2567,7 +2574,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v21",
+        extractorVersion: "vertex-pricing-v23",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: [
@@ -2661,6 +2668,7 @@ export const manifests = [
               true,
             ],
             ["claude-request-ids", vertexClaudeIdSource, 2, "html", true, true],
+            ["claude-context-skus", vertexClaudeSkuSource, 8, "html", true, true],
             [
               "grok-api",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
@@ -3806,7 +3814,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v25",
+        extractorVersion: "dashscope-pricing-v26",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3820,7 +3828,7 @@ export const manifests = [
           "status",
           "release_stage",
         ],
-        allowedHosts: ["www.alibabacloud.com"],
+        allowedHosts: ["www.alibabacloud.com", "help.aliyun.com"],
         maxResponseBytes: mebibytes(16),
         scope: "region",
         exhaustive: false,
@@ -3831,6 +3839,7 @@ export const manifests = [
           maxDocuments: 0,
           concurrency: 4,
           documents: optionalFixedDocuments([
+            ["beijing-pricing", "https://help.aliyun.com/en/model-studio/model-pricing", 8, "html"],
             [
               "context-cache",
               "https://www.alibabacloud.com/help/en/model-studio/context-cache.md",
@@ -3904,7 +3913,9 @@ export const manifests = [
             ],
             ["base-url", "https://www.alibabacloud.com/help/en/model-studio/base-url.md", 1],
           ]).map((document) =>
-            document.id.endsWith("-accounting") || document.id === "base-url"
+            document.id.endsWith("-accounting") ||
+            document.id === "base-url" ||
+            document.id === "beijing-pricing"
               ? { ...document, claimLocal: true }
               : document,
           ),
@@ -4232,7 +4243,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v16",
+        extractorVersion: "ollama-cloud-v17",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

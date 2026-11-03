@@ -148,6 +148,36 @@ it("keeps Peak and Off-peak as explicit billing conditions rather than using the
   }
 });
 
+it("binds a tag's own rate card only when its Cloud request names the exact listed ID", async () => {
+  const { candidate } = await collect((bundle) => {
+    bundle.list.models.push({ model: "gemma4:31b" }, { model: "gemma4:26b" });
+    for (const tag of ["31b", "26b"]) {
+      const model = `gemma4:${tag}-cloud`;
+      bundle.pages.push({
+        model,
+        url: `https://ollama.com/library/${model}`,
+        body: {
+          model,
+          title: model,
+          apiModel: tag === "31b" ? "gemma4:31b" : "gemma4",
+          cost: {
+            unit: "1M tokens",
+            variants: [{ input: "0.14", cached: "0.05", output: "0.40" }],
+          },
+        },
+      });
+    }
+  });
+  const query = lookup(candidate);
+  expect(inputPrices(query({ provider_id: "ollama", model_id: "gemma4:31b" }))).toEqual([
+    { numerator: "7", denominator: "50000000" },
+  ]);
+  expect(query({ provider_id: "ollama", model_id: "gemma4:26b" }).reason).toBe("unreviewed_id");
+  expect(query({ provider_id: "ollama", model_id: "gemma4:31b-cloud" }).reason).toBe(
+    "unreviewed_id",
+  );
+});
+
 it("does not manufacture CLI aliases, local prices, or family-to-size tariffs", () => {
   const query = lookup(baseline);
   for (const model_id of [

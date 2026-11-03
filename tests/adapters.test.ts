@@ -3097,6 +3097,23 @@ describe("HTTP transport boundary", () => {
     ]);
   });
 
+  it("discovers Google AI Studio model cards from the no-script Markdown fallback", () => {
+    const source = manifest("gemini").sources[0];
+    if (source?.linkedDocuments === undefined) throw new Error("Missing Gemini crawl policy");
+    const urls = linkedDocumentUrls(
+      `<body><noscript><pre>&gt; ## AI Agent Context
+&gt; https://aistudio.google.com/llms.txt
+{% button href=&quot;/docs/models/gemini-3.8-flash&quot; /%}
+[Old model](/docs/models/gemini-2.0-flash)
+</pre></noscript></body>`,
+      { ...source, linkedDocuments: { ...source.linkedDocuments, minDocuments: 2 } },
+    );
+    expect(urls.map((url) => url.pathname)).toEqual([
+      "/docs/models/gemini-2.0-flash",
+      "/docs/models/gemini-3.8-flash",
+    ]);
+  });
+
   it("discovers reviewed Markdown catalog links", () => {
     const source = manifest("openai").sources[0];
     if (source?.linkedDocuments === undefined) throw new Error("Missing OpenAI crawl policy");
@@ -3716,6 +3733,90 @@ describe("Gemini adapters", () => {
     );
   });
 
+  it("parses Google AI Studio model facts in the no-script Markdown fallback", async () => {
+    const models = await geminiCatalog({
+      "model.html": `<body><noscript><pre>&gt; ## AI Agent Context
+&gt; https://aistudio.google.com/llms.txt
+
+# Gemini Test
+
+{% table variant=&quot;model&quot; %}
+  * Property
+  * Description
+  ---
+  * {% icon name=&quot;id_card&quot; /%}Model code
+  * \`gemini-test-preview\` \`gemini-3-test-preview\`
+  ---
+  * Supported data types
+  * **Inputs** Text, Image
+    **Output** Text
+  ---
+  * Token limits
+  * **Input token limit** 1,048,576
+    **Output token limit** 65,536
+  ---
+  * Capabilities
+  * {% section %}**Function calling**{% badge type=&quot;supported&quot; /%}{% /section %}
+{% /table %}
+</pre></noscript></body>`,
+    });
+    expect(models.find(({ model_id }) => model_id === "gemini-test-preview")).toMatchObject({
+      limits: { context_tokens: 1_048_576, max_output_tokens: 65_536 },
+      modalities: { input: ["text", "image"], output: ["text"] },
+      capabilities: { tool_call: true },
+    });
+  });
+
+  it("preserves tier and validity from the Google AI Studio price table", async () => {
+    const models = await geminiCatalog({
+      "pricing.html": `> ## AI Agent Context
+> https://aistudio.google.com/llms.txt
+
+# Pricing
+
+## Gemini Test
+
+*[\`gemini-test-preview\`](/docs/models/gemini-test-preview)*
+
+{% hr /%}
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+  ---
+  * Input price
+  * Not available
+  * $0.75 through December 31, 2026.   \n    $1.50 starting January 1, 2027.
+  {% /table %}
+  {% /tab %}
+{% /tabs %}
+`,
+    });
+    const model = models.find(({ model_id }) => model_id === "gemini-test-preview");
+    expect(model?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.75",
+          conditions: {
+            account_eligibility: "paid_tier",
+            service_tier: "standard",
+            effective_until: "2026-12-31",
+          },
+        }),
+        expect.objectContaining({
+          price: "1.50",
+          conditions: {
+            account_eligibility: "paid_tier",
+            service_tier: "standard",
+            effective_from: "2027-01-01",
+          },
+        }),
+      ]),
+    );
+  });
+
   it("extracts every labeled model table from a shared detail page", async () => {
     const models = await geminiCatalog();
     expect(
@@ -4253,7 +4354,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v21",
+      extractorVersion: "vertex-pricing-v23",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -8597,6 +8698,19 @@ describe("Vercel adapter", () => {
       values: ["Acme", "$2/K"],
       titles: [[], ["Per 1,000 queries"]],
     });
+    expect(
+      JSON.parse(
+        normalizeVercelModelPage(`
+          <h1>Streaming transcription</h1>
+          <dl><div><dt><span aria-hidden="true">Price</span></dt>
+            <dd><span class="sr-only">$0.54, Per hour of audio</span></dd>
+          </div></dl>
+          <table><tr><th>Provider</th></tr></table>
+          <table><tr><th>Input</th></tr></table>
+          <table><tr><td><a href="/ai-gateway/models/providers/azure">Azure</a></td><td></td></tr></table>
+        `),
+      ),
+    ).toMatchObject({ provider: "azure", values: ["Azure", "$0.54/hr"] });
     expect(
       JSON.parse(
         normalizeVercelPricingScript(`
@@ -13805,9 +13919,10 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v25",
+      extractorVersion: "dashscope-pricing-v26",
       linkedDocuments: {
         documents: [
+          expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),
           expect.objectContaining({ id: "context-cache", optional: true }),
           expect.objectContaining({ id: "web-search", optional: true }),
           expect.objectContaining({ id: "image-search", optional: true }),
@@ -15846,7 +15961,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v16",
+      extractorVersion: "ollama-cloud-v17",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });

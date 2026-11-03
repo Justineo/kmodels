@@ -188,7 +188,8 @@ it("binds documented dated Claude request IDs to their existing online offers", 
 
 it("keeps context, served tier and published geography separate from request ID spelling", () => {
   const args = { provider_id: "vertex", model_id: "xai/grok-4.20-reasoning" };
-  const result = lookup()(args);
+  const query = lookup();
+  const result = query(args);
   expect(result.status).toBe("candidates");
   expect(result.missing_conditions).toContainEqual({
     namespace: "kmodels",
@@ -199,24 +200,24 @@ it("keeps context, served tier and published geography separate from request ID 
     ["200001", "1", "400000"],
   ]) {
     if (!value) throw new Error("Missing context");
-    const result = lookup()({ ...args, selectors: [standard, context(value)] });
+    const result = query({ ...args, selectors: [standard, context(value)] });
     expect(result.status, JSON.stringify(result.missing_conditions)).toBe("matched");
     expect(inputPrices(result)).toEqual([{ numerator, denominator }]);
   }
-  const google = lookup()({ provider_id: "vertex", model_id: "gemini-3.5-flash" });
+  const google = query({ provider_id: "vertex", model_id: "gemini-3.5-flash" });
   expect(google.missing_conditions).toContainEqual({
     namespace: "kmodels",
     value: "deployment_scope",
   });
   for (const scope of ["global", "non-global"]) {
-    const result = lookup()({
+    const result = query({
       provider_id: "vertex",
       model_id: "gemini-3.5-flash",
       selectors: [standard, condition("deployment_scope", scope), context("1000")],
     });
     const sync = result.candidates.find(({ offer }) => offer.offer_key === "sync");
     if (!sync) throw new Error("Missing online offer");
-    const selected = lookup()({
+    const selected = query({
       provider_id: "vertex",
       model_id: "gemini-3.5-flash",
       offer_ref: sync.offer.id,
@@ -245,7 +246,7 @@ it("distinguishes evidence gaps and excluded known conditions from guessed or pr
     query({
       provider_id: "vertex",
       model_id: "claude-sonnet-4-6",
-      selectors: [standard, condition("region", "global")],
+      selectors: [standard, condition("region", "global"), context("200000")],
     }),
   ).toMatchObject({ status: "unknown", reason: "unresolved_price" });
   expect(
@@ -274,19 +275,35 @@ it("reads relocated partner prices and rejects missing or duplicated commercial 
   if (!bundle) throw new Error("Missing prices");
   const partner = bundle.documents.find(({ url }) => url.endsWith("/partner-models/pricing"));
   if (!partner) throw new Error("Missing partner prices");
+  const parse = (documents: LinkedBundle["documents"]) =>
+    parseSource({
+      provider: { ...manifest.provider, source_ids: [source.id] },
+      source,
+      observedAt: at,
+      catalogModels: baseline.catalog.models,
+      body: JSON.stringify({ ...bundle, documents }),
+    });
+  const full = parse(bundle.documents);
+  const shortened = parse(
+    bundle.documents.map((document) =>
+      document === partner
+        ? { ...document, body: document.body.replaceAll("Claude Sonnet 4.5", "Sonnet 4.5") }
+        : document,
+    ),
+  );
+  const sonnetRates = (result: typeof full) =>
+    result.models
+      .find(({ model_id }) => model_id === "claude-sonnet-4-5")
+      ?.raw_price_facts.filter(({ impact }) => impact === "base_price")
+      .map(({ conditions, raw }) => [conditions, raw.amount, raw.meter, raw.unit]);
+  expect(sonnetRates(full)?.length).toBeGreaterThan(0);
+  expect(sonnetRates(shortened)).toEqual(expect.arrayContaining(sonnetRates(full) ?? []));
+  expect(sonnetRates(shortened)).toHaveLength(sonnetRates(full)?.length ?? 0);
   for (const documents of [
     bundle.documents.filter((doc) => doc !== partner),
     [...bundle.documents, partner],
   ])
-    expect(() =>
-      parseSource({
-        provider: { ...manifest.provider, source_ids: [source.id] },
-        source,
-        observedAt: at,
-        catalogModels: baseline.catalog.models,
-        body: JSON.stringify({ ...bundle, documents }),
-      }),
-    ).toThrow("partner pricing companion is missing or duplicated");
+    expect(() => parse(documents)).toThrow("partner pricing companion is missing or duplicated");
   expect(
     inputPrices(
       lookup()({ provider_id: "vertex", model_id: "mistral-medium-3", selectors: [standard] }),

@@ -165,7 +165,8 @@ provider-published `video` unit rather than treating it as seconds. A transcript
 publish its input as `$N/hr` or `$N/sec`. These become `input_audio` quotes with the `hour` or
 `second` unit respectively; the shared adapter scales hourly rates to processed audio seconds.
 The denominator is read from the cell itself, so a priced
-sibling keeps its own published unit; an unrecognized denominator still rejects the page rather than
+sibling keeps its own published unit. When the page describes one route and its Input cell is empty,
+an exact summary quote per hour of audio supplies the same hourly input rate. An unrecognized denominator still rejects the page rather than
 silently dropping the model.
 Speech models may also publish `speech_output_cost_per_second`, which bills generated audio rather
 than supplied input. Both the catalog entry and its endpoint may carry it; the amount becomes an

@@ -1272,7 +1272,15 @@ interface PriceSegment {
   accountEligibility?: string;
 }
 
-function priceSegments(cell: Cell, header: string): PriceSegment[] {
+function priceSegments(
+  cell: Cell,
+  header: string,
+  currency: "USD" | "CNY" = "USD",
+): PriceSegment[] {
+  if (currency === "CNY") {
+    const price = decimal(cell.text.match(/^CNY ([\d,.]+)$/)?.[1] ?? "");
+    return price === undefined ? [] : [{ price }];
+  }
   const hourly = cell.text.match(/^Busy hours:\s*\$?([\d,.]+)\s*Idle hours:\s*\$?([\d,.]+)$/i);
   if (hourly !== null) {
     const busy = decimal(hourly[1] ?? "");
@@ -1364,6 +1372,7 @@ function rowPrices(
   row: Cell[],
   tasks: ModelTask[],
   sample: string,
+  currency: "USD" | "CNY" = "USD",
 ): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
   const result: SourcePriceFact[] = [];
   const unresolved: SourceRawPricingFact[] = [];
@@ -1393,7 +1402,7 @@ function rowPrices(
     const raw = cell.text;
     const rateUnit =
       unit(effectiveHeader, raw) ?? (sharedRateUnits.length === 1 ? sharedRateUnits[0] : undefined);
-    const segments = priceSegments(cell, effectiveHeader);
+    const segments = priceSegments(cell, effectiveHeader, currency);
     if (segments.length === 0) {
       if (raw === "" || /^(?:--|-)$/.test(raw) || /\bDiscontinued\b/i.test(raw)) continue;
       input.onPricingReconciliation?.({
@@ -1456,7 +1465,7 @@ function rowPrices(
               fragment: raw.slice(0, 4096),
               amount: segment.price,
               meter: meterName,
-              denomination: "USD",
+              denomination: currency,
               unit: header,
             },
           });
@@ -1465,7 +1474,7 @@ function rowPrices(
         const base: SourcePriceFact = {
           meter: meterName,
           price: normalizedPrice(segment.price, rateUnit),
-          currency: "USD",
+          currency,
           unit: rateUnit,
           conditions: scopedConditions,
           source_ref: input.source.id,
@@ -2368,11 +2377,84 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const evidence = commercialEvidence(input, bundle);
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
-  const inferenceIds = new Set<string>();
+  const inferenceIds = new Map<string, string>();
   const findings: string[] = [];
+  const beijing = bundle.documents.find(
+    ({ url }) => url === "https://help.aliyun.com/en/model-studio/model-pricing",
+  );
+  const region = "China (Beijing)";
+  const regionalInputHeader = /^Input price \(per 1 million tokens\)$/;
+  const regionalOutputHeader =
+    /^Output price \(per 1 million tokens\)(?: Chain of thought \+ answer| \/ Non-Thinking mode| \/ Thinking mode \(chain of thought \+ answer\))?$/;
+  const regionalTables =
+    beijing === undefined
+      ? []
+      : tables(beijing.body)
+          .filter(
+            (table) =>
+              table.headings.map(dashscopeRegion).find((value) => value !== undefined) === region &&
+              table.headers[0] === "Model ID" &&
+              table.headers.some((header) => regionalInputHeader.test(header)) &&
+              table.headers.some((header) => regionalOutputHeader.test(header)) &&
+              table.headers
+                .slice(1)
+                .every(
+                  (header) =>
+                    header === "Mode" ||
+                    header === "Input tokens per request" ||
+                    regionalInputHeader.test(header) ||
+                    regionalOutputHeader.test(header) ||
+                    /^Free quota\b/i.test(header),
+                ),
+          )
+          .map((table) => ({
+            ...table,
+            rows: table.rows.filter((row) => {
+              const id = cellIds(row[0])[0];
+              return (
+                id !== undefined &&
+                /^(?: 50% batch inference discount)?(?: context caching discount)?$/.test(
+                  row[0]?.text.startsWith(id) === true ? row[0].text.slice(id.length) : "?",
+                ) &&
+                table.headers.every((header, index) => {
+                  const value = row[index]?.text ?? "";
+                  if (header === "Mode")
+                    return /^(?:Non-Thinking and Thinking modes?|(?:Non-Thinking|Thinking) mode(?: only)?)$/i.test(
+                      value,
+                    );
+                  if (header === "Input tokens per request")
+                    return /^(?:No tiered pricing|(?:\d+(?:\.\d+)?[KM]?<)?Token≤\d+(?:\.\d+)?[KM]?)$/i.test(
+                      value.replaceAll(",", ""),
+                    );
+                  return (
+                    !(regionalInputHeader.test(header) || regionalOutputHeader.test(header)) ||
+                    decimal(value.match(/^CNY ([\d,.]+)$/)?.[1] ?? "") !== undefined
+                  );
+                })
+              );
+            }),
+          }));
+  const regionalCounts = new Map<string, number>();
+  const regionalRowKey = (table: Table, row: Cell[], id: string) =>
+    JSON.stringify([
+      id,
+      value(table, row, /^Mode$/i),
+      value(table, row, /^Input tokens per request$/i),
+    ]);
+  for (const table of regionalTables)
+    for (const row of table.rows)
+      for (const id of cellIds(row[0])) {
+        const key = regionalRowKey(table, row, id);
+        regionalCounts.set(key, (regionalCounts.get(key) ?? 0) + 1);
+      }
+  if (beijing !== undefined && regionalCounts.size === 0)
+    findings.push("/beijing-pricing/token-rates");
+  const primaryTables = pricingTables(bundle.index.body, (path) => findings.push(path));
+  const primaryRegionalPrices = new Set<string>();
   let observedRows = 0;
   let coveredRows = 0;
-  for (const table of pricingTables(bundle.index.body, (path) => findings.push(path))) {
+  for (const table of [...primaryTables, ...regionalTables]) {
+    const regional = regionalTables.includes(table);
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
     if (table.headers.some((header) => /price/i.test(header)))
       assertItemCount("DashScope pricing model column", idIndex === undefined ? 0 : 1, 1, 1);
@@ -2384,7 +2466,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     );
     for (const row of table.rows) {
       if (row.length === 0 || (row.length > 1 && row.every((cell) => cell === row[0]))) continue;
-      observedRows += 1;
+      if (!regional) observedRows += 1;
       const idCell = row[idIndex];
       const stripPreview = (value: string) => value.replace(/\s*\(Invitational preview\)\s*$/i, "");
       const rowIds = cellIds(
@@ -2404,19 +2486,34 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
         });
         continue;
       }
-      coveredRows += 1;
+      if (!regional) coveredRows += 1;
       const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
       const customQuote = row.some((cell) => /contact (?:sales|us)/i.test(cell.text));
       for (const id of rowIds) {
-        inferenceIds.add(id);
+        if (regional) {
+          const current = models.get(id);
+          if (regionalCounts.get(regionalRowKey(table, row, id)) !== 1) {
+            findings.push(`/beijing-pricing/duplicate/${id}`);
+            continue;
+          }
+          if (current?.status === "retired" || primaryRegionalPrices.has(id)) continue;
+        }
+        inferenceIds.set(id, (regional ? beijing?.url : undefined) ?? input.source.url);
         const tasks = priceOperations(id, table.headings, table.headers);
         // A new operation column cannot disappear into an unconditional model rate.
         const billingItem = value(table, row, /^Billing item$/i);
         const parsed =
           billingItem === undefined
-            ? rowPrices(input, table, row, tasks, id)
+            ? rowPrices(input, table, row, tasks, id, regional ? "CNY" : "USD")
             : billingItemPrices(input, table, row, id, billingItem);
         const parsedRates = parsed.rates;
+        if (
+          !regional &&
+          [...parsedRates, ...parsed.raw].some(
+            ({ conditions }) => conditions.region === undefined || conditions.region === region,
+          )
+        )
+          primaryRegionalPrices.add(id);
         if (billingItem !== undefined && parsed.raw.length > 0)
           input.onPricingReconciliation?.({
             disposition: "unsupported",
@@ -2629,7 +2726,8 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   return {
     models: values,
     inference_prices: values.flatMap((model) => {
-      if (!inferenceIds.has(model.model_id)) return [];
+      const evidenceUrl = inferenceIds.get(model.model_id);
+      if (evidenceUrl === undefined) return [];
       const hasBatchPrice = [...model.price_facts, ...model.raw_price_facts].some(
         ({ conditions }) => conditions.service_tier === "batch",
       );
@@ -2644,7 +2742,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
             source_ref: input.source.id,
             locator: {
               kind: "provider_key" as const,
-              value: `${input.source.url} model ID ${model.model_id}`,
+              value: `${evidenceUrl} model ID ${model.model_id}`,
             },
           },
         ],
