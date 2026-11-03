@@ -2852,6 +2852,11 @@ export function parseVertexPricing(input: Input): SourceParseResult {
     commercial_facts: commercial.facts,
     vocabulary: commercial.vocabulary,
     pricing_inputs: pricingInputs,
+    inference_prices: vertexInferencePrices(
+      input,
+      bundle,
+      values.filter((model) => model.service_families?.includes("publishers/anthropic")),
+    ),
   };
 }
 

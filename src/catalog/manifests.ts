@@ -1,6 +1,7 @@
 import type { PriceDimension } from "./pricing-schema.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
 import { sagemakerCatalogUrl } from "./sagemaker.ts";
+import { vertexClaudeBatchSource, vertexClaudeIdSource } from "./vertex-inference-pricing.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
@@ -2437,7 +2438,7 @@ export const manifests = [
           minModelDocuments: 20,
           maxModelDocuments: 45,
         },
-        extractorVersion: "vertex-catalog-v9",
+        extractorVersion: "vertex-catalog-v10",
         fields: [
           "model_id",
           "name",
@@ -2464,7 +2465,7 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           indexFormat: "html",
-          path: /^\/gemini-enterprise-agent-platform\/models\/partner-models\/(?:claude\/(?!use-claude$)|grok\/(?!responses$)|mistral\/|llama\/(?!use-llama$))[a-z0-9-]+$/,
+          path: /^\/gemini-enterprise-agent-platform\/models\/partner-models\/(?:claude\/(?!(?:use-claude|batch)$)|grok\/(?!responses$)|mistral\/|llama\/(?!use-llama$))[a-z0-9-]+$/,
           minDocuments: 20,
           maxDocuments: 45,
           concurrency: 8,
@@ -2475,6 +2476,7 @@ export const manifests = [
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
               2,
             ],
+            ["claude-batch-request-ids", vertexClaudeBatchSource, 2],
             [
               "grok-api",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
@@ -2565,10 +2567,15 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v20",
+        extractorVersion: "vertex-pricing-v21",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
-        allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
+        allowedHosts: [
+          "cloud.google.com",
+          "docs.cloud.google.com",
+          "aiplatform.googleapis.com",
+          "platform.claude.com",
+        ],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
         maxResponseBytes: mebibytes(48),
         scope: "region",
@@ -2653,6 +2660,7 @@ export const manifests = [
               true,
               true,
             ],
+            ["claude-request-ids", vertexClaudeIdSource, 2, "html", true, true],
             [
               "grok-api",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { linkedBundleSchema, type LinkedBundle } from "../src/catalog/bundle.ts";
+import { vertexClaudeIdSource } from "../src/catalog/vertex-inference-pricing.ts";
 
 export async function vertexInferenceFixture(): Promise<Map<string, LinkedBundle>> {
   const ids = ["google-models", "partner-models", "open-models", "pricing"];
@@ -19,5 +20,13 @@ export async function vertexInferenceFixture(): Promise<Map<string, LinkedBundle
         ] as const,
     ),
   );
-  return new Map(entries);
+  const bundles = new Map(entries);
+  bundles.get("vertex-pricing")?.documents.push({
+    url: vertexClaudeIdSource,
+    body: await readFile(
+      new URL("./fixtures/vertex/claude-request-ids.html", import.meta.url),
+      "utf8",
+    ),
+  });
+  return bundles;
 }
