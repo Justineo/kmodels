@@ -614,6 +614,7 @@ export const websiteDetailChunkSchema = z.strictObject({
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
+  snapshot: websitePricingSnapshotSchema.optional(),
   details: z.array(websiteStoredModelDetailSchema),
 });
 

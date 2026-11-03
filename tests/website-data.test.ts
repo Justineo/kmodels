@@ -110,10 +110,11 @@ function publishedModelDetails(publication: WebsitePublication): WebsiteModelDet
   const offerChunks = new Map(
     publication.offers.map(({ provider_id, chunk, offers }) => [`${provider_id}/${chunk}`, offers]),
   );
-  return publication.details.flatMap(({ provider_id, details }) =>
+  return publication.details.flatMap(({ provider_id, details, snapshot: providerSnapshot }) =>
     details.map((stored) => {
       const { pricing, ...detail } = restoreWebsiteInferenceDetail(stored);
       if (pricing === undefined) return detail;
+      const snapshot = pricing.snapshot ?? providerSnapshot;
       const offers = pricing.offer_refs.map(([chunk, index]) => {
         const offer = offerChunks.get(`${provider_id}/${chunk}`)?.[index];
         if (offer === undefined) throw new Error(`Missing website offer ${provider_id}/${chunk}`);
@@ -122,7 +123,7 @@ function publishedModelDetails(publication: WebsitePublication): WebsiteModelDet
       return {
         ...detail,
         pricing: {
-          ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
+          ...(snapshot === undefined ? {} : { snapshot }),
           offers,
         },
       };

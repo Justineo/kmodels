@@ -97,8 +97,15 @@ function parseDetailChunk(target: DetailTarget, dataVersion: string): Promise<We
         chunk.chunk !== target.chunk
       )
         throw new Error("Model detail chunk does not match the catalog");
-      for (const detail of chunk.details)
-        storedDetailsByModel.set(modelDetailKey(dataVersion, detail.model_ref), detail);
+      for (const detail of chunk.details) {
+        const { pricing } = detail;
+        storedDetailsByModel.set(
+          modelDetailKey(dataVersion, detail.model_ref),
+          chunk.snapshot === undefined || pricing === undefined || pricing.snapshot !== undefined
+            ? detail
+            : { ...detail, pricing: { ...pricing, snapshot: chunk.snapshot } },
+        );
+      }
       return chunk;
     }),
   );

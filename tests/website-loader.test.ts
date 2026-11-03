@@ -269,6 +269,14 @@ describe("website detail loading", () => {
       if (url.startsWith("/ui/offers/"))
         return new Response(JSON.stringify(offerChunk(dataVersion)));
       const detail = detailChunk(dataVersion, "Priced");
+      detail.snapshot = {
+        observed_at: "2026-11-02T00:00:00.000Z",
+        publication: "retained",
+        refresh_failure: {
+          attempted_at: "2026-11-03T00:00:00.000Z",
+          message: "Previous prices retained",
+        },
+      };
       const modelDetail = detail.details[0];
       if (modelDetail === undefined) throw new Error("Missing test model detail");
       modelDetail.pricing = { offer_refs: [[0, 0]] };
@@ -276,7 +284,7 @@ describe("website detail loading", () => {
     });
 
     await expect(loadWebsiteModelDetail(dataVersion, model)).resolves.toMatchObject({
-      pricing: { offers: [{ title: "Usage" }] },
+      pricing: { snapshot: { publication: "retained" }, offers: [{ title: "Usage" }] },
     });
     expect(requestedUrls).toEqual([
       `/ui/details/test/0.json?v=${dataVersion}`,
