@@ -1397,17 +1397,25 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       results.flatMap((result) => (result.quarantine === undefined ? [] : [result.quarantine])),
     ),
   ];
+  const catalogOnly = new Set(
+    manifests.filter((manifest) => manifest.catalogOnly).map(({ provider }) => provider.id),
+  );
   const pricingTransitions = new Map<string, ProviderPricingTransition>(
-    results.map((result): [string, ProviderPricingTransition] => [
-      result.provider.id,
-      result.pricing === undefined
-        ? failedPricingTransition(
-            result.provider.id,
-            observedAt,
-            result.pricingFailure ?? "pricing_not_observed",
-          )
-        : { kind: "fresh", partition: result.pricing },
-    ]),
+    results.map((result): [string, ProviderPricingTransition] => {
+      const providerId = result.provider.id;
+      if (result.pricing !== undefined)
+        return [providerId, { kind: "fresh", partition: result.pricing }];
+      if (catalogOnly.has(providerId) && result.coverage.status === "fresh")
+        return [providerId, { kind: "fresh_empty", provider_id: providerId }];
+      return [
+        providerId,
+        failedPricingTransition(
+          providerId,
+          observedAt,
+          result.pricingFailure ?? "pricing_not_observed",
+        ),
+      ];
+    }),
   );
   const explicitProviders = new Set<string>();
   for (const transition of options.pricingTransitions ?? []) {

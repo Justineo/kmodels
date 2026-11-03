@@ -350,13 +350,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(isPricingSource(accountInventory)).toBe(false);
   });
 
-  it("retains omitted facts from the optional Hugging Face pricing overlay", () => {
-    const huggingFace = manifests.find(({ provider }) => provider.id === "huggingface");
-    const featherless = huggingFace?.sources.find(({ id }) => id === "huggingface-featherless");
-    expect(featherless).toMatchObject({ optional: true, retainOmittedFacts: true });
-    expect(featherless === undefined ? false : isRequiredPricingSource(featherless)).toBe(false);
-  });
-
   it("requires explicit provenance for calculated source facts", () => {
     const calculated = model().price_facts[2]!;
     expect(sourcePriceFactSchema.safeParse(calculated).success).toBe(true);

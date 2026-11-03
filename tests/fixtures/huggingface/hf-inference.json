@@ -1,0 +1,95 @@
+{
+  "models": [
+    {
+      "id": "org/model-1",
+      "lastModified": "2026-07-20T12:34:56.000Z",
+      "inferenceProviderMapping": [
+        {
+          "provider": "hf-inference",
+          "providerId": "org/native-model",
+          "status": "live",
+          "task": "feature-extraction",
+          "type": "single-model"
+        },
+        {
+          "provider": "fal-ai",
+          "providerId": "org/partner-model",
+          "status": "live",
+          "task": "text-to-image"
+        }
+      ]
+    },
+    {
+      "id": "org/model-1",
+      "lastModified": "2026-06-01T00:00:00.000Z",
+      "inferenceProviderMapping": [
+        {
+          "provider": "hf-inference",
+          "providerId": "org/native-model",
+          "status": "live",
+          "task": "feature-extraction"
+        },
+        {
+          "provider": "hf-inference",
+          "providerId": "org/native-model",
+          "status": "live",
+          "task": "future-task"
+        }
+      ]
+    },
+    {
+      "id": "org/partner-only",
+      "inferenceProviderMapping": [
+        {
+          "provider": "fal-ai",
+          "providerId": "org/partner-model",
+          "status": "live",
+          "task": "text-to-image"
+        },
+        {
+          "provider": "replicate",
+          "providerId": "org/partner-model",
+          "status": "live",
+          "task": "text-to-image"
+        }
+      ]
+    },
+    {
+      "id": "org/staging",
+      "inferenceProviderMapping": [
+        {
+          "provider": "hf-inference",
+          "providerId": "org/staging",
+          "status": "staging",
+          "task": "text-generation"
+        }
+      ]
+    },
+    {
+      "id": "org/dynamic",
+      "inferenceProviderMapping": [
+        {
+          "provider": "hf-inference",
+          "providerId": "org/dynamic",
+          "status": "live",
+          "task": "text-generation",
+          "type": "tag-filter"
+        }
+      ]
+    },
+    { "id": "org/unmapped", "lastModified": "2026-07-20T12:34:56.000Z" },
+    {
+      "id": "org/model-2",
+      "lastModified": "invalid",
+      "inferenceProviderMapping": [
+        {
+          "provider": "hf-inference",
+          "providerId": "org/model-2",
+          "status": "live",
+          "task": "automatic-speech-recognition"
+        },
+        { "provider": "hf-inference", "status": "live", "task": "conversational" }
+      ]
+    }
+  ]
+}

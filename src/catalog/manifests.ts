@@ -23,17 +23,6 @@ export type Extractor =
   | { kind: "cerebras-lifecycle"; minModels: number; maxModels: number }
   | { kind: "cerebras-releases"; minModels: number; maxModels: number }
   | { kind: "cerebras-api"; minModels: number; maxModels: number }
-  | {
-      kind: "huggingface-mapping";
-      providers: string[];
-      minModels: number;
-      maxModels: number;
-      minRoutes: number;
-      maxRoutes: number;
-    }
-  | { kind: "huggingface-router"; minModels: number; maxModels: number }
-  | { kind: "huggingface-featherless"; minModels: number; maxModels: number }
-  | { kind: "huggingface-native-pricing"; minModels: number; maxModels: number }
   | { kind: "huggingface-hub"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
@@ -240,21 +229,7 @@ export interface SourceManifest {
     | { kind: "gemini-models"; pageSize: number; maxPages: number; maxModels: number }
     | { kind: "cohere-models"; pageSize: number; maxPages: number; maxModels: number }
     | { kind: "dashscope-deployable-models"; pageSize: number; maxPages: number; maxModels: number }
-    | {
-        kind: "huggingface-partner-models";
-        providers: string[];
-        concurrency: number;
-        maxPartnerBytes: number;
-      }
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
-    | {
-        kind: "featherless-models";
-        pageSize: number;
-        maxPages: number;
-        maxModels: number;
-        concurrency: number;
-        maxPageBytes: number;
-      }
     | {
         kind: "vercel-models";
         modelPageBaseUrl: string;
@@ -294,6 +269,7 @@ export interface PricingCategoricalLabel {
 
 interface ProviderManifestBase {
   provider: Omit<Provider, "source_ids" | "last_successful_sync_at" | "catalog_version">;
+  catalogOnly?: true;
   pricingCategoricalLabels?: PricingCategoricalLabel[];
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
@@ -382,75 +358,6 @@ const xaiApiSource = (
   optional: true,
   auth: { scheme: "bearer", env: "XAI_API_KEY" },
 });
-
-export const huggingFacePartnerIds = [
-  "baseten",
-  "cerebras",
-  "cohere",
-  "deepinfra",
-  "fal-ai",
-  "featherless-ai",
-  "fireworks-ai",
-  "groq",
-  "hf-inference",
-  "novita",
-  "nscale",
-  "ovhcloud",
-  "publicai",
-  "replicate",
-  "scaleway",
-  "together",
-  "wavespeed",
-  "zai-org",
-] as const;
-
-const huggingFaceInferenceSource: SourceManifest = {
-  id: "huggingface-hf-inference",
-  url: "https://huggingface.co/api/partners/hf-inference/models?status=live",
-  type: "api",
-  access: "public",
-  format: "json",
-  stability: "documented",
-  extractor: {
-    kind: "huggingface-mapping",
-    providers: [...huggingFacePartnerIds],
-    minModels: 1,
-    maxModels: 100_000,
-    minRoutes: 1,
-    maxRoutes: 200_000,
-  },
-  extractorVersion: "huggingface-mapping-v9",
-  pricingEvidence: firstPartyPricing("commercial_terms", "exact_id"),
-  fields: ["model_id", "routes", "tasks", "modalities", "pricing", "status"],
-  allowedHosts: ["huggingface.co"],
-  maxResponseBytes: mebibytes(64),
-  scope: "global",
-  exhaustive: true,
-  role: "catalog",
-  transport: {
-    kind: "huggingface-partner-models",
-    providers: [...huggingFacePartnerIds],
-    concurrency: 6,
-    maxPartnerBytes: mebibytes(32),
-  },
-  linkedDocuments: {
-    indexFormat: "mixed",
-    path: /^\/docs\/inference-providers\/en\/tasks\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
-    minDocuments: 10,
-    maxDocuments: 128,
-    concurrency: 6,
-    maxDocumentBytes: mebibytes(4),
-    requestSuffix: ".md",
-    documents: [
-      {
-        id: "task-index",
-        url: "https://huggingface.co/docs/inference-providers/en/tasks/index.md",
-        format: "markdown",
-        maxResponseBytes: mebibytes(1),
-      },
-    ],
-  },
-};
 
 const dashscopeCatalogSource = (
   id: string,
@@ -3505,233 +3412,29 @@ export const manifests = [
       name: "Hugging Face Inference Providers",
       kind: "gateway",
       homepage: "https://huggingface.co/",
-      docs_url: "https://huggingface.co/docs/inference-providers/",
+      docs_url: "https://huggingface.co/docs/inference-providers/en/providers/hf-inference",
       catalog_scope: "global",
     },
-    pricingCategoricalLabels: pricingLabels("route_provider", {
-      deepinfra: "DeepInfra",
-      "fireworks-ai": "Fireworks",
-      ovhcloud: "OVHcloud AI Endpoints",
-      publicai: "Public AI",
-    }),
+    catalogOnly: true,
     sources: [
-      huggingFaceInferenceSource,
       {
-        id: "huggingface-router",
-        url: "https://router.huggingface.co/v1/models",
-        type: "api",
-        source: ["api", "website", "repository"],
-        access: "public",
-        format: "json",
-        stability: "documented",
-        extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-router-v13",
-        pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
-        fields: [
-          "tasks",
-          "modalities",
-          "api_endpoints",
-          "capabilities",
-          "limits",
-          "pricing",
-          "pricing_inputs",
-          "status",
-        ],
-        allowedHosts: ["router.huggingface.co", "huggingface.co", "raw.githubusercontent.com"],
-        maxResponseBytes: mebibytes(16),
-        scope: "global",
-        exhaustive: true,
-        role: "catalog",
-        linkedDocuments: {
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 4,
-          documents: fixedDocuments([
-            [
-              "pricing",
-              "https://huggingface.co/docs/inference-providers/en/pricing.md",
-              1,
-              "markdown",
-            ],
-            [
-              "overview",
-              "https://huggingface.co/docs/inference-providers/en/index.md",
-              1,
-              "markdown",
-            ],
-            [
-              "chat-completion",
-              "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
-              1,
-              "markdown",
-            ],
-            [
-              "responses-api",
-              "https://huggingface.co/docs/inference-providers/en/guides/responses-api.md",
-              1,
-              "markdown",
-            ],
-            [
-              "sdk-inference",
-              "https://huggingface.co/docs/huggingface_hub/en/guides/inference.md",
-              1,
-              "markdown",
-            ],
-            [
-              "sdk-provider-registry",
-              "https://raw.githubusercontent.com/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
-              1,
-              "markdown",
-            ],
-            [
-              "responses-schema",
-              "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
-              16,
-              "mixed",
-            ],
-          ]).map((document) => ({
-            ...document,
-            optional: true,
-            claimLocal: true,
-          })),
-        },
-      },
-      {
-        id: "huggingface-featherless",
-        url: "https://api.featherless.ai/v1/models?status=active&page=1&per_page=1000",
-        type: "api",
-        source: ["api", "website"],
-        access: "public",
-        format: "mixed",
-        stability: "semi_structured",
-        extractor: { kind: "huggingface-featherless", minModels: 1, maxModels: 50_000 },
-        extractorVersion: "huggingface-featherless-v2",
-        pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
-        fields: ["limits", "pricing"],
-        allowedHosts: ["api.featherless.ai", "featherless.ai"],
-        maxResponseBytes: mebibytes(64),
-        scope: "global",
-        exhaustive: false,
-        role: "overlay",
-        optional: true,
-        retainOmittedFacts: true,
-        transport: {
-          kind: "featherless-models",
-          pageSize: 1000,
-          maxPages: 500,
-          maxModels: 50_000,
-          concurrency: 6,
-          maxPageBytes: mebibytes(4),
-        },
-        linkedDocuments: {
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 2,
-          documents: fixedDocuments([
-            ["models-api", "https://featherless.ai/docs/api-reference-models", 4, "html"],
-            [
-              "request-pricing",
-              "https://featherless.ai/docs/request-pricing-and-credits",
-              4,
-              "html",
-            ],
-          ]),
-        },
-      },
-      {
-        id: "huggingface-native-pricing",
-        url: "https://huggingface.co/docs/inference-providers/en/pricing.md",
-        type: "website",
-        source: ["website"],
-        access: "public",
-        format: "mixed",
-        stability: "semi_structured",
-        extractor: { kind: "huggingface-native-pricing", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-native-pricing-v3",
-        pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
-        fields: ["pricing"],
-        allowedHosts: [
-          "huggingface.co",
-          "fireworks.ai",
-          "docs.z.ai",
-          "console.groq.com",
-          "cohere.com",
-          "docs.cohere.com",
-        ],
-        maxResponseBytes: mebibytes(8),
-        scope: "global",
-        exhaustive: false,
-        role: "overlay",
-        optional: true,
-        linkedDocuments: {
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 4,
-          documents: optionalFixedDocuments([
-            ["fireworks-models", "https://fireworks.ai/models?show=Image", 4, "html"],
-            ["zai-pricing", "https://docs.z.ai/guides/overview/pricing", 1, "html"],
-            [
-              "groq-safeguard",
-              "https://console.groq.com/docs/model/openai/gpt-oss-safeguard-20b",
-              2,
-              "html",
-            ],
-            ["groq-models", "https://console.groq.com/docs/models", 2, "html"],
-            ["cohere-pricing", "https://cohere.com/pricing", 2, "html"],
-            ["cohere-command-a", "https://docs.cohere.com/docs/command-a", 2, "html"],
-            [
-              "cohere-routes",
-              "https://huggingface.co/api/partners/cohere/models?status=live",
-              1,
-              "json",
-            ],
-            [
-              "fireworks-routes",
-              "https://huggingface.co/api/partners/fireworks-ai/models?status=live",
-              1,
-              "json",
-            ],
-            [
-              "groq-routes",
-              "https://huggingface.co/api/partners/groq/models?status=live",
-              1,
-              "json",
-            ],
-            [
-              "zai-routes",
-              "https://huggingface.co/api/partners/zai-org/models?status=live",
-              1,
-              "json",
-            ],
-          ]),
-        },
-      },
-      {
-        id: "huggingface-hub",
-        url: "https://huggingface.co/api/models?inference_provider=hf-inference&limit=1000&sort=createdAt&expand=lastModified",
+        id: "huggingface-hf-inference",
+        url: "https://huggingface.co/api/models?inference_provider=hf-inference&limit=1000&sort=createdAt&expand=inferenceProviderMapping&expand=lastModified",
         type: "api",
         access: "public",
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-hub", minModels: 1, maxModels: 50_000 },
-        extractorVersion: "huggingface-hub-v2",
-        fields: ["updated_date"],
+        extractorVersion: "huggingface-hub-hf-inference-v1",
+        fields: ["model_id", "routes", "tasks", "modalities", "status", "updated_date"],
         allowedHosts: ["huggingface.co"],
         maxResponseBytes: mebibytes(16),
         scope: "global",
-        exhaustive: false,
-        role: "overlay",
+        exhaustive: true,
+        role: "catalog",
         transport: { kind: "huggingface-models", maxPages: 100, maxModels: 50_000 },
       },
     ],
-    warnOnMissing: {
-      sourceId: "huggingface-router",
-      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
-      statuses: ["active", "deprecated"],
-    },
   },
   {
     provider: {

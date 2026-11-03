@@ -23,6 +23,13 @@ import { loadWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import { inferencePriceMappingSchema } from "../src/pricing/inference-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
+const retiredHuggingFaceSourceHosts = new Map([
+  ["huggingface-featherless", "api.featherless.ai"],
+  ["huggingface-hub", "huggingface.co"],
+  ["huggingface-native-pricing", "huggingface.co"],
+  ["huggingface-router", "router.huggingface.co"],
+]);
+
 async function json(path: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), "utf8"));
 }
@@ -107,7 +114,13 @@ describe("generated static catalog", () => {
     for (const source of catalog.sources) {
       expect(providerIds, source.id).toContain(source.provider_id);
       const configured = manifestsBySource.get(source.id);
-      expect(configured?.allowedHosts).toContain(new URL(source.url).hostname);
+      const host = new URL(source.url).hostname;
+      if (configured === undefined && source.provider_id === "huggingface") {
+        // Accepted and stale snapshots can still reference the previous routed catalog.
+        expect(host, source.id).toBe(retiredHuggingFaceSourceHosts.get(source.id));
+      } else {
+        expect(configured?.allowedHosts, source.id).toContain(host);
+      }
       expect(source.source.length).toBeGreaterThan(0);
       expect(source).not.toHaveProperty("source_type");
       expect(source).not.toHaveProperty("access");
