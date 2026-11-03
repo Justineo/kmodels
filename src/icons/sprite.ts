@@ -68,7 +68,7 @@ const providerSources = {
   gemini,
   huggingface: huggingFace,
   kimi,
-  llama: meta,
+  meta,
   mistral,
   ollama,
   openai: openAi,

@@ -22,7 +22,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
   ["kimi", ["resource", "relation", "binding"]],
-  ["llama", ["resource", "binding"]],
+  ["meta", ["resource", "binding"]],
   ["mistral", ["resource", "binding"]],
   ["ollama", ["binding"]],
   ["openai", ["resource", "binding", "contribution"]],

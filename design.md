@@ -56,7 +56,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Gemini Enterprise Agent Platform](docs/providers/vertex.md)
 - [Cohere](docs/providers/cohere.md)
 - [Mistral AI](docs/providers/mistral.md)
-- [Meta Llama](docs/providers/llama.md)
+- [Meta](docs/providers/meta.md)
 - [xAI](docs/providers/xai.md)
 - [Hugging Face](docs/providers/huggingface.md)
 - [Alibaba Cloud Model Studio](docs/providers/dashscope.md)

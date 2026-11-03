@@ -73,8 +73,6 @@ export type Extractor =
     }
   | { kind: "mistral-pricing"; minCards: number; maxCards: number }
   | { kind: "mistral-api"; knownFields?: string[] }
-  | { kind: "llama-catalog"; minModels: number; maxModels: number }
-  | { kind: "llama-api" }
   | { kind: "meta-model-api"; minModels: number; maxModels: number }
   | { kind: "xai-catalog"; minModels: number; maxModels: number }
   | { kind: "xai-api"; category: "all" | "language" | "image" | "video" }
@@ -3111,155 +3109,14 @@ export const manifests = [
   },
   {
     provider: {
-      id: "llama",
-      name: "Meta Llama",
-      kind: "model_publisher",
-      homepage: "https://www.llama.com/",
-      docs_url: "https://github.com/meta-llama/llama-models",
+      id: "meta",
+      name: "Meta",
+      kind: "hosted",
+      homepage: "https://meta.ai/",
+      docs_url: "https://dev.meta.ai/docs/models",
       catalog_scope: "global",
     },
     sources: [
-      {
-        id: "llama-models",
-        url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/sku_list.py",
-        type: "repository",
-        source: ["repository", "website"],
-        access: "public",
-        format: "mixed",
-        stability: "documented",
-        extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v9",
-        fields: [
-          "model_id",
-          "description",
-          "aliases",
-          "tasks",
-          "api_endpoints",
-          "modalities",
-          "capabilities",
-          "limits",
-          "release_date",
-          "status",
-        ],
-        allowedHosts: ["raw.githubusercontent.com", "ai.meta.com"],
-        maxResponseBytes: mebibytes(12),
-        scope: "global",
-        exhaustive: true,
-        role: "catalog",
-        retainOmittedFacts: true,
-        linkedDocuments: {
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 6,
-          maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "sku-types",
-              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/sku_types.py",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "prompt-guard-models",
-              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/cli/safety_models.py",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "readme",
-              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/README.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            ...[
-              "llama3_1/MODEL_CARD.md",
-              "llama3_2/MODEL_CARD.md",
-              "llama3_3/MODEL_CARD.md",
-              "llama4/MODEL_CARD.md",
-            ].map((path) => ({
-              id: path.replaceAll("/", "-").toLowerCase(),
-              url: `https://raw.githubusercontent.com/meta-llama/llama-models/main/models/${path}`,
-              maxResponseBytes: mebibytes(2),
-            })),
-            ...fixedDocuments([
-              [
-                "llama-api-chat-example",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/chat.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-async-chat-example",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/async_chat.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-tool-example",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/tool_call.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-structured-example",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/structured.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-client",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/_client.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-chat-completions",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/chat/completions.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-              [
-                "llama-api-moderations",
-                "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/moderations.py",
-                1,
-                undefined,
-                true,
-                true,
-              ],
-            ]),
-            {
-              id: "llama-3-release",
-              url: "https://ai.meta.com/blog/meta-llama-3/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "llama-3-1-release",
-              url: "https://ai.meta.com/blog/meta-llama-3-1/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "llama-3-2-release",
-              url: "https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "llama-protections-release",
-              url: "https://ai.meta.com/blog/ai-defenders-program-llama-protection-tools/",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
-        },
-      },
       {
         id: "meta-model-api",
         url: "https://dev.meta.ai/docs/models",
@@ -3287,27 +3144,7 @@ export const manifests = [
           ]),
         },
       },
-      {
-        id: "llama-api",
-        url: "https://api.llama.com/v1/models",
-        type: "api",
-        access: "authenticated",
-        format: "json",
-        stability: "documented",
-        extractor: { kind: "llama-api" },
-        extractorVersion: "llama-api-v3",
-        fields: ["model_id", "status"],
-        allowedHosts: ["api.llama.com"],
-        maxResponseBytes: mebibytes(4),
-        scope: "account",
-        exhaustive: false,
-        role: "inventory",
-        optional: true,
-        auth: { scheme: "bearer", env: "LLAMA_API_KEY" },
-      },
     ],
-    supersededIdKinds: ["display_name", "source_generated"],
-    supersededModelIds: ["llama3", "llama4"],
   },
   {
     provider: {
