@@ -1171,9 +1171,11 @@ function studioPriceMarkup(body: string): string {
   for (const section of body.split(/^## /m).slice(1)) {
     const header = section.split(/{% hr \/%}|{% (?:tabs|table)\b/)[0] ?? "";
     const ids = unique(
-      [...header.matchAll(/\[`([a-z0-9][a-z0-9.-]+)`\]\(\/docs\/models\/[a-z0-9.-]+\)/g)].flatMap(
-        (match) => match[1] ?? [],
-      ),
+      [
+        ...header.matchAll(
+          /\[`([a-z0-9][a-z0-9.-]+)`\]\(\/docs\/models\/[a-z0-9.-]+(?:#[a-z0-9._-]+)?\)/g,
+        ),
+      ].flatMap((match) => match[1] ?? []),
     );
     if (ids.length === 0) continue;
     const group = $('<div class="models-section"><div class="heading-group"></div></div>');

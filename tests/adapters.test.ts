@@ -3768,7 +3768,13 @@ describe("Gemini adapters", () => {
   });
 
   it("preserves tier and validity from the Google AI Studio price table", async () => {
-    const models = await geminiCatalog({
+    const { models, inference_prices } = await geminiSource({
+      "model.html": (await fixture("gemini/model.html"))
+        .replace(" <code>gemini-3-test-preview</code>", "")
+        .replace(
+          "</table>",
+          "<tr><th>Versions</th><td><code>gemini-test-preview-customtools</code></td></tr></table>",
+        ),
       "pricing.html": `> ## AI Agent Context
 > https://aistudio.google.com/llms.txt
 
@@ -3776,7 +3782,8 @@ describe("Gemini adapters", () => {
 
 ## Gemini Test
 
-*[\`gemini-test-preview\`](/docs/models/gemini-test-preview)*
+*[\`gemini-test-preview\`](/docs/models/gemini-test-preview) and
+[\`gemini-test-preview-customtools\`](/docs/models/gemini-test-preview#customtools)*
 
 {% hr /%}
 {% tabs %}
@@ -3794,6 +3801,13 @@ describe("Gemini adapters", () => {
 {% /tabs %}
 `,
     });
+    expect(inference_prices).toContainEqual(
+      expect.objectContaining({
+        model_id: "gemini-test-preview-customtools",
+        model_ref: "gemini/gemini-test-preview",
+        offer_key: "sync",
+      }),
+    );
     const model = models.find(({ model_id }) => model_id === "gemini-test-preview");
     expect(model?.price_facts).toEqual(
       expect.arrayContaining([
