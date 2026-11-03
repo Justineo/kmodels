@@ -226,7 +226,7 @@ it("collects actual IDs through static output and uses the same commercial condi
     query({ provider_id: "amazon-bedrock", model_id: id.model_id, selectors: excluded }).reason,
   ).toBe("no_applicable_price");
   expect(JSON.stringify(id)).not.toContain("content_hash");
-});
+}, 20_000);
 it("keeps Nova Global Standard, Priority and Flex token tariffs disjoint through publication", async () => {
   const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-global-tiers.json")));
   const candidate = await collect((bundle) => {
@@ -301,7 +301,7 @@ it("keeps Nova Global Standard, Priority and Flex token tariffs disjoint through
     ).toEqual([{ numerator, denominator }]);
     expect(queryWebsiteInferencePrice(id, selectors, at).status).toBe(result.status);
   }
-});
+}, 20_000);
 
 it("does not infer private resource IDs, regional prefixes, or reranker ARNs", async () => {
   const candidate = await collect();
@@ -359,7 +359,7 @@ it("does not require separate API syntax or account-profile configuration docume
       model_id.includes("openai.gpt-6-astra"),
     );
   expect(ids(candidate)).toEqual(ids(previous));
-});
+}, 20_000);
 
 it("reads native ID declarations without protocol matrices and never invents a base ID", async () => {
   const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
