@@ -1,8 +1,8 @@
 {
-  "catalog_version": "11e97f562567851d87a039f76c87e7d8556a498abf39b4b6d04cd2f40cd039a3",
-  "generated_at": "2026-11-03T08:04:22.638Z",
+  "catalog_version": "35c596f0791aa3525beeb4561fc933f6ae0720ee25a92227c83f63032ca9cc73",
+  "generated_at": "2026-11-03T09:03:48.939Z",
   "outcome": "changed",
-  "previous_catalog_version": "02d4986e04c6130fa516db1a2158c26d9892c9abd13c4dcd7924d7d5475c29d2",
+  "previous_catalog_version": "11e97f562567851d87a039f76c87e7d8556a498abf39b4b6d04cd2f40cd039a3",
   "providers": [
     {
       "attempt": {
@@ -30,7 +30,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 4,
+            "consecutive_failures": 5,
             "last_success_at": "2026-11-02T17:02:36.533Z",
             "message": "Bedrock document duplicated Markdown table: Inference option, Input, Output, Cache read",
             "outcome": "parse_failed",
@@ -199,10 +199,10 @@
             "source_id": "sagemaker-pricing"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 620,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-03T08:04:22.638Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "sagemaker-api-us-west-2"
           }
         ]
@@ -261,8 +261,8 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
-        "scope_limited": 1
+        "inventory_fallback": 1,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -1976,7 +1976,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 4,
+                "consecutive_failures": 5,
                 "dependency_id": "databricks-models/google-image-pricing",
                 "impact": "bundle",
                 "last_success_at": "2026-11-02T17:02:36.533Z",
@@ -2545,18 +2545,23 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1449,
+            "parsed_models": 1453,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 4,
+        "added_model_refs": [
+          "huggingface/Qwen/Qwen3-Reranker-0.6B",
+          "huggingface/facebook/mask2former-swin-small-coco-panoptic",
+          "huggingface/google/efficientnet-b7",
+          "huggingface/openmmlab/upernet-swin-small"
+        ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1449,
+        "current": 1453,
         "previous": 1449,
         "removed": 0,
         "removed_model_refs": [],
@@ -2566,10 +2571,10 @@
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1449,
+        "current_models": 1453,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 0
+          "unknown_models": 4
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2597,8 +2602,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1429,
-        "unknown_models": 1449
+        "unknown_model_refs_omitted": 1433,
+        "unknown_models": 1453
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
@@ -3430,7 +3435,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 12,
+            "consecutive_failures": 13,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -4039,7 +4044,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4063,7 +4068,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4087,7 +4092,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4111,7 +4116,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4135,7 +4140,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4159,7 +4164,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4183,7 +4188,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4207,7 +4212,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4231,7 +4236,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -4255,7 +4260,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -4263,7 +4268,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -4271,7 +4276,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -4279,7 +4284,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -4287,7 +4292,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -4295,7 +4300,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -4303,7 +4308,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 253,
+                "consecutive_failures": 254,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -4414,9 +4419,9 @@
         "unchanged": 497
       },
       "pricing": {
-        "commercial_hash": "e3f62d3cca325a698128240f57f152bff2d63417b4f0eab30663ab5a1b29d014",
+        "commercial_hash": "89fb33101155a3ced684797699d8de0d216d19e055c907af7b2d02f07c488344",
         "outcome": "commercial",
-        "previous_commercial_hash": "fc597cf1dc334716c120aadf9446ad255ff749e2fd7324aa8170738d3c49ea2a"
+        "previous_commercial_hash": "e3f62d3cca325a698128240f57f152bff2d63417b4f0eab30663ab5a1b29d014"
       },
       "pricing_coverage": {
         "current_models": 497,
@@ -5022,11 +5027,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 19,
-    "added_models": 0,
+    "added_models": 4,
     "added_sources": 0,
     "changed_models": 0,
     "changed_sources": 31,
-    "models": 4189,
+    "models": 4193,
     "pricing_accepted": 17,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
