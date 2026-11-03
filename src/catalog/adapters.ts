@@ -35,13 +35,7 @@ import {
   parseDashscopeReleases,
 } from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog, parseGeminiPricing } from "./gemini.ts";
-import {
-  parseHuggingFaceFeatherless,
-  parseHuggingFaceHub,
-  parseHuggingFaceMapping,
-  parseHuggingFaceNativePricing,
-  parseHuggingFaceRouter,
-} from "./huggingface.ts";
+import { parseHuggingFaceHub } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
 import { parseMetaModelApi } from "./meta-model-api.ts";
 import {
@@ -114,14 +108,6 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return parseCerebrasReleases(input);
     case "cerebras-api":
       return parseCerebrasApi(input);
-    case "huggingface-mapping":
-      return parseHuggingFaceMapping(input);
-    case "huggingface-router":
-      return parseHuggingFaceRouter(input);
-    case "huggingface-featherless":
-      return { models: parseHuggingFaceFeatherless(input) };
-    case "huggingface-native-pricing":
-      return { models: parseHuggingFaceNativePricing(input) };
     case "huggingface-hub":
       return { models: parseHuggingFaceHub(input) };
     case "ollama-library":

@@ -72,6 +72,8 @@ Status: implemented
   bundle incomplete so publication retains the previous compatible pricing partition.
   This keeps pricebook completeness independent from catalog availability without
   silently replacing a previously broad pricebook with a partial one.
+- A provider explicitly configured as catalog-only clears its prior pricing partition on a
+  successful catalog refresh. Collection failure uses the normal stale pair fallback.
 - A missing fixed optional companion is a bundle-level omission unless the manifest explicitly
   marks it `claimLocal`. Use claim-local companions when an adapter can isolate their absence to
   particular capabilities, usage locators, or selector mappings without weakening independent

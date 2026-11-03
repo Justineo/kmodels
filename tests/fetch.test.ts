@@ -13,6 +13,34 @@ const transport = vi.hoisted(() => {
   return { failures, responses, calls };
 });
 
+it.each(["complete", "changed filter", "repeated cursor"])(
+  "validates HF Inference pagination with a %s response",
+  async (scenario) => {
+    const source = reviewedPublicSource("huggingface-hf-inference");
+    const next = new URL(source.url);
+    next.searchParams.set("cursor", "next-page");
+    if (scenario === "changed filter") next.searchParams.append("inference_provider", "all");
+    const link = `link: <${next.href}>; rel="next"\r\n`;
+    transport.responses.set("huggingface.co", [
+      `HTTP/1.1 200 OK\r\n${link}\r\n[{"id":"org/first"}]`,
+      `HTTP/1.1 200 OK\r\n${scenario === "repeated cursor" ? link : ""}\r\n[{"id":"org/second"}]`,
+    ]);
+    const result = fetchSource(source);
+    if (scenario === "changed filter") {
+      await expect(result).rejects.toThrow("left the reviewed query");
+      expect(transport.calls).toEqual([source.url]);
+    } else if (scenario === "repeated cursor") {
+      await expect(result).rejects.toThrow("repeated a pagination cursor");
+    } else {
+      const fetched = await result;
+      expect(JSON.parse(fetched.body)).toEqual({
+        models: [{ id: "org/first" }, { id: "org/second" }],
+      });
+      expect(fetched.dependencies).toHaveLength(2);
+    }
+  },
+);
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

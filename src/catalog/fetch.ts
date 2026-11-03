@@ -62,10 +62,6 @@ type DashscopeDeployableModelsTransport = Extract<
   NonNullable<SourceManifest["transport"]>,
   { kind: "dashscope-deployable-models" }
 >;
-type FeatherlessModelsTransport = Extract<
-  NonNullable<SourceManifest["transport"]>,
-  { kind: "featherless-models" }
->;
 type GoogleModelGardenTransport = Extract<
   NonNullable<SourceManifest["transport"]>,
   { kind: "google-model-garden" }
@@ -143,16 +139,7 @@ const dashscopeDeploymentPageSchema = z.strictObject({
   }),
 });
 const huggingFaceModelsPageSchema = z.array(z.unknown());
-const featherlessModelsPageSchema = z.object({
-  data: z.array(z.unknown()),
-  total: z.number().int().nonnegative(),
-  pagination: z.object({
-    current_page: z.number().int().positive(),
-    per_page: z.number().int().positive(),
-    total_items: z.number().int().nonnegative(),
-    total_pages: z.number().int().nonnegative(),
-  }),
-});
+
 const ollamaListSchema = z.object({ models: z.array(z.unknown()) }).passthrough();
 const vercelModelsTransportSchema = z.strictObject({
   object: z.literal("list"),
@@ -1240,138 +1227,15 @@ function huggingFaceModelsUrl(raw: string, source: SourceManifest): URL {
     url.pathname !== "/api/models" ||
     url.hash !== "" ||
     [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
-    url.searchParams.get("inference_provider") !== "hf-inference" ||
-    url.searchParams.get("limit") !== "1000" ||
-    url.searchParams.get("sort") !== "createdAt" ||
-    url.searchParams.getAll("expand").join("\0") !== "lastModified" ||
+    url.searchParams.getAll("inference_provider").join("\0") !== "hf-inference" ||
+    url.searchParams.getAll("limit").join("\0") !== "1000" ||
+    url.searchParams.getAll("sort").join("\0") !== "createdAt" ||
+    url.searchParams.getAll("expand").sort().join("\0") !==
+      "inferenceProviderMapping\0lastModified" ||
     url.searchParams.getAll("cursor").length > 1
   )
     throw new Error("Hugging Face Hub pagination left the reviewed query");
   return url;
-}
-
-function huggingFacePartnerUrl(source: SourceManifest, provider: string): URL {
-  const base = checkedUrl(source.url, source);
-  if (
-    base.hostname !== "huggingface.co" ||
-    base.port !== "" ||
-    base.username !== "" ||
-    base.password !== "" ||
-    base.pathname !== "/api/partners/hf-inference/models" ||
-    base.hash !== "" ||
-    base.searchParams.size !== 1 ||
-    base.searchParams.get("status") !== "live" ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(provider)
-  )
-    throw new Error("Hugging Face partner transport left the reviewed API contract");
-  const url = new URL(base);
-  url.pathname = `/api/partners/${provider}/models`;
-  return url;
-}
-
-async function fetchHuggingFacePartnerModels(source: SourceManifest): Promise<FetchResult> {
-  const transport = source.transport;
-  const extractor = source.extractor;
-  const crawl = source.linkedDocuments;
-  const taskIndex = crawl?.documents?.[0];
-  if (
-    transport?.kind !== "huggingface-partner-models" ||
-    extractor.kind !== "huggingface-mapping" ||
-    !Number.isInteger(transport.concurrency) ||
-    transport.concurrency < 1 ||
-    transport.concurrency > transport.providers.length ||
-    transport.providers.length > 64 ||
-    !Number.isSafeInteger(transport.maxPartnerBytes) ||
-    transport.maxPartnerBytes < 1 ||
-    transport.maxPartnerBytes > source.maxResponseBytes ||
-    new Set(transport.providers).size !== transport.providers.length ||
-    transport.providers.join("\0") !== extractor.providers.join("\0") ||
-    crawl === undefined ||
-    crawl.indexFormat !== "mixed" ||
-    crawl.requestSuffix !== ".md" ||
-    crawl.discoverySuffix !== undefined ||
-    crawl.nestedIndexes !== undefined ||
-    crawl.documents?.length !== 1 ||
-    taskIndex === undefined ||
-    taskIndex.id !== "task-index" ||
-    taskIndex.format !== "markdown" ||
-    !Number.isSafeInteger(crawl.maxDocumentBytes) ||
-    (crawl.maxDocumentBytes ?? 0) < 1
-  )
-    throw new Error("Invalid Hugging Face partner transport");
-  const taskIndexKey = `${source.id}/${taskIndex.id}`;
-  const taskIndexUrl = checkedUrl(taskIndex.url, source);
-  if (
-    taskIndexUrl.hostname !== "huggingface.co" ||
-    taskIndexUrl.port !== "" ||
-    taskIndexUrl.username !== "" ||
-    taskIndexUrl.password !== "" ||
-    taskIndexUrl.pathname !== "/docs/inference-providers/en/tasks/index.md" ||
-    taskIndexUrl.search !== "" ||
-    taskIndexUrl.hash !== ""
-  )
-    throw new Error("Hugging Face task index left the reviewed documentation path");
-  const [partners, taskIndexPayload] = await Promise.all([
-    mapConcurrent(transport.providers, transport.concurrency, async (provider) => {
-      const key = `${source.id}/${provider}`;
-      const url = huggingFacePartnerUrl(source, provider);
-      const payload = await fetchPayload(
-        requestSource(source, key, url, "json", transport.maxPartnerBytes),
-      );
-      const models = recognizeValue(
-        "Hugging Face partner response",
-        z.record(z.string(), z.unknown()),
-        json(payload.body),
-      );
-      return { provider, models, payload, key };
-    }),
-    fetchPayload(
-      requestSource(
-        source,
-        taskIndexKey,
-        taskIndexUrl,
-        taskIndex.format,
-        taskIndex.maxResponseBytes,
-      ),
-    ),
-  ]);
-  const taskUrls = linkedDocumentUrls(taskIndexPayload.body, {
-    ...source,
-    url: taskIndexUrl.href,
-  });
-  const taskDocuments = await mapConcurrent(taskUrls, crawl.concurrency, async (url) => {
-    const slug = /\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(url.pathname)?.[1];
-    if (slug === undefined)
-      throw new Error("Hugging Face task document left the reviewed slug grammar");
-    const key = `${source.id}/task/${slug}`;
-    const payload = await fetchPayload(
-      requestSource(
-        source,
-        key,
-        url,
-        "markdown",
-        crawl.maxDocumentBytes ?? source.maxResponseBytes,
-      ),
-    );
-    return { key, url: url.href, payload };
-  });
-  const body = JSON.stringify({
-    partners: partners.map(({ provider, models }) => ({ provider, models })),
-    documents: taskDocuments.map(({ url, payload }) => ({ url, body: payload.body })),
-  });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Hugging Face partner bundle exceeded byte limit");
-  return {
-    body,
-    contentHash: sha256(body),
-    etag: undefined,
-    lastModified: undefined,
-    dependencies: [
-      ...partners.map(({ key, payload }) => observation(key, payload)),
-      observation(taskIndexKey, taskIndexPayload),
-      ...taskDocuments.map(({ key, payload }) => observation(key, payload)),
-    ],
-  };
 }
 
 async function fetchHuggingFacePage(
@@ -1400,8 +1264,12 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
     throw new Error("Invalid Hugging Face Hub transport");
   const models: unknown[] = [];
   const pages: { key: string; payload: FetchPayload }[] = [];
+  const cursors = new Set<string | null>();
   let next: URL | undefined = huggingFaceModelsUrl(source.url, source);
   for (let index = 0; next !== undefined && index < transport.maxPages; index += 1) {
+    const cursor = next.searchParams.get("cursor");
+    if (cursors.has(cursor)) throw new Error("Hugging Face Hub repeated a pagination cursor");
+    cursors.add(cursor);
     const key = `${source.id}/page-${index + 1}`;
     const page = await fetchHuggingFacePage(source, key, next);
     models.push(
@@ -1427,127 +1295,6 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
     etag: pages[0]?.payload.etag,
     lastModified: pages[0]?.payload.lastModified,
     dependencies: pages.map(({ key, payload }) => observation(key, payload)),
-  };
-}
-
-function featherlessModelsUrl(
-  source: SourceManifest,
-  transport: FeatherlessModelsTransport,
-  page: number,
-): URL {
-  const url = checkedUrl(source.url, source);
-  const allowed = new Set(["status", "page", "per_page"]);
-  if (
-    url.hostname !== "api.featherless.ai" ||
-    url.port !== "" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.pathname !== "/v1/models" ||
-    url.hash !== "" ||
-    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
-    url.searchParams.get("status") !== "active"
-  )
-    throw new Error("Featherless pagination left the reviewed active-model query");
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("per_page", String(transport.pageSize));
-  return url;
-}
-
-async function fetchFeatherlessModels(source: SourceManifest): Promise<FetchResult> {
-  const transport = source.transport;
-  if (transport?.kind !== "featherless-models")
-    throw new Error("Invalid Featherless models transport");
-  if (
-    !Number.isInteger(transport.pageSize) ||
-    transport.pageSize < 1 ||
-    transport.pageSize > 1000 ||
-    !Number.isInteger(transport.maxPages) ||
-    transport.maxPages < 1 ||
-    !Number.isInteger(transport.maxModels) ||
-    transport.maxModels < 1 ||
-    !Number.isInteger(transport.concurrency) ||
-    transport.concurrency < 1 ||
-    !Number.isInteger(transport.maxPageBytes) ||
-    transport.maxPageBytes < 1
-  )
-    throw new Error("Invalid Featherless pagination bounds");
-  const fetchPage = async (
-    page: number,
-  ): Promise<{
-    key: string;
-    payload: FetchPayload;
-    parsed: z.infer<typeof featherlessModelsPageSchema>;
-  }> => {
-    const key = `${source.id}/page-${page}`;
-    const url = featherlessModelsUrl(source, transport, page);
-    const payload = await fetchPayload(
-      requestSource(source, key, url, "json", transport.maxPageBytes),
-    );
-    const parsed = recognizeValue(
-      "Featherless models page",
-      featherlessModelsPageSchema,
-      json(payload.body),
-    );
-    assertSourceConstraint(
-      "Featherless returned a mismatched page number",
-      parsed.pagination.current_page === page,
-      parsed.pagination.current_page,
-      ["pagination", "current_page"],
-    );
-    return { key, payload, parsed };
-  };
-
-  const configured = source.linkedDocuments?.documents ?? [];
-  const documentsPromise = mapConcurrent(
-    configured,
-    source.linkedDocuments?.concurrency ?? 1,
-    async (document) => {
-      const key = `${source.id}/${document.id}`;
-      const url = checkedUrl(document.url, source);
-      if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
-        throw new Error("Featherless companion URL contained unsupported URL components");
-      const payload = await fetchPayload(
-        requestSource(source, key, url, document.format ?? "html", document.maxResponseBytes),
-      );
-      return { key, url: url.href, payload };
-    },
-  );
-  const [first, documents] = await Promise.all([fetchPage(1), documentsPromise]);
-  const totalPages = first.parsed.pagination.total_pages;
-  if (totalPages < 1 || totalPages > transport.maxPages)
-    throw new Error("Featherless models exceeded page limit");
-  if (
-    first.parsed.total > transport.maxModels ||
-    first.parsed.pagination.total_items > transport.maxModels
-  )
-    throw new Error("Featherless models exceeded model limit");
-  const remaining = await mapConcurrent(
-    Array.from({ length: totalPages - 1 }, (_value, index) => index + 2),
-    transport.concurrency,
-    fetchPage,
-  );
-  const pages = [first, ...remaining];
-  const models = pages.flatMap(({ parsed }) => parsed.data);
-  assertItemCount("Featherless active models", models.length, 1, transport.maxModels);
-
-  const body = JSON.stringify({
-    index: {
-      url: source.url,
-      body: JSON.stringify({ data: models }),
-    },
-    documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
-  });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Featherless models bundle exceeded byte limit");
-  return {
-    body,
-    contentHash: sha256(body),
-    etag: first.payload.etag,
-    lastModified: first.payload.lastModified,
-    dependencies: [
-      ...pages.map(({ key, payload }) => observation(key, payload)),
-      ...documents.map(({ key, payload }) => observation(key, payload)),
-    ],
   };
 }
 
@@ -2819,10 +2566,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   if (source.transport?.kind === "cohere-models") return fetchCohereModels(source);
   if (source.transport?.kind === "dashscope-deployable-models")
     return fetchDashscopeDeployableModels(source);
-  if (source.transport?.kind === "huggingface-partner-models")
-    return fetchHuggingFacePartnerModels(source);
   if (source.transport?.kind === "huggingface-models") return fetchHuggingFaceModels(source);
-  if (source.transport?.kind === "featherless-models") return fetchFeatherlessModels(source);
   if (source.transport?.kind === "vercel-models") return fetchVercelModels(source);
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
