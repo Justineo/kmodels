@@ -1061,7 +1061,17 @@ async function attemptFetch(
       response.status,
     );
   if (!response.ok) throw new SourceFetchError(`HTTP ${response.status}`, response.status);
-  const body = await readLimited(response, source.maxResponseBytes);
+  let body = await readLimited(response, source.maxResponseBytes);
+  const host = new URL(source.url).hostname;
+  if (
+    source.access === "public" &&
+    source.auth === undefined &&
+    source.format === "html" &&
+    (host === "cloud.google.com" || host === "docs.cloud.google.com")
+  ) {
+    // Google documentation embeds browser API keys unrelated to the catalog content.
+    body = body.replace(/AIzaSy[0-9A-Za-z_-]{33}/g, "[redacted browser API key]");
+  }
   if (body.trim() === "") throw new Error("Source returned an empty body");
   return {
     payload: {

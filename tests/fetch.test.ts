@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
+import { sha256 } from "../src/catalog/io.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 import { sourceFailure } from "../src/catalog/source-failure.ts";
@@ -40,6 +41,18 @@ it("applies a linked-document request suffix once and deduplicates both public s
     "https://inference-docs.cerebras.ai/models/gpt-oss-120b.md",
     "https://inference-docs.cerebras.ai/models/qwen-3.8-27b.md",
   ]);
+});
+
+it("strips embedded Google Cloud browser keys before hashing reviewed evidence", async () => {
+  const source = reviewedPublicSource("vertex-pricing", "--index");
+  const key = "AIzaSy" + "A".repeat(33);
+  const html = `<script>const key = "${key}";</script><p>Input: $1</p>`;
+  transport.responses.set("cloud.google.com", [
+    `HTTP/1.1 200 OK\r\ncontent-type: text/html\r\n\r\n${html}`,
+  ]);
+  const result = await fetchSource(source);
+  expect(result.body).toBe(html.replace(key, "[redacted browser API key]"));
+  expect(result.contentHash).toBe(sha256(result.body));
 });
 
 vi.mock("node:timers/promises", () => ({
