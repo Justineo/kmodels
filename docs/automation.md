@@ -316,6 +316,9 @@ Status: implemented
   that list synchronized when adding source hosts. An unavailable tool/source or an unreproduced
   issue produces `report_incomplete`, not a no-op. Runtime sandbox connectivity must be verified in
   CI; local fetch success alone does not establish remote access.
+  Public Google Cloud HTML embeds browser API keys unrelated to catalog data. The transport strips
+  these values before hashing so the runner's log redactor preserves the saved evidence and its
+  replay hash.
   The evidence CLI distinguishes unknown source IDs and mistaken provider IDs from authenticated
   sources. A provider-ID error lists its reviewed public source IDs; for example Bedrock uses
   `bedrock-models`, not `amazon-bedrock`. Such errors must be corrected within the same run.
