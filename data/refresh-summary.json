@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b001a8c89d9e4d2598e90a20fbe25e39b6504c46419e41b682fa59179153bde7",
-  "generated_at": "2026-11-03T14:38:30.665Z",
+  "catalog_version": "64d884b1173b60cf0e71d12a3286e1fce08309bca29932418134c19c90fb49b1",
+  "generated_at": "2026-11-03T15:04:22.770Z",
   "outcome": "changed",
-  "previous_catalog_version": "cb91fcb25e5b1ed40fd44644ede8b4207afe2e60f8ad7ab8085fb169d50a5ec6",
+  "previous_catalog_version": "b001a8c89d9e4d2598e90a20fbe25e39b6504c46419e41b682fa59179153bde7",
   "providers": [
     {
       "attempt": {
@@ -45,7 +45,7 @@
                 "observed_items": 1
               }
             ],
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 147,
             "pricing_extraction": {
@@ -139,9 +139,9 @@
             "source_id": "bedrock-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -178,10 +178,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-03T14:38:30.665Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -189,62 +189,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 3,
-        "changed_fields": {
-          "capabilities": 2,
-          "description": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "Claude 3 Haiku reached end of life on September 10, 2026 in most Regions, where requests now fail with ResourceNotFoundException: This model version has reached the end of its life. It remains available in the Legacy stage in ap-northeast-2 (Seoul), ap-south-1 (Mumbai), ap-southeast-1 (Singapore), ca-central-1 (Canada), eu-central-2 (Zurich), and sa-east-1 (São Paulo). These Regions have an upcoming end of life of November 13, 2026 (November 27, 2026 in ca-central-1), after which requests in these Regions will also fail. For models that are currently available, see Models at a glance. For how model lifecycle stages work, see Model lifecycle.",
-                "path": "description",
-                "previous": "Claude 3 Haiku reached end of life on September 10, 2026 in most Regions, where requests now fail with ResourceNotFoundException: This model version has reached the end of its life. It remains available in the Legacy stage in ap-northeast-2 (Seoul), ap-south-1 (Mumbai), ap-southeast-1 (Singapore), ca-central-1 (Canada), eu-central-2 (Zurich), and sa-east-1 (São Paulo). These Regions have an upcoming end of life of November 13, 2026, after which requests in these Regions will also fail. For models that are currently available, see Models at a glance. For how model lifecycle stages work, see Model lifecycle."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-3-haiku-20240307-v1:0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.computer_use",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-fable-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.computer_use",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-fable-5-1"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 147,
         "previous": 147,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 144
+        "unchanged": 147
       },
       "pricing": {
         "commercial_hash": "cc9264882968c82b3d9d57328e345a24d051d32c3c226a3fbeb3331aed9faa33",
-        "outcome": "commercial",
-        "previous_commercial_hash": "d2205de0fb989f2f8ecfe7ca3d97fdfb5b6f91d4416d468e4965ab0454d11289"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "cc9264882968c82b3d9d57328e345a24d051d32c3c226a3fbeb3331aed9faa33"
       },
       "pricing_coverage": {
         "current_models": 136,
@@ -274,17 +231,11 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "bedrock-accounting"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "bedrock-models"
           }
@@ -293,14 +244,14 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1,
-        "source_contract_drift": 2
+        "source_contract_drift": 2,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -319,8 +270,8 @@
           },
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 640,
             "source_id": "sagemaker-sdk"
           },
@@ -456,20 +407,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "sagemaker-sdk"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -485,9 +429,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 36,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -624,232 +568,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 14,
-        "changed_fields": {
-          "capabilities": 3,
-          "name": 7,
-          "release_date": 10
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "Claude Haiku 3.5",
-                "path": "name",
-                "previous": "claude-3-5-haiku-20241022"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-5-haiku-20241022"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Sonnet 3.7",
-                "path": "name",
-                "previous": "claude-3-7-sonnet-20250219"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-7-sonnet-20250219"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Haiku 3",
-                "path": "name",
-                "previous": "claude-3-haiku-20240307"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-haiku-20240307"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 3",
-                "path": "name",
-                "previous": "claude-3-opus-20240229"
-              }
-            ],
-            "fields": [
-              "name"
-            ],
-            "model_ref": "anthropic/claude-3-opus-20240229"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-06-09",
-                "path": "release_date",
-                "previous": "2026-06-07"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-fable-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-01",
-                "path": "release_date",
-                "previous": "2026-08-28"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-fable-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-06-09",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-mythos-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-01",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-mythos-5-1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 4.1",
-                "path": "name",
-                "previous": "claude-opus-4-1-20250805"
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.tool_call",
-                "previous": true
-              },
-              {
-                "current": "2025-08-05",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities",
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-opus-4-1-20250805"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Opus 4",
-                "path": "name",
-                "previous": "claude-opus-4-20250514"
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.tool_call",
-                "previous": true
-              },
-              {
-                "current": "2025-05-22",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities",
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-opus-4-20250514"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-04-16",
-                "path": "release_date",
-                "previous": "2026-04-14"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-opus-4-7"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09-22",
-                "path": "release_date",
-                "previous": "2026-09-21"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-opus-5-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Claude Sonnet 4",
-                "path": "name",
-                "previous": "claude-sonnet-4-20250514"
-              },
-              {
-                "current": "unknown",
-                "path": "capabilities.tool_call",
-                "previous": true
-              },
-              {
-                "current": "2025-05-22",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "name",
-              "capabilities",
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-sonnet-4-20250514"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-06-30",
-                "path": "release_date",
-                "previous": "2026-06-29"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "anthropic/claude-sonnet-5"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 36,
         "previous": 36,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 22
+        "unchanged": 36
       },
       "pricing": {
         "commercial_hash": "1bf621fc79694ece86c431ca8c9b9a730248a3448ca4e22cdac6d1e01868df53",
@@ -881,20 +607,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1011,7 +730,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 121,
             "pricing_extraction": {
@@ -1273,7 +992,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "azure-public-pricing"
           }
@@ -1299,9 +1018,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1392,9 +1111,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1403,87 +1122,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "api_endpoints": 2,
-          "capabilities": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "name": "Chat Completions",
-                    "path": "v1/chat/completions"
-                  },
-                  {
-                    "name": "Completions",
-                    "path": "v1/completions"
-                  }
-                ],
-                "path": "api_endpoints"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "api_endpoints",
-              "capabilities"
-            ],
-            "model_ref": "cerebras/gpt-oss-120b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "name": "Chat Completions",
-                    "path": "v1/chat/completions"
-                  },
-                  {
-                    "name": "Completions",
-                    "path": "v1/completions"
-                  }
-                ],
-                "path": "api_endpoints"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "api_endpoints",
-              "capabilities"
-            ],
-            "model_ref": "cerebras/qwen-3.8-27b"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 15,
         "previous": 15,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 13
+        "unchanged": 15
       },
       "pricing": {
         "commercial_hash": "9c9db2151e444fb6544959ce3c11e6a02b55c47e9a9122bdb2ea94b12dd2823b",
-        "outcome": "commercial",
-        "previous_commercial_hash": "88c654e921d8654b71690fef771ec5e2defcd3aa61efb6aaa71a9775596c52d5"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "9c9db2151e444fb6544959ce3c11e6a02b55c47e9a9122bdb2ea94b12dd2823b"
       },
       "pricing_coverage": {
         "current_models": 15,
@@ -1524,9 +1175,9 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "cerebras-catalog"
+            "source_id": "cerebras-api"
           }
         ],
         "current": 5,
@@ -1550,8 +1201,8 @@
         "sources": [
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 49,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1593,7 +1244,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 22,
             "pricing_extraction": {
@@ -1645,108 +1296,25 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 4,
-        "changed_fields": {
-          "source_refs": 4
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "cohere-models",
-                  "cohere-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "cohere-models",
-                  "cohere-pricing",
-                  "cohere-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "cohere/rerank-v4.0-fast"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "cohere-models",
-                  "cohere-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "cohere-models",
-                  "cohere-pricing",
-                  "cohere-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "cohere/rerank-v4.0-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "cohere-models",
-                  "cohere-api",
-                  "cohere-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "cohere-models",
-                  "cohere-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "cohere/rerank-v5.0-fast"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "cohere-models",
-                  "cohere-api",
-                  "cohere-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "cohere-models",
-                  "cohere-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "cohere/rerank-v5.0-pro"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 49,
         "previous": 49,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 45
+        "unchanged": 49
       },
       "pricing": {
         "commercial_hash": "446758bde043daa40cfaea9822de86849025e091458a1268acd649308efddc02",
-        "outcome": "commercial",
-        "previous_commercial_hash": "3747ce145539ce3fe1f2041940f6ddb1854ea654645883ffc12fcdea5f37303e"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "446758bde043daa40cfaea9822de86849025e091458a1268acd649308efddc02"
       },
       "pricing_coverage": {
         "current_models": 42,
         "delta": {
-          "resolved_models": 2,
-          "unknown_models": -2
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 14,
         "not_applicable_models": 0,
@@ -1784,17 +1352,11 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "cohere-models"
-          },
-          {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "cohere-pricing"
           }
@@ -1803,7 +1365,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1940,7 +1502,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 246,
             "pricing_extraction": {
@@ -2049,918 +1611,27 @@
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "dashscope/ZHIPU/GLM-5.3",
-          "dashscope/kimi/kimi-k3"
-        ],
-        "changed": 44,
-        "changed_fields": {
-          "availability": 6,
-          "capabilities": 44
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/MiniMax-M2.5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/ZHIPU/GLM-5.2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/deepseek-v4-flash-0731"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/deepseek-v4-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/deepseek-v4-pro-0813"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/deepseek-v4.1-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/deepseek-v4.1-flash-1017"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/glm-5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/glm-5.1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/glm-5.2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/glm-5.2-fast-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/glm-5.3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "capabilities",
-              "availability"
-            ],
-            "model_ref": "dashscope/glm-5.3-prime"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/kimi-k2.5"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/kimi-k2.6"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/kimi-k2.7-code"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/kimi-k3"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-doc-turbo"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-flash-character"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-plus-character"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen-plus-character-ja"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3-coder-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3-vl-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.5-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.5-plus-2026-04-20"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.6-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-flash-2026-07-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-max-2026-05-20"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-max-2026-06-08"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.7-plus-2026-05-26"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-2.4t-a95b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-27b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-max-0902"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "dashscope/qwen3.8-omni-flash"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 248,
-        "previous": 246,
+        "previous": 248,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 202
+        "unchanged": 248
       },
       "pricing": {
         "commercial_hash": "b0ef2607a7ee368680253fc9d9a95982e13f494439726f78aa7947dfe76c05bb",
-        "outcome": "commercial",
-        "previous_commercial_hash": "51865e54f64b3fbdd16aaf07a49597654503e6389307a70852c3dafa1bede93c"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "b0ef2607a7ee368680253fc9d9a95982e13f494439726f78aa7947dfe76c05bb"
       },
       "pricing_coverage": {
         "current_models": 248,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 2
+          "unknown_models": 0
         },
         "normalized_rate_models": 244,
         "not_applicable_models": 0,
@@ -3018,7 +1689,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-pricing"
           },
@@ -3087,9 +1758,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 67,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3178,20 +1849,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "databricks-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3209,8 +1873,8 @@
         "sources": [
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3271,89 +1935,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 4,
-        "changed_fields": {
-          "limits": 4
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": 1048576,
-                "path": "limits.context_tokens",
-                "previous": 1000000
-              },
-              {
-                "current": 393216,
-                "path": "limits.max_output_tokens",
-                "previous": 384000
-              }
-            ],
-            "fields": [
-              "limits"
-            ],
-            "model_ref": "deepseek/deepseek-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": 1048576,
-                "path": "limits.context_tokens",
-                "previous": 1000000
-              },
-              {
-                "current": 393216,
-                "path": "limits.max_output_tokens",
-                "previous": 384000
-              }
-            ],
-            "fields": [
-              "limits"
-            ],
-            "model_ref": "deepseek/deepseek-v4-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": 1048576,
-                "path": "limits.context_tokens",
-                "previous": 1000000
-              },
-              {
-                "current": 393216,
-                "path": "limits.max_output_tokens",
-                "previous": 384000
-              }
-            ],
-            "fields": [
-              "limits"
-            ],
-            "model_ref": "deepseek/deepseek-v4-flash-vision-exp"
-          },
-          {
-            "field_changes": [
-              {
-                "current": 1048576,
-                "path": "limits.context_tokens",
-                "previous": 1000000
-              },
-              {
-                "current": 393216,
-                "path": "limits.max_output_tokens",
-                "previous": 384000
-              }
-            ],
-            "fields": [
-              "limits"
-            ],
-            "model_ref": "deepseek/deepseek-v4-pro"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 0
+        "unchanged": 4
       },
       "pricing": {
         "commercial_hash": "2f562dd9afbe4a079179ec478473d796e22e2e8f3a31c2fe40ff7f78717c8e3d",
@@ -3381,20 +1970,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "deepseek-catalog"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3418,7 +2000,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 37,
             "pricing_extraction": {
@@ -3475,68 +2057,25 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "source_refs": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "gemini-models",
-                  "gemini-api",
-                  "gemini-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "gemini-models",
-                  "gemini-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "gemini/gemma-4-26b-a4b-it"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "gemini-models",
-                  "gemini-api",
-                  "gemini-pricing"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "gemini-models",
-                  "gemini-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "gemini/gemma-4-31b-it"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 89,
         "previous": 89,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 87
+        "unchanged": 89
       },
       "pricing": {
         "commercial_hash": "a62f3e23f4465067d7c8034a6502c0e6e730508a855f8547b57b50c06933c4a5",
-        "outcome": "commercial",
-        "previous_commercial_hash": "e337d68e4ad7346250d3d5212973422012e2e026448c5009b4edd888c35297aa"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "a62f3e23f4465067d7c8034a6502c0e6e730508a855f8547b57b50c06933c4a5"
       },
       "pricing_coverage": {
         "current_models": 89,
         "delta": {
-          "resolved_models": 2,
-          "unknown_models": -2
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 37,
         "not_applicable_models": 0,
@@ -3584,7 +2123,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "gemini-pricing"
           }
@@ -3611,7 +2150,7 @@
         "sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 1453,
             "source_id": "huggingface-hf-inference"
@@ -3619,19 +2158,16 @@
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/deepvk/USER-bge-m3",
-          "huggingface/google/bigbird-pegasus-large-arxiv"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 1453,
-        "previous": 1451,
+        "previous": 1453,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1451
+        "unchanged": 1453
       },
       "pricing": {
         "outcome": "none"
@@ -3640,7 +2176,7 @@
         "current_models": 1453,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 2
+          "unknown_models": 0
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -3682,7 +2218,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
           }
@@ -3796,9 +2332,9 @@
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 6,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3856,9 +2392,9 @@
             "source_id": "kimi-pricing"
           },
           {
-            "content_changed": true,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 6,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3916,9 +2452,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 13,
             "source_id": "kimi-releases"
           },
@@ -4114,8 +2650,8 @@
       },
       "pricing": {
         "commercial_hash": "4d1144c6028013fb215fba1efdca1de6fa7435c1f3a19b61bfef26072d20f3c3",
-        "outcome": "commercial",
-        "previous_commercial_hash": "5ec45fe452a61db8946433e591306ddc45d3ffd864ff74490223c1fc30e119f0"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "4d1144c6028013fb215fba1efdca1de6fa7435c1f3a19b61bfef26072d20f3c3"
       },
       "pricing_coverage": {
         "current_models": 6,
@@ -4140,7 +2676,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
@@ -4153,31 +2689,13 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-china-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "kimi-international-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "kimi-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -4196,7 +2714,7 @@
         "sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 9,
             "pricing_extraction": {
@@ -4277,7 +2795,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "meta-model-api"
           }
@@ -4344,7 +2862,7 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -4378,7 +2896,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 19,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -4453,7 +2971,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 18,
+            "consecutive_failures": 19,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -4505,20 +3023,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -4544,7 +3055,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 31,
             "pricing_extraction": {
@@ -4664,7 +3175,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "ollama-cloud-models"
           },
@@ -4695,8 +3206,8 @@
         "sources": [
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 154,
             "source_id": "openai-models"
           },
@@ -4768,8 +3279,8 @@
           },
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 66,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -4870,257 +3381,26 @@
         ]
       },
       "models": {
-        "added": 3,
-        "added_model_refs": [
-          "openai/gpt-6-rosalind",
-          "openai/gpt-rosalind-discovery",
-          "openai/gpt-rosalind-research"
-        ],
-        "changed": 9,
-        "changed_fields": {
-          "source_refs": 9
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-3.5-turbo"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-3.5-turbo-0125"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4-0613"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4-turbo-2024-04-09"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-deprecations",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/gpt-4.1-nano"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/o1"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/o1-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/o3-mini"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-overview",
-                  "openai-api"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-data-residency",
-                  "openai-pricing",
-                  "openai-overview",
-                  "openai-api"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/o4-mini"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 164,
-        "previous": 161,
+        "previous": 164,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 152
+        "unchanged": 164
       },
       "pricing": {
         "commercial_hash": "60dbba36fab44229a06849d756bc018d6cbca7ae260872ec2ddb476a7ad72468",
-        "outcome": "commercial",
-        "previous_commercial_hash": "96e599a8162119de6851ea281ee5861aa947f011b0a0bfc898fa5393e45ce018"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "60dbba36fab44229a06849d756bc018d6cbca7ae260872ec2ddb476a7ad72468"
       },
       "pricing_coverage": {
         "current_models": 124,
         "delta": {
-          "resolved_models": 3,
+          "resolved_models": 0,
           "unknown_models": 0
         },
         "normalized_rate_models": 76,
@@ -5159,32 +3439,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "openai-pricing"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -5202,8 +3470,8 @@
         "sources": [
           {
             "content_changed": false,
-            "extractor_changed": true,
-            "outcome": "changed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -5279,20 +3547,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": false,
-            "extractor_changed": true,
-            "field_paths_changed": false,
-            "source_id": "typesafe-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {}
@@ -5308,7 +3569,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5332,7 +3593,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5356,7 +3617,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5380,7 +3641,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5404,7 +3665,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5428,7 +3689,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5452,7 +3713,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5476,7 +3737,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5500,7 +3761,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 15,
+                "consecutive_failures": 16,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -5524,7 +3785,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -5532,7 +3793,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -5540,7 +3801,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -5548,7 +3809,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -5556,7 +3817,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -5564,7 +3825,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -5572,7 +3833,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 259,
+                "consecutive_failures": 260,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -5683,9 +3944,9 @@
         "unchanged": 497
       },
       "pricing": {
-        "commercial_hash": "118e0853ed8bd5bade246210ae4d5af356c85c23e77fc7f233935ac6644c8ee7",
+        "commercial_hash": "8586c3527f54b5d697a6dd2bdc98c3210d2053c31ff6ab00a1edf56e3d8473c5",
         "outcome": "commercial",
-        "previous_commercial_hash": "ea00b85ffc5c2800973ff0ccd26886275d1633cb62950017c3184f8ad5e3ca90"
+        "previous_commercial_hash": "118e0853ed8bd5bade246210ae4d5af356c85c23e77fc7f233935ac6644c8ee7"
       },
       "pricing_coverage": {
         "current_models": 497,
@@ -5824,7 +4085,7 @@
                 "observed_items": 1
               }
             ],
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 77,
             "pricing_extraction": {
@@ -5996,7 +4257,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "vertex-pricing"
           }
@@ -6057,7 +4318,7 @@
                 "observed_items": 3
               }
             ],
-            "extractor_changed": true,
+            "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 25,
             "pricing_extraction": {
@@ -6177,670 +4438,27 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "xai/grok-imagine-image-quality"
-        ],
-        "changed": 8,
-        "changed_fields": {
-          "api_endpoints": 1,
-          "capabilities": 8,
-          "delivery_modes": 7,
-          "limits": 7,
-          "modalities": 8,
-          "replacement_model_ids": 1,
-          "tasks": 7
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-3",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-4-0709",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-4-1-fast-non-reasoning",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-4-1-fast-reasoning",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-4-fast-non-reasoning",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming",
-                  "batch"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.batch",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.effort_control",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 1000000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-4-fast-reasoning",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "text_generation"
-                ],
-                "path": "tasks",
-                "previous": []
-              },
-              {
-                "current": [
-                  "streaming"
-                ],
-                "path": "delivery_modes"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "text"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.reasoning",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              },
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              },
-              {
-                "current": 256000,
-                "path": "limits.context_tokens"
-              }
-            ],
-            "fields": [
-              "tasks",
-              "delivery_modes",
-              "modalities",
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "xai/grok-code-fast-1",
-            "previous_tasks": [],
-            "tasks": [
-              "text_generation"
-            ]
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "name": "Image Generations",
-                    "path": "/v1/images/generations"
-                  },
-                  {
-                    "name": "Image Edits",
-                    "path": "/v1/images/edits"
-                  }
-                ],
-                "path": "api_endpoints"
-              },
-              {
-                "current": [
-                  "text",
-                  "image"
-                ],
-                "path": "modalities.input",
-                "previous": []
-              },
-              {
-                "current": [
-                  "image"
-                ],
-                "path": "modalities.output",
-                "previous": []
-              },
-              {
-                "current": false,
-                "path": "capabilities.streaming",
-                "previous": "unknown"
-              },
-              {
-                "current": [
-                  "grok-imagine-image-2.0"
-                ],
-                "path": "replacement_model_ids",
-                "previous": [
-                  "grok-imagine-image-quality"
-                ]
-              }
-            ],
-            "fields": [
-              "api_endpoints",
-              "modalities",
-              "capabilities",
-              "replacement_model_ids"
-            ],
-            "model_ref": "xai/grok-imagine-image-pro"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 25,
         "previous": 25,
-        "removed": 1,
-        "removed_model_refs": [
-          "xai/grok-imagine-image-quality@1.0"
-        ],
-        "unchanged": 16
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 25
       },
       "pricing": {
         "commercial_hash": "89abef5d00b99224f72a98cd6aafd8babe2cb63d1988c96838ef45c2557450cb",
-        "outcome": "commercial",
-        "previous_commercial_hash": "29d13ecf43af2097d9dd4e60b45e0f1db2ab0590a7d43d0a90963acb4635295b"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "89abef5d00b99224f72a98cd6aafd8babe2cb63d1988c96838ef45c2557450cb"
       },
       "pricing_coverage": {
         "current_models": 25,
         "delta": {
-          "resolved_models": 9,
-          "unknown_models": -9
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 24,
         "not_applicable_models": 0,
@@ -6865,7 +4483,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": true,
+            "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "xai-models"
           }
@@ -6889,10 +4507,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 20,
-    "added_models": 8,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 90,
-    "changed_sources": 46,
+    "changed_models": 0,
+    "changed_sources": 33,
     "models": 4198,
     "pricing_accepted": 19,
     "pricing_not_observed": 1,
@@ -6900,7 +4518,7 @@
     "pricing_retained": 0,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
