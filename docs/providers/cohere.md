@@ -91,6 +91,8 @@ override card evidence.
 - Embed text and image amounts map to `embedding` per token with a modality applicability condition.
 - Rerank amounts map to `rerank` per Cohere search unit. One search unit is the source-native billed
   unit and is not rewritten as an ordinary HTTP request.
+  Rerank 5's public Cost rows instead charge per million input tokens. The Rerank V2 response
+  binds token-denominated rates to `meta.billed_units.input_tokens` independently of search units.
 - Parse's structured `Cost` row with `overridePer: "1K pages"` maps to image input per thousand
   pages with operation `ocr`. Its ID is joined through the existing unique normalized identity
   rule. Rendered Model Vault instance prices remain excluded.
@@ -109,7 +111,7 @@ publishes the following exact acquisition contracts:
 - Chat V1 streaming: terminal `stream-end.response.meta.billed_units.input_tokens` and
   `output_tokens`;
 - Embed V2: `response.meta.billed_units.input_tokens` or `image_tokens`; and
-- Rerank V2: `response.meta.billed_units.search_units`; and
+- Rerank V2: `response.meta.billed_units.input_tokens` or `search_units`, selected by the tariff unit; and
 - Parse V2: `response.meta.billed_units.pages`, supplying the `processed_pages` signal. A missing
   Parse API or billed-page field removes this quantity method while preserving the independently
   evidenced model and numeric page rate.
@@ -162,12 +164,10 @@ The current exact gaps are:
 - account reports and invoice reconciliation are runtime or billing-system inputs, not data that
   Kmodels can produce before invocation.
 
-The current Rerank 5 pricing payload labels Fast and Pro `Cost` amounts with `per: "1M tokens"`,
-while the general pricing guide and pricing-page FAQ still define Rerank charges in search units.
-These amounts are not converted into search-unit prices or assigned a guessed token counter.
-The adapter reports `unsupported_pricing_meter`; their exact IDs are observed, but there is no
-usable canonical hosted offer to associate until the commercial unit discrepancy is resolved.
-Existing explicitly quoted search-unit tariffs retain their original unit and accounting contract.
+The current Rerank 5 payload labels Fast and Pro `Cost` amounts with `per: "1M tokens"`.
+The Rerank V2 example names the Pro ID and returns billed input tokens. This model-specific
+evidence supplies the token tariff and counter despite the general guide's search-unit description.
+Explicitly quoted search-unit tariffs retain their unit and accounting contract.
 
 ## Inference model ID pricing
 

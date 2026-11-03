@@ -96,14 +96,13 @@ export function parseHuggingFaceHub(input: SourceParseInput): ParsedProviderMode
   const config = input.source.extractor;
   if (config.kind !== "huggingface-hub") throw new Error("Invalid Hugging Face Hub extractor");
   const { models: items } = hubSchema.parse(JSON.parse(input.body));
-  const models = new Map<string, ParsedProviderModel>();
+  const repositories = new Map<string, { routes: Map<string, ModelRoute>; date?: string }>();
   for (const rawItem of items) {
     const item = hubItemSchema.safeParse(rawItem);
     if (!item.success || isCredentialLikeIdentifier(item.data.id)) continue;
     const { id, lastModified, inferenceProviderMapping } = item.data;
-    const routes = new Map<string, ModelRoute>();
-    const previous = models.get(id);
-    for (const route of previous?.routes ?? []) routes.set(modelRouteKey(route), route);
+    const repository = repositories.get(id) ?? { routes: new Map<string, ModelRoute>() };
+    let hasLiveMapping = false;
     for (const rawMapping of inferenceProviderMapping) {
       const mapping = liveMappingSchema.safeParse(rawMapping);
       if (!mapping.success || isCredentialLikeIdentifier(mapping.data.providerId)) continue;
@@ -114,20 +113,28 @@ export function parseHuggingFaceHub(input: SourceParseInput): ParsedProviderMode
         task: mapping.data.task,
         status: mapping.data.status,
       };
-      routes.set(modelRouteKey(route), route);
+      repository.routes.set(modelRouteKey(route), route);
+      hasLiveMapping = true;
     }
-    if (routes.size === 0) continue;
+    if (!hasLiveMapping) continue;
     const observedDate = modifiedDateSchema.safeParse(lastModified);
     const date = observedDate.success ? observedDate.data.slice(0, 10) : undefined;
-    const updatedDate = [previous?.updated_date, date]
-      .filter((value) => value !== undefined)
-      .sort()
-      .at(-1);
+    if (date !== undefined && (repository.date === undefined || date > repository.date))
+      repository.date = date;
+    repositories.set(id, repository);
+  }
+  assertItemCount(
+    "Hugging Face live HF Inference models",
+    repositories.size,
+    config.minModels,
+    config.maxModels,
+  );
+  const models = [...repositories].map(([id, { routes, date }]): ParsedProviderModel => {
     const sortedRoutes = [...routes.values()].sort((left, right) =>
       modelRouteKey(left).localeCompare(modelRouteKey(right)),
     );
     const observed = sortedRoutes.map(({ task }) => facts(task));
-    models.set(id, {
+    return {
       ...baseModel({
         providerId: input.provider.id,
         id,
@@ -142,14 +149,8 @@ export function parseHuggingFaceHub(input: SourceParseInput): ParsedProviderMode
         input: [...new Set(observed.flatMap(({ input }) => input))],
         output: [...new Set(observed.flatMap(({ output }) => output))],
       },
-      ...(updatedDate === undefined ? {} : { updated_date: updatedDate }),
-    });
-  }
-  assertItemCount(
-    "Hugging Face live HF Inference models",
-    models.size,
-    config.minModels,
-    config.maxModels,
-  );
-  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+      ...(date === undefined ? {} : { updated_date: date }),
+    };
+  });
+  return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }

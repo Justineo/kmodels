@@ -193,12 +193,12 @@ export function extractDashscopePricingInputs(
   onFinding?: (evidence: SourceContractEvidence) => void,
   onReconciliation?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
-  const bodies = new Map(
-    documents.map(({ url, body }) => [
-      normalizePath(new URL(url).pathname),
-      accountingEvidence(body),
-    ]),
-  );
+  const paths = new Set(contracts.map(({ document }) => document));
+  const bodies = new Map<string, string>();
+  for (const { url, body } of documents) {
+    const path = normalizePath(new URL(url).pathname);
+    if (paths.has(path)) bodies.set(path, accountingEvidence(body));
+  }
   const facts = contracts.flatMap((item) => {
     const body = bodies.get(item.document);
     if (body === undefined || !item.markers.every((marker) => marker.test(body))) return [];
@@ -553,11 +553,16 @@ function propertyFields(body: string): string[] {
 
 function accountingEvidence(body: string): string {
   const fields = new Set(propertyFields(body));
-  for (const match of body.matchAll(
-    /^[ \t]*```(?:json|jsonc)\b[^\n]*\n([\s\S]*?)^[ \t]*```\s*$/gm,
-  )) {
-    const sample = match[1];
-    if (sample === undefined) continue;
+  const samples = [
+    ...body.matchAll(/^[ \t]*```(?:json|jsonc)\b[^\n]*\n([\s\S]*?)^[ \t]*```\s*$/gm),
+  ].flatMap((match) => match[1] ?? []);
+  const $ = load(body);
+  $(
+    ".icms-help-docs-content pre.language-json > code, .icms-help-docs-content pre.language-jsonc > code",
+  ).each((_index, code) => {
+    samples.push($(code).text());
+  });
+  for (const sample of samples) {
     const root = sampleRoot(sample);
     const roots =
       root === undefined

@@ -4,7 +4,7 @@ import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
 
 interface Input {
-  documents: readonly { url: string; body: string }[];
+  documents: ReadonlyMap<string, string>;
   sourceRef: string;
   onFinding?: (evidence: SourceContractEvidence) => void;
   onReconciliation?: (item: PricingReconciliationItem) => void;
@@ -18,11 +18,12 @@ interface Contract {
 const usageUrl = "https://docs.ollama.com/api/usage.md";
 const compatibilityUrl = "https://docs.ollama.com/api/openai-compatibility.md";
 const openapiUrl = "https://docs.ollama.com/openapi.yaml";
-const releaseBase = "https://raw.githubusercontent.com/ollama/ollama/v0.33.3";
-const typesUrl = `${releaseBase}/api/types.go`;
-const openaiUrl = `${releaseBase}/openai/openai.go`;
-const responsesUrl = `${releaseBase}/openai/responses.go`;
-const middlewareUrl = `${releaseBase}/middleware/openai.go`;
+export const ollamaUsageRelease = "v0.40.14";
+export const ollamaUsageSourceBase = `https://raw.githubusercontent.com/ollama/ollama/${ollamaUsageRelease}`;
+const typesUrl = `${ollamaUsageSourceBase}/api/types.go`;
+const openaiUrl = `${ollamaUsageSourceBase}/openai/openai.go`;
+const responsesUrl = `${ollamaUsageSourceBase}/openai/responses.go`;
+const middlewareUrl = `${ollamaUsageSourceBase}/middleware/openai.go`;
 
 const contracts: readonly Contract[] = [
   ...nativeContracts("generate", "/api/generate", "GenerateResponse"),
@@ -31,14 +32,17 @@ const contracts: readonly Contract[] = [
   ...openAiContracts("completions", "/v1/completions", "ToUsageGenerate", /CompleteWriter/),
   ...responsesContracts(),
 ];
+const requiredUrls = new Set(
+  contracts.flatMap(({ requirements }) => requirements.map(({ url }) => url)),
+);
 
 export function extractOllamaPricingInputs(input: Input): SourcePricingInputFact[] {
-  const documents = new Map(
-    input.documents.map(({ url, body }) => [
-      url,
-      body.replace(/\\([_$*])/g, "$1").replace(/\s+/g, " "),
-    ]),
-  );
+  const documents = new Map<string, string>();
+  for (const url of requiredUrls) {
+    const body = input.documents.get(url);
+    if (body !== undefined)
+      documents.set(url, body.replace(/\\([_$*])/g, "$1").replace(/\s+/g, " "));
+  }
   const facts = contracts.flatMap(({ fact, requirements }): SourcePricingInputFact[] => {
     const present = requirements.every(({ url, markers }) => {
       const body = documents.get(url);

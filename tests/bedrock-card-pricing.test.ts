@@ -68,6 +68,42 @@ function astra(result: ReturnType<typeof parse>) {
 }
 
 describe("native Bedrock card tariffs", () => {
+  it("separates the Grok 4.7 commercial and GovCloud rates by region and tier", async () => {
+    const bundle = await nativeBundle();
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.md",
+      body: await readFile(
+        new URL("./fixtures/bedrock/model-card-grok-4-7-govcloud.md", import.meta.url),
+        "utf8",
+      ),
+    });
+    const grok = parse(bundle).models.find(({ model_id }) => model_id === "xai.grok-4.7");
+    const geoInput = grok?.price_facts.filter(
+      ({ meter, conditions }) =>
+        meter === "input_text" && conditions.deployment_scope === "geo_cross_region",
+    );
+    expect(geoInput).toBeDefined();
+    expect(
+      geoInput
+        ?.filter(({ conditions }) => conditions.service_tier === "standard")
+        .map(({ price, conditions }) => [conditions.region, price]),
+    ).toEqual([
+      ["us-east-1", "2.20"],
+      ["us-gov-east-1", "2.64"],
+      ["us-gov-west-1", "2.64"],
+    ]);
+    const priority = geoInput?.filter(({ conditions }) => conditions.service_tier === "priority");
+    expect(
+      priority
+        ?.filter(({ conditions }) => conditions.region === "us-gov-west-1")
+        .map(({ price, conditions }) => [conditions.operation, price]),
+    ).toEqual([
+      ["responses", "4.62"],
+      ["chat_completions", "4.62"],
+      ["invoke_model", "4.62"],
+    ]);
+  });
+
   it("keeps Mantle-only regional tables out of the runtime cross-region tariff parser", async () => {
     const bundle = await nativeBundle(true);
     const before = astra(parse(bundle));

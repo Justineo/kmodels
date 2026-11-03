@@ -58,6 +58,13 @@ const contracts: readonly Contract[] = [
   {
     document: "/reference/rerank.md",
     endpoint: "/v2/rerank",
+    key: "rerank.v2.input_tokens",
+    channel: "response",
+    locator: "/meta/billed_units/input_tokens",
+  },
+  {
+    document: "/reference/rerank.md",
+    endpoint: "/v2/rerank",
     key: "rerank.v2.search_units",
     channel: "response",
     locator: "/meta/billed_units/search_units",

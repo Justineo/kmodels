@@ -46,13 +46,17 @@ source owns model identity and does not depend on the pricing page.
 
 `gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
 Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
+The Gemma 4 free-tier table and the owned Search and Maps billing sections also accept AI Studio
+Markdown. Legacy HTML bundles remain replayable.
 It is optional and non-exhaustive:
 a failure retains the last verified Gemini pricebook without rejecting fresh model identity. Its
 optional claim-local Discovery document verifies GenerateContent, embedding, and Batch result
 fields used by charge bindings. The first-party Interactions API reference independently supplies
 Interactions usage and grounding counters, the GenerateContent Batch and Embeddings API references
 establish the response-file JSONL item types, and the Veo guide at `/gemini-api/docs/veo` supplies
-documented video request selectors. `/video` is now an overview linking to Veo and Omni; it is not
+documented video request selectors. The AI Studio Markdown reference supplies Interactions fields
+from the Interaction usage declaration and Batch file types from the owned output field.
+`/video` is now an overview linking to Veo and Omni; it is not
 the parameter reference. Interactions fields are recognized from both inline code and the API
 reference's `.signature > .field-name` definitions, never from arbitrary prose or navigation.
 The current Veo parameter table establishes duration and resolution. Gemini does not expose Vertex's

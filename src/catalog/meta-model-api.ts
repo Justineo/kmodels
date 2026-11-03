@@ -33,13 +33,15 @@ function table($: CheerioAPI, headers: string[]): string[][] {
         .toArray()
         .map((cell) => $(cell).text().trim()),
     );
+  const [header, ...body] = rows;
   if (
     tables.length !== 1 ||
-    JSON.stringify(rows[0]) !== JSON.stringify(headers) ||
-    rows.slice(1).some((row) => row.length !== headers.length)
+    header?.length !== headers.length ||
+    headers.some((label, index) => header[index] !== label) ||
+    body.some((row) => row.length !== headers.length)
   )
     throw new Error("Meta pricing or model table changed");
-  return rows.slice(1);
+  return body;
 }
 
 function requireText($: CheerioAPI, text: string): void {
@@ -67,6 +69,10 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     "you pay the same rate whether your context window is mostly empty or almost full",
   );
   requireText(section(pricing, "standard-mode"), "your content is not used to train Meta models");
+  requireText(
+    section(pricing, "contributor-mode"),
+    "in exchange for permission to use your content to train future Meta models",
+  );
 
   function model(id: string, name: string): ParsedProviderModel {
     if (!/^[a-z][a-z0-9.-]*$/.test(id) || models.some(({ model_id }) => model_id === id))
@@ -132,6 +138,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     if (tariffs.length !== 3 || new Set(tariffs.map(([label]) => label)).size !== 3)
       throw new Error("Meta token meters changed");
     const declaration = prices("p").first();
+    const clauses = declaration.text().split(";");
     const priceIds = new Set(
       declaration
         .find("code")
@@ -154,7 +161,6 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       if (!priceIds.has(item.model_id)) continue;
       // Mode comes from the exact availability row, never from an ID suffix heuristic.
       if (family === "muse-spark") {
-        const clauses = declaration.text().split(";");
         const clause = clauses[column - 1];
         if (
           !clause?.includes(`in ${column === 1 ? "Standard" : "Contributor"} mode`) ||
@@ -166,10 +172,6 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
         column === 2
           ? "Contributor mode allows Meta to use submitted content and responses to train future models."
           : "Standard mode does not use submitted content to train Meta models.";
-      requireText(
-        section(pricing, "contributor-mode"),
-        "in exchange for permission to use your content to train future Meta models",
-      );
       item.price_facts = tariffs.map(([label, standard, contributor]) => {
         const price = usd(column === 1 ? standard : contributor);
         switch (label) {
@@ -247,7 +249,10 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
           ? "Transcription is billed by audio processed, rounded down to whole seconds."
           : "Only successfully generated and returned images are billed. Built-in search is included.";
     const rows = table(page, ["Usage", "Price"]);
-    if (rows.length !== (sectionId === "sam-3" ? 2 : 1))
+    if (
+      rows.length !== (sectionId === "sam-3" ? 2 : 1) ||
+      new Set(rows.map(([label]) => label)).size !== rows.length
+    )
       throw new Error("Meta media meters changed");
     item.price_facts = rows.map(([label, value]) => {
       const parts = value?.match(/^(\$\d+(?:\.\d+)?) per (image|hour|1,000 images|1,000 frames)$/);
@@ -375,7 +380,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
         evidence: [
           {
             source_ref: input.source.id,
-            locator: { kind: "fragment", value: `${modelsUrl}#${item.model_id}` },
+            locator: { kind: "fragment", value: `${modelsUrl}#models` },
           },
           {
             source_ref: input.source.id,

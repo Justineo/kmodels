@@ -614,7 +614,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v44");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v45");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,

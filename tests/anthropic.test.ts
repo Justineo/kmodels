@@ -242,7 +242,7 @@ describe("Anthropic adapters", () => {
         "To be announced",
       ) +
       `\n### 2025-12-19: Claude Haiku 3.5 model\n\n| Retirement date | Deprecated model | Recommended replacement |\n| --- | --- | --- |\n| February 19, 2026 | ${id} | claude-opus-4-8 |\n`;
-    const announcement = `- We've retired the Claude Haiku 3.5 model (\`${id}\`).`;
+    const announcement = `- We’ve retired the Claude Haiku 3.5 model (\`${id}\`).`;
     const releases = await fixture("anthropic/release-notes.md");
     const findings: SourceContractEvidence[] = [];
     for (const [note, named] of [
@@ -1009,7 +1009,7 @@ describe("Anthropic adapters", () => {
       (await fixture("anthropic/overview.md")) +
       "\n| Feature | Claude Willow 6 |\n| --- | --- |\n| Claude API ID | claude-willow-6 |\n";
     const releases =
-      "### July 1, 2026\n\n- We've launched **Claude Willow 6** (`claude-willow-6`), a new model.\n";
+      "### July 1, 2026\n\n- We’ve launched **Claude Willow 6** (`claude-willow-6`), a new model. It replaces `claude-legacy-unlisted`.\n";
     const models = await anthropicCatalog({
       overview,
       overrides: { "/docs/en/release-notes/overview.md": releases },
@@ -1017,6 +1017,7 @@ describe("Anthropic adapters", () => {
     expect(models.find(({ model_id }) => model_id === "claude-willow-6")?.release_date).toBe(
       "2026-07-01",
     );
+    expect(models.some(({ model_id }) => model_id === "claude-legacy-unlisted")).toBe(false);
   });
 
   it("does not apply a longer model name's context claim to a prefix model", async () => {

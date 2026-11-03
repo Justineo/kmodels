@@ -28,7 +28,11 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   fetchSource: vi.fn(),
 }));
 const at = "2026-10-30T17:45:00.000Z";
-async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
+async function collect(
+  change?: (bundle: LinkedBundle) => void,
+  previous?: CatalogPairCandidate,
+  observedAt = at,
+) {
   const manifest = manifests.find(({ provider }) => provider.id === "xai");
   const catalog = manifest?.sources.find(({ id }) => id === "xai-models");
   if (!manifest || !catalog) throw new Error("Missing xAI sources");
@@ -50,12 +54,12 @@ async function collect(change?: (bundle: LinkedBundle) => void, previous?: Catal
     { ...manifest, sources: [catalog] },
     previous?.catalog,
     { sources: {} },
-    at,
+    observedAt,
   );
   if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
   const core: Catalog = {
     catalog_version: coreCatalogVersion([result.provider]),
-    generated_at: at,
+    generated_at: observedAt,
     providers: [result.provider],
     models: result.models,
     sources: result.sources,
@@ -85,7 +89,7 @@ function lookup(candidate: CatalogPairCandidate) {
 }
 
 function categorical(
-  dimension: "endpoint" | "served_service_tier" | "resolution" | "operation",
+  dimension: "endpoint" | "served_service_tier" | "resolution" | "operation" | "quality",
   value: string,
 ): Selector {
   return {
@@ -255,6 +259,60 @@ it("preserves reviewed redirects and exposes conflicting alias identity rather t
       reason: "ambiguous_identity",
       candidates: [],
     });
+});
+
+function removeRetiredImage(bundle: LinkedBundle): void {
+  bundle.index.body = bundle.index.body.replaceAll(
+    /\{"name":"grok-imagine-image-quality",.*?,(?=\{"name":"grok-imagine-image-2\.0",)/g,
+    "",
+  );
+}
+
+it("prices both November image redirects at Low on direct requests", async () => {
+  const { candidate } = await collect(removeRetiredImage, undefined, "2026-11-03T00:00:00.000Z");
+  const query = lookup(candidate);
+  for (const model_id of ["grok-imagine-image-quality", "grok-imagine-image-pro"]) {
+    const selectors = [categorical("resolution", "1K")];
+    const result = query({ provider_id: "xai", model_id, selectors });
+    expect(result.status, model_id).toBe("matched");
+    expect(result.missing_conditions).toEqual([]);
+    expect(result.candidates.map(({ offer }) => offer.offer_key)).toEqual(["direct"]);
+    expect(
+      result.candidates.flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "image_generation"
+            ? term.variants.map(({ price }) => price.value)
+            : [],
+        ),
+      ),
+    ).toEqual([{ numerator: "1", denominator: "25" }]);
+    expect(
+      query({
+        provider_id: "xai",
+        model_id,
+        selectors: [...selectors, categorical("quality", "medium")],
+      }).reason,
+    ).toBe("incompatible_conditions");
+  }
+});
+
+it("keeps May text redirects priced when the old image target and November billing claim disappear", async () => {
+  const { candidate } = await collect(
+    (bundle) => {
+      removeRetiredImage(bundle);
+      for (const document of bundle.documents)
+        document.body = document.body.replace(
+          "you are billed at the",
+          "you might be billed at the",
+        );
+    },
+    undefined,
+    "2026-11-03T00:00:00.000Z",
+  );
+  const query = lookup(candidate);
+  expect(query({ provider_id: "xai", model_id: "grok-3" }).candidates.length).toBeGreaterThan(0);
+  for (const model_id of ["grok-imagine-image-quality", "grok-imagine-image-pro"])
+    expect(query({ provider_id: "xai", model_id }).candidates).toEqual([]);
 });
 
 it("withdraws an alias from fresh source evidence even if the catalog retains its old alias", async () => {

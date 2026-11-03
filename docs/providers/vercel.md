@@ -74,7 +74,9 @@ for production collection; model and route joins retain their existing evidence.
 
 The model list is the exhaustive inventory and primary model-level price source. The documented
 per-model endpoint API enriches exact route identity and route-specific rates. A public model page
-is fetched only when the model-list price object is empty. Compound hover prices are read from the
+is fetched when the model-list price object is empty or an endpoint publishes X Search pricing keys
+that require independent page evidence. The exact hourly-audio disclosure can fill an empty Input
+cell on a streaming transcription card. Compound hover prices are read from the
 page's own immutable client registry and normalized only when the primary amount and advertised
 variant count agree.
 

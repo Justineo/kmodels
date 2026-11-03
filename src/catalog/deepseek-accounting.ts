@@ -40,22 +40,22 @@ export function extractDeepseekPricingInputs(
   sourceRef: string,
   onFinding?: (evidence: SourceContractEvidence) => void,
 ): SourcePricingInputFact[] {
-  const grouped = new Map<string, string[]>();
+  const bodies = new Map<string, string | null>();
   for (const { url, body } of documents) {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" || parsed.hostname !== "api-docs.deepseek.com") continue;
     const path = parsed.pathname.replace(/\/$/, "");
-    grouped.set(path, [...(grouped.get(path) ?? []), body]);
+    if (operations.has(path)) bodies.set(path, bodies.has(path) ? null : body);
   }
   const readers = new Map<
     string,
     { api: ReturnType<typeof deepseekApiDocument>; stream: boolean }
   >();
   for (const [path, operation] of operations) {
-    const bodies = grouped.get(path);
-    if (bodies?.length !== 1 || bodies[0] === undefined) continue;
+    const body = bodies.get(path);
+    if (body == null) continue;
     try {
-      const api = deepseekApiDocument(bodies[0], operation);
+      const api = deepseekApiDocument(body, operation);
       const streamText = api.text("request", [["stream", "boolean"]]);
       const stream =
         streamText !== undefined &&
@@ -72,10 +72,13 @@ export function extractDeepseekPricingInputs(
   return uniquePricingInputFacts(
     contracts.flatMap((item): SourcePricingInputFact[] => {
       const reader = readers.get(item.document);
+      const streaming = item.channel === "stream_event";
+      const media =
+        streaming && item.document === fimPath ? "text/event-stream" : "application/json";
       if (
         reader === undefined ||
-        !reader.api.has("response", item.field) ||
-        (item.channel === "stream_event" && !reader.stream)
+        !reader.api.has("response", item.field, media) ||
+        (streaming && !reader.stream)
       ) {
         onFinding?.(contractExtensionEvidence(["/documents" + item.document + "/" + item.key]));
         return [];

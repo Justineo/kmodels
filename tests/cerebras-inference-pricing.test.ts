@@ -102,6 +102,34 @@ function lookup(candidate: CatalogPairCandidate) {
   );
 }
 
+it("uses a flattened card's exact price when the public model omits that quote", async () => {
+  const completions = await fixture("completions-rendered.html");
+  const candidate = await collect(({ catalog, inventory }) => {
+    const row = inventory.data.find(({ id }) => id === "qwen-3.8-27b");
+    const card = catalog.documents.find(({ url }) => url.endsWith("/qwen-3.8-27b.md"));
+    if (!row || !card) throw new Error("Missing Qwen fixtures");
+    row.pricing = { completion: "0.00000149" };
+    card.body =
+      "# Qwen 3.8 27B\n\nModel ID\n\n`qwen-3.8-27b`\n\n### Pricing\n\nper million tokens\n\nInput\n\n\\$0.99\n\nOutput\n\n\\$1.49";
+    catalog.documents.push({
+      url: "https://inference-docs.cerebras.ai/api-reference/completions",
+      body: completions,
+    });
+  });
+  const result = lookup(candidate)({ provider_id: "cerebras", model_id: "qwen-3.8-27b" });
+  expect(result.status).toBe("matched");
+  const input = result.candidates[0]?.offer.terms.find(
+    (term) => term.kind === "rate" && term.meter.value === "input_text",
+  );
+  expect(input?.kind === "rate" ? input.variants[0]?.price.value : undefined).toEqual({
+    numerator: "99",
+    denominator: "100000000",
+  });
+  expect(
+    candidate.catalog.models.find(({ model_id }) => model_id === "qwen-3.8-27b")?.api_endpoints,
+  ).toEqual([{ name: "Completions", path: "v1/completions" }]);
+});
+
 it("matches current public API IDs and rates without a protocol or commercial selector", async () => {
   const candidate = await collect();
   const query = lookup(candidate);

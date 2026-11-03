@@ -1238,10 +1238,14 @@ function pageTokenEquivalence(value: string): PageTokenEquivalence | undefined {
 
 function pricingEvidence(documents: LinkedDocument[]): PricingEvidence {
   const pageTokenEquivalences = new Map<string, PageTokenEquivalence>();
-  const skuDocuments = documents.filter(({ url }) => url === vertexClaudeSkuSource);
-  for (const document of documents) {
-    if (document.url === vertexClaudeSkuSource) continue;
-    const $ = load(document.body);
+  const [sku, duplicateSku] = documents.filter(({ url }) => url === vertexClaudeSkuSource);
+  const [ocr, duplicateOcr] = documents.filter(
+    ({ url }) =>
+      url ===
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/mistral-ocr",
+  );
+  if (ocr !== undefined && duplicateOcr === undefined) {
+    const $ = load(ocr.body);
     $(".devsite-article-body table").each((_index, tableElement) => {
       const table = $(tableElement);
       const idCell = rowCell($, table, /^Model ID$/i);
@@ -1252,10 +1256,10 @@ function pricingEvidence(documents: LinkedDocument[]): PricingEvidence {
         pageTokenEquivalences.set(id, equivalence);
     });
   }
-  const skuDocument = skuDocuments.length === 1 ? skuDocuments[0] : undefined;
   return {
     pageTokenEquivalences,
-    claudeSkus: skuDocument === undefined ? new Map() : claudeContextSkus(skuDocument.body),
+    claudeSkus:
+      sku === undefined || duplicateSku !== undefined ? new Map() : claudeContextSkus(sku.body),
   };
 }
 
@@ -2723,13 +2727,11 @@ function claudeWebSearchPricing(
 function applyPricing(
   models: Map<string, Evidence>,
   sourceId: string,
-  body: string,
+  { $, tableContexts }: ReturnType<typeof pricingDocument>,
   evidence: PricingEvidence,
-  claudeWebSearchBody: string | undefined,
   groundingReferences: GroundingReferences | undefined,
   reconcile?: Reconcile,
 ): VertexGroundingClaim[] {
-  const { $, tableContexts } = pricingDocument(body);
   const claims: VertexGroundingClaim[] = [];
   tokenTables(models, sourceId, $, tableContexts, evidence, reconcile);
   labeledTables(models, sourceId, $, tableContexts, evidence, reconcile);
@@ -2742,14 +2744,6 @@ function applyPricing(
     reconcile?.({
       disposition: "unsupported",
       reason_code: "grounding_references_missing",
-      sample: sourceId,
-    });
-  if (claudeWebSearchBody !== undefined)
-    claudeWebSearchPricing(models, sourceId, $, claudeWebSearchBody, reconcile);
-  else
-    reconcile?.({
-      disposition: "unsupported",
-      reason_code: "claude_web_search_reference_missing",
       sample: sourceId,
     });
   for (const { model } of models.values()) {
@@ -2888,15 +2882,6 @@ export function parseVertexPricing(input: Input): SourceParseResult {
       ? undefined
       : { search: groundingSearch, maps: groundingMaps, data: groundingData };
   const evidence = pricingEvidence(bundle.documents);
-  const claims = applyPricing(
-    models,
-    input.source.id,
-    bundle.index.body,
-    evidence,
-    document("/gemini-enterprise-agent-platform/models/partner-models/claude/web-search")?.body,
-    groundingReferences,
-    input.onPricingReconciliation,
-  );
   const partnerPrices = bundle.documents.filter(
     ({ url }) => url === "https://cloud.google.com/model-garden/partner-models/pricing",
   );
@@ -2906,19 +2891,37 @@ export function parseVertexPricing(input: Input): SourceParseResult {
     ).length > 0;
   if (partnerPrices.length > 1 || (partnerPriceLink && partnerPrices.length !== 1))
     throw new Error("Agent Platform partner pricing companion is missing or duplicated");
-  const partnerPrice = partnerPrices[0];
-  if (partnerPrice !== undefined)
-    claims.push(
-      ...applyPricing(
-        models,
-        input.source.id,
-        partnerPrice.body,
-        evidence,
-        document("/gemini-enterprise-agent-platform/models/partner-models/claude/web-search")?.body,
-        groundingReferences,
-        input.onPricingReconciliation,
-      ),
+  const claudeSearch = document(
+    "/gemini-enterprise-agent-platform/models/partner-models/claude/web-search",
+  )?.body;
+  const claudeSearchOwner = partnerPrices[0] ?? bundle.index;
+  const claims = [bundle.index, ...partnerPrices].flatMap((page) => {
+    const pricing = pricingDocument(page.body);
+    if (page === claudeSearchOwner) {
+      if (claudeSearch === undefined)
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "claude_web_search_reference_missing",
+          sample: input.source.id,
+        });
+      else
+        claudeWebSearchPricing(
+          models,
+          input.source.id,
+          pricing.$,
+          claudeSearch,
+          input.onPricingReconciliation,
+        );
+    }
+    return applyPricing(
+      models,
+      input.source.id,
+      pricing,
+      evidence,
+      groundingReferences,
+      input.onPricingReconciliation,
     );
+  });
   const values = [...models.values()].map(({ model }) => model);
   const commercial = vertexGroundingAllowances(
     extractVertexCommercialFacts(values, input.source.id),

@@ -1,4 +1,3 @@
-import { compare, valid } from "@renovatebot/pep440";
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
@@ -7,6 +6,7 @@ import { modalitySchema } from "./schema.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import {
   assertSagemakerSpecMetadata,
+  latestSagemakerSpec,
   packageVersion,
   sagemakerTasks,
   type SageMakerRow,
@@ -22,14 +22,11 @@ const headerSchema = z.object({
 
 export function sagemakerOpenSpecs(body: string, rows: readonly SageMakerRow[]) {
   const headers = z.array(headerSchema).min(1).max(100_000).parse(JSON.parse(body));
-  const groups = new Map<string, typeof headers>();
+  const groups = new Map<string, Map<string, z.infer<typeof headerSchema>>>();
   for (const header of headers) {
-    const group = groups.get(header.model_id) ?? [];
-    assertSagemakerSpecMetadata(
-      group.find(({ version }) => version === header.version),
-      header,
-    );
-    group.push(header);
+    const group = groups.get(header.model_id) ?? new Map();
+    assertSagemakerSpecMetadata(group.get(header.version), header);
+    group.set(header.version, header);
     groups.set(header.model_id, group);
   }
   const admitted = new Set(rows.filter((row) => !row.proprietary).map((row) => row.id));
@@ -38,10 +35,7 @@ export function sagemakerOpenSpecs(body: string, rows: readonly SageMakerRow[]) 
   }
   return [...groups.values()]
     .flatMap((versions) => {
-      const semantic = versions.every((header) => valid(header.version) !== null);
-      const latest = versions.reduce((a, b) =>
-        (semantic ? compare(a.version, b.version) > 0 : a.version > b.version) ? a : b,
-      );
+      const latest = latestSagemakerSpec([...versions.values()]);
       if (
         !admitted.has(latest.model_id) &&
         (latest.deprecated !== false || !latest.search_keywords?.includes("Foundation Models"))

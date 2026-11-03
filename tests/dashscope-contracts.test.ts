@@ -47,6 +47,39 @@ function parse(index: string, documents: Readonly<Record<string, string>>) {
   return { result, diagnostics };
 }
 describe("DashScope cache scope", () => {
+  it("reads HTML returned from the Markdown URL and respects cache deployment scope", () => {
+    const { result } = parse(prices(), {
+      "context-cache.md": `<!DOCTYPE html><div class="icms-help-docs-content"><div class="icms-help-docs-content">
+        <p>${cacheRules}</p><h2>Explicit cache</h2><h3>Supported models</h3>
+        <section><h4>US (Virginia)</h4><blockquote><p>The following models are within the Global deployment scope.</p></blockquote>
+        <ul><li>Qwen Plus: <code>qwen3.7-plus</code></li></ul></section>
+        <h3>Quick start</h3><pre><code>\n# Not a Markdown heading\n</code></pre>
+        <h2>Implicit cache</h2><h3>Supported models</h3>
+        <section><h4>Singapore</h4><p>Qwen Plus: qwen3.7-plus</p></section>
+      </div></div>`,
+    });
+    expect(
+      result.models
+        .find(({ model_id }) => model_id === "qwen3.7-plus")
+        ?.price_facts.filter(
+          ({ meter }) => meter === "cache_write_text" || meter === "cache_read_text",
+        )
+        .map(({ meter, price, conditions }) => [meter, price, conditions.deployment_scope]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["cache_read_text", "0.2", "Global"],
+        ["cache_write_text", "2.5", "Global"],
+      ]),
+    );
+    expect(
+      result.models
+        .flatMap(({ price_facts }) => price_facts)
+        .some(
+          ({ meter, conditions }) =>
+            meter === "cache_write_text" && conditions.deployment_scope === "US",
+        ),
+    ).toBe(false);
+  });
   it("uses numeric context bounds without a duplicate tier selector and preserves unknown labels", () => {
     for (const tier of ["0<Token≤128K", "Provider-defined tier"]) {
       const index = prices()
@@ -474,18 +507,23 @@ The value is fixed to response_api.
       false,
     ],
   ])("checks %s before binding hosted-tool counters", (_name, example, expected) => {
-    const inputs = extractDashscopePricingInputs(
-      [
-        {
-          url: origin + "qwen-api-via-openai-responses.md",
-          body: "```json Image search\n" + example + "\n```",
-        },
-      ],
-      source.id,
-    );
-    expect(inputs.some(({ key }) => key === "responses.stream.web_search_image_count")).toBe(
-      expected,
-    );
+    for (const body of [
+      "```json Image search\n" + example + "\n```",
+      `<div class="icms-help-docs-content"><pre class="codeblock language-json"><code>${example.replaceAll('"', "&quot;")}</code></pre></div>`,
+    ]) {
+      const inputs = extractDashscopePricingInputs(
+        [
+          {
+            url: origin + "qwen-api-via-openai-responses.md",
+            body,
+          },
+        ],
+        source.id,
+      );
+      expect(inputs.some(({ key }) => key === "responses.stream.web_search_image_count")).toBe(
+        expected,
+      );
+    }
   });
   it("keeps successful Batch and ASR usage under their actual response envelopes", () => {
     const inputs = extractDashscopePricingInputs(
@@ -766,6 +804,48 @@ The count field usage.plugins.search.count indicates intent detection and is not
     expect(
       facts.flatMap((f) => f.price_facts).every((f) => f.conditions.deployment_scope === undefined),
     ).toBe(true);
+  });
+  it("reads HTML search policy prices and preserves explicit model restrictions", () => {
+    const { result } = parse(prices(["qwen3.8-max", "qwen3.7-plus", "qwen-flash-character"]), {
+      "web-search.md": `<!DOCTYPE html><div class="icms-help-docs-content">
+        <h2>Supported models</h2><section><h4>Singapore</h4><ul>
+        <li>Qwen 3.8: <code>qwen3.8-max</code> (search_strategy: agent is not supported; use the web_search tool through the Responses API)</li>
+        <li>Qwen Plus: <code>qwen3.7-plus</code></li>
+        <li>Role-playing: <code>qwen-flash-character</code> (the agent strategy is not supported)</li></ul></section>
+        <h2>Quick start</h2><pre><code>\n# Example\n</code></pre>
+        <h2>Billing</h2><p>When you use the Responses API, the web search tool is billed at the same rate as the agent policy.</p>
+        <ul><li><p>agent policy:</p><p>The fee per 1,000 calls is as follows:</p><ul><li>For the Singapore region: $10.00.</li></ul></li>
+        <li><p>agent_max policy (Limited-time offer):</p><p>Fee per 1,000 calls for the web search tool:</p><ul><li>For the Singapore region: $10.00.</li></ul></li></ul></div>`,
+    });
+    const modelRefs = (operation: string) =>
+      result.commercial_facts
+        ?.filter(
+          ({ resource_key, price_facts }) =>
+            resource_key === "web-search" &&
+            price_facts.some(
+              ({ price, conditions }) => price === "10" && conditions.operation === operation,
+            ),
+        )
+        .flatMap(({ model_refs }) => model_refs ?? []);
+    expect(modelRefs("agent")).toEqual(["dashscope/qwen3.7-plus", "dashscope/qwen3.8-max"]);
+    expect(modelRefs("agent_max")).toEqual(["dashscope/qwen3.7-plus"]);
+    const partition = assembleParsedProviderPricing(
+      "dashscope",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+    );
+    const book = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    expect(book?.scope.model_refs).toEqual(modelRefs("agent"));
+    expect(
+      book?.offers.map(({ offer_key, model_refs }) => [
+        offer_key,
+        model_refs ?? book.scope.model_refs,
+      ]),
+    ).toEqual([
+      ["built-in:singapore:agent", modelRefs("agent")],
+      ["built-in:singapore:agent_max", modelRefs("agent_max")],
+    ]);
   });
   it("reads an amount before its image-search region without inferring an account plan", () => {
     const { result } = parse(prices(), {

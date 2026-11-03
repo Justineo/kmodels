@@ -677,20 +677,20 @@ function programmaticAccess(body: string, name: string, url: string): Map<string
 }
 
 function modelCardRates(
-  content: string | undefined,
-  serviceTierContent: string | undefined,
+  card: Card,
   access: CardId,
   sourceId: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
 ): SourcePriceFact[] {
+  const content = card.pricingSection;
   if (
     content === undefined ||
     !access.endpoints.has("bedrock-runtime") ||
     !/All prices are per 1 million tokens\. Pricing shown is for the Standard tier\./.test(content)
   )
     return [];
-  const table = markdownTable(content, ["Inference option", "Input", "Output", "Cache read"]);
-  if (table === undefined) return [];
+  const blocks = content.split(/^\*\*AWS GovCloud \(US\)\*\*[ \t]*\r?$/m);
+  if (blocks.length > 2) throw new Error("Bedrock card repeated the GovCloud pricing heading");
   const geographies = new Set(
     [...access.aliases].flatMap((alias) => alias.match(/^(us|eu|apac)\./)?.[1] ?? []),
   );
@@ -701,59 +701,83 @@ function modelCardRates(
     ["Cache write (30 min)", "cache_write_text"],
   ] as const;
   const prices: SourcePriceFact[] = [];
-  for (const row of table.rows) {
-    const option = row[table.header.indexOf("Inference option")];
-    const scope =
-      option === "Global CRIS"
-        ? "global"
-        : option === "US CRIS" || option === "Geo CRIS"
-          ? "geo"
-          : undefined;
-    if (scope === undefined || !access.deploymentTypes.has(scope)) continue;
-    const geography =
-      option === "US CRIS" ? "us" : geographies.size === 1 ? [...geographies][0] : undefined;
-    if (scope === "geo" && geography === undefined) {
-      onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "model_card_price_geo_ambiguous",
-        sample: option,
-      });
-      continue;
-    }
-    const parsed = columns.flatMap(([header, meter]): SourcePriceFact[] => {
-      const index = table.header.indexOf(header);
-      if (index < 0) return [];
-      const raw = row[index] ?? "";
-      const amount = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
-      if (amount === undefined) {
+  for (const [index, block] of blocks.entries()) {
+    const table = markdownTable(block, ["Inference option", "Input", "Output", "Cache read"]);
+    if (table === undefined) continue;
+    for (const row of table.rows) {
+      const option = row[table.header.indexOf("Inference option")];
+      const scope =
+        option === "Global CRIS"
+          ? "global"
+          : option === "US CRIS" || option === "Geo CRIS"
+            ? "geo"
+            : undefined;
+      if (scope === undefined || !access.deploymentTypes.has(scope)) continue;
+      const geography =
+        option === "US CRIS" ? "us" : geographies.size === 1 ? [...geographies][0] : undefined;
+      if (scope === "geo" && geography === undefined) {
         onPricingReconciliation?.({
-          disposition: "unsupported",
-          reason_code: "model_card_price_row_unreadable",
-          sample: `${option}: ${header}: ${raw}`,
+          disposition: "unbound",
+          reason_code: "model_card_price_geo_ambiguous",
+          sample: option,
         });
-        return [];
+        continue;
       }
-      return [
-        {
-          meter,
-          price: amount,
-          currency: "USD",
-          unit: "million_tokens",
-          conditions: {
-            endpoint: "bedrock-runtime",
-            deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
-            service_tier: "standard",
-            ...(scope === "geo" && geography !== undefined ? { inference_geo: geography } : {}),
-            ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+      const parsed = columns.flatMap(([header, meter]): SourcePriceFact[] => {
+        const index = table.header.indexOf(header);
+        if (index < 0) return [];
+        const raw = row[index] ?? "";
+        const amount = raw.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+        if (amount === undefined) {
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "model_card_price_row_unreadable",
+            sample: `${option}: ${header}: ${raw}`,
+          });
+          return [];
+        }
+        return [
+          {
+            meter,
+            price: amount,
+            currency: "USD",
+            unit: "million_tokens",
+            conditions: {
+              endpoint: "bedrock-runtime",
+              deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
+              service_tier: "standard",
+              ...(scope === "geo" && geography !== undefined ? { inference_geo: geography } : {}),
+              ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+            },
+            source_ref: sourceId,
+            derived: false,
+            raw_price: raw,
+            raw_unit: "1 million tokens",
           },
-          source_ref: sourceId,
-          derived: false,
-          raw_price: raw,
-          raw_unit: "1 million tokens",
-        },
-      ];
-    });
-    prices.push(...parsed);
+        ];
+      });
+      const regions =
+        blocks.length === 1
+          ? [undefined]
+          : unique(
+              card.availability
+                .filter(
+                  (item) =>
+                    item.deploymentType === scope &&
+                    (item.programmaticEndpoint === undefined ||
+                      item.programmaticEndpoint === "bedrock-runtime") &&
+                    item.region.startsWith("us-gov-") === (index === 1),
+                )
+                .map(({ region }) => region),
+            );
+      prices.push(
+        ...regions.flatMap((region) =>
+          region === undefined
+            ? parsed
+            : parsed.map((rate) => ({ ...rate, conditions: { ...rate.conditions, region } })),
+        ),
+      );
+    }
   }
   const prose = content.replaceAll("**", "").replace(/\s+/g, " ");
   const unrestricted = prose.match(
@@ -762,7 +786,7 @@ function modelCardRates(
   const apiScoped = prose.match(
     /Priority is billed at (\d+(?:\.\d+)?)x the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?)x the Standard rate \([^)]*\); apply these multipliers to whichever Standard base rate \(Global or US CRIS\) applies to your request\./,
   );
-  const tierProse = serviceTierContent?.replace(/\s+/g, " ");
+  const tierProse = card.serviceTierSection?.replace(/\s+/g, " ");
   const restrictedApis =
     tierProse?.includes(
       "Currently, only the Responses and Chat Completions APIs support service tiers. The Converse and Invoke APIs do not support service tiers and support only Standard on-demand inference.",
@@ -771,12 +795,19 @@ function modelCardRates(
     tierProse?.includes(
       "supports service tiers on the Responses, Chat Completions, Converse, and `InvokeModel` APIs.",
     ) === true;
+  const invokeWithoutConverse =
+    tierProse?.includes(
+      "Priority and Flex are available on the `Responses`, `Chat Completions`, and `Invoke` APIs only",
+    ) === true && tierProse.includes("API supports Standard only.");
   let operations: (string | undefined)[] | undefined;
-  if (restrictedApis !== allApis)
+  if (invokeWithoutConverse && !restrictedApis && !allApis)
+    operations = ["responses", "chat_completions", "invoke_model"];
+  else if (!invokeWithoutConverse && restrictedApis !== allApis)
     operations = restrictedApis
       ? ["responses", "chat_completions"]
       : ["responses", "chat_completions", "converse", "invoke_model"];
-  else if (!restrictedApis && apiScoped === null) operations = [undefined];
+  else if (!invokeWithoutConverse && !restrictedApis && apiScoped === null)
+    operations = [undefined];
   const multipliers = operations === undefined ? null : (apiScoped ?? unrestricted);
   if ((apiScoped !== null || unrestricted !== null) && operations === undefined)
     onPricingReconciliation?.({
@@ -3184,8 +3215,7 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
       const listedPricing = prices.modelRates.get(id) ?? [];
       const cardRates = modelCardRates(
-        card.pricingSection,
-        card.serviceTierSection,
+        card,
         access,
         input.source.id,
         input.onPricingReconciliation,

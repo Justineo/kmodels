@@ -1,0 +1,56 @@
+<!doctype html>
+<main>
+  <h2 id="request">Request</h2>
+  <div class="field">
+    <div class="param-head">
+      <button data-component-part="field-name">model</button
+      ><span data-component-part="field-info-pill">string</span>
+    </div>
+    <p>
+      The model to use for completion. See <a href="/models/overview">Supported Models</a> for a
+      list of available models.
+    </p>
+  </div>
+  <h2 id="completion-response">Completion Response</h2>
+  <div class="field">
+    <div class="param-head">
+      <button data-component-part="field-name">object</button
+      ><span data-component-part="field-info-pill">string</span>
+    </div>
+    <p>The object type, which is always <code>text_completion</code>.</p>
+  </div>
+  <div class="field">
+    <div class="param-head">
+      <button data-component-part="field-name">usage</button
+      ><span data-component-part="field-info-pill">object</span>
+    </div>
+    <div>
+      <div class="field">
+        <div class="param-head">
+          <button data-component-part="field-name">prompt_tokens</button
+          ><span data-component-part="field-info-pill">integer</span>
+        </div>
+      </div>
+      <div class="field">
+        <div class="param-head">
+          <button data-component-part="field-name">completion_tokens</button
+          ><span data-component-part="field-info-pill">integer</span>
+        </div>
+      </div>
+      <div class="field">
+        <div class="param-head">
+          <button data-component-part="field-name">prompt_tokens_details</button
+          ><span data-component-part="field-info-pill">object</span>
+        </div>
+        <div class="field">
+          <div class="param-head">
+            <button data-component-part="field-name">cached_tokens</button
+            ><span data-component-part="field-info-pill">integer</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <pre>curl -X POST https://api.cerebras.ai/v1/completions</pre>
+  <pre>curl -X POST https://api.cerebras.ai/v1/completions</pre>
+</main>

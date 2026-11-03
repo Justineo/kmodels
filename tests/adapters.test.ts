@@ -1084,14 +1084,17 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
     ["https://docs.ollama.com/api/usage.md", "usage.md"],
     ["https://docs.ollama.com/api/openai-compatibility.md", "openai-compatibility.md"],
     ["https://docs.ollama.com/cloud.md", "cloud.md"],
-    ["https://raw.githubusercontent.com/ollama/ollama/v0.33.3/api/types.go", "api-types.go"],
-    ["https://raw.githubusercontent.com/ollama/ollama/v0.33.3/openai/openai.go", "openai-types.go"],
+    ["https://raw.githubusercontent.com/ollama/ollama/v0.40.14/api/types.go", "api-types.go"],
     [
-      "https://raw.githubusercontent.com/ollama/ollama/v0.33.3/openai/responses.go",
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/openai/openai.go",
+      "openai-types.go",
+    ],
+    [
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/openai/responses.go",
       "responses-types.go",
     ],
     [
-      "https://raw.githubusercontent.com/ollama/ollama/v0.33.3/middleware/openai.go",
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/middleware/openai.go",
       "openai-middleware.go",
     ],
   ] as const;
@@ -1251,6 +1254,35 @@ describe("source taxonomy", () => {
 });
 
 describe("Cohere adapters", () => {
+  it("binds Rerank 5 Cost rows to token-denominated rerank rates", () => {
+    const value = manifest("cohere");
+    const configured = value.sources.find(({ id }) => id === "cohere-pricing");
+    if (configured?.extractor.kind !== "cohere-pricing") throw new Error("Missing pricing source");
+    const source = { ...configured, extractor: { ...configured.extractor, minProducts: 1 } };
+    const id = "rerank-v5.0-fast";
+    const name = "Rerank 5 Fast";
+    const record = {
+      modelName: name,
+      per: "1M tokens",
+      pricings: [{ inputLabel: "Cost", inputPrice: 0.02 }],
+    };
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: `<script>self.__next_f.push(${JSON.stringify([1, "0:" + JSON.stringify(record)])})</script>`,
+      catalogModels: [
+        {
+          ...baseModel({ providerId: "cohere", id, name, sourceId: "cohere-models", observedAt }),
+          tasks: ["reranking"],
+        },
+      ],
+    });
+    expect(result.models[0]?.price_facts).toEqual([
+      expect.objectContaining({ meter: "rerank_request", unit: "million_tokens", price: "0.02" }),
+    ]);
+  });
+
   it("keeps authoritative central quotes numeric when an exact model card disagrees", async () => {
     const product = {
       modelName: "Command A",
@@ -2016,7 +2048,7 @@ describe("Cohere adapters", () => {
     expect(reconciliation).toContainEqual({
       disposition: "unbound",
       reason_code: "pricing_input_contract_partial",
-      sample: "11/12 Cohere pricing inputs",
+      sample: "11/13 Cohere pricing inputs",
     });
     expect(findings).toContainEqual(
       expect.objectContaining({
@@ -2113,7 +2145,7 @@ describe("Cohere adapters", () => {
     expect(value.sources).toMatchObject([
       {
         url: "https://docs.cohere.com/docs/models.md",
-        extractorVersion: "cohere-catalog-v18",
+        extractorVersion: "cohere-catalog-v19",
         extractor: {
           kind: "cohere-catalog",
           minModels: 40,
@@ -3473,6 +3505,18 @@ describe("Vertex AI adapters", () => {
       ["input_text", "0.0005", "million_tokens"],
       ["output_text", "0.0005", "million_tokens"],
     ]);
+    const unrelated = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify({
+        index: { url: source.url, body: index },
+        documents: [{ url: "https://cloud.google.com/model-garden/pricing", body: companion }],
+      }),
+      observedAt,
+      catalogModels,
+    }).models;
+    expect(unrelated[0]?.price_facts).toEqual(models[0]?.price_facts);
+    expect(unrelated[0]?.raw_price_facts).toHaveLength(1);
     const partition = assembleParsedProviderPricing(
       "vertex",
       observedAt,
@@ -3487,7 +3531,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v23",
+      extractorVersion: "vertex-pricing-v24",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -4994,13 +5038,13 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v19");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v20");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
     );
     expect(companions.get("google-image-pricing")).toMatchObject({
-      url: "https://ai.google.dev/gemini-api/docs/pricing?hl=en",
+      url: "https://aistudio.google.com/docs/pricing?hl=en",
       optional: true,
     });
     expect(companions.get("google-image-pricing")?.claimLocal).toBeUndefined();
@@ -5013,6 +5057,57 @@ describe("Databricks adapters", () => {
     });
     expect(companions.get("api-reference")).toMatchObject({ optional: true, claimLocal: true });
     expect(companions.get("model-types")).toMatchObject({ optional: true, claimLocal: true });
+  });
+
+  it("reads delegated Standard image prices from the current AI Studio Markdown", async () => {
+    const sections = [
+      ["gemini-3.1-flash-image", "0.50", "3", "60.00"],
+      ["gemini-3-pro-image", "2.00", "12.00", "120.00"],
+    ].map(([id, input, output, image]) =>
+      [
+        `## Image model {% id="${id}" %}`,
+        `* [\`${id}\`](/docs/models/${id})`,
+        '{% tab title="Standard" %}',
+        "  {% table %}",
+        "  * Feature",
+        "  * Free Tier",
+        "  * Paid Tier, per 1M tokens in USD",
+        "  ---",
+        "  * Input price",
+        "  * Not available",
+        `  * $${input} (text/image)`,
+        "  ---",
+        "  * Output price",
+        "  * Not available",
+        `  * $${output} (text and thinking)  `,
+        `  $${image} (images)`,
+        "  {% /table %}",
+        "{% /tab %}",
+      ].join("\n"),
+    );
+    const models = await databricksCatalog({}, undefined, [
+      {
+        url: "https://aistudio.google.com/docs/pricing?hl=en",
+        body: ["> ## AI Agent Context", "> https://aistudio.google.com/llms.txt", ...sections].join(
+          "\n",
+        ),
+      },
+    ]);
+    for (const [id, image] of [
+      ["databricks-gemini-3-1-flash-image", "60"],
+      ["databricks-gemini-3-pro-image", "120"],
+    ]) {
+      const model = models.find(({ model_id }) => model_id === id);
+      expect(model?.price_facts).toContainEqual(
+        expect.objectContaining({
+          meter: "output_image",
+          price: image,
+          currency: "USD",
+          unit: "million_tokens",
+          conditions: { endpoint: "global", service_tier: "standard" },
+        }),
+      );
+    }
   });
 
   it("combines labeled endpoints with lifecycle, limits, feature support, and DBU rates", async () => {
@@ -7278,7 +7373,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v26");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v27");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -7769,6 +7864,22 @@ describe("Vercel adapter", () => {
 
   it("normalizes volatile route telemetry and the stable model-page pricing evidence", () => {
     expect(
+      normalizeVercelEndpointResponse(
+        JSON.stringify({
+          data: {
+            id: "acme/search-1",
+            endpoints: [
+              {
+                name: "acme | acme/search-1",
+                provider_name: "acme",
+                pricing: { x_search_user: "0" },
+              },
+            ],
+          },
+        }),
+      ).searchModelId,
+    ).toBe("acme/search-1");
+    expect(
       JSON.parse(
         normalizeVercelEndpointResponse(
           JSON.stringify({
@@ -7792,7 +7903,7 @@ describe("Vercel adapter", () => {
               ],
             },
           }),
-        ),
+        ).body,
       ),
     ).toEqual({
       data: {
@@ -9368,7 +9479,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v19",
+      extractorVersion: "cerebras-catalog-v20",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -11539,7 +11650,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v26",
+      extractorVersion: "dashscope-pricing-v27",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),
@@ -11700,10 +11811,10 @@ describe("Kimi adapters", () => {
       extractorVersion: "kimi-catalog-v5",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
-      url: "https://platform.kimi.ai/docs/pricing/chat-k3",
+      url: "https://platform.kimi.ai/docs/pricing/chat",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v18",
+      extractorVersion: "kimi-pricing-v19",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -11811,7 +11922,7 @@ describe("Kimi adapters", () => {
       configured,
       JSON.stringify({
         index: {
-          url: configured.url,
+          url: `${origin}/docs/pricing/chat-k3`,
           body: indexBody ?? (await fixture(fixtureName("pricing-k3"))),
         },
         documents: await Promise.all(
@@ -12577,7 +12688,10 @@ describe("Kimi adapters", () => {
   });
 
   it("restores Batch accounting when the guide explicitly supports K2.7 Code", async () => {
-    const guide = (await fixture("kimi/batch-guide.md")).replaceAll("kimi-k2.5", "kimi-k2.7-code");
+    const guide = (await fixture("kimi/batch-guide.md")).replace(
+      /Batch API 支持[^\n]+/,
+      "Batch API 支持 `kimi-k3.1-pro`、`kimi-k3`、`kimi-k2.7-code` 和 `kimi-k2.6` 模型。这些模型的采样参数不可修改。",
+    );
     const models = await pricing({ overrides: { "batch-guide": guide } });
     const configured = source("kimi-pricing");
     const partition = assembleParsedProviderPricing(
@@ -13581,7 +13695,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v17",
+      extractorVersion: "ollama-cloud-v18",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });

@@ -114,9 +114,22 @@ describe("Gemini grounding source policies", () => {
   it("resolves an explicitly shared Search program only with an agreeing owned billing guide", async () => {
     const body = (await fixture("grounding-current.html")).replace(/<p>[\s\S]*?<\/p>/, "");
     const guide = await fixture("search-grounding-current.html");
+    const studio = [
+      "> ## AI Agent Context",
+      "> https://aistudio.google.com/llms.txt",
+      "",
+      '## Pricing {% id="pricing" %}',
+      "",
+      "When you use Grounding with Google Search with Gemini 3 and newer models, your",
+      "project is billed for **each** search query that the model decides to execute.",
+      "This per-query billing model includes 5,000 free search requests per month",
+      "shared across all Gemini 3 and newer models, and then costs **$14 per 1,000",
+      "search requests**.",
+    ].join("\n");
     for (const search of [
       undefined,
       guide,
+      studio,
       guide.replace("$14", "$15"),
       guide.replace("5,000", "6,000"),
     ]) {
@@ -125,7 +138,7 @@ describe("Gemini grounding source policies", () => {
         parsed.commercial_facts
           ?.filter((f) => f.resource_key === "google-search")
           .flatMap((f) => f.price_facts) ?? [];
-      expect(rates.length > 0).toBe(search === guide);
+      expect(rates.length > 0).toBe(search === guide || search === studio);
       expect(rates.every((f) => f.unit === "thousand_search_units")).toBe(true);
     }
   });

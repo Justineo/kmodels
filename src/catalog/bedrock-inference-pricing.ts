@@ -19,8 +19,11 @@ const geographies = new Map([
   ["EU", "eu"],
   ["APAC", "apac"],
   ["India", "in"],
+  ["CA", "ca"],
   ["Japan", "jp"],
+  ["JP", "jp"],
   ["Australia", "au"],
+  ["AU", "au"],
 ]);
 
 function prose(body: string): string {
@@ -30,8 +33,7 @@ function prose(body: string): string {
     .join("\n");
 }
 
-function hasInRegionId(body: string, endpoint: string): boolean {
-  const regional = markdownSection(body, 2, "Regional Availability") ?? "";
+function hasInRegionId(regional: string, endpoint: string): boolean {
   const headings = [
     ...regional.matchAll(
       /^\*\*Availability using the `(bedrock-runtime|bedrock-mantle)` endpoint\*\*$/gm,
@@ -64,12 +66,11 @@ export function bedrockInferencePrices(
 ): { inference_prices: Rule[]; vocabulary: ProviderAtomRegistryEntry[] } {
   const rules: Rule[] = [];
   const vocabulary: ProviderAtomRegistryEntry[] = [];
-  const document = (url: string) => {
-    const matches = documents.filter((doc) => doc.url === url);
-    return matches.length === 1 ? matches[0] : undefined;
-  };
+  const byUrl = new Map<string, Document | null>();
+  for (const doc of documents) byUrl.set(doc.url, byUrl.has(doc.url) ? null : doc);
+  const modelsById = new Map(models.map((model) => [model.model_id, model]));
   const report = (path: string) => input.onContractFinding?.(contractExtensionEvidence([path]));
-  const crossRegion = document(`${root}userguide/cross-region-inference.md`);
+  const crossRegion = byUrl.get(`${root}userguide/cross-region-inference.md`);
   const sourceRegionBilling = prose(crossRegion?.body ?? "").includes(
     "The price is calculated based on the Region from which you call an inference profile.",
   );
@@ -129,15 +130,15 @@ export function bedrockInferencePrices(
       })),
     });
   }
-  for (const doc of documents) {
+  for (const [url, doc] of byUrl) {
     if (
       !/^https:\/\/docs\.aws\.amazon\.com\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/.test(
-        doc.url,
+        url,
       )
     )
       continue;
-    if (document(doc.url) === undefined) {
-      report(`/inference-pricing/duplicate-card/${doc.url}`);
+    if (doc === null) {
+      report(`/inference-pricing/duplicate-card/${url}`);
       continue;
     }
     const body = prose(doc.body);
@@ -157,6 +158,19 @@ export function bedrockInferencePrices(
         throw new Error("Ambiguous ID table");
       const seen = new Set<string>();
       const pending: Array<{ model: ParsedProviderModel; id: string; fixed: Fixed }> = [];
+      const regional = markdownSection(body, 2, "Regional Availability") ?? "";
+      const headings = [...regional.matchAll(/^\*\*Geo: ([^*\n]+)\*\*$/gm)];
+      const profileGeographies = new Map<string, string | undefined>();
+      for (const [index, heading] of headings.entries()) {
+        const block = regional.slice(heading.index + heading[0].length, headings[index + 1]?.index);
+        const ids = [...block.matchAll(/^Geo [Ii]nference ID: `([^`]+)`\s*$/gm)];
+        const id = ids.length === 1 ? ids[0]?.[1] : undefined;
+        if (id !== undefined)
+          profileGeographies.set(
+            id,
+            profileGeographies.has(id) ? undefined : geographies.get(heading[1] ?? ""),
+          );
+      }
       for (const row of table.rows) {
         const cell = (header: string) => row[table.header.indexOf(header)] ?? "";
         const endpoint = cell("Endpoint");
@@ -169,39 +183,25 @@ export function bedrockInferencePrices(
         const key = `${endpoint}:${identity.modelId}`;
         if (seen.has(key)) throw new Error("Duplicate ID row");
         seen.add(key);
-        const model = models.find(({ model_id }) => model_id === identity.modelId);
+        const model = modelsById.get(identity.modelId);
         if (model === undefined) continue;
         if (
           identity.idKind === "api_id" &&
           cell("In-Region endpoint URL").startsWith("https://") &&
-          hasInRegionId(body, endpoint)
+          hasInRegionId(regional, endpoint)
         )
           pending.push({
             model,
             id: identity.modelId,
             fixed: { endpoint, deployment_scope: "in_region" },
           });
-        const regional = markdownSection(body, 2, "Regional Availability") ?? "";
-        const headings = [...regional.matchAll(/^\*\*Geo: ([^*\n]+)\*\*$/gm)];
         for (const [column, deployment_scope] of [
           ["Geo inference ID", "geo_cross_region"],
           ["Global inference ID", "global_cross_region"],
         ] as const) {
           for (const id of bedrockPublicIds(cell(column))) {
-            const claims = headings.flatMap((heading, index) => {
-              const block = regional.slice(
-                heading.index + heading[0].length,
-                headings[index + 1]?.index,
-              );
-              const ids = [...block.matchAll(/^Geo inference ID: `([^`]+)`\s*$/gm)];
-              return ids.length === 1 && ids[0]?.[1] === id ? [heading[1] ?? ""] : [];
-            });
             const geography =
-              deployment_scope === "global_cross_region"
-                ? "global"
-                : claims.length === 1
-                  ? geographies.get(claims[0] ?? "")
-                  : undefined;
+              deployment_scope === "global_cross_region" ? "global" : profileGeographies.get(id);
             pending.push({
               model,
               id,
@@ -225,10 +225,10 @@ export function bedrockInferencePrices(
       report(`/inference-pricing/id-table/${doc.url}`);
     }
   }
-  const field = document(
+  const field = byUrl.get(
     `${root}APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md`,
   );
-  const use = document(`${root}userguide/rerank-use.md`);
+  const use = byUrl.get(`${root}userguide/rerank-use.md`);
   if (field && use) {
     const contents = prose(markdownSection(field.body, 2, "Contents") ?? "");
     const definition = contents.match(/\*\*\s*modelArn\s*\*\*([\s\S]*?)(?=\n\s*\*\*|$)/)?.[1];

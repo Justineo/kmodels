@@ -91,8 +91,11 @@ does not authorize borrowing another operation's usage counters.
 The same reader accepts cards without a cache-write column, including
 [Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
 Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is
-never inferred from the provider name. Explicit, unqualified Priority/Flex multipliers on the
-card derive separate tier rates from its Standard amounts. A bad price cell removes only that
+never inferred from the provider name. The card's GovCloud table and commercial table apply to
+their own source Regions, as established by the Runtime availability table. The current
+Priority and Flex declaration covers Responses, Chat Completions and InvokeModel. Converse has
+Standard pricing. Published multipliers derive scoped tier rates from the corresponding
+Standard amounts. A bad price cell removes only that
 component, retaining the other meters in its row. Runtime card evidence does not authorize a
 join to a Mantle SKU.
 Runtime-only tariff readers check the card's positive endpoint before interpreting its tables.
@@ -218,6 +221,8 @@ deployment scope, commercial profile geography, and an explicitly evidenced regi
 commercial geography comes from its own `Geo: US` (or other reviewed geography) declaration.
 If prices distinguish geography but that declaration is missing or ambiguous, the association is
 withheld and a source-contract finding is recorded. Prefixes do not establish geography.
+Both published spellings of the Geo inference ID label are recognized, including explicit
+`Geo: AU`, `Geo: CA`, and `Geo: JP` headings.
 
 The request Region remains a separate caller-supplied price condition. For profiles with regional
 prices, this interpretation requires the [cross-Region guide](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.md)

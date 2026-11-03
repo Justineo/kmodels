@@ -79,13 +79,20 @@ function toolFacts(
     resource_kind: "service",
     resource_key: identity.resourceKey,
     model_refs: [...modelRefs].sort(),
-    offer_key: `built-in:${slug(scope)}`,
+    offer_key: `built-in:${slug(scope)}${webSearchPolicySuffix(identity.resourceKey, rate)}`,
     offer_name: `${identity.offerPrefix} in ${scope}`,
     billing_mode: "usage",
     pricing_state: "numeric",
     price_facts: [rate],
     raw_price_facts: [],
   }));
+}
+
+function webSearchPolicySuffix(resourceKey: string, rate: SourcePriceFact): string {
+  const policy = rate.conditions.operation;
+  return resourceKey === "web-search" && (policy === "agent" || policy === "agent_max")
+    ? `:${policy}`
+    : "";
 }
 
 function slug(value: string): string {

@@ -2363,44 +2363,103 @@ function combine(models: ProviderModel[]): ProviderModel[] {
   return [...values.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function redirectedModels(models: ProviderModel[]): ProviderModel[] {
-  const byId = new Map<string, ProviderModel[]>();
-  for (const value of models)
-    byId.set(value.model_id, [...(byId.get(value.model_id) ?? []), value]);
+const imageRetirementPath = "/developers/migration/imagine-image-quality-nov-2";
+const imageRetirementDate = "2026-11-02";
+const retiredImage = "grok-imagine-image-quality";
+const replacementImage = "grok-imagine-image-2.0";
+const olderImage = "grok-imagine-image-pro";
+
+function imageRetirement(input: ParseInput, llms: string) {
+  if (input.observedAt.slice(0, 10) <= imageRetirementDate) return;
+  return reviewClaim(input, "image_redirect_contract_drift", () => {
+    const guide = markdownProse(section(llms, imageRetirementPath)).replaceAll("**", "");
+    requireClaims(
+      guide,
+      [
+        "Effective November 2, 2026",
+        `Requests to \`${retiredImage}\` on \`/v1/images/generations\` and \`/v1/images/edits\` are served by \`${replacementImage}\` with \`quality: "low"\`.`,
+        `you are billed at the \`${replacementImage}\` \`low\` rate`,
+      ],
+      "xAI November image redirect terms changed",
+    );
+    return {
+      followsEarlierRedirect: guide.includes(
+        `Requests to \`${olderImage}\`, which [already redirect](/developers/migration/may-15-retirement) to \`${retiredImage}\`, follow it to \`${replacementImage}\` at \`low\`.`,
+      ),
+    };
+  });
+}
+
+function redirectedModels(
+  input: ParseInput,
+  models: ProviderModel[],
+  fixedLowIds: ReadonlySet<string>,
+): ProviderModel[] {
+  const byId = new Map<string, ProviderModel | null>();
+  for (const value of models) byId.set(value.model_id, byId.has(value.model_id) ? null : value);
   return models.map((value) => {
     const replacement = value.replacement_model_ids[0];
+    const effectiveFrom = value.deprecated_at;
     if (
       value.status !== "legacy" ||
       replacement === undefined ||
       value.replacement_model_ids.length !== 1
     )
       return value;
-    const targets = byId.get(replacement) ?? [];
-    const target = targets[0];
-    if (
-      target === undefined ||
-      targets.length !== 1 ||
-      target.pricing_state !== "numeric" ||
-      target.price_facts.length === 0 ||
-      value.deprecated_at === undefined
-    )
-      throw new Error(`xAI redirect target ${replacement} did not resolve to one priced model`);
-    return {
-      ...value,
-      tasks: target.tasks,
-      modalities: target.modalities,
-      capabilities: target.capabilities,
-      limits: target.limits,
-      pricing_state: "numeric",
-      price_facts: target.price_facts.map((rate) => ({
-        ...rate,
-        conditions: { ...rate.conditions, effective_from: value.deprecated_at },
-        derived: true,
-        derivation: `Redirects to ${replacement} from ${value.deprecated_at}; ${
-          rate.derivation ?? "published target rate"
-        }`,
-      })),
-    };
+    const fixedLow = fixedLowIds.has(value.model_id);
+    return (
+      reviewClaim(input, "redirect_price_join_drift", (): ProviderModel => {
+        const target = byId.get(replacement);
+        if (target == null || target.pricing_state !== "numeric" || effectiveFrom === undefined)
+          throw new Error(
+            `xAI redirect ${value.model_id} did not resolve to one priced ${replacement}`,
+          );
+        const rates = fixedLow
+          ? target.price_facts.filter(
+              ({ meter, conditions }) =>
+                conditions.service_tier !== "batch" &&
+                (meter === "input_image" ||
+                  (meter === "image_generation" && conditions.quality === "low")),
+            )
+          : target.price_facts;
+        if (
+          rates.length === 0 ||
+          (fixedLow && !rates.some(({ meter }) => meter === "image_generation"))
+        )
+          throw new Error(
+            `xAI redirect ${value.model_id} lacks applicable rates from ${replacement}`,
+          );
+        const starts = fixedLow ? imageRetirementDate : effectiveFrom;
+        return {
+          ...value,
+          tasks: target.tasks,
+          modalities: target.modalities,
+          ...(fixedLow
+            ? {
+                api_endpoints: [
+                  { name: "Image Generations", path: "/v1/images/generations" },
+                  { name: "Image Edits", path: "/v1/images/edits" },
+                ],
+              }
+            : {}),
+          capabilities: fixedLow
+            ? { ...target.capabilities, batch: "unknown" }
+            : target.capabilities,
+          limits: target.limits,
+          pricing_state: "numeric",
+          price_facts: rates.map((rate) => ({
+            ...rate,
+            // The November guide gives a day without a time zone. Admit the current
+            // tariff as snapshot evidence without asserting an exact historical start.
+            conditions: fixedLow ? rate.conditions : { ...rate.conditions, effective_from: starts },
+            derived: true,
+            derivation: `Redirects to ${replacement} from ${starts}; ${
+              rate.derivation ?? "published target rate"
+            }`,
+          })),
+        };
+      }) ?? (fixedLow ? { ...value, pricing_state: "unknown", price_facts: [] } : value)
+    );
   });
 }
 
@@ -2419,9 +2478,31 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
     reviewClaim(input, "transcription_model_contract_drift", () =>
       transcriptionModels(input, llms),
     ) ?? [];
-  const combined = combine([...current.models, ...lifecycle, ...transcription]);
-  const models =
-    reviewClaim(input, "redirect_price_join_drift", () => redirectedModels(combined)) ?? combined;
+  const imageRedirect = imageRetirement(input, llms);
+  const fixedLowIds = new Set<string>();
+  if (imageRedirect !== undefined) {
+    fixedLowIds.add(retiredImage);
+    lifecycle.push(
+      model(input, retiredImage, {
+        deprecated_at: imageRetirementDate,
+        status: "legacy",
+        replacement_model_ids: [replacementImage],
+      }),
+    );
+    const earlier = lifecycle.find(({ model_id }) => model_id === olderImage);
+    if (
+      imageRedirect.followsEarlierRedirect &&
+      earlier?.replacement_model_ids[0] === retiredImage
+    ) {
+      earlier.replacement_model_ids = [replacementImage];
+      fixedLowIds.add(olderImage);
+    }
+  }
+  const models = redirectedModels(
+    input,
+    combine([...current.models, ...lifecycle, ...transcription]),
+    fixedLowIds,
+  );
   const pricingInputs = extractXaiPricingInputs(
     llms,
     input.source.id,
@@ -2455,28 +2536,22 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
     models,
     commercial_facts: extractXaiCommercialFacts(models, input.source.id, current.evidence),
     pricing_inputs: pricingInputs,
-    inference_prices: models.flatMap((model) =>
-      [...new Set([model.model_id, ...model.aliases])]
+    inference_prices: models.flatMap((model) => {
+      const fixedLow = fixedLowIds.has(model.model_id);
+      const offers = fixedLow ? (["direct"] as const) : xaiModelOfferKeys(model);
+      const fixed_selectors = [
+        ...(isMediaModel(model) ? [fixedSelector("endpoint", "https://api.x.ai/v1")] : []),
+        ...(fixedLow ? [fixedSelector("quality", "low")] : []),
+      ];
+      return [...new Set([model.model_id, ...model.aliases])]
         .filter((id) => pricedIds.has(id))
         .flatMap((model_id) =>
-          xaiModelOfferKeys(model).map((offer_key) => ({
+          offers.map((offer_key) => ({
             model_id,
             model_ref: model.uid,
             source_ref: input.source.id,
             offer_key,
-            fixed_selectors: isMediaModel(model)
-              ? [
-                  {
-                    kind: "categorical" as const,
-                    dimension: { namespace: "kmodels" as const, value: "endpoint" as const },
-                    value: {
-                      namespace: "provider" as const,
-                      provider_id: "xai",
-                      value: "https://api.x.ai/v1",
-                    },
-                  },
-                ]
-              : [],
+            fixed_selectors,
             evidence: [
               {
                 source_ref: input.source.id,
@@ -2485,10 +2560,29 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
                   value: JSON.stringify([model.model_id, model_id]),
                 },
               },
+              ...(fixedLow
+                ? [
+                    {
+                      source_ref: input.source.id,
+                      locator: {
+                        kind: "fragment" as const,
+                        value: `https://docs.x.ai${imageRetirementPath}`,
+                      },
+                    },
+                  ]
+                : []),
             ],
           })),
-        ),
-    ),
+        );
+    }),
+  };
+}
+
+function fixedSelector(dimension: "endpoint" | "quality", value: string) {
+  return {
+    kind: "categorical" as const,
+    dimension: { namespace: "kmodels" as const, value: dimension },
+    value: { namespace: "provider" as const, provider_id: "xai", value },
   };
 }
 

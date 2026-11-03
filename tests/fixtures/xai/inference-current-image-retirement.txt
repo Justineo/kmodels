@@ -1,0 +1,13 @@
+===/developers/migration/imagine-image-quality-nov-2===
+# grok-imagine-image-quality Retirement on November 2, 2026
+
+**Effective November 2, 2026**, the `grok-imagine-image-quality` model slug is retired from the xAI API.
+
+### How the redirect works
+
+* Requests to `grok-imagine-image-quality` on `/v1/images/generations` and `/v1/images/edits` are served by **`grok-imagine-image-2.0` with `quality: "low"`**.
+* Requests to `grok-imagine-image-pro`, which [already redirect](/developers/migration/may-15-retirement) to `grok-imagine-image-quality`, follow it to `grok-imagine-image-2.0` at `low`.
+
+## Pricing impact
+
+If you keep sending requests to the retired slug after November 2, you are billed at the `grok-imagine-image-2.0` `low` rate.

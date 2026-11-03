@@ -54,12 +54,16 @@ describe("TypeSafe AI", () => {
     expect(
       result.inference_prices
         ?.toSorted((left, right) => left.model_id.localeCompare(right.model_id))
-        .map(({ model_id, model_ref }) => [model_id, model_ref]),
+        .map(({ model_id, model_ref, evidence }) => [
+          model_id,
+          model_ref,
+          evidence[0]?.locator.value,
+        ]),
     ).toEqual([
-      ["jev-1.13.0", "typesafe/jev-1.13.0"],
-      ["jev-1.14.0", "typesafe/jev-1.14.0"],
-      ["jev-latest", "typesafe/jev-1.14.0"],
-      ["jev-preview", "typesafe/jev-1.14.0"],
+      ["jev-1.13.0", "typesafe/jev-1.13.0", "https://docs.typesafe.ai/models#current-models"],
+      ["jev-1.14.0", "typesafe/jev-1.14.0", "https://docs.typesafe.ai/models#current-models"],
+      ["jev-latest", "typesafe/jev-1.14.0", "https://docs.typesafe.ai/models#aliases"],
+      ["jev-preview", "typesafe/jev-1.14.0", "https://docs.typesafe.ai/models#aliases"],
     ]);
     expect(
       result.inference_prices?.every(({ fixed_selectors }) => fixed_selectors.length === 0),

@@ -163,6 +163,10 @@ integer leaves must be directly and uniquely declared at every step, including
 prose markers and quoted schemas cannot establish those paths. A duplicate or retyped field
 withholds only its affected mappings; an unrelated nested lookalike cannot erase a valid direct
 field. A duplicate companion path withholds that document's mappings in either order.
+The rendered OpenAPI reference can publish separate JSON and event-stream schemas. When those
+media labels are present, REST uses the JSON schema and FIM streaming uses the event-stream schema.
+Duplicating a field in one media schema does not invalidate its sibling transport. Older unlabelled
+references use their shared response schema and still require independent terminal stream evidence.
 
 Chat/FIM terminal acquisition additionally requires the owned boolean `stream` and
 `stream_options.include_usage` contracts. Accounting prose is read as rendered HTML text within
@@ -176,7 +180,8 @@ Envelope drift removes stream acquisition independently of the REST response map
 The same operation/owner/type reader supplies request model enumerations and the public model-list
 response witness. A response model field cannot establish request compatibility, and an unrelated
 nested enumeration cannot invalidate the actual request model field. Public inventory needs its
-typed returned fields and current response example, without imposing field order. Unconsumed
+typed returned fields and current response example, without imposing field order. The inventory's
+single-value enums can render as a bare code value or a bracketed value. Unconsumed
 additive example metadata cannot invalidate the ID witness or overwrite catalog fields.
 The compatible Anthropic guide's stream support comes from its uniquely owned `Simple Fields`
 table, independently of whitespace between rendered cells.

@@ -93,7 +93,7 @@ function markdownSections(body: string): string {
 }
 
 function tables(body: string, options: { precedingHeadings?: boolean } = {}): Table[] {
-  return htmlTables(/^#{1,6}\s+/m.test(body) ? markdownSections(body) : body, options);
+  return htmlTables(markdownDocument(body) ? markdownSections(body) : body, options);
 }
 
 function markdownCell(cell: Cell): Cell {
@@ -1272,13 +1272,17 @@ interface PriceSegment {
   accountEligibility?: string;
 }
 
+function cnyPrice(value: string): string | undefined {
+  return decimal(value.match(/^CNY ([\d,.]+)$/)?.[1] ?? "");
+}
+
 function priceSegments(
   cell: Cell,
   header: string,
   currency: "USD" | "CNY" = "USD",
 ): PriceSegment[] {
   if (currency === "CNY") {
-    const price = decimal(cell.text.match(/^CNY ([\d,.]+)$/)?.[1] ?? "");
+    const price = cnyPrice(cell.text);
     return price === undefined ? [] : [{ price }];
   }
   const hourly = cell.text.match(/^Busy hours:\s*\$?([\d,.]+)\s*Idle hours:\s*\$?([\d,.]+)$/i);
@@ -1616,7 +1620,7 @@ function companion(input: ParseInput, bundle: LinkedBundle, pathname: string): s
 }
 
 function documentText(body: string): string {
-  const markup = /^#{1,6}\s+/m.test(body)
+  const markup = markdownDocument(body)
     ? body.replaceAll("**", "").replaceAll("\\<", "&lt;").replaceAll("\\>", "&gt;")
     : body;
   return text(load(markup).root().text());
@@ -1641,7 +1645,33 @@ function hasClaims(
 }
 
 function markdownDocument(body: string): boolean {
-  return /^#{1,6}\s+/m.test(body);
+  return !/^\s*(?:<!doctype html\b|<html\b)/i.test(body) && /^#{1,6}\s+/m.test(body);
+}
+
+/** Current guide HTML exposes the same section hierarchy as its Markdown representation. */
+function guideLines(body: string): string[] | undefined {
+  if (markdownDocument(body)) return markdownProse(body).split(/\r?\n/);
+  const $ = load(body);
+  const article = $(".icms-help-docs-content").filter(
+    (_index, element) => $(element).parents(".icms-help-docs-content").length === 0,
+  );
+  if (article.length !== 1) return;
+  return article
+    .find("h2,h3,h4,h5,h6,p,li")
+    .toArray()
+    .flatMap((element) => {
+      const node = $(element);
+      if (node.parents("pre,code,table,.note").length > 0) return [];
+      const line = node.clone();
+      line.children("ul,ol,p").remove();
+      const content = text(line.text());
+      if (content === "") return [];
+      return [
+        /^h[2-6]$/.test(element.name)
+          ? `${"#".repeat(Number(element.name[1]))} ${content}`
+          : content,
+      ];
+    });
 }
 
 function commercialEvidence(input: ParseInput, bundle: LinkedBundle): CommercialEvidence {
@@ -1767,9 +1797,8 @@ function namedToolRegions(input: ParseInput, raw: string): string[] {
 
 function webSearchPolicyQuotes(
   input: ParseInput,
-  body: string,
+  billing: string | undefined,
 ): Array<{ operation: string; price: string; regions: string[] }> | undefined {
-  const billing = toolBillingBody(body);
   if (billing === undefined) return [];
   if (!/\bagent(?:\\?_max)?\s+policy/i.test(documentText(billing))) return;
   const result: Array<{ operation: string; price: string; regions: string[] }> = [];
@@ -1816,11 +1845,29 @@ function regionalWebSearchRates(
   models: Map<string, ProviderModel>,
   sections: ReadonlyMap<string, string[]>,
 ): DashscopeToolRate[] | undefined {
-  const quotes = webSearchPolicyQuotes(input, body);
+  const billing = toolBillingBody(body);
+  const quotes = webSearchPolicyQuotes(input, billing);
   if (quotes === undefined) return;
+  const knownIds = new Set(models.keys());
+  const responseAgentRate = /web search tool is billed at the same rate as the agent policy/i.test(
+    documentText(billing ?? ""),
+  );
   return [...sections].flatMap(([scope, lines]) => {
     const section = lines.join("\n"),
-      ids = mentionedModelIds(section, new Set(models.keys()));
+      ids = mentionedModelIds(section, knownIds);
+    const agentOnly = new Set<string>();
+    const unsupported = new Set<string>();
+    for (const line of lines) {
+      const requiresAgent = /strategy (?:must be set to agent|to agent)\b/i.test(line);
+      if (
+        !requiresAgent &&
+        !/only by the Responses API|agent (?:strategy )?is not supported/i.test(line)
+      )
+        continue;
+      const acceptsAgent = requiresAgent || (responseAgentRate && /Responses API/i.test(line));
+      const limited = acceptsAgent ? agentOnly : unsupported;
+      for (const id of mentionedModelIds(line, knownIds)) limited.add(id);
+    }
     const global = documentText(section).match(/supported in the (.+?) regions\b/i)?.[1];
     const regions =
       scope === "Global" ? (global === undefined ? [] : namedToolRegions(input, global)) : [scope];
@@ -1834,18 +1881,22 @@ function regionalWebSearchRates(
       quote.regions
         .filter((region) => regions.includes(region))
         .flatMap((region) =>
-          [...ids].map((modelId) => ({
-            modelId,
-            scope,
-            rate: publishedRate(
-              "web_search",
-              quote.price,
-              "thousand_events",
-              input.source.id,
-              `USD per 1,000 ${quote.operation} web-search calls`,
-              { region, operation: quote.operation },
-            ),
-          })),
+          [...ids]
+            .filter(
+              (id) => !unsupported.has(id) && (quote.operation === "agent" || !agentOnly.has(id)),
+            )
+            .map((modelId) => ({
+              modelId,
+              scope,
+              rate: publishedRate(
+                "web_search",
+                quote.price,
+                "thousand_events",
+                input.source.id,
+                `USD per 1,000 ${quote.operation} web-search calls`,
+                { region, operation: quote.operation },
+              ),
+            })),
         ),
     );
   });
@@ -1905,8 +1956,8 @@ function webSearchRates(
   models: Map<string, ProviderModel>,
 ): DashscopeToolRate[] {
   if (body === undefined) return [];
-  if (markdownDocument(body)) {
-    const lines = markdownProse(body).split(/\r?\n/);
+  const lines = guideLines(body);
+  if (lines !== undefined) {
     const supported = lines.findIndex((line) => markdownSectionTitle(line) === "Supported models");
     const end = lines.findIndex(
       (line, index) => index > supported && markdownSectionTitle(line) === "Quick start",
@@ -1936,7 +1987,7 @@ function webSearchRates(
           reason_code: "web_search_model_scope_drift",
           sample: scope,
         });
-    const regional = regionalWebSearchRates(input, body, models, sections);
+    const regional = regionalWebSearchRates(input, lines.join("\n"), models, sections);
     if (regional !== undefined) return regional;
     return [...sections.keys()].flatMap((scope) =>
       webSearchRate(input, body, scope, models, (sections.get(scope) ?? []).join("\n")),
@@ -2038,8 +2089,8 @@ function imageSearchRates(
 
 function cacheModels(input: ParseInput, body: string | undefined): Map<string, Set<string>> {
   if (body === undefined) return new Map();
-  if (markdownDocument(body)) {
-    const lines = markdownProse(body).split(/\r?\n/);
+  const lines = guideLines(body);
+  if (lines !== undefined) {
     const result = new Map<string, Set<string>>();
     for (const mode of ["Explicit cache", "Implicit cache"] as const) {
       const start = lines.findIndex((line) => markdownSectionTitle(line) === mode);
@@ -2095,7 +2146,7 @@ function cacheModels(input: ParseInput, body: string | undefined): Map<string, S
         const scopeLabel = (
           content.match(/^(.+?) scope:$/i)?.[1] ??
           content.match(
-            /^The following models are available in the (.+?) deployment scope\.$/i,
+            /^The following models are (?:available in|within) the (.+?) deployment scope\.$/i,
           )?.[1]
         )?.replace(/\s+service deployment$/i, "");
         const scope = scopeLabel === "China (Hong Kong)" ? "Hong Kong (China)" : scopeLabel;
@@ -2386,6 +2437,8 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const regionalInputHeader = /^Input price \(per 1 million tokens\)$/;
   const regionalOutputHeader =
     /^Output price \(per 1 million tokens\)(?: Chain of thought \+ answer| \/ Non-Thinking mode| \/ Thinking mode \(chain of thought \+ answer\))?$/;
+  const regionalPriceHeader = (header: string) =>
+    regionalInputHeader.test(header) || regionalOutputHeader.test(header);
   const regionalTables =
     beijing === undefined
       ? []
@@ -2402,8 +2455,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
                   (header) =>
                     header === "Mode" ||
                     header === "Input tokens per request" ||
-                    regionalInputHeader.test(header) ||
-                    regionalOutputHeader.test(header) ||
+                    regionalPriceHeader(header) ||
                     /^Free quota\b/i.test(header),
                 ),
           )
@@ -2426,10 +2478,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
                     return /^(?:No tiered pricing|(?:\d+(?:\.\d+)?[KM]?<)?Token≤\d+(?:\.\d+)?[KM]?)$/i.test(
                       value.replaceAll(",", ""),
                     );
-                  return (
-                    !(regionalInputHeader.test(header) || regionalOutputHeader.test(header)) ||
-                    decimal(value.match(/^CNY ([\d,.]+)$/)?.[1] ?? "") !== undefined
-                  );
+                  return !regionalPriceHeader(header) || cnyPrice(value) !== undefined;
                 })
               );
             }),
@@ -2453,8 +2502,10 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const primaryRegionalPrices = new Set<string>();
   let observedRows = 0;
   let coveredRows = 0;
-  for (const table of [...primaryTables, ...regionalTables]) {
-    const regional = regionalTables.includes(table);
+  for (const { table, regional } of [
+    ...primaryTables.map((table) => ({ table, regional: false })),
+    ...regionalTables.map((table) => ({ table, regional: true })),
+  ]) {
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
     if (table.headers.some((header) => /price/i.test(header)))
       assertItemCount("DashScope pricing model column", idIndex === undefined ? 0 : 1, 1, 1);

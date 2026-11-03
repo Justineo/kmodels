@@ -57,6 +57,7 @@ and alias, retaining the model's exact catalog reference and source locator. Ali
 follow the explicit current table, not string similarity, equal amounts or an assumed latest
 version. The mapping describes its collected snapshot; a historical request using a rolling alias
 may require the actual version returned by that response.
+Evidence links open the Current models or Aliases section in the rendered Models page.
 
 A missing or changed request-ID statement withholds that class of association and records a source
 contract finding. Independent catalog prices remain available. Missing optional API documentation

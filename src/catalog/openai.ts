@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection as ownedMarkdownSection } from "./markdown.ts";
 import { baseModel } from "./model.ts";
 import {
   openAiInferencePrices,
@@ -109,14 +110,7 @@ interface OpenAiEndpointEvidence {
 }
 
 function markdownSection(body: string, heading: string): string | undefined {
-  const lines = body.split(/\r?\n/);
-  const start = lines.findIndex((line) => line === `## ${heading}`);
-  if (start < 0) return undefined;
-  const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
-  return lines
-    .slice(start + 1, end < 0 ? undefined : end)
-    .join("\n")
-    .trim();
+  return ownedMarkdownSection(body, 2, heading)?.trim();
 }
 
 function openAiEndpointEvidence(
@@ -419,6 +413,8 @@ function openAiPricing(
 const openAiPricingSections = new Set([
   "Flagship models",
   "Cyber models",
+  "Life sciences models",
+  "Legal model configurations",
   "GPT-Live sessions",
   "Realtime and audio generation models",
   "Image generation models",
@@ -803,7 +799,7 @@ function openAiToolCommercialFacts(
   };
   if (
     tool === "Web search" &&
-    /^(?:Web search \(all models\)|Image Web search \(all models\)|Web search preview \((?:non-reasoning models|reasoning models, including `gpt-5`)\))$/.test(
+    /^(?:Web search \(all models\)|Image Web search \(all models\)|Web search preview \((?:non-reasoning models|reasoning models, including `gpt-5`(?:, `o-series`)?)\))$/.test(
       details,
     )
   ) {
@@ -1101,7 +1097,18 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       /Starting [^.]+, eligible container sessions will be billed[^.]*\.(?: The underlying[^.]*\.)?/g,
     ),
   ].map(([fragment]) => fragment);
+  const lifeSciencesScope =
+    /^Life sciences models[ \t]*\r?$(?<section>[\s\S]*?)^Legal model configurations[ \t]*\r?$/m.exec(
+      markdownProse(input.body),
+    )?.groups?.section;
+  const approvedResearch = lifeSciencesScope?.includes(
+    "Access is limited to approved internal research through the [trusted-access program]",
+  );
   for (const table of openAiPricingTables(input.body, record)) {
+    if (table.section === "Life sciences models" && !approvedResearch) {
+      record({ disposition: "unsupported", reason_code: "life_sciences_eligibility_unresolved" });
+      continue;
+    }
     if (table.section === "Tools") {
       for (const row of table.rows) {
         const facts = openAiToolCommercialFacts(table, row, input.source.id, catalogModels, [
@@ -1181,6 +1188,12 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         continue;
       }
       const claims = cells.map((cell) => parseOpenAiPricingCell(cell, input.source.id));
+      if (table.section === "Life sciences models")
+        for (const { rate, raw } of claims) {
+          if (rate !== undefined)
+            rate.conditions.account_eligibility = "approved_internal_research";
+          if (raw !== undefined) raw.conditions.account_eligibility = "approved_internal_research";
+        }
       if (target === null || (target === undefined && !modelIdSchema.safeParse(rawId).success)) {
         for (const claim of claims) {
           claim.item.disposition = target === null ? "ambiguous" : "excluded";

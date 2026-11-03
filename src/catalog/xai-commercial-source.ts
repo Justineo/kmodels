@@ -43,9 +43,13 @@ export function extractXaiCommercialFacts(
     .filter(({ tasks }) => tasks.includes("speech_to_speech"))
     .map(({ uid }) => uid);
   const facts: SourceCommercialPricingFact[] = evidence.toolRates.map((tool) => ({
-    ...service(sourceId, `service:${tool.key}`, tool.name, tool.key, [
-      ...(tool.supportsVoice && evidence.voiceTools ? voiceRefs : []),
-    ]),
+    ...service(
+      sourceId,
+      `service:${tool.key}`,
+      tool.name,
+      tool.key,
+      tool.supportsVoice && evidence.voiceTools ? voiceRefs : [],
+    ),
     offer_key: "execution",
     offer_name: `${tool.name} execution`,
     pricing_state: "numeric",

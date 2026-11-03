@@ -123,7 +123,7 @@ it("maps exact Cohere hosted IDs to their existing free and numeric prices witho
   ).toBe(true);
 });
 
-it("associates current Embed and Parse meters while leaving contradictory Rerank 5 units unresolved", async () => {
+it("associates current Embed, Parse and token-denominated Rerank 5 meters", async () => {
   const { candidate, facts } = await collect();
   const query = lookup(candidate);
   for (const [model_id, meter] of [
@@ -141,10 +141,26 @@ it("associates current Embed and Parse meters while leaving contradictory Rerank
     ).toBe(true);
     expect(result.candidates[0]?.model_ref).toBe(`cohere/${model_id}`);
   }
-  for (const model_id of ["rerank-v5.0-fast", "rerank-v5.0-pro"]) {
+  for (const [model_id, denominator] of [
+    ["rerank-v5.0-fast", "50000000"],
+    ["rerank-v5.0-pro", "20000000"],
+  ] as const) {
     expect(facts.some((fact) => fact.model_id === model_id)).toBe(true);
-    expect(query({ provider_id: "cohere", model_id }).status).toBe("unknown");
-    expect(query({ provider_id: "cohere", model_id }).candidates).toEqual([]);
+    const result = query({ provider_id: "cohere", model_id });
+    expect(result.status).toBe("matched");
+    expect(result.candidates[0]?.offer.terms).toContainEqual(
+      expect.objectContaining({
+        meter: { namespace: "kmodels", value: "rerank" },
+        variants: [
+          expect.objectContaining({
+            price: expect.objectContaining({ value: { numerator: "1", denominator } }),
+            charge_binding: expect.objectContaining({
+              signal: { namespace: "kmodels", value: "input_tokens" },
+            }),
+          }),
+        ],
+      }),
+    );
   }
 });
 

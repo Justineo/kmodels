@@ -42,7 +42,7 @@ still apply. Replaying source facts does not turn a Library identity into a pric
   [OpenAPI document](https://docs.ollama.com/openapi.yaml), and
   [OpenAI-compatibility guide](https://docs.ollama.com/api/openai-compatibility) establish supported
   routes and public usage behavior.
-- Exact released source from Ollama `v0.33.3` establishes the wire contract that the prose and
+- Exact released source from Ollama `v0.40.14` establishes the wire contract that the prose and
   OpenAPI do not fully describe: native cached-token fields, OpenAI-compatible usage conversion,
   terminal `include_usage` chunks, and Responses usage events. The tag is deliberately pinned so a
   moving branch cannot silently change a calculation input; a provider review bumps it.

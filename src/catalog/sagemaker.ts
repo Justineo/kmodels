@@ -186,6 +186,20 @@ export function assertSagemakerSpecMetadata(
     throw new Error("SageMaker manifest has conflicting metadata for one model/version");
 }
 
+export function latestSagemakerSpec<T extends { version: string }>(versions: readonly T[]): T {
+  // The SDK uses Python max with PEP 440 keys, retaining the first equal key.
+  const semantic = versions.every(({ version }) => valid(version) !== null);
+  return versions.reduce((current, candidate) =>
+    (
+      semantic
+        ? compare(candidate.version, current.version) > 0
+        : candidate.version > current.version
+    )
+      ? candidate
+      : current,
+  );
+}
+
 export function sagemakerPricingSpecs(
   body: string,
   rows: readonly SageMakerRow[],
@@ -211,19 +225,7 @@ export function sagemakerPricingSpecs(
     throw new Error("SageMaker proprietary pricing manifest omitted an admitted model");
   return [...byModel]
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-    .map(([, headers]) => {
-      const versions = [...headers.values()];
-      // Mirror the official SDK's get_latest_version resolver: PEP 440 when every
-      // value is valid, otherwise Python's lexical max. This only discovers a
-      // Marketplace link; it makes no global model-version or capability claim.
-      const semantic = versions.every((header) => valid(header.version) !== null);
-      return versions.reduce((current, header) => {
-        const newer = semantic
-          ? compare(header.version, current.version) > 0
-          : header.version > current.version;
-        return newer ? header : current;
-      });
-    })
+    .map(([, headers]) => latestSagemakerSpec([...headers.values()]))
     .filter(
       (header) =>
         admitted.has(header.model_id) ||

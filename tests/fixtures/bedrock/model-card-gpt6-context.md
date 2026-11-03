@@ -242,7 +242,7 @@ The destination Regions available to a geographic inference profile depend on th
 
 **Geo: US**
 
-Geo inference ID: `us.openai.gpt-6-astra`
+Geo Inference ID: `us.openai.gpt-6-astra`
 
 | **Source Region**         | **Destination Regions**                                                                  |
 | ------------------------- | ---------------------------------------------------------------------------------------- |

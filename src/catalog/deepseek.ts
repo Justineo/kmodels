@@ -346,16 +346,16 @@ function inventoryReferenceModels(
   body: string,
 ): Map<string, ProviderModel["limits"]> {
   const api = deepseekApiDocument(body, "/models", "GET");
-  const rootObject = api.text("response", [["object", "string"]]);
-  const itemObject = api.text("response", [
+  const rootObject = api.values("response", [["object", "string"]]);
+  const itemObject = api.values("response", [
     ["data", "object[]"],
     ["object", "string"],
   ]);
   if (
-    rootObject === undefined ||
-    !/Possible values:\s*\[list\]/i.test(rootObject) ||
-    itemObject === undefined ||
-    !/Possible values:\s*\[model\]/i.test(itemObject) ||
+    rootObject?.length !== 1 ||
+    rootObject[0] !== "list" ||
+    itemObject?.length !== 1 ||
+    itemObject[0] !== "model" ||
     !api.has("response", [
       ["data", "object[]"],
       ["id", "string"],
@@ -389,24 +389,26 @@ function inventoryReferenceModels(
   const ids = example.data.map(({ id }) => id);
   if (new Set(ids).size !== ids.length)
     throw new Error("DeepSeek model-inventory reference returned duplicate model IDs");
+  const limitFields = (
+    [
+      ["context_window", "context_tokens"],
+      ["max_output_tokens", "max_output_tokens"],
+    ] as const
+  ).map(([field, target]) => ({
+    field,
+    target,
+    documented: api.has("response", [
+      ["data", "object[]"],
+      [field, "integer"],
+    ]),
+  }));
   return new Map(
     example.data.map((item): [string, ProviderModel["limits"]] => {
       const limits: ProviderModel["limits"] = {};
-      for (const [field, target] of [
-        ["context_window", "context_tokens"],
-        ["max_output_tokens", "max_output_tokens"],
-      ] as const) {
+      for (const { field, target, documented } of limitFields) {
         const value = item[field];
         if (value === undefined) continue;
-        if (
-          api.has("response", [
-            ["data", "object[]"],
-            [field, "integer"],
-          ]) &&
-          typeof value === "number" &&
-          Number.isSafeInteger(value) &&
-          value > 0
-        )
+        if (documented && typeof value === "number" && Number.isSafeInteger(value) && value > 0)
           limits[target] = value;
         else catalogFinding(input, "model_inventory_limit_contract_drift", `${item.id}:${field}`);
       }

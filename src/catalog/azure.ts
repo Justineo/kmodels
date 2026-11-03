@@ -2369,6 +2369,7 @@ function azurePublicConditions(
   label: string,
   segment: string,
   region: string,
+  tier?: "standard" | "flex",
 ): SourcePriceFact["conditions"] | undefined {
   const normalizedRegion = azurePublicRegion(region);
   if (normalizedRegion === undefined) return;
@@ -2378,6 +2379,7 @@ function azurePublicConditions(
   const modality = segment.match(/^\s*(text|image|audio|video)\b/i)?.[1]?.toLowerCase();
   return {
     ...conditions,
+    ...(tier === undefined ? {} : { service_tier: tier }),
     ...(resolution === undefined ? {} : { resolution: resolution.replace(/\s+/g, "") }),
     ...(quality === undefined ? {} : { quality: quality.toLowerCase() }),
     ...(modality === undefined ? {} : { modality }),
@@ -2417,23 +2419,28 @@ export function parseAzurePublicPricing(input: Input): SourceParseResult {
       const tableLabel =
         $(table).attr("aria-label") ??
         htmlText($(table).closest("section").find("h2").first().text());
+      const baseTable = isAzurePublicBaseTable(tableLabel);
       const headers = $(table)
         .find("thead tr")
         .first()
         .find("th")
         .map((_index, header) => htmlText($(header).text()))
         .get();
+      const hasFlexColumn =
+        page.name === "Azure OpenAI" && headers.includes("Flex Pricing (1M Tokens)");
       for (const row of $(table).find("tbody tr").toArray()) {
         const cells = $(row).find("td").toArray();
+        const priceCells = cells.map((cell) => $(cell).find("[data-amount]").toArray());
+        const firstPriceCell = priceCells.findIndex((prices) => prices.length > 0);
+        if (firstPriceCell < 0) continue;
         const rowLabel = htmlText($(cells[0]).text());
-        const firstPriceCell = cells.findIndex((cell) => $(cell).find("[data-amount]").length > 0);
         const qualifiedLabel = cells
-          .slice(0, firstPriceCell < 0 ? 1 : firstPriceCell)
+          .slice(0, firstPriceCell)
           .map((cell) => htmlText($(cell).text()))
           .filter(Boolean)
           .join(" ");
         const baseRow =
-          isAzurePublicBaseTable(tableLabel) &&
+          baseTable &&
           isBaseRetailPrice({
             productName: azurePublicProductName(page, qualifiedLabel),
             skuName: `${qualifiedLabel} ${tableLabel}`,
@@ -2441,9 +2448,15 @@ export function parseAzurePublicPricing(input: Input): SourceParseResult {
         const identity = baseRow
           ? azurePublicIdentity(page, rowLabel, qualifiedLabel, catalogModels)
           : undefined;
-        for (const [cellIndex, cell] of cells.entries()) {
+        for (const [cellIndex, prices] of priceCells.entries()) {
           const header = headers[cellIndex] ?? "";
-          for (const priceElement of $(cell).find("[data-amount]").toArray()) {
+          const tier =
+            hasFlexColumn && header === "Flex Pricing (1M Tokens)"
+              ? "flex"
+              : hasFlexColumn && header === "Pricing (1M Tokens)"
+                ? "standard"
+                : undefined;
+          for (const priceElement of prices) {
             if (!baseRow) {
               if (page.kind === "model" && url.pathname !== "/en-us/pricing/details/azure-openai/")
                 input.onPricingReconciliation?.({
@@ -2532,6 +2545,7 @@ export function parseAzurePublicPricing(input: Input): SourceParseResult {
                   `${qualifiedLabel} ${header}`,
                   priceLabel,
                   region,
+                  tier,
                 );
                 if (conditions === undefined) {
                   input.onPricingReconciliation?.({

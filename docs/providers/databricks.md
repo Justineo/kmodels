@@ -55,7 +55,9 @@ companions:
 - Priority-mode support;
 - Foundation Model limits and REST API reference;
 - model-type/route matrix;
-- exact Google pricing sections used by the two delegated image endpoints; and
+- exact [Google AI Studio pricing](https://aistudio.google.com/docs/pricing) sections used by
+  the two delegated image endpoints. Current Markdown uses the shared Gemini pricing projection.
+  Historical Google HTML bundles remain replayable; and
 - the release feed.
 
 Commercial product cards, system billing tables, account list-price tables, and unrelated AI

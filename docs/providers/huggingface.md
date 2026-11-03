@@ -15,9 +15,9 @@ The [Hub API](https://huggingface.co/docs/inference-providers/en/hub-api) lists 
 update date together. The filter selects candidates and each mapping independently proves live
 support. The collector ignores staging and third-party mappings, dynamic mappings, and invalid
 identifiers. Identical routes collapse and distinct live tasks are preserved. Repository
-modification supplies an update date when valid.
+modification supplies the latest valid update date among qualifying rows for that repository.
 
-The source is exhaustive after all validated cursor pages complete. A failed page, a repeated
+The source is exhaustive after all validated cursor pages complete. A failed or redirected page, a repeated
 cursor, or a response with no qualifying models fails refresh and uses normal provider fallback.
 After a successful refresh, models without a qualifying mapping leave the current catalog.
 
