@@ -395,7 +395,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   provider-scoped, deterministic chunks capped at 2 MiB uncompressed; large
   providers may own several numbered chunks. Model pricing refers to exact
   provider-local offers in `/ui/offers/<provider>/<chunk>.json` instead of
-  copying the same display-ready offer into every applicable model. Standalone
+  copying the same display-ready offer into every applicable model. A detail
+  chunk also shares its provider pricing snapshot across models. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
   bound and are requested only for a selected or window-preloaded model.
   Schema 7 model details share identical inference-matching tariffs across a model's

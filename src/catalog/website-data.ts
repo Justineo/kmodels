@@ -275,6 +275,9 @@ function websiteDeferredAssets(
   const providerPricing: WebsiteProviderPricingChunk[] = [];
 
   for (const provider of catalog.providers) {
+    const snapshot = websiteSnapshot(
+      pricing.provider_snapshots.find(({ provider_id }) => provider_id === provider.id),
+    );
     const offerIndexes = new Map<string, number>();
     const uniqueOffers: WebsitePricingOffer[] = [];
     function indexOffer(offer: WebsitePricingOffer): number {
@@ -306,7 +309,6 @@ function websiteDeferredAssets(
             ? {}
             : {
                 pricing: {
-                  ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
                   offerIndexes: pricing.offers.map(indexOffer),
                 },
               }),
@@ -347,7 +349,6 @@ function websiteDeferredAssets(
       return {
         ...detail,
         pricing: {
-          ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
           offer_refs: pricing.offerIndexes.map((index) =>
             offerReference(references, index, detail.model_ref),
           ),
@@ -363,6 +364,7 @@ function websiteDeferredAssets(
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
+            ...(snapshot === undefined ? {} : { snapshot }),
             details: values,
           }),
         `Website model details for ${provider.id}`,
@@ -380,9 +382,6 @@ function websiteDeferredAssets(
           offer_refs: indexes.map((index) => offerReference(references, index, resource.id)),
         })),
       }),
-    );
-    const snapshot = websiteSnapshot(
-      pricing.provider_snapshots.find(({ provider_id }) => provider_id === provider.id),
     );
     providerPricing.push(
       ...boundedChunks(
