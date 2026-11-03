@@ -87,6 +87,15 @@ display name or an account's deployment name. Associations join only existing mo
 and `batch` offers. Merely appearing in the catalog does not create a price or an offer. General
 service fees and grounding allowances keep their independent commercial records.
 
+For Google-managed Claude, the optional [Anthropic API model ID table](https://platform.claude.com/docs/en/build-with-claude/claude-models-on-google-cloud/google-managed)
+establishes the exact online request spelling. Join the documented base component to one admitted
+Anthropic publisher record and retain the full request ID, including any date suffix, in the
+association. Catalog model-card IDs alone establish no Claude request association. Missing or
+unrecognized table evidence leaves Claude online request lookup unknown while preserving catalog prices.
+The optional [Google Cloud Claude batch guide](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/batch)
+establishes the batch resource spelling through its request template and supported model-card
+links. Associate those resource IDs with existing batch offers for the listed Claude models.
+
 The OpenAI-compatible APIs also use publisher-qualified request values. Extract those exact
 spellings from official request examples and join their model component exactly to an admitted
 model. A documented `meta/MODEL` request template applies only to models with independently

@@ -24,6 +24,7 @@ import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
+import { vertexClaudeIdSource } from "../src/catalog/vertex-inference-pricing.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -156,6 +157,35 @@ it("joins literal managed model IDs and exact qualified request examples to exis
   ).toBe("unreviewed_id");
 });
 
+it("binds documented dated Claude request IDs to their existing online offers", () => {
+  const query = lookup();
+  for (const [base, date] of [
+    ["claude-haiku-4-5", "20251001"],
+    ["claude-opus-4-5", "20251101"],
+    ["claude-sonnet-4-5", "20250929"],
+  ] as const) {
+    const model_id = `${base}@${date}`;
+    const result = query({ provider_id: "vertex", model_id });
+    expect(result.evidence.length).toBeGreaterThan(0);
+    expect(baseline.inference?.mapping.rules).toContainEqual(
+      expect.objectContaining({ model_id, model_ref: `vertex/${base}` }),
+    );
+    for (const unverified of [base, `${base}@default`])
+      expect(query({ provider_id: "vertex", model_id: unverified }).reason).toBe("unreviewed_id");
+  }
+  const batch = query({
+    provider_id: "vertex",
+    model_id: "publishers/anthropic/models/claude-haiku-4-5",
+  });
+  expect(batch.candidates.map(({ offer }) => offer.offer_key)).toEqual(["batch"]);
+  expect(
+    query({
+      provider_id: "vertex",
+      model_id: "publishers/anthropic/models/claude-haiku-4-5@20251001",
+    }).reason,
+  ).toBe("unreviewed_id");
+});
+
 it("keeps context, served tier and published geography separate from request ID spelling", () => {
   const args = { provider_id: "vertex", model_id: "xai/grok-4.20-reasoning" };
   const result = lookup()(args);
@@ -266,6 +296,9 @@ it("reads relocated partner prices and rejects missing or duplicated commercial 
 
 it("keeps base associations when optional protocol guides disappear and withdraws their qualified forms", async () => {
   const current = await collect((bundles) => {
+    const pricing = bundles.get("vertex-pricing");
+    if (!pricing) throw new Error("Missing Vertex pricing bundle");
+    pricing.documents = pricing.documents.filter(({ url }) => url !== vertexClaudeIdSource);
     for (const id of ["vertex-google-models", "vertex-partner-models", "vertex-open-models"]) {
       const bundle = bundles.get(id);
       const source = manifest.sources.find((source) => source.id === id);
@@ -274,6 +307,17 @@ it("keeps base associations when optional protocol guides disappear and withdraw
       bundle.documents = bundle.documents.filter(({ url }) => !optional.has(url));
     }
   }, baseline);
+  const query = lookup(current);
+  expect(query({ provider_id: "vertex", model_id: "claude-haiku-4-5@20251001" }).reason).toBe(
+    "unreviewed_id",
+  );
+  expect(
+    current.pricing.data.books.some(
+      ({ scope, offers }) =>
+        scope.model_refs.includes("vertex/claude-haiku-4-5") &&
+        offers.some(({ offer_key }) => offer_key === "sync"),
+    ),
+  ).toBe(true);
   expect(
     lookup(current)({ provider_id: "vertex", model_id: "mistral-medium-3", selectors: [standard] })
       .status,
