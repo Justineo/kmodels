@@ -31,7 +31,7 @@ const providerIconIds = [
   "gemini",
   "huggingface",
   "kimi",
-  "llama",
+  "meta",
   "mistral",
   "ollama",
   "openai",

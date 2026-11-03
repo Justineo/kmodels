@@ -29,16 +29,14 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   fetchSource: vi.fn(),
 }));
 const at = "2026-10-30T19:00:00.000Z";
-const manifest: ProviderManifest | undefined = manifests.find(
-  ({ provider }) => provider.id === "llama",
-);
-const source = manifest?.sources.find(({ id }) => id === "meta-model-api");
-if (!manifest || !source) throw new Error("Missing Meta Model API source");
-const configured: ProviderManifest = { ...manifest, sources: [source] };
+const configured = manifests.find(({ provider }) => provider.id === "meta");
+const source = configured?.sources.find(({ id }) => id === "meta-model-api");
+if (!configured || !source) throw new Error("Missing Meta Model API source");
+const manifest: ProviderManifest = configured;
 async function fixture(): Promise<LinkedBundle> {
   return linkedBundleSchema.parse(
     JSON.parse(
-      await readFile(new URL("./fixtures/llama/model-api-current.json", import.meta.url), "utf8"),
+      await readFile(new URL("./fixtures/meta/model-api-current.json", import.meta.url), "utf8"),
     ),
   );
 }
@@ -53,7 +51,7 @@ async function collect(change?: (bundle: LinkedBundle) => void, previous?: Catal
     lastModified: undefined,
     dependencies: [],
   });
-  const result = await collectProvider(configured, previous?.catalog, { sources: {} }, at);
+  const result = await collectProvider(manifest, previous?.catalog, { sources: {} }, at);
   if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
   const core: Catalog = {
     catalog_version: coreCatalogVersion([result.provider]),
@@ -87,7 +85,7 @@ function lookup(candidate = baseline) {
   );
 }
 function prices(model_id: string, meter: string, candidate = baseline) {
-  return lookup(candidate)({ provider_id: "llama", model_id }).candidates.flatMap(({ offer }) =>
+  return lookup(candidate)({ provider_id: "meta", model_id }).candidates.flatMap(({ offer }) =>
     offer.terms.flatMap((term) =>
       term.kind === "rate" && term.meter.value === meter
         ? term.variants.map(({ price }) => price.value)
@@ -97,9 +95,23 @@ function prices(model_id: string, meter: string, candidate = baseline) {
 }
 
 it("uses exact Standard and Contributor IDs without asking for a redundant pricing mode", () => {
+  expect(baseline.catalog.providers).toMatchObject([
+    { id: "meta", name: "Meta", kind: "hosted", source_ids: ["meta-model-api"] },
+  ]);
+  expect(baseline.catalog.models.map(({ model_id }) => model_id).sort()).toEqual([
+    "muse-image-1.0",
+    "muse-spark-1.1",
+    "muse-spark-1.2",
+    "muse-spark-1.2-contributor",
+    "muse-spark-1.3",
+    "muse-spark-1.3-contributor",
+    "muse-voice-transcribe-1.0",
+    "muse-wonder-1.0",
+    "sam-3.1",
+  ]);
   expect(baseline.inference?.mapping.rules).toHaveLength(9);
   for (const model_id of ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-wonder-1.0"]) {
-    const result = lookup()({ provider_id: "llama", model_id });
+    const result = lookup()({ provider_id: "meta", model_id });
     expect(result.status).toBe("matched");
     expect(result.missing_conditions).toEqual([]);
   }
@@ -133,7 +145,7 @@ it("preserves media units and binds billable quantities, including the frame min
   if (frames?.kind !== "rate") throw new Error("Missing frame rate");
   expect(frames.variants[0]?.charge_binding?.signal).toEqual({
     namespace: "provider",
-    provider_id: "llama",
+    provider_id: "meta",
     value: "billed_video_frames",
   });
   expect(JSON.stringify(frames)).toContain("minimum 50");
@@ -159,12 +171,12 @@ it("does not borrow hosted prices for artifacts, partners, private names or gues
     "us.muse-spark-1.3",
     "my-deployment",
   ])
-    expect(lookup()({ provider_id: "llama", model_id }).reason).toBe("unreviewed_id");
-  const other = lookup()({ provider_id: "llama", model_id: "muse-image-1.0" }).candidates[0]?.offer
+    expect(lookup()({ provider_id: "meta", model_id }).reason).toBe("unreviewed_id");
+  const other = lookup()({ provider_id: "meta", model_id: "muse-image-1.0" }).candidates[0]?.offer
     .id;
   expect(other).toBeDefined();
   expect(
-    lookup()({ provider_id: "llama", model_id: "muse-spark-1.3", offer_ref: other }).reason,
+    lookup()({ provider_id: "meta", model_id: "muse-spark-1.3", offer_ref: other }).reason,
   ).toBe("no_applicable_price");
 });
 
@@ -181,10 +193,10 @@ it("withdraws a price association when the current price declaration drops that 
     document.body = $.html();
   }, baseline);
   expect(candidate.catalog.models.some(({ model_id }) => model_id === "muse-spark-1.1")).toBe(true);
-  expect(lookup(candidate)({ provider_id: "llama", model_id: "muse-spark-1.1" }).reason).toBe(
+  expect(lookup(candidate)({ provider_id: "meta", model_id: "muse-spark-1.1" }).reason).toBe(
     "unreviewed_id",
   );
-  expect(lookup(candidate)({ provider_id: "llama", model_id: "muse-spark-1.3" }).status).toBe(
+  expect(lookup(candidate)({ provider_id: "meta", model_id: "muse-spark-1.3" }).status).toBe(
     "matched",
   );
 });
@@ -218,7 +230,7 @@ it("exports the same direct ID lookup to the website without protocol or audit p
         .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
         .details.map(restoreWebsiteInferenceDetail),
     );
-  const price = details.find(({ model_ref }) => model_ref === "llama/muse-spark-1.3-contributor")
+  const price = details.find(({ model_ref }) => model_ref === "meta/muse-spark-1.3-contributor")
     ?.inference_prices?.[0];
   if (!price) throw new Error("Missing Meta website price");
   expect(price.model_id).toBe("muse-spark-1.3-contributor");

@@ -36,7 +36,6 @@ import {
 } from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog, parseGeminiPricing } from "./gemini.ts";
 import { parseHuggingFaceHub } from "./huggingface.ts";
-import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
 import { parseMetaModelApi } from "./meta-model-api.ts";
 import {
   parseKimiApi,
@@ -172,10 +171,6 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return { models: parseMistralApi(input) };
     case "meta-model-api":
       return parseMetaModelApi(input);
-    case "llama-catalog":
-      return { models: parseLlamaCatalog(input) };
-    case "llama-api":
-      return { models: parseLlamaApi(input) };
     case "xai-catalog":
       return parseXaiCatalog(input);
     case "xai-api":
