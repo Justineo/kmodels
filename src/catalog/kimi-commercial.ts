@@ -481,6 +481,24 @@ function resourceBinding(
       inputIndex,
     );
   }
+  if (
+    (resourceKey === "responses-web-search" || resourceKey === "formula-web-search") &&
+    isStandardUnit(variant.price.per, "event")
+  ) {
+    const responses = resourceKey === "responses-web-search";
+    return providerBinding(
+      input,
+      responses ? "executed_responses_web_search_calls" : "billable_formula_web_search_executions",
+      responses
+        ? "Executed Responses web searches reported as web_search_call output items, including image searches"
+        : "Billable executions of moonshot/web-search:latest through the Formula API",
+      variant.price.per,
+      responses ? "request" : "resource",
+      variant.observation,
+      [],
+      inputIndex,
+    );
+  }
   if (resourceKey !== "web-search" || !isStandardUnit(variant.price.per, "event")) return;
   const formula = offer.offer_key === "formula";
   return providerBinding(

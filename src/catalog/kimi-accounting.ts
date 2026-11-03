@@ -148,7 +148,9 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
   }
   const priceTools = documents.get("/docs/pricing/tools");
   const priceToolsBody = priceTools?.length === 1 ? priceTools[0] : undefined;
-  const retiredChatWebSearch = priceToolsBody !== undefined && chatWebSearchRetired(priceToolsBody);
+  const currentTools = documents.has("/docs/pricing/websearch");
+  const retiredChatWebSearch =
+    currentTools || (priceToolsBody !== undefined && chatWebSearchRetired(priceToolsBody));
   const chatWebSearchContract: PricingInputContract = {
     fact: {
       key: "web_search.chat.billable_calls",
@@ -171,27 +173,31 @@ export function extractKimiCommercialPricingInputs(input: DocumentInput): Source
     batchContract("input_tokens", "prompt_tokens"),
     batchContract("output_tokens", "completion_tokens"),
     ...(retiredChatWebSearch ? [] : [chatWebSearchContract]),
-    {
-      fact: {
-        key: "web_search.formula.created_fibers",
-        channel: "response",
-        locator: {
-          kind: "provider_field",
-          value: "KimiFormulaFiber.created_web_search_fibers",
-        },
-        availability: "success_only",
-      },
-      requirements: [
-        {
-          path: "/docs/guide/use-official-tools",
-          markers: [
-            /moonshot\/web-search:latest/,
-            /POST \/v1\/formulas\/\{uri\}\/fibers/,
-            /(?:produces the tool(?:\\)?_call billing|产生\s*(?:工具调用|tool(?:\\)?_call)\s*计费)/i,
-          ],
-        },
-      ],
-    },
+    ...(currentTools
+      ? []
+      : [
+          {
+            fact: {
+              key: "web_search.formula.created_fibers",
+              channel: "response",
+              locator: {
+                kind: "provider_field",
+                value: "KimiFormulaFiber.created_web_search_fibers",
+              },
+              availability: "success_only",
+            },
+            requirements: [
+              {
+                path: "/docs/guide/use-official-tools",
+                markers: [
+                  /moonshot\/web-search:latest/,
+                  /POST \/v1\/formulas\/\{uri\}\/fibers/,
+                  /(?:produces the tool(?:\\)?_call billing|产生\s*(?:工具调用|tool(?:\\)?_call)\s*计费)/i,
+                ],
+              },
+            ],
+          } satisfies PricingInputContract,
+        ]),
   ];
   const facts = contracts.flatMap(({ fact, requirements }): SourcePricingInputFact[] => {
     const present = requirements.every(({ path, markers, verify }) => {

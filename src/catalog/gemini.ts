@@ -12,6 +12,7 @@ import {
 } from "./gemini-grounding-allowances.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
@@ -406,6 +407,14 @@ export function geminiStudioMarkdown(body: string): string | undefined {
   if (fallback.length === 1 && markdown.startsWith("> ## AI Agent Context")) return markdown;
 }
 
+function studioSection(markdown: string, heading: string, depth = 2): string | undefined {
+  return markdownSection(
+    markdown.replace(/^(#{2,3} .+?)[ \t]+\{% id="[^"]+" %\}[ \t]*$/gm, "$1"),
+    depth,
+    heading,
+  );
+}
+
 function studioMarkup(body: string, changelog = false): string {
   const inline = (value: string) =>
     value
@@ -734,14 +743,28 @@ function priceUnit(
 function applyGemmaFreePricing(
   models: Map<string, ProviderModel>,
   sourceId: string,
-  body: string,
+  $: LoadedDocument,
+  markdown: string | undefined,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): string[] {
   const gemma = [...models.values()].filter((model) => /^gemma-4-.+-it$/.test(model.model_id));
   if (gemma.length === 0) return [];
-  const $ = load(body);
-  const section = $(".models-section h2#gemma-4").first().closest(".models-section");
-  const table = section.nextUntil(".models-section").filter("table.pricing-table").first();
+  const table =
+    markdown === undefined
+      ? $(".models-section h2#gemma-4")
+          .first()
+          .closest(".models-section")
+          .nextUntil(".models-section")
+          .filter("table.pricing-table")
+          .first()
+      : $(
+          studioMarkup(
+            studioSection(
+              markdown,
+              "[Gemma 4](https://ai.google.dev/gemma/docs/core/model_card_4)",
+            ) ?? "",
+          ),
+        ).find("table");
   const rows = new Map<string, string[]>();
   table.find("tbody tr").each((_index, row) => {
     const cells = $(row)
@@ -757,6 +780,7 @@ function applyGemmaFreePricing(
     "Context caching (storage)",
   ];
   if (
+    table.length !== 1 ||
     required.some(
       (label) =>
         rows.get(label)?.[1] !== "Free of charge" || rows.get(label)?.[2] !== "Not available",
@@ -1165,7 +1189,7 @@ function addRates(
   }
 }
 
-function studioPriceMarkup(body: string): string {
+export function studioPriceMarkup(body: string): string {
   const $ = load('<div class="devsite-article-body"></div>');
   const article = $(".devsite-article-body");
   for (const section of body.split(/^## /m).slice(1)) {
@@ -1439,7 +1463,7 @@ function applyPricing(
         });
     });
   });
-  for (const id of applyGemmaFreePricing(models, sourceId, body, onPricingReconciliation)) {
+  for (const id of applyGemmaFreePricing(models, sourceId, $, markdown, onPricingReconciliation)) {
     const model = models.get(id);
     if (model !== undefined) ids.set(id, model.uid);
   }
@@ -1893,6 +1917,22 @@ function availableSupportingDocuments(
   ): void => {
     const body = optionalDocument(bundle, pathname);
     if (body === undefined) return;
+    const markdown = geminiStudioMarkdown(body);
+    if (markdown !== undefined) {
+      const section = studioSection(markdown, response.replace("Response", "Batch"), 3);
+      const file =
+        section === undefined
+          ? undefined
+          : /^\s*\*\*responsesFile\*\*: `string`\s*\n\s*(Output only\.[^\n]+)$/m.exec(
+              markdownProse(section),
+            )?.[1];
+      if (
+        file?.includes("JSONL file with a single response per line") &&
+        file.includes(`\`${response}\``)
+      )
+        available.add(key);
+      return;
+    }
     const codes = documentedCodes(body);
     if (codes.has("responsesFile") && codes.has(response)) available.add(key);
   };
@@ -1926,25 +1966,28 @@ function sourcePricingInput(
 }
 
 function interactionPricingInputs(body: string, sourceRef: string): SourcePricingInputFact[] {
-  const codes = documentedCodes(body);
-  const fields = [
-    "input_tokens_by_modality",
-    "cached_tokens_by_modality",
-    "output_tokens_by_modality",
-    "total_input_tokens",
-    "total_cached_tokens",
-    "total_output_tokens",
-    "total_thought_tokens",
-    "grounding_tool_count",
-  ];
-  const available = new Set(fields.filter((field) => codes.has(field)));
+  const markdown = geminiStudioMarkdown(body);
+  const interaction =
+    markdown === undefined ? undefined : studioSection(markdown, "Interaction", 3);
+  const usage =
+    /^\s*\*\*usage\*\*: `Usage`[^\n]*\n([\s\S]*?)(?=^\s*\{% hr \/%\}|(?![\s\S]))/m.exec(
+      markdownProse(interaction ?? ""),
+    )?.[1] ?? "";
+  const codes =
+    markdown === undefined
+      ? documentedCodes(body)
+      : new Set(
+          [...usage.matchAll(/^\s*(?:\*\*([a-z_]+)\*\*:|- `([a-z_]+)`:)/gm)].map(
+            (match) => match[1] ?? match[2],
+          ),
+        );
   const facts: SourcePricingInputFact[] = [];
   for (const [category, field] of [
     ["prompt", "input_tokens_by_modality"],
     ["cache", "cached_tokens_by_modality"],
     ["candidates", "output_tokens_by_modality"],
   ] as const)
-    if (available.has(field))
+    if (codes.has(field))
       for (const modality of geminiUsageModalities) {
         const wire = modality.toLowerCase();
         if (!codes.has(wire)) continue;
@@ -1966,7 +2009,7 @@ function interactionPricingInputs(body: string, sourceRef: string): SourcePricin
     ["interaction.candidates.total", "total_output_tokens"],
     ["interaction.thoughts", "total_thought_tokens"],
   ] as const)
-    if (available.has(field))
+    if (codes.has(field))
       facts.push({
         key,
         channel: "response",
@@ -1974,7 +2017,7 @@ function interactionPricingInputs(body: string, sourceRef: string): SourcePricin
         availability: "terminal_only",
         source_ref: sourceRef,
       });
-  if (available.has("grounding_tool_count"))
+  if (codes.has("grounding_tool_count"))
     for (const operation of ["google_search", "google_maps"])
       if (codes.has(operation))
         facts.push({
@@ -1992,7 +2035,19 @@ function interactionPricingInputs(body: string, sourceRef: string): SourcePricin
 }
 
 function videoPricingInputs(body: string, sourceRef: string): SourcePricingInputFact[] {
-  const codes = documentedCodes(body);
+  const markdown = geminiStudioMarkdown(body);
+  const parameters =
+    markdown === undefined
+      ? undefined
+      : studioSection(markdown, "Veo API parameters and specifications");
+  const codes =
+    markdown === undefined
+      ? documentedCodes(body)
+      : new Set(
+          [...markdownProse(parameters ?? "").matchAll(/^\|\s*`([A-Za-z]+)`:/gm)].map(
+            (match) => match[1],
+          ),
+        );
   return videoPricingInputFields.flatMap((field): SourcePricingInputFact[] => {
     if (!codes.has(field)) return [];
     const value = field === "durationSeconds" ? "duration_seconds" : field;
@@ -2127,22 +2182,44 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   return values;
 }
 
+function billingParagraphs(body: string, heading: string): string[] | undefined {
+  const markdown = geminiStudioMarkdown(body);
+  if (markdown !== undefined) {
+    const section = studioSection(markdown, heading);
+    return section === undefined
+      ? undefined
+      : markdownProse(section)
+          .split(/\n[ \t]*\n|\n(?=[*+-][ \t])/)
+          .filter((part) => !/^\s*(?:>|\{%)/.test(part))
+          .map((part) => text(part.replace(/^\s*[*+-][ \t]+/, "").replaceAll("**", "")));
+  }
+  const $ = load(body);
+  const headings = $(".devsite-article-body h2").filter(
+    (_index, element) => text($(element).text()) === heading,
+  );
+  if (headings.length !== 1) return;
+  const section = headings.first().nextUntil("h2");
+  return section
+    .filter("p")
+    .add(section.filter("ul").children("li"))
+    .map((_index, element) => text($(element).text()))
+    .get();
+}
+
 function geminiSearchBilling(
   body: string,
   onFinding: Input["onContractFinding"],
 ): SearchGroundingBilling | undefined {
   if (body.length === 0) return;
-  const $ = load(body);
-  const headings = $(".devsite-article-body h2").filter(
-    (_index, element) => text($(element).text()) === "Pricing",
-  );
-  const fragment = text(headings.first().nextUntil("h2").filter("p").text());
-  const policy = fragment.match(
-    /When you use Grounding with Google Search with Gemini 3 and newer models, your project is billed for each search query that the model decides to execute\. This per-query billing model includes ([\d,]+) free search requests per month shared across all Gemini 3 and newer models, and then costs \$([\d.]+) per 1,000 search requests\./,
-  );
+  const policies = (billingParagraphs(body, "Pricing") ?? []).flatMap((paragraph) => [
+    ...paragraph.matchAll(
+      /When you use Grounding with Google Search with Gemini 3 and newer models, your project is billed for each search query that the model decides to execute\. This per-query billing model includes ([\d,]+) free search requests per month shared across all Gemini 3 and newer models, and then costs \$([\d.]+) per 1,000 search requests\./g,
+    ),
+  ]);
+  const policy = policies.length === 1 ? policies[0] : undefined;
   const monthlyQueries = geminiGroundingQuantity(policy?.[1]);
   const overagePrice = policy?.[2];
-  if (headings.length !== 1 || monthlyQueries === undefined || overagePrice === undefined) {
+  if (monthlyQueries === undefined || overagePrice === undefined) {
     onFinding?.(contractExtensionEvidence(["/pricing/search/billing/monthly_queries"]));
     return;
   }
@@ -2155,29 +2232,19 @@ function geminiMapsBilling(
 ): MapsGroundingBilling {
   const absent = { unscopedRequest: false, monthlyQueries: undefined };
   if (body.length === 0) return absent;
-  const $ = load(body);
-  const headings = $(".devsite-article-body h2").filter(
-    (_index, element) => text($(element).text()) === "Pricing and rate limits",
-  );
-  if (headings.length !== 1) {
+  const paragraphs = billingParagraphs(body, "Pricing and rate limits");
+  if (paragraphs === undefined) {
     onFinding?.(contractExtensionEvidence(["/pricing/maps/billing/section"]));
     return absent;
   }
-  const section = headings.first().nextUntil("h2");
-  const unscopedRequest = section
-    .filter("p")
-    .toArray()
-    .some(
-      (element) =>
-        text($(element).text()) ===
-        "A request is only billed if the prompt successfully returns at least one Google Maps grounded result, regardless of how many individual search queries the model performed internally to get that result.",
-    );
-  const queryRules = section
-    .filter("ul")
-    .children("li")
-    .toArray()
-    .map((element) => text($(element).text()))
-    .filter((fragment) => fragment.startsWith("Gemini 3 and newer models:"));
+  const unscopedRequest = paragraphs.some(
+    (paragraph) =>
+      paragraph ===
+      "A request is only billed if the prompt successfully returns at least one Google Maps grounded result, regardless of how many individual search queries the model performed internally to get that result.",
+  );
+  const queryRules = paragraphs.filter((fragment) =>
+    fragment.startsWith("Gemini 3 and newer models:"),
+  );
   const quantities = queryRules.map((fragment) =>
     geminiGroundingQuantity(
       fragment.match(

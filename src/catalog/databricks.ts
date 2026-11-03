@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractDatabricksPricingInputs } from "./databricks-accounting.ts";
+import { geminiStudioMarkdown, studioPriceMarkup } from "./gemini.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import { baseModel } from "./model.ts";
@@ -1331,16 +1332,23 @@ interface ImagePassThroughPrice {
   outputImage: string;
 }
 
-function imagePassThroughPrice(body: string, googleId: string): ImagePassThroughPrice {
-  const $ = load(body);
-  const heading = $("h2").filter((_index, element) => $(element).attr("id") === googleId);
-  if (heading.length !== 1) throw new Error(`Google pass-through pricing omitted ${googleId}`);
-  const modelSection = heading.closest(".models-section");
+function imagePassThroughPrice($: Document, googleId: string): ImagePassThroughPrice {
+  const modelSection = $(".models-section").filter((_index, element) =>
+    $(element)
+      .find("h2, .heading-group code")
+      .toArray()
+      .some(
+        (heading) =>
+          $(heading).attr("id") === googleId ||
+          (heading.tagName === "code" && $(heading).text() === googleId),
+      ),
+  );
   if (modelSection.length !== 1)
     throw new Error(`Google pass-through pricing section changed for ${googleId}`);
-  const standard = modelSection
-    .nextUntil(".models-section")
-    .find("section")
+  const panels = modelSection.nextUntil(".models-section");
+  const standard = panels
+    .filter("section")
+    .add(panels.find("section"))
     .filter((_index, section) => text($(section).find("h3").first().text()) === "Standard");
   if (standard.length !== 1)
     throw new Error(`Google standard pass-through price changed for ${googleId}`);
@@ -1349,12 +1357,20 @@ function imagePassThroughPrice(body: string, googleId: string): ImagePassThrough
     .find("thead th")
     .map((_index, cell) => text($(cell).text()))
     .get();
-  if (headers.join("|") !== "|Free Tier|Paid Tier, per 1M tokens in USD")
+  if (
+    table.length !== 1 ||
+    ![
+      "|Free Tier|Paid Tier, per 1M tokens in USD",
+      "Feature|Free Tier|Paid Tier, per 1M tokens in USD",
+    ].includes(headers.join("|"))
+  )
     throw new Error(`Google pass-through pricing table changed for ${googleId}`);
   const values = new Map<string, string>();
   table.find("tbody tr").each((_index, row) => {
     const cells = $(row).children("td");
-    values.set(text(cells.eq(0).text()), text(cells.eq(2).text()));
+    const label = text(cells.eq(0).text());
+    if (values.has(label)) throw new Error(`Google pass-through pricing repeated ${label}`);
+    values.set(label, text(cells.eq(2).text()));
   });
   const input = decimal(
     values.get("Input price")?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \(text\s*\/\s*image\)/i)?.[1] ??
@@ -1379,6 +1395,8 @@ function applyImagePassThroughPricing(
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   const catalog = load(catalogBody);
+  const markdown = geminiStudioMarkdown(pricingBody);
+  const pricing = load(markdown === undefined ? pricingBody : studioPriceMarkup(markdown));
   const byId = new Map(models.map((model) => [model.model_id, model]));
   const targets = [
     ["databricks-gemini-3-1-flash-image", "gemini-3.1-flash-image"],
@@ -1404,7 +1422,7 @@ function applyImagePassThroughPricing(
       !/only available through Foundation Model APIs pay-per-token/i.test(content)
     )
       throw new Error(`Databricks image pass-through contract changed for ${id}`);
-    const price = imagePassThroughPrice(pricingBody, googleId);
+    const price = imagePassThroughPrice(pricing, googleId);
     const conditions = { endpoint: "global", service_tier: "standard" } as const;
     const values: [SourcePriceFact["meter"], string][] = [
       ["input_text", price.input],
@@ -1605,7 +1623,7 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
         sample: error instanceof Error ? error.message : "Unknown partner-model pricing error",
       });
     }
-  const google = document(bundle, "/gemini-api/docs/pricing");
+  const google = document(bundle, "/docs/pricing") ?? document(bundle, "/gemini-api/docs/pricing");
   if (google !== undefined)
     try {
       applyImagePassThroughPricing(

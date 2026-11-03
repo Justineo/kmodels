@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { extractCerebrasPricingInputs } from "./cerebras-accounting.ts";
+import { readCerebrasReferences } from "./cerebras-accounting.ts";
+import { linkedBundleSchema as bundleSchema, type LinkedBundle as Bundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
@@ -25,10 +27,6 @@ interface Input {
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
-const bundleSchema = z.object({
-  index: z.object({ url: z.url(), body: z.string().min(1) }),
-  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })),
-});
 const publicBundleSchema = z.union([
   bundleSchema,
   z
@@ -39,8 +37,6 @@ const publicBundleSchema = z.union([
       documents: [],
     })),
 ]);
-
-type Bundle = z.infer<typeof bundleSchema>;
 
 const decimalSchema = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 const publicItemSchema = z.object({
@@ -610,6 +606,7 @@ function catalogCard(
   body: string | undefined,
   cachePolicy: string | undefined,
   scheduled: Map<string, string>,
+  references: ReturnType<typeof readCerebrasReferences>,
 ): ProviderModel {
   const deprecatedAt = scheduled.get(row.name);
   const deprecated = deprecatedAt !== undefined && deprecatedAt <= input.observedAt.slice(0, 10);
@@ -630,9 +627,12 @@ function catalogCard(
     diagnostic(input, "unbound", "model_card_missing", row.id);
     return base;
   }
+  const prose = markdownProse(body);
+  const structuredId = prose.match(/\bmodelId="([^"]+)"/)?.[1];
   const identity = claim(input, "model_card_identity_drift", row.id, () => {
-    const id = body.match(/\bmodelId="([^"]+)"/)?.[1];
-    const title = body.match(/^#\s+(.+)$/m)?.[1];
+    const ids = [...prose.matchAll(/^Model ID[ \t]*\r?\n(?:[ \t]*\r?\n)*`([^`]+)`[ \t]*$/gm)];
+    const id = structuredId ?? (ids.length === 1 ? ids[0]?.[1] : undefined);
+    const title = prose.match(/^#\s+(.+)$/m)?.[1];
     if (id === undefined || title === undefined) throw new Error("model ID or title missing");
     return { id: modelIdSchema.parse(id), title: text(title) };
   });
@@ -640,6 +640,64 @@ function catalogCard(
     if (identity !== undefined)
       diagnostic(input, "unbound", "model_card_catalog_disagreement", row.id);
     return base;
+  }
+  const cacheAccounting =
+    cachePolicy !== undefined &&
+    /Input tokens, whether served from the cache or processed fresh, are billed at the standard input token rate/.test(
+      cachePolicy,
+    );
+  if (structuredId === undefined) {
+    const pricing = markdownSection(prose, 3, "Pricing");
+    const rates = (
+      [
+        ["Input", "input_text"],
+        ["Output", "output_text"],
+      ] as const
+    ).flatMap(([label, meter]) => {
+      const price = claim(input, `model_card_${label.toLowerCase()}_price_drift`, row.id, () => {
+        const quotes = [
+          ...(pricing ?? "").matchAll(
+            new RegExp(
+              `^${label}[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)*\\\\?\\$((?:0|[1-9]\\d*)(?:\\.\\d+)?)[ \\t]*$`,
+              "gm",
+            ),
+          ),
+        ];
+        const amount = quotes[0]?.[1];
+        if (
+          !/^per million tokens[ \t]*$/m.test(pricing ?? "") ||
+          quotes.length !== 1 ||
+          amount === undefined
+        )
+          throw new Error(`Invalid Cerebras model card ${label} price`);
+        return amount;
+      });
+      return price === undefined
+        ? []
+        : [publishedRate(meter, price, "million_tokens", input.source.id, "million tokens")];
+    });
+    const endpoints = [
+      ...(references.chatModels.has(row.id) ? ["Chat Completions"] : []),
+      ...(references.allCompletions ? ["Completions"] : []),
+    ].flatMap((name) => apiEndpoints.get(name) ?? []);
+    const promptCache = [
+      ...prose.matchAll(
+        /^Model ID: `([^`]+)`\.[^\r\n]*\bCapabilities:[^.\r\n]*\bPrompt Caching\b/gm,
+      ),
+    ].some((match) => match[1] === row.id);
+    if (promptCache && !cacheAccounting)
+      diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
+    return {
+      ...base,
+      ...(endpoints.length === 0 ? {} : { api_endpoints: endpoints }),
+      capabilities: {
+        ...base.capabilities,
+        prompt_cache: promptCache ? true : "unknown",
+        effort_control: references.chatModels.has(row.id) ? true : "unknown",
+      },
+      pricing_state: rates.length === 0 ? "unknown" : "numeric",
+      price_facts: rates,
+    };
   }
   const description = body.match(/^>\s+(.+)$/m)?.[1];
   if (description === undefined)
@@ -680,11 +738,6 @@ function catalogCard(
           ),
         ]),
   ];
-  const cacheAccounting =
-    cachePolicy !== undefined &&
-    /Input tokens, whether served from the cache or processed fresh, are billed at the standard input token rate/.test(
-      cachePolicy,
-    );
   // Equal-price cache hits are part of the prompt total, not a separate tariff.
   if (features?.has("Prompt Caching") && !cacheAccounting)
     diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
@@ -784,10 +837,7 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
   }
   const cachePolicy = document(input, bundle, "/capabilities/prompt-caching.md");
   const scheduled = scheduledDates(input, [bundle.index.body, ...cards.values()].join("\n"));
-  const models = rows.map((row) =>
-    catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled),
-  );
-  const pricingInputs = extractCerebrasPricingInputs({
+  const references = readCerebrasReferences({
     documents: bundle.documents,
     sourceRef: input.source.id,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
@@ -795,12 +845,15 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
       ? {}
       : { onReconciliation: input.onPricingReconciliation }),
   });
+  const models = rows.map((row) =>
+    catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled, references),
+  );
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
   return {
     models: result,
     inference_prices: inferencePrices(input, result),
-    ...(pricingInputs.length === 0 ? {} : { pricing_inputs: pricingInputs }),
+    ...(references.pricingInputs.length === 0 ? {} : { pricing_inputs: references.pricingInputs }),
   };
 }
 

@@ -351,7 +351,11 @@ describe("DeepSeek owned exact model limits", () => {
     ).toBe(true);
   });
   it("refines rounded table labels using the typed integer token fields, including explicit legacy targets", async () => {
-    const { result } = await parsed();
+    const { result } = await parsed((bundle) => {
+      const doc = bundle.documents.find(({ url }) => url.includes("/api/list-models"));
+      if (!doc) throw new Error("Missing model reference");
+      doc.body = doc.body.replaceAll(/\[(<code>(?:list|model)<\/code>)\]/g, "$1");
+    });
     expect(result.models).toHaveLength(4);
     for (const model of result.models)
       expect(model.limits).toMatchObject({ context_tokens: 1048576, max_output_tokens: 393216 });

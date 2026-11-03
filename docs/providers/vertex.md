@@ -2,7 +2,8 @@
 
 Status: current
 
-The pricing bundle includes the Mistral OCR model page's explicit page/token equivalence. Its
+The exact Mistral OCR model-page companion owns page/token equivalence. Other pricing and
+accounting documents cannot supply that claim. Its
 parenthetical page prices normalize only when both input and output amounts exactly equal their
 published token prices times the documented per-page token counts. For Mistral OCR (25.05), one
 page represents one million input and one million output billing tokens; both directions apply.
@@ -257,6 +258,10 @@ from source collection and mapping implementation.
 - Explicit `N/A` cells are local non-numeric evidence and do not reject another meter or model.
 
 ## Grounding prices and allowances
+
+The partner pricing companion owns the Claude Web Search price when present. A single-page
+historical bundle can still carry that table in its index. The feature guide independently
+supplies the supported models.
 
 Grounding tables can contain either Feature / Pricing or Feature / Usage / Price (USD). The
 header-selected Usage cell owns allowance and billing-rule prose in the latter form; the last

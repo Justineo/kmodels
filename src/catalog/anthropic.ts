@@ -368,7 +368,7 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
   for (const line of markdownProse(body).split(/\r?\n/)) {
     const heading = line.match(/^### (.+)$/)?.[1];
     if (/^#{1,3} /.test(line)) currentDate = heading === undefined ? undefined : date(heading);
-    if (currentDate !== undefined && /^[*-] We've retired the /.test(line))
+    if (currentDate !== undefined && /^[*-] We['’]ve retired the /.test(line))
       for (const match of line.matchAll(
         /\b(Claude [A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)* \d+(?:\.\d+)?)(?: model)? \(`(claude-[a-z0-9._:/-]+)`\)/g,
       )) {
@@ -379,7 +379,7 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
         observed.add(name);
         names.set(id, observed);
       }
-    const subject = line.match(/^[*-] We've launched (.+)$/)?.[1];
+    const subject = line.match(/^[*-] We['’]ve launched (.+)$/)?.[1];
     if (subject === undefined) continue;
     const opening = text(subject.split(",", 1)[0] ?? "");
     if (!/^Claude\b/.test(opening)) continue;
@@ -389,9 +389,9 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
     }
     const targets = new Map<string, ProviderModel>();
     for (const match of subject.matchAll(
-      /`(claude-[a-z0-9._:/-]+)`|\((claude-[a-z0-9._:/-]+)\)/g,
+      /\bClaude [A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)* \d+(?:\.\d+)?(?:\*\*)? \(`?(claude-[a-z0-9._:/-]+)`?\)/g,
     )) {
-      const id = match[1] ?? match[2];
+      const id = match[1];
       if (id !== undefined) {
         const item = model(models, input, id);
         targets.set(item.model_id, item);
@@ -1180,15 +1180,15 @@ function pricing(
       sample: "Prompt caching multipliers",
     });
   }
-  const priceTables = parsedTables.filter(
-    (table) => anthropicPriceKind(table.headers) !== undefined,
-  );
+  const priceTables = parsedTables.flatMap((table) => {
+    const kind = anthropicPriceKind(table.headers);
+    return kind === undefined ? [] : [{ table, kind }];
+  });
   for (const kind of ["base", "batch", "fast"] as const)
     if (
       !priceTables.some(
-        (table) =>
-          anthropicPriceKind(table.headers) === kind &&
-          table.rows.length + table.irregular.length > 0,
+        ({ table, kind: tableKind }) =>
+          tableKind === kind && table.rows.length + table.irregular.length > 0,
       )
     ) {
       input.onPricingReconciliation?.({
@@ -1208,18 +1208,14 @@ function pricing(
       )
       .join("\n") || body.slice(0, 4096);
   const fastIds = new Set<string>();
-  for (const table of priceTables) {
-    const kind = anthropicPriceKind(table.headers);
-    if (kind === undefined) continue;
+  const partnerOnly =
+    /^Claude [\w. -]+ \(retired, except on (?:Bedrock and )?Claude Models on Google Cloud \(Google managed\)\)$/;
+  for (const { table, kind } of priceTables) {
     for (const values of [...table.rows, ...table.irregular]) {
       const nativeLabel = values[0] ?? "";
       // These rows explicitly describe surviving partner-platform offers after direct API
       // retirement. They neither price the direct Claude API nor require a direct model join.
-      if (
-        /^Claude [\w. -]+ \(retired, except on (?:Bedrock and )?Claude Models on Google Cloud \(Google managed\)\)$/.test(
-          nativeLabel,
-        )
-      ) {
+      if (partnerOnly.test(nativeLabel)) {
         input.onPricingReconciliation?.({
           disposition: "excluded",
           reason_code: "retired_partner_only_price",
@@ -1345,9 +1341,12 @@ function pricing(
       sample: "Tool use system prompt token count",
     });
   for (const values of tools?.rows ?? []) {
-    const item = resolveRow(values[0] ?? "", "tool overhead");
-    if (item === undefined) continue;
-    item.capabilities.tool_call = true;
+    const name = values[0] ?? "";
+    if (!partnerOnly.test(name)) {
+      const item = resolveRow(name, "tool overhead");
+      if (item === undefined) continue;
+      item.capabilities.tool_call = true;
+    }
     input.onPricingReconciliation?.({
       disposition: "excluded",
       reason_code: "token_overhead_included_in_usage",
@@ -1834,7 +1833,7 @@ function commercialPricing(
   report(webAssisted, "code_execution_web_assisted_bound", "Web-assisted Code Execution");
 
   const advisorBilling =
-    bodies.advisor.includes("separate sub-inference billed at the advisor model's rates") &&
+    /separate sub-inference billed at the advisor model['’]s rates/.test(bodies.advisor) &&
     bodies.advisor.includes("usage.iterations");
   reportUsage(advisorBilling, "Advisor sub-inference model usage");
 

@@ -39,11 +39,9 @@ interface ModelRecord {
 }
 
 function section(body: string, title: string): string {
-  const lines = body.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim() === `## ${title}`);
-  if (start < 0) throw new Error(`TypeSafe ${title} section is missing`);
-  const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
-  return lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
+  const content = markdownSection(body, 2, title);
+  if (content === undefined) throw new Error(`TypeSafe ${title} section is missing or ambiguous`);
+  return content;
 }
 
 function cells(line: string): string[] {
@@ -97,7 +95,6 @@ function modelRecords(table: Table): ModelRecord[] {
     throw new Error("TypeSafe model table changed");
   const records = table.header.slice(1).map((name) => ({
     name,
-    idCell: "",
     fields: new Map<string, string>(),
   }));
   for (const row of table.rows) {
@@ -108,11 +105,13 @@ function modelRecords(table: Table): ModelRecord[] {
       if (record === undefined || !value || record.fields.has(key))
         throw new Error("TypeSafe model field changed");
       record.fields.set(key, value);
-      if (key === "Model ID") record.idCell = value;
     }
   }
-  if (records.some(({ idCell }) => idCell === "")) throw new Error("TypeSafe model field changed");
-  return records;
+  return records.map((record) => {
+    const idCell = record.fields.get("Model ID");
+    if (idCell === undefined) throw new Error("TypeSafe model field changed");
+    return { ...record, idCell };
+  });
 }
 
 function signal(input: Input, path: string): void {
@@ -142,16 +141,18 @@ function schemaRefs(
   sequence = false,
 ): string[] | undefined {
   const prefix = " ".repeat(indentation) + (sequence ? "- $ref:" : "$ref:");
-  const lines = block?.split(/\r?\n/).filter((line) => line.startsWith(prefix));
-  const refs = lines?.map(
-    (line) =>
-      line
-        .slice(prefix.length)
-        .trim()
-        .match(/^(['"])(#[^'"]+)\1$/)?.[2],
-  );
-  if (refs === undefined || refs.some((ref) => ref === undefined)) return;
-  return refs.filter((ref) => ref !== undefined);
+  if (block === undefined) return;
+  const refs: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (!line.startsWith(prefix)) continue;
+    const ref = line
+      .slice(prefix.length)
+      .trim()
+      .match(/^(['"])(#[^'"]+)\1$/)?.[2];
+    if (ref === undefined) return;
+    refs.push(ref);
+  }
+  return refs;
 }
 
 function systemOneSpec(body: string): string | undefined {
@@ -433,7 +434,7 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
               source_ref: input.source.id,
               locator: {
                 kind: "fragment" as const,
-                value: `${bundle.index.url}#${model_id === model.model_id ? "current-models" : "aliases"}: ${model_id}`,
+                value: `https://docs.typesafe.ai/models#${model_id === model.model_id ? "current-models" : "aliases"}`,
               },
             },
           ],

@@ -1326,6 +1326,48 @@ describe("Azure adapters", () => {
     expect(unknown.models).toEqual([]);
   });
 
+  it("keeps Azure OpenAI Standard and Flex columns in separate commercial scopes", () => {
+    const value = manifest("azure");
+    const source = azurePublicPricingSource(1, 1);
+    const { models } = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [azurePricingModel("gpt-6-astra")],
+      body: JSON.stringify({
+        index: {
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+          body: `<table aria-label="GPT-6 Series">
+            <thead><tr><th>Model</th><th>Pricing (1M Tokens)</th><th>Flex Pricing (1M Tokens)</th></tr></thead>
+            <tbody><tr><td>GPT-6 Astra (long context) Global</td>
+            <td>Input: <span data-amount='{"regional":{"us-east":20}}'>$-</span></td>
+            <td>Input: <span data-amount='{"regional":{"us-east":10}}'>$-</span></td>
+            </tr></tbody></table>`,
+        },
+        documents: [],
+      }),
+    });
+    expect(models[0]?.price_facts).toEqual(
+      expect.arrayContaining(
+        [
+          ["standard", "20"],
+          ["flex", "10"],
+        ].map(([service_tier, price]) =>
+          expect.objectContaining({
+            meter: "input_text",
+            price,
+            conditions: {
+              region: "eastus",
+              deployment_scope: "GlobalStandard",
+              context_tier: "long_context",
+              service_tier,
+            },
+          }),
+        ),
+      ),
+    );
+  });
+
   it("uses public Microsoft price pages at their published version scope", async () => {
     const value = manifest("azure");
     const source = azurePublicPricingSource(2, 2);

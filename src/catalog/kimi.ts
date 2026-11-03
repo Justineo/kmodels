@@ -751,7 +751,7 @@ function renderedText(body: string): string {
   const content = $("#content");
   const root = content.length === 0 ? $("main") : content;
   const lines: string[] = [];
-  for (const node of root.find("h1, h2, h3, p, li, td").toArray()) {
+  for (const node of root.find('h1, h2, h3, p, [data-as="p"], li, td').toArray()) {
     const text = $(node).text().replace(/\s+/g, " ").trim();
     if (text.length === 0 || lines.includes(text)) continue;
     lines.push(/^(?:H[123])$/.test(node.tagName.toUpperCase()) ? `# ${text}` : text);
@@ -1186,7 +1186,7 @@ function batchGuideModels(body: string): string[] {
   const claim = claims[0];
   if (claims.length !== 1 || claim === undefined)
     throw new Error("Kimi Batch guide omitted or duplicated its exact supported model claim");
-  const clause = claim.split(/;|；|，暂不支持/)[0] ?? "";
+  const clause = claim.split(/;|；|，暂不支持|(?<=[.。])\s*(?=The |这些)/)[0] ?? "";
   const list = clause.match(
     /Batch API (?:supports|支持)\s*(?:(?:both|the)\s+)*(`[^`]+`(?:\s*(?:,\s*(?:and\s+)?|and\s+|和|与|、)\s*`[^`]+`)*)\s*(?:models?|模型)?[.。]?\s*$/i,
   )?.[1];
@@ -1245,54 +1245,92 @@ function webSearchRate(input: Input, extractor: PricingExtractor, body: string):
   };
 }
 
-function restToolPrices(
+function toolPrices(
   input: Input,
   extractor: PricingExtractor,
   body: string,
+  current: boolean,
+  models: ReadonlyMap<string, ProviderModel>,
+  reconciliation: PricingReconciliationItem[],
 ): SourceCommercialPricingFact[] {
   if (!body.includes("POST /v1/tools/"))
     throw new Error("Kimi REST tool pricing omitted its search, search_pro, and fetch endpoints");
-  const rows = z.array(z.array(z.string()).length(4)).min(1).parse(jsonArrayAfter(body, "rows={"));
+  const table = current
+    ? renderedTables(body).filter((table) =>
+        /title: "(?:Tool|工具名称)".*title: "(?:Endpoint|调用方式)".*title: "(?:Price|价格)".*title: "(?:Billing condition|计费条件)"/.test(
+          table,
+        ),
+      )
+    : [body];
+  if (table.length !== 1 || table[0] === undefined)
+    throw new Error("Kimi web-search price table is missing or ambiguous");
+  const rows = z
+    .array(z.array(z.string()).length(4))
+    .min(1)
+    .parse(jsonArrayAfter(table[0], "rows={"));
   const definitions = new Map([
     ["POST /v1/tools/search", { key: "web-search-basic", field: "search_results" }],
     ["POST /v1/tools/search_pro", { key: "web-search-pro", field: "search_results" }],
     ["POST /v1/tools/fetch", { key: "web-fetch", field: "markdown" }],
   ]);
-  const seen = new Set<string>();
-  return rows.map((row) => {
+  const route = (endpoint: string | undefined) => {
+    if (current && endpoint !== undefined) {
+      if (
+        /^(?:Declare web_search in the tools array of POST \/v1\/responses; executed server-side|在 POST \/v1\/responses 的 tools 中声明 web_search，由服务端执行)$/.test(
+          endpoint,
+        )
+      )
+        return "responses";
+      if (/^(?:Execute |执行 )moonshot\/web-search:latest$/.test(endpoint)) return "formula";
+    }
+    return endpoint;
+  };
+  const routes = rows.map((row) => route(row[1]));
+  const parse = (row: string[]): SourceCommercialPricingFact => {
     const [name, endpoint, amount, trigger] = row;
-    const definition = endpoint === undefined ? undefined : definitions.get(endpoint);
+    const kind = route(endpoint);
+    const definition = kind === undefined ? undefined : definitions.get(kind);
+    const responses = kind === "responses";
+    const formula = kind === "formula";
     if (
-      definition === undefined ||
+      (definition === undefined && !responses && !formula) ||
       name === undefined ||
       amount === undefined ||
       trigger === undefined ||
-      seen.has(definition.key)
+      routes.indexOf(kind) !== routes.lastIndexOf(kind)
     )
       throw new Error("Kimi REST tool identity changed");
-    seen.add(definition.key);
-    const expected =
-      definition.field === "search_results"
-        ? /^(?:请求成功（HTTP 200）且 search_results 非空|Request succeeds \(HTTP 200\) and search_results is non-empty)$/
-        : /^(?:请求成功（HTTP 200）且返回的 markdown 非空白|Request succeeds \(HTTP 200\) and the returned markdown is non-blank)$/;
+    const expected = responses
+      ? /^(?:Charged when a search is executed \(a web_search_call item is present in output\); same price for image search|实际执行搜索（output 中出现 web_search_call）时计费；图片搜索同价)$/
+      : formula
+        ? /^(?:Charged per execution \(POST \/v1\/formulas\/\{uri\}\/fibers\)|每次执行（POST \/v1\/formulas\/\{uri\}\/fibers）计费)$/
+        : definition?.field === "search_results"
+          ? /^(?:请求成功（HTTP 200）且 search_results 非空|Request succeeds \(HTTP 200\) and search_results is non-empty)$/
+          : /^(?:请求成功（HTTP 200）且返回的 markdown 非空白|Request succeeds \(HTTP 200\) and the returned markdown is non-blank)$/;
     if (!expected.test(trigger))
       throw new Error(`Kimi REST billing condition changed: ${endpoint}`);
     if (!/ \/ (?:次|call)$/.test(amount)) throw new Error("Kimi REST tool unit changed");
     const rawPrice = amount.replace(/ \/ (?:次|call)$/, "").replace("￥", "¥");
+    const key = definition?.key ?? (responses ? "responses-web-search" : "formula-web-search");
+    const k3 = models.get("kimi-k3");
+    const formulaScope =
+      formula &&
+      k3 !== undefined &&
+      /(?:On kimi-k3, each execution|在 kimi-k3 上通过 Formula API 执行)/.test(renderedText(body));
     return {
       source_ref: input.source.id,
-      book_key: `service:${definition.key}`,
+      book_key: `service:${key}`,
       book_name: name,
       resource_kind: "service",
-      resource_key: definition.key,
-      model_refs: [],
-      offer_key: "rest",
-      offer_name: endpoint ?? definition.key,
+      resource_key: key,
+      model_refs: formulaScope ? [k3.uid] : [],
+      offer_key: definition === undefined ? (kind ?? key) : "rest",
+      offer_name: definition === undefined ? name : (endpoint ?? key),
       billing_mode: "usage",
       pricing_state: "numeric",
       price_facts: [
         {
-          meter: definition.field === "markdown" ? "retrieval" : "web_search",
+          meter: definition?.field === "markdown" ? "retrieval" : "web_search",
           price: decimalPrice(rawPrice, extractor.symbol),
           currency: extractor.currency,
           unit: "event",
@@ -1300,12 +1338,16 @@ function restToolPrices(
           source_ref: input.source.id,
           derived: false,
           raw_price: amount,
-          raw_unit: "Per successful call with non-empty content",
+          raw_unit: current ? trigger : "Per successful call with non-empty content",
         },
       ],
       raw_price_facts: [],
     };
-  });
+  };
+  if (!current) return rows.map(parse);
+  return rows.flatMap(
+    (row) => reviewClaim(reconciliation, "web_search_price_row_drift", () => parse(row)) ?? [],
+  );
 }
 
 function batchModelIds(models: Map<string, ProviderModel>): string[] {
@@ -1368,18 +1410,23 @@ function commercialEvidence(
   extractor: PricingExtractor,
   bundle: LinkedBundle,
   models: Map<string, ProviderModel>,
+  currentTools: boolean,
 ): CommercialEvidence {
   const china = extractor.region === "China";
   const reconciliation: PricingReconciliationItem[] = [
-    { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
+    {
+      disposition: "unbound",
+      reason_code: currentTools
+        ? "formula_web_search_success_input_not_documented"
+        : "formula_web_search_billing_trigger_ambiguous",
+    },
     { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
   ];
   reviewClaim(reconciliation, "commercial_index_drift", () =>
     validateCommercialIndex(bundle, new URL(input.source.url).origin),
   );
-  const combinedPricing = /Cache Write Price \(TTL 5min\)|缓存写入（TTL 5min）/.test(
-    bundle.index.body,
-  );
+  const combinedPricing =
+    currentTools || /Cache Write Price \(TTL 5min\)|缓存写入（TTL 5min）/.test(bundle.index.body);
   const webSearchWarning = combinedPricing
     ? false
     : (reviewClaim(reconciliation, "web_search_warning_drift", () => {
@@ -1408,41 +1455,52 @@ function commercialEvidence(
     reviewClaim(reconciliation, reasonCode, () =>
       reviewedDocument(bundle, path, label, claims, message),
     );
-  const billing = review(
-    "billing_contract_drift",
-    "/docs/pricing/chat",
-    "billing",
-    china
-      ? [/对 Input 和 Output 均实行按量计费/, /计算 Token API/, /限时免费/]
-      : [
-          /bill both (?:the )?Input and Output based on usage/i,
-          /Token Calculation API/,
-          /temporarily free/i,
-        ],
-    "Kimi billing contract drifted",
-  );
-  const tools = review(
-    "web_search_billing_contract_drift",
-    "/docs/pricing/tools",
-    "web-search pricing",
-    china
-      ? [/finish_reason = tool_calls/, /finish_reason = stop/, /search_tokens/]
-      : [
-          /finish_reason = tool_calls/,
-          /finish_reason = stop/,
-          /search_tokens/,
-          /Prices exclude applicable taxes/i,
-          /calculated at checkout/i,
-        ],
-    "Kimi web-search billing contract drifted",
-  );
-  const webGuide = review(
-    "web_search_usage_contract_drift",
-    "/docs/guide/use-web-search",
-    "web-search usage",
-    [/arguments\.usage\.total_tokens/, /prompt_tokens/, /completion_tokens/, /total_tokens/],
-    "Kimi web-search usage contract drifted",
-  );
+  const billingClaims = china
+    ? [/对 Input 和 Output 均实行按量计费/, /计算 Token API/, /限时免费/]
+    : [
+        /bill (?:both (?:the )?Input and Output based on usage|input and output tokens by usage)/i,
+        /Token Calculation API/,
+        /temporarily free/i,
+      ];
+  const billing = currentTools
+    ? reviewClaim(reconciliation, "billing_contract_drift", () => {
+        const body = renderedText(bundle.index.body);
+        requireClaims(body, billingClaims, "Kimi billing contract drifted");
+        return body;
+      })
+    : review(
+        "billing_contract_drift",
+        "/docs/pricing/chat",
+        "billing",
+        billingClaims,
+        "Kimi billing contract drifted",
+      );
+  const tools = currentTools
+    ? undefined
+    : review(
+        "web_search_billing_contract_drift",
+        "/docs/pricing/tools",
+        "web-search pricing",
+        china
+          ? [/finish_reason = tool_calls/, /finish_reason = stop/, /search_tokens/]
+          : [
+              /finish_reason = tool_calls/,
+              /finish_reason = stop/,
+              /search_tokens/,
+              /Prices exclude applicable taxes/i,
+              /calculated at checkout/i,
+            ],
+        "Kimi web-search billing contract drifted",
+      );
+  const webGuide = currentTools
+    ? undefined
+    : review(
+        "web_search_usage_contract_drift",
+        "/docs/guide/use-web-search",
+        "web-search usage",
+        [/arguments\.usage\.total_tokens/, /prompt_tokens/, /completion_tokens/, /total_tokens/],
+        "Kimi web-search usage contract drifted",
+      );
   const officialTools = review(
     "formula_tools_contract_drift",
     "/docs/guide/use-official-tools",
@@ -1595,6 +1653,9 @@ export function parseKimiPricing(input: Input): SourceParseResult {
   if (extractor.kind !== "kimi-pricing") throw new Error("Wrong kimi-pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const documents = [bundle.index, ...bundle.documents];
+  const currentTools = bundle.documents.some(
+    ({ url }) => new URL(url).pathname === "/docs/pricing/websearch",
+  );
   const pricingInputs = extractKimiCommercialPricingInputs({
     documents,
     sourceRef: input.source.id,
@@ -1616,28 +1677,22 @@ export function parseKimiPricing(input: Input): SourceParseResult {
     "/docs/pricing/chat-v1",
     "/docs/pricing/batch",
   ]);
-  const renderedBodies = new Map<string, string>();
-  for (const document of documents) {
-    const path = new URL(document.url).pathname;
-    if (!renderedBodies.has(path) && document.body.includes(renderedTableMarker))
-      renderedBodies.set(path, renderedText(document.body));
-  }
   for (const document of documents) {
     const path = new URL(document.url).pathname;
     if (!modelPricingPaths.has(path)) continue;
     const rendered = document.body.includes(renderedTableMarker);
-    const body = (rendered ? renderedBodies.get(path) : undefined) ?? document.body;
     const tables = rendered
       ? renderedTables(document.body)
       : document.body.split(/(?=<DocTable\b)/).filter((part) => part.startsWith("<DocTable"));
-    const seenKey = rendered ? `rendered\0${tables.join("\0")}` : document.body;
+    const batch = path === "/docs/pricing/batch";
+    const seenKey = `${batch}\0${rendered ? tables.join("\0") : document.body}`;
     if (seenDocuments.has(seenKey)) continue;
     seenDocuments.add(seenKey);
     if (tables.length === 0) continue;
+    const body = rendered ? renderedText(document.body) : document.body;
     for (const table of tables) {
       try {
         const rows = z.array(z.unknown()).min(1).parse(jsonArrayAfter(table, "rows={"));
-        const batch = path === "/docs/pricing/batch";
         const columns = pricingColumns(table);
         for (const [index, value] of rows.entries()) {
           const parsed = priceRowSchema.safeParse(value);
@@ -1689,7 +1744,7 @@ export function parseKimiPricing(input: Input): SourceParseResult {
       }
     }
   }
-  const evidence = commercialEvidence(input, extractor, bundle, models);
+  const evidence = commercialEvidence(input, extractor, bundle, models, currentTools);
   for (const id of new Set([...evidence.formulaModels, ...evidence.searchModels])) {
     const model = models.get(id);
     if (model === undefined) throw new Error(`Kimi tool guide named unknown model ${id}`);
@@ -1702,17 +1757,27 @@ export function parseKimiPricing(input: Input): SourceParseResult {
   const commercialFacts = extractKimiCommercialFacts(models, input.source.id, evidence);
   const rest =
     reviewClaim(rowReconciliation, "rest_tool_pricing_drift", () =>
-      restToolPrices(
+      toolPrices(
         input,
         extractor,
-        companion(bundle, "/docs/pricing/tools", "REST tool prices"),
+        companion(
+          bundle,
+          currentTools ? "/docs/pricing/websearch" : "/docs/pricing/tools",
+          "web-search tool prices",
+        ),
+        currentTools,
+        models,
+        rowReconciliation,
       ),
     ) ?? [];
   commercialFacts.push(...rest);
   for (const fact of rest) {
     rowReconciliation.push({
       disposition: "normalized",
-      reason_code: "rest_tool_service_normalized",
+      reason_code:
+        fact.offer_key === "rest"
+          ? "rest_tool_service_normalized"
+          : "web_search_service_normalized",
       sample: `${extractor.region}:${fact.resource_key}`,
     });
   }

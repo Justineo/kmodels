@@ -93,6 +93,59 @@ function lookup(candidate: CatalogPairCandidate) {
     candidate.inference?.mapping,
   );
 }
+
+it("assembles the rendered web-search tariffs separately and isolates a malformed regional row", async () => {
+  const candidate = await collect((bundle, sourceId) => {
+    const china = sourceId === "kimi-pricing";
+    const table = {
+      columns: ["Tool", "Endpoint", "Price", "Billing condition"].map((title) => ({ title })),
+      rows: [
+        [
+          "Web Search Basic",
+          "POST /v1/tools/search",
+          china ? "￥0.01 / 次" : "$0.002 / call",
+          "Request succeeds (HTTP 200) and search_results is non-empty",
+        ],
+        [
+          "Responses API",
+          "Declare web_search in the tools array of POST /v1/responses; executed server-side",
+          china ? "￥0.03 / 次" : "$0.005 / call",
+          "Charged when a search is executed (a web_search_call item is present in output); same price for image search",
+        ],
+        [
+          "Formula API",
+          "Execute moonshot/web-search:latest",
+          china ? "￥0.03 / 次" : "$0.005 / call",
+          china ? "Unreviewed trigger" : "Charged per execution (POST /v1/formulas/{uri}/fibers)",
+        ],
+      ],
+    };
+    bundle.documents.push({
+      url: `${new URL(bundle.index.url).origin}/docs/pricing/websearch`,
+      body: `<main><span data-as="p">On kimi-k3, each execution of the official web-search tool incurs one call charge.</span></main><script>_jsx(DocTable,${JSON.stringify(table)})</script>`,
+    });
+  });
+  const book = (key: string) =>
+    candidate.pricing.data.books.find(({ book_key }) => book_key === `service:${key}`);
+  const rates = (key: string) =>
+    book(key)?.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+    ) ?? [];
+  expect(rates("web-search-basic")).toHaveLength(2);
+  expect(rates("responses-web-search").map(({ price }) => price.denomination)).toEqual(
+    expect.arrayContaining([
+      { kind: "fiat", currency: "CNY" },
+      { kind: "fiat", currency: "USD" },
+    ]),
+  );
+  expect(book("responses-web-search")?.scope.model_refs).toEqual([]);
+  expect(book("formula-web-search")?.scope.model_refs).toEqual(["kimi/kimi-k3"]);
+  expect(rates("formula-web-search")).toHaveLength(1);
+  expect(rates("formula-web-search")[0]?.charge_binding).toMatchObject({
+    signal: { value: "billable_formula_web_search_executions" },
+  });
+  expect(rates("formula-web-search")[0]?.charge_binding?.quantity_methods ?? []).toEqual([]);
+});
 function selectors(region: string, ttl?: string): NonNullable<InferencePriceQuery["selectors"]> {
   return [
     {

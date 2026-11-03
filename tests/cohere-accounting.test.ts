@@ -21,6 +21,16 @@ function parse(body: string, path = "/reference/chat.md", origin = "https://docs
 }
 
 describe("Cohere response accounting ownership", () => {
+  it("recognizes the Rerank 5 billed input-token counter", async () => {
+    const body = (await reference("rerank.md")).replace('"search_units": 1', '"input_tokens": 192');
+    expect(parse(body, "/reference/rerank.md")).toEqual([
+      expect.objectContaining({
+        key: "rerank.v2.input_tokens",
+        locator: { kind: "json_pointer", value: "/meta/billed_units/input_tokens" },
+      }),
+    ]);
+  });
+
   it.each(references)("preserves exact response counters in %s", async (path, file, count) => {
     const inputs = parse(await reference(file), path);
     expect(inputs).toHaveLength(count);

@@ -254,6 +254,44 @@ it("reads DeepSeek terminal usage through inline HTML and preserves nested cache
 });
 
 describe("DeepSeek adapters", () => {
+  it("separates FIM response fields by the owning MIME tab", async () => {
+    const original = await fixture("deepseek/fim.html");
+    const body = changedHtml(original, ($) => {
+      const schema = $(".openapi-markdown__details.response");
+      const media = (label: string) =>
+        `<div class="tabs-container"><div class="tabs__container"><ul class="openapi-tabs__mime"><li role="tab" class="openapi-tabs__mime-item">${label}</li></ul></div></div>`;
+      const json = $(media("application/json"));
+      const stream = $(media("text/event-stream"));
+      schema.before(json).before(stream);
+      json.append(schema.clone());
+      stream.append(schema);
+    });
+    const extract = (body: string) =>
+      extractDeepseekPricingInputs(
+        [{ url: "https://api-docs.deepseek.com/api/create-completion", body }],
+        "deepseek-catalog",
+      ).map(({ key }) => key);
+    expect(extract(body)).toHaveLength(6);
+    const brokenStream = changedHtml(body, ($) => {
+      $(".tabs-container")
+        .last()
+        .find("strong")
+        .filter((_, node) => $(node).text() === "completion_tokens")
+        .siblings(".openapi-schema__name")
+        .text("string");
+    });
+    expect(extract(brokenStream)).toEqual(
+      extract(body).filter((key) => key !== "fim.stream.output_tokens"),
+    );
+    const duplicateJson = changedHtml(body, ($) => {
+      const json = $(".tabs-container").first();
+      json.after(json.clone());
+    });
+    expect(extract(duplicateJson)).toEqual(
+      extract(body).filter((key) => key.startsWith("fim.stream.")),
+    );
+  });
+
   it("accepts additive public inventory metadata without treating it as catalog authority", async () => {
     const inventory = (await fixture("deepseek/list-models.html")).replaceAll(
       '"owned_by":"deepseek"',
@@ -736,7 +774,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v24",
+      extractorVersion: "deepseek-catalog-v25",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,

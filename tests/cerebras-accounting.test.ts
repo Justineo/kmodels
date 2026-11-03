@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { extractCerebrasPricingInputs } from "../src/catalog/cerebras-accounting.ts";
+import { readCerebrasReferences } from "../src/catalog/cerebras-accounting.ts";
 
 const references = [
   ["chat-completions", "https://inference-docs.cerebras.ai/api-reference/chat-completions.md"],
@@ -25,10 +25,10 @@ async function documents(overrides: Record<string, string> = {}) {
 }
 
 async function inputs(overrides: Record<string, string> = {}) {
-  return extractCerebrasPricingInputs({
+  return readCerebrasReferences({
     documents: await documents(overrides),
     sourceRef: "cerebras-catalog",
-  });
+  }).pricingInputs;
 }
 
 describe("Cerebras accounting ownership", () => {
@@ -98,6 +98,25 @@ describe("Cerebras accounting ownership", () => {
     ).toBe(false);
   });
 
+  it("reads rendered Completions fields only beneath the exact response owner", async () => {
+    const body = await readFile(
+      new URL("./fixtures/cerebras/completions-rendered.html", import.meta.url),
+      "utf8",
+    );
+    const recognized = await inputs({ completions: body });
+    expect(recognized).toHaveLength(14);
+    const altered = await inputs({
+      completions: body.replace(">prompt_tokens_details</button", ">unrelated_details</button"),
+    });
+    expect(altered).toEqual(
+      recognized.filter(
+        ({ key }) =>
+          key !== "completions.cached_input_tokens" &&
+          key !== "completions.stream.cached_input_tokens",
+      ),
+    );
+  });
+
   it("does not borrow an official path from a foreign or duplicate document", async () => {
     const original = await documents();
     const chat = original[0];
@@ -110,9 +129,10 @@ describe("Cerebras accounting ownership", () => {
       [...original, chat],
     ])
       expect(
-        extractCerebrasPricingInputs({ documents: changed, sourceRef: "cerebras-catalog" }).filter(
-          ({ key }) => key.startsWith("chat."),
-        ),
+        readCerebrasReferences({
+          documents: changed,
+          sourceRef: "cerebras-catalog",
+        }).pricingInputs.filter(({ key }) => key.startsWith("chat.")),
       ).toEqual([]);
   });
 

@@ -1199,14 +1199,15 @@ function reconcileUnmatched(
 }
 
 function collectPricing(value: unknown, result: z.infer<typeof pricingModelSchema>[]): void {
-  const parsed = pricingModelSchema.safeParse(value);
-  if (parsed.success) result.push(parsed.data);
+  if (value === null || typeof value !== "object") return;
   if (Array.isArray(value)) {
     for (const item of value) collectPricing(item, result);
     return;
   }
-  const record = z.record(z.string(), z.unknown()).safeParse(value);
-  if (record.success) for (const item of Object.values(record.data)) collectPricing(item, result);
+  const parsed = pricingModelSchema.safeParse(value);
+  if (parsed.success) result.push(parsed.data);
+  const children: unknown[] = Object.values(value);
+  for (const child of children) collectPricing(child, result);
 }
 
 function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof pricingModelSchema>[] {
@@ -1235,8 +1236,10 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
       }
     }
   });
-  const products = new Map<string, z.infer<typeof pricingModelSchema>>();
-  const conflicts = new Set<string>();
+  const products = new Map<
+    string,
+    { item: z.infer<typeof pricingModelSchema>; signature: string } | null
+  >();
   const comparable = (item: z.infer<typeof pricingModelSchema>): string =>
     JSON.stringify({
       ...item,
@@ -1245,21 +1248,20 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
       ),
     });
   for (const item of result) {
-    if (conflicts.has(item.modelName)) continue;
     const existing = products.get(item.modelName);
-    if (existing !== undefined && comparable(existing) !== comparable(item)) {
-      products.delete(item.modelName);
-      conflicts.add(item.modelName);
+    if (existing === null) continue;
+    const signature = comparable(item);
+    if (existing === undefined) products.set(item.modelName, { item, signature });
+    else if (existing.signature !== signature) {
+      products.set(item.modelName, null);
       reconcile?.({
         disposition: "unresolved",
         reason_code: "responsive_pricing_conflict",
         sample: item.modelName,
       });
-      continue;
     }
-    if (!products.has(item.modelName)) products.set(item.modelName, item);
   }
-  return [...products.values()];
+  return [...products.values()].flatMap((record) => (record === null ? [] : [record.item]));
 }
 
 export function parseCoherePublicPricingProducts(
@@ -1346,6 +1348,18 @@ function applyPricing(
               { operation: "ocr" },
             );
           if (unit !== "1M tokens") return;
+          if (
+            /^rerank-v5\.0-(?:fast|pro)$/.test(current.model_id) &&
+            current.tasks.includes("reranking") &&
+            normalized === "cost"
+          )
+            return publishedRate(
+              "rerank_request",
+              String(price),
+              "million_tokens",
+              input.source.id,
+              unit,
+            );
           if (current.tasks.includes("embeddings"))
             return publishedRate(
               "embedding",

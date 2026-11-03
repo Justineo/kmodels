@@ -66,10 +66,12 @@ decimal arithmetic. Its exact-scope quotes take precedence over conflicting mode
 the shared resolver preserves superseded card evidence. A structured model-card rate is independent
 supporting evidence and supplies a missing API quote. Narrative duplicates are not additional rates.
 
-The current flattened Markdown cards no longer expose the structured `ModelInfo` fields consumed
-by the card parser. Their labeled catalog rows still establish exact IDs, and the public API supplies
-the reviewed current rates. Flattened card amounts are not currently a fallback when an API quote
-is missing; those amounts remain an explicit extraction limit, with claim-local drift diagnostics.
+Flattened Markdown cards use the labeled Model ID and title to corroborate the exact catalog row.
+The owned Pricing section publishes independent Input and Output quotes per million tokens. These
+quotes supply a missing public API rate. The scoped capability prose also establishes prompt-cache
+support. Structured historical cards remain readable. For flattened cards, the exact model IDs in
+the Chat request's reasoning options establish Chat compatibility. The Completions request's
+documented model field explicitly links to the available Shared Inference inventory for its scope.
 
 Cached and freshly processed input use the same standard rate. Kmodels charges the entire prompt
 once and does not derive a duplicate cache tariff from a card's input quote:
@@ -86,7 +88,9 @@ source evidence. A different cache tariff would require positive pricing evidenc
 
 API mappings require exact official document identity and field ownership. Chat resolves the
 operation's successful response reference and typed `usage` paths in its OpenAPI component schema.
-Completions resolves typed nested `ResponseField` nodes under Completion Response. Wrong methods,
+Completions reads typed nested fields under Completion Response in the official rendered HTML.
+Historical Markdown with typed `ResponseField` nodes uses the same parent and leaf requirements.
+The flattened Markdown export loses this nesting. Wrong methods,
 request fields, unrelated parents, duplicate documents and mistyped counters establish no mapping.
 Streaming additionally needs the endpoint's stream representation and the SDK's final-usage rule
 under Streaming responses. Headings or policy text copied into a code fence establish no rule.
@@ -138,6 +142,7 @@ calculated and the synchronous rate is not copied into Batch.
   so extensionless and Markdown links to the same document converge on one request and dependency.
   Catalog rows accept relative links and absolute links on the exact official documentation host;
   the Markdown suffix is removed for the card join. Other hosts cannot establish a model identity.
+  The model selection guide is excluded with or without the Markdown suffix.
 - Malformed inventory rows, rate components, model cards, usage fields, and lifecycle references are
   isolated to the affected claim.
 - Missing model cards retain exact catalog identities. Missing usage companions retain numeric rates

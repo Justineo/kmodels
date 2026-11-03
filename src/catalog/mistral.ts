@@ -1540,16 +1540,20 @@ function catalogDiscountPolicy(models: readonly ProviderModel[]): DiscountPolicy
 export function parseMistralPricing(input: Input): SourceParseResult {
   if (input.source.extractor.kind !== "mistral-pricing")
     throw new Error("Wrong Mistral pricing extractor");
-  if (input.catalogModels === undefined) throw new Error("Mistral pricing requires the catalog");
+  const catalogModels = input.catalogModels;
+  if (catalogModels === undefined) throw new Error("Mistral pricing requires the catalog");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const documents = new Map<string, string | null>();
+  for (const { url, body } of bundle.documents)
+    documents.set(url, documents.has(url) ? null : body);
   const cards = parseMistralPricingCards(bundle.index.body, input.onPricingReconciliation).map(
     (card) => {
       if (card.id !== "") return card;
       const linkedIds = new Set(
         card.modelUrls.flatMap((url) => {
-          const documents = bundle.documents.filter((document) => document.url === url);
-          if (documents.length !== 1 || documents[0] === undefined) return [];
-          const $ = load(documents[0].body);
+          const body = documents.get(url);
+          if (body == null) return [];
+          const $ = load(body);
           if ($('h1[data-slot="heading-title"]').length !== 1) return [];
           const ids = [
             ...new Set(
@@ -1569,22 +1573,21 @@ export function parseMistralPricing(input: Input): SourceParseResult {
         }),
       );
       if (linkedIds.size > 0) {
-        const targets =
-          input.catalogModels?.filter(
-            (model) =>
-              model.status !== "retired" &&
-              [...linkedIds].some((id) => model.model_id === id || model.aliases.includes(id)),
-          ) ?? [];
-        return linkedIds.size === 1 && targets.length === 1 && targets[0] !== undefined
+        const [id] = linkedIds;
+        if (linkedIds.size !== 1 || id === undefined) return card;
+        const targets = catalogModels.filter(
+          (model) =>
+            model.status !== "retired" && (model.model_id === id || model.aliases.includes(id)),
+        );
+        return targets.length === 1 && targets[0] !== undefined
           ? { ...card, id: targets[0].model_id }
           : card;
       }
       // The page no longer exposes clipboard IDs. Only a unique, exact active catalog title
       // can replace that identity evidence; do not derive an API ID from a documentation slug.
-      const matches =
-        input.catalogModels?.filter(
-          (model) => model.status === "active" && model.name === card.title,
-        ) ?? [];
+      const matches = catalogModels.filter(
+        (model) => model.status === "active" && model.name === card.title,
+      );
       return matches.length === 1 && matches[0] !== undefined
         ? { ...card, id: matches[0].model_id }
         : card;
@@ -1596,7 +1599,7 @@ export function parseMistralPricing(input: Input): SourceParseResult {
     input.source.extractor.minCards,
     input.source.extractor.maxCards,
   );
-  const models = input.catalogModels.map((target) => {
+  const models = catalogModels.map((target) => {
     if (target.pricing_state === undefined)
       throw new Error("Mistral pricing requires parsed catalog-price context");
     const model = pricingModel(input, target);

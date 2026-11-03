@@ -728,7 +728,7 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
     .map((model) => applyPagePricing(model, pricing.get(model.model_id)))
     .sort((left, right) => left.uid.localeCompare(right.uid));
   const pricingInputs = extractOllamaPricingInputs({
-    documents: [...docs].map(([url, body]) => ({ url, body })),
+    documents: docs,
     sourceRef: input.source.id,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
     ...(input.onPricingReconciliation === undefined

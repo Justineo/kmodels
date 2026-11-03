@@ -401,6 +401,12 @@ An unreadable announced date preserves raw amounts instead of publishing an unda
 In particular, GPT-Rosalind Research's published billing starts on 2026-10-05; the future
 tariff does not imply either a paid or a free rate before that date.
 
+The dedicated Life sciences models section publishes exact Rosalind IDs and token rates.
+Its own trusted-access statement supplies the approved internal research condition. Without that
+statement the section is withheld. Legal model configuration quotes require independent evidence
+of request identity before they can become model prices.
+FedRAMP's separately announced uplift is outside the current regional-processing selector.
+
 The data-residency matrix supplies exact eligible endpoints, models/snapshots, regions, and listed
 snapshot exceptions. Unknown regions or endpoints are withheld without discarding known values in
 the same row.

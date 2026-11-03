@@ -132,8 +132,10 @@ Production collection uses only Alibaba Cloud first-party sources:
   that the resolved endpoint and API-key plan determine the billing region;
 - the maintained
   [international](https://www.alibabacloud.com/help/en/model-studio/model-depreciation) and
-  [China](https://help.aliyun.com/zh/model-studio/model-depreciation) lifecycle tables own
-  retirement dates and replacements;
+  [China](https://help.aliyun.com/zh/model-studio/model-depreciation) lifecycle pages can supply
+  retirement dates and replacements through exact model rows. Their current policy pages list
+  dated announcement links without exact model rows, so this source produces no new lifecycle
+  facts from those links;
 - the fixed
   [international](https://www.alibabacloud.com/help/en/model-studio/model-release-notes) and
   [China](https://help.aliyun.com/zh/model-studio/newly-released-models) update tables provide
@@ -283,10 +285,16 @@ search products retain their own documented call counts, `usage.x_tools.image_se
 successful-retrieval policy.
 Search-result content is already included in the model's reported input tokens, so it does not need
 a second raw pricing fact.
-Markdown tool guides derive compatibility from exact known IDs in owned regional tabs, including
-third-party models. Billing owns the explicit `agent` and `agent_max` policy variants and named
+Tool guides derive compatibility from exact known IDs in owned regional tabs, including
+third-party models. The HTML returned by some `.md` URLs uses the same guide headings and list
+scopes as the Markdown, so both representations use the same cache and regional web-search rules.
+Code comments do not declare headings. Billing owns the explicit `agent` and `agent_max` policy variants and named
 physical regions. A physical region does not imply an account deployment scope. Policy selection
-remains caller-owned where the protocol does not establish it. Unrelated MCP prices and extractor
+remains caller-owned where the protocol does not establish it. A model restricted to Responses
+uses the `agent` amount when the billing section equates that protocol with the `agent` tariff.
+Policy offers retain separate model references so an explicit agent-only or unsupported-strategy
+clause also applies after price-book assembly.
+Unrelated MCP prices and extractor
 promotions do not supply web-search rates. Inline heading anchors are presentation markup.
 
 ### Cost-calculator input contract
@@ -317,8 +325,9 @@ fields require the owned boolean `stream_options.include_usage` option. Alternat
 wire shapes share a logical input key: retain every evidenced locator, report that input missing
 only when none resolves, and measure completeness against logical inputs rather than aliases.
 
-Owned JSON/JSONC and SSE examples may establish nonnegative numeric usage fields as well as typed
-prose. Only the response usage envelope is admitted; Responses billing-detail entries require their
+Owned JSON/JSONC and SSE examples, including language-marked code blocks in the rendered HTML
+article, may establish nonnegative numeric usage fields as well as typed prose. Only the response
+usage envelope is admitted; Responses billing-detail entries require their
 `response_api` discriminator. The guide's `response.completed.response.output: [...]` placeholder
 may be elided because that array is unrelated to accounting. Placeholders inside usage, malformed
 JSON, duplicate properties, nonterminal Responses events and unrelated example objects do not

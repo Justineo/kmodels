@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { htmlText } from "./html.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
@@ -22,7 +23,7 @@ interface Contract {
 
 const documents = {
   chat: "https://inference-docs.cerebras.ai/api-reference/chat-completions.md",
-  completions: "https://inference-docs.cerebras.ai/api-reference/completions.md",
+  completions: "https://inference-docs.cerebras.ai/api-reference/completions",
   batch: "https://inference-docs.cerebras.ai/capabilities/batch.md",
   sdk: "https://raw.githubusercontent.com/Cerebras/cerebras-cloud-sdk-python/main/README.md",
 };
@@ -45,12 +46,17 @@ const contracts: Contract[] = [
   }),
 ];
 
-export function extractCerebrasPricingInputs(input: Input): SourcePricingInputFact[] {
+const knownDocuments = new Set(Object.values(documents));
+
+export function readCerebrasReferences(input: Input) {
   const bodies = new Map<string, string | undefined>();
   for (const { url, body } of input.documents) {
-    if (!Object.values(documents).includes(url)) continue;
-    bodies.set(url, bodies.has(url) ? undefined : body);
+    const key = url === `${documents.completions}.md` ? documents.completions : url;
+    if (knownDocuments.has(key)) bodies.set(key, bodies.has(key) ? undefined : body);
   }
+  const chat = chatReference(bodies.get(documents.chat));
+  const completion = bodies.get(documents.completions);
+  const html = completion === undefined ? undefined : completionHtml(completion);
   const streamPolicy = bodies.get(documents.sdk);
   const terminal =
     streamPolicy === undefined
@@ -66,9 +72,11 @@ export function extractCerebrasPricingInputs(input: Input): SourcePricingInputFa
       body !== undefined &&
       (!stream || finalUsage) &&
       (protocol === "chat"
-        ? chatCounter(body, field, stream)
+        ? chat !== undefined && chatCounter(chat, field, stream)
         : protocol === "completions"
-          ? completionCounter(body, field, stream)
+          ? html === undefined
+            ? completionCounter(body, field, stream)
+            : html.counter(field, stream)
           : batchCounter(body, field));
     if (!present) {
       input.onFinding?.(contractExtensionEvidence([`/pricing-inputs/${fact.key}`]));
@@ -76,12 +84,16 @@ export function extractCerebrasPricingInputs(input: Input): SourcePricingInputFa
     }
     return [{ ...fact, source_ref: input.sourceRef }];
   });
-  return finalizePricingInputs(
-    facts,
-    contracts.length,
-    "Cerebras pricing inputs",
-    input.onReconciliation,
-  );
+  return {
+    pricingInputs: finalizePricingInputs(
+      facts,
+      contracts.length,
+      "Cerebras pricing inputs",
+      input.onReconciliation,
+    ),
+    chatModels: chat?.models ?? new Set<string>(),
+    allCompletions: html?.allModels ?? false,
+  };
 }
 
 function completionContracts(protocol: "chat" | "completions"): Contract[] {
@@ -109,17 +121,44 @@ function usagePath(field: Contract["field"]): string[] {
   return field === "cached_tokens" ? ["usage", "prompt_tokens_details", field] : ["usage", field];
 }
 
-function chatCounter(body: string, field: Contract["field"], stream: boolean): boolean {
+function chatReference(body: string | undefined) {
+  if (body === undefined) return;
   const blocks = [
     ...body.matchAll(
       /^(`{3,})yaml POST \/v1\/chat\/completions[^\r\n]*\r?\n([^]*?)^\1[ \t]*\r?$/gm,
     ),
   ];
   const spec = blocks.length === 1 ? blocks[0]?.[2] : undefined;
-  if (spec === undefined) return false;
+  if (spec === undefined) return;
   const operation = yamlPath(spec, ["paths", "/v1/chat/completions", "post"]);
-  if (operation === undefined) return false;
+  if (operation === undefined) return;
+  const request = yamlPath(operation, ["requestBody", "content", "application/json", "schema"], 6);
+  const requestRef = request === undefined ? undefined : scalar(request, "$ref", 14);
+  const reasoning =
+    requestRef === "#/components/schemas/ChatCompletionRequest"
+      ? yamlPath(spec, [
+          "components",
+          "schemas",
+          "ChatCompletionRequest",
+          "properties",
+          "reasoning_effort",
+        ])
+      : undefined;
+  const models = new Set(
+    [...(reasoning ?? "").matchAll(/^\s+- \*\*([a-z0-9][a-z0-9.-]+)\*\*:/gm)].flatMap(
+      (match) => match[1] ?? [],
+    ),
+  );
   const media = yamlPath(operation, ["responses", "200", "content", "application/json"], 6);
+  return { media, schemaReader: openApiYamlSchemaReader(spec), models };
+}
+
+function chatCounter(
+  referenceDoc: NonNullable<ReturnType<typeof chatReference>>,
+  field: Contract["field"],
+  stream: boolean,
+): boolean {
+  const { media, schemaReader } = referenceDoc;
   if (media === undefined) return false;
   const schema = yamlPath(media, ["schema"], 14);
   const reference =
@@ -127,7 +166,7 @@ function chatCounter(body: string, field: Contract["field"], stream: boolean): b
       ? undefined
       : scalar(schema, "$ref", 16)?.match(/^#\/components\/schemas\/([A-Za-z0-9_-]+)$/u)?.[1];
   if (reference === undefined) return false;
-  const types = openApiYamlSchemaReader(spec)(reference, usagePath(field));
+  const types = schemaReader(reference, usagePath(field));
   if (types.length !== 1 || types[0] !== "integer") return false;
   if (!stream) return true;
   const example = yamlPath(media, ["examples", "Streaming", "value"], 14);
@@ -141,6 +180,70 @@ function chatCounter(body: string, field: Contract["field"], stream: boolean): b
       return value !== undefined && /^(?:0|[1-9]\d*)$/u.test(value);
     })
   );
+}
+
+function completionHtml(body: string) {
+  if (!/^\s*(?:<!doctype html\b|<html\b)/i.test(body)) return;
+  const $ = load(body);
+  const response = $("h2#completion-response");
+  const signatures = new Set(
+    $("pre")
+      .toArray()
+      .flatMap((node) =>
+        [
+          ...$(node)
+            .text()
+            .matchAll(/^ *curl -X ([A-Z]+) (https:\/\/[^\s\\]+)/gm),
+        ].map((match) => match[0].trim()),
+      ),
+  );
+  if (
+    signatures.size !== 1 ||
+    !signatures.has("curl -X POST https://api.cerebras.ai/v1/completions")
+  )
+    return;
+  const fields = response.length === 1 ? response.nextUntil("h1,h2").filter(".field") : $([]);
+  const name = '[data-component-part="field-name"]';
+  const type = '[data-component-part="field-info-pill"]';
+  const rootField = (roots: ReturnType<typeof $>, key: string) =>
+    roots.filter((_, node) => $(node).children(".param-head").find(name).text() === key);
+  const fieldType = (field: ReturnType<typeof $>) =>
+    field.children(".param-head").find(type).text().trim();
+  const object = rootField(fields, "object");
+  const streamShape =
+    object.length === 1 &&
+    fieldType(object) === "string" &&
+    /always text_completion\b/.test(object.text());
+  const request = $("h2#request");
+  const model = rootField(request.nextUntil("h1,h2").filter(".field"), "model");
+  const allModels =
+    request.length === 1 &&
+    model.length === 1 &&
+    fieldType(model) === "string" &&
+    /The model to use for completion\. See Supported Models for a list of available models\./.test(
+      htmlText(model.text()),
+    ) &&
+    model.find(
+      'a[href="/models/overview"], a[href="https://inference-docs.cerebras.ai/models/overview"]',
+    ).length === 1;
+  return {
+    allModels,
+    counter(field: Contract["field"], stream: boolean): boolean {
+      if (stream && !streamShape) return false;
+      const path = usagePath(field);
+      let level = fields;
+      for (const [index, key] of path.entries()) {
+        const match = rootField(level, key);
+        const leaf = index === path.length - 1;
+        if (match.length !== 1 || fieldType(match) !== (leaf ? "integer" : "object")) return false;
+        if (leaf) return true;
+        level = match
+          .find(".field")
+          .filter((_, node) => $(node).parents(".field").first().get(0) === match.get(0));
+      }
+      return false;
+    },
+  };
 }
 
 function completionCounter(body: string, field: Contract["field"], stream: boolean): boolean {

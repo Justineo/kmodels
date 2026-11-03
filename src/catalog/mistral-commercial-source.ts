@@ -205,11 +205,7 @@ export function parseMistralPricingCards(
                   ? "Audio Input/min"
                   : `${column} (/Min)`
                 : suffix === "/ m chars"
-                  ? column === "Input"
-                    ? "Input (/M chars)"
-                    : column === "Output"
-                      ? "Output (/M chars)"
-                      : `${column} (/M chars)`
+                  ? `${column} (/M chars)`
                   : `${column} (/M tokens)`;
           return [
             {

@@ -41,6 +41,15 @@ it.each(["complete", "changed filter", "repeated cursor"])(
   },
 );
 
+it("rejects same-host redirects before accepting an exhaustive HF Inference page", async () => {
+  const source = reviewedPublicSource("huggingface-hf-inference");
+  transport.responses.set("huggingface.co", [
+    "HTTP/1.1 302 Found\r\nlocation: /api/models\r\n\r\n",
+  ]);
+  await expect(fetchSource(source)).rejects.toThrow("redirected the reviewed query");
+  expect(transport.calls).toEqual([source.url]);
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

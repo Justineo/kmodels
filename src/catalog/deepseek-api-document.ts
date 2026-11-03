@@ -3,6 +3,7 @@ import { htmlText } from "./html.ts";
 
 export type DeepseekFieldPath = readonly (readonly [name: string, type: string])[];
 type Owner = "request" | "response";
+type ResponseMedia = "application/json" | "text/event-stream";
 type Document = ReturnType<typeof load>;
 type Selection = ReturnType<Document>;
 const itemSelector = ".openapi-schema__list-item";
@@ -38,9 +39,30 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
           : ".openapi-markdown__details.response",
       )
       .filter((_, node) => $(node).parents(".mime, .response, pre, code, blockquote").length === 0);
-  const field = (owner: Owner, path: DeepseekFieldPath): Selection | undefined => {
-    const root = roots(owner);
-    const owners = root.toArray();
+  const requestRoots = roots("request");
+  const responseRoots = roots("response");
+  const responseMedia = new Map(
+    responseRoots.toArray().map((node) => {
+      const tabs = $(node)
+        .closest(".tabs-container")
+        .children(".tabs__container")
+        .find(".openapi-tabs__mime > .openapi-tabs__mime-item[role=tab]");
+      return [node, tabs.length === 0 ? undefined : tabs.length === 1 ? htmlText(tabs.text()) : ""];
+    }),
+  );
+  const hasMediaLabels = [...responseMedia.values()].some((media) => media !== undefined);
+  const field = (
+    owner: Owner,
+    path: DeepseekFieldPath,
+    media: ResponseMedia = "application/json",
+  ): Selection | undefined => {
+    const root =
+      owner === "request"
+        ? requestRoots
+        : hasMediaLabels
+          ? responseRoots.filter((_, node) => responseMedia.get(node) === media)
+          : responseRoots;
+    const owners = new Set<Selection[number]>(root.toArray());
     let parent: Selection | undefined;
     for (const [name, type] of path) {
       const candidates = (parent ?? root)
@@ -48,7 +70,7 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
         .filter((_, node) => {
           if ($(node).parents("pre, code, blockquote").length > 0) return false;
           const ownerNode = $(node).closest(".mime, .response").get(0);
-          if (ownerNode === undefined || !owners.some((owner) => owner === ownerNode)) return false;
+          if (ownerNode === undefined || !owners.has(ownerNode)) return false;
           return parent === undefined
             ? $(node).parents(itemSelector).length === 0
             : $(node).parents(itemSelector).first().get(0) === parent.get(0);
@@ -83,10 +105,15 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
       .find("code")
       .map((_, code) => htmlText($(code).text()))
       .get();
-    return result.length > 0 ? result : undefined;
+    if (result.length > 0) return result;
+    const plain = htmlText(statements.text()).match(
+      /^Possible values:\s*\[([a-z0-9._-]+)\]$/i,
+    )?.[1];
+    return plain === undefined ? undefined : [plain];
   };
   return {
-    has: (owner: Owner, path: DeepseekFieldPath) => field(owner, path) !== undefined,
+    has: (owner: Owner, path: DeepseekFieldPath, media?: ResponseMedia) =>
+      field(owner, path, media) !== undefined,
     text,
     values,
     responseSamples: articles

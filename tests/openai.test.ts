@@ -1020,7 +1020,10 @@ describe("OpenAI adapters", () => {
       }),
       tasks: ["transcription"],
     } satisfies ProviderModel;
-    const pricingBody = await fixture("openai/pricing.md");
+    const pricingBody = (await fixture("openai/pricing.md")).replace(
+      "reasoning models, including `gpt-5`)",
+      "reasoning models, including `gpt-5`, `o-series`)",
+    );
     const reconciliation: PricingReconciliationItem[] = [];
     const parsePricing = (body: string, reconcile = false) =>
       parseSource({
@@ -1512,6 +1515,35 @@ describe("OpenAI adapters", () => {
     const unresolved = parse(body.replace("October 5, 2026", "a date to be announced"))[0];
     expect(unresolved?.price_facts).toEqual([]);
     expect(unresolved?.raw_price_facts).toHaveLength(3);
+  });
+
+  it("requires the Life sciences section's own trusted-access statement", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const note =
+      "Access is limited to approved internal research through the [trusted-access program](https://openai.com/).";
+    const body = [
+      "Life sciences models",
+      "### Standard pricing data",
+      "| Model | Input | Output | Cached input |",
+      "| --- | --- | --- | --- |",
+      "| gpt-6-rosalind | $15.00 | $75.00 | $1.50 |",
+      note,
+      "Legal model configurations",
+      "| Model configuration | Input | Output | Cached input |",
+      "| --- | --- | --- | --- |",
+      "| gpt-6-astra-law | $10.00 | $50.00 | $1.00 |",
+    ].join("\n");
+    const parse = (body: string) =>
+      parseSource({ provider: provider(value), source, body, observedAt, catalogModels: [] });
+    const { models } = parse(body);
+    expect(models.map(({ model_id }) => model_id)).toEqual(["gpt-6-rosalind"]);
+    expect(models[0]?.price_facts).toHaveLength(3);
+    expect(models[0]?.price_facts.map(({ conditions }) => conditions.account_eligibility)).toEqual(
+      Array.from({ length: 3 }, () => "approved_internal_research"),
+    );
+    expect(() => parse(body.replace(note, "") + "\n" + note)).toThrow("no admitted facts");
   });
 
   it("recovers renamed Fast and Ultrafast tables with first-party regional scopes", () => {

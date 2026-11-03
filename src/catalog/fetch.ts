@@ -11,6 +11,7 @@ import {
   sagemakerCatalogUrl,
   sagemakerOpenManifestUrl,
   sagemakerManifestUrl,
+  sagemakerPricesUrl,
   sagemakerPricingSpecs,
   sagemakerRows,
 } from "./sagemaker.ts";
@@ -315,7 +316,7 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
     "--include",
     "--compressed",
     "--max-time",
-    "60",
+    url.href === sagemakerPricesUrl ? "150" : "60",
     "--connect-timeout",
     "30",
     "--max-redirs",
@@ -998,6 +999,8 @@ async function request(source: SourceManifest, json?: string): Promise<Response>
         })
       : await curlRequest(url, source, json);
     if (response.status >= 300 && response.status < 400) {
+      if (source.extractor.kind === "huggingface-hub")
+        throw new Error("Hugging Face Hub redirected the reviewed query");
       const location = response.headers.get("location");
       if (location === null) throw new Error("Redirect response omitted Location");
       url = checkedUrl(new URL(location, url).href, source);
@@ -1266,11 +1269,12 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
   const pages: { key: string; payload: FetchPayload }[] = [];
   const cursors = new Set<string | null>();
   let next: URL | undefined = huggingFaceModelsUrl(source.url, source);
-  for (let index = 0; next !== undefined && index < transport.maxPages; index += 1) {
+  while (next !== undefined) {
+    if (pages.length >= transport.maxPages) throw new Error("Hugging Face Hub exceeded page limit");
     const cursor = next.searchParams.get("cursor");
     if (cursors.has(cursor)) throw new Error("Hugging Face Hub repeated a pagination cursor");
     cursors.add(cursor);
-    const key = `${source.id}/page-${index + 1}`;
+    const key = `${source.id}/page-${pages.length + 1}`;
     const page = await fetchHuggingFacePage(source, key, next);
     models.push(
       ...recognizeValue(
@@ -1282,8 +1286,6 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
     assertItemCount("Hugging Face Hub transport models", models.length, 0, transport.maxModels);
     pages.push({ key, payload: page.payload });
     next = page.next;
-    if (index === transport.maxPages - 1 && next !== undefined)
-      throw new Error("Hugging Face Hub exceeded page limit");
   }
   assertItemCount("Hugging Face Hub transport models", models.length, 1, transport.maxModels);
   const body = JSON.stringify({ models });
@@ -1700,9 +1702,9 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       const raw = await fetchPayload(
         requestSource(source, key, url, "json", transport.maxEndpointBytes),
       );
-      const body = normalizeVercelEndpointResponse(raw.body);
+      const { body, searchModelId } = normalizeVercelEndpointResponse(raw.body);
       const payload = { ...raw, body, contentHash: sha256(body) };
-      return { key, url: url.href, payload };
+      return { key, url: url.href, payload, searchModelId };
     } catch (error) {
       return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
     }
@@ -1712,22 +1714,11 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
   if (modelPageBase.href !== "https://vercel.com/ai-gateway/models/")
     throw new Error("Vercel model-page base URL is not reviewed");
   const searchModels = new Set(
-    endpointDocuments.flatMap((document) => {
-      if ("dependency_id" in document) return [];
-      const parsed = vercelEndpointTransportSchema.safeParse(json(document.payload.body));
-      return parsed.success &&
-        parsed.data.data.endpoints.some((endpoint) => {
-          const pricing = endpoint.pricing;
-          return (
-            pricing !== null &&
-            typeof pricing === "object" &&
-            (Reflect.get(pricing, "x_search_post") !== undefined ||
-              Reflect.get(pricing, "x_search_user") !== undefined)
-          );
-        })
-        ? [parsed.data.data.id]
-        : [];
-    }),
+    endpointDocuments.flatMap((document) =>
+      "dependency_id" in document || document.searchModelId === undefined
+        ? []
+        : [document.searchModelId],
+    ),
   );
   const missing = list.data.filter(
     ({ id, pricing }) => Object.keys(pricing).length === 0 || searchModels.has(id),
@@ -2129,7 +2120,10 @@ export function normalizeVercelPricingScript(body: string): string | undefined {
   });
 }
 
-export function normalizeVercelEndpointResponse(body: string): string {
+export function normalizeVercelEndpointResponse(body: string): {
+  body: string;
+  searchModelId: string | undefined;
+} {
   const parsed = recognizeValue(
     "Vercel endpoint response",
     vercelEndpointTransportSchema,
@@ -2149,20 +2143,32 @@ export function normalizeVercelEndpointResponse(body: string): string {
     .sort((left, right) =>
       `${left.provider_name}\0${left.name}`.localeCompare(`${right.provider_name}\0${right.name}`),
     );
-  return JSON.stringify({ data: { ...parsed.data, endpoints } });
+  const hasSearchPricing = endpoints.some(
+    ({ pricing }) =>
+      pricing !== null &&
+      typeof pricing === "object" &&
+      (Reflect.get(pricing, "x_search_post") !== undefined ||
+        Reflect.get(pricing, "x_search_user") !== undefined),
+  );
+  return {
+    body: JSON.stringify({ data: { ...parsed.data, endpoints } }),
+    searchModelId: hasSearchPricing ? parsed.data.id : undefined,
+  };
 }
 
 export function normalizeOllamaList(body: string): string {
   const value = json(body);
   const parsed = ollamaListSchema.safeParse(value);
-  if (!parsed.success) return JSON.stringify(value);
-  const list = parsed.data;
-  return JSON.stringify({
+  return JSON.stringify(parsed.success ? sortedOllamaList(parsed.data) : value);
+}
+
+function sortedOllamaList(list: z.infer<typeof ollamaListSchema>) {
+  return {
     ...list,
     models: list.models.sort((left, right) =>
       ollamaListKey(left).localeCompare(ollamaListKey(right)),
     ),
-  });
+  };
 }
 
 function ollamaListKey(value: unknown): string {
@@ -2359,28 +2365,28 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   ];
   if (rawIndex === undefined && catalog === undefined)
     throw new Error("Ollama Cloud inventory witnesses were unavailable");
-  let indexBody = "{}";
+  let list: z.infer<typeof ollamaListSchema> | undefined;
   if (rawIndex !== undefined)
     try {
-      recognizeValue("Ollama cloud model list", ollamaListSchema, json(rawIndex.body));
-      indexBody = normalizeOllamaList(rawIndex.body);
+      list = sortedOllamaList(
+        recognizeValue("Ollama cloud model list", ollamaListSchema, json(rawIndex.body)),
+      );
     } catch (error) {
       dependencyFailures.push({
         dependency_id: indexKey,
         impact: "claim",
         ...sourceFailure(error, "parse_failed"),
       });
-      indexBody = "{}";
     }
+  const indexBody = JSON.stringify(list ?? {});
   const index: FetchPayload = {
     body: indexBody,
     contentHash: sha256(indexBody),
     etag: rawIndex?.etag,
     lastModified: rawIndex?.lastModified,
   };
-  const list = ollamaListSchema.safeParse(json(index.body));
   const listed = new Set(
-    (list.success ? list.data.models : []).flatMap((item) => {
+    (list?.models ?? []).flatMap((item) => {
       if (item === null || typeof item !== "object") return [];
       const parsed = modelIdSchema.safeParse(Reflect.get(item, "model"));
       return parsed.success ? [parsed.data] : [];
@@ -2458,7 +2464,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   );
   const documents = documentation.documents;
   const body = JSON.stringify({
-    list: json(index.body),
+    list: list ?? {},
     ...(catalog === undefined ? {} : { catalog: { url: catalogUrl.href, body: catalog.body } }),
     pages: pages.map(({ model, url, payload }) => ({
       model,

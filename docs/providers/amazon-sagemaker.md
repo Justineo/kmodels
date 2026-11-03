@@ -114,7 +114,8 @@ The Pricebook combines two public, independently auditable sources:
 
 - The [AmazonSageMaker bulk price list](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSageMaker/current/index.json)
   supplies current regional service rates. The bulk response is bounded
-  separately from the assembled bundle. Collection reads all published Regions, not just the
+  separately from the assembled bundle and has a 150-second transfer deadline for the full
+  inventory. Collection reads all published Regions, not just the
   authenticated enrichment Region.
 - The official [proprietary SDK manifest](https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/proprietary-sdk-manifest.json)
   and exact model specs provide Marketplace listing IDs for admitted proprietary models.
@@ -125,7 +126,8 @@ AWS publishes its bucket configuration in the
 [SDK region configuration](https://github.com/aws/sagemaker-python-sdk/blob/800d3423f3869c0770ff292ef9cb98cc0ee4b8b1/sagemaker-core/src/sagemaker/core/jumpstart/region_config.json).
 Spec discovery mirrors the SDK's
 [`get_latest_version` resolver](https://github.com/aws/sagemaker-python-sdk/blob/800d3423f3869c0770ff292ef9cb98cc0ee4b8b1/sagemaker-core/src/sagemaker/core/jumpstart/utils.py):
-PEP 440 comparison when every version is valid, otherwise lexical maximum. Package versions are
+PEP 440 comparison when every version is valid, otherwise lexical maximum. Equivalent PEP 440
+versions keep the first manifest record, matching the SDK. Package versions are
 not uniformly SemVer. This selection discovers the current package metadata and listing link;
 it does not publish a globally preferred model release version. Deployment facts remain package-scoped.
 Duplicate exact manifest records produce one selected spec. Conflicting recognized metadata for

@@ -211,8 +211,9 @@ does not supply an Azure tariff bound.
 
 The public price page's explicit Standard Pricing or Standard Processing header establishes
 `service_tier=standard` independently of the deployment's Global Standard or Data Zone Standard
-scope. An unqualified price header remains unqualified; a neighboring Priority column cannot
-supply its tier. Delegated Claude rows retain their own prompt-length annotations before model
+scope. On the Azure OpenAI page, the paired Pricing and Flex Pricing token columns establish
+Standard and Flex separately. Other unqualified price headers remain unqualified; a neighboring
+Priority column cannot supply their tier. Delegated Claude rows retain their own prompt-length annotations before model
 name normalization, including the inclusive 100K short band and strictly greater long band.
 These boundaries count the full prompt, including cache reads and writes, as the owning pricing
 page defines it. Malformed or unreviewed annotations preserve the known quote as raw applicability

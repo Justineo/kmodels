@@ -75,8 +75,16 @@ no model is selected as their storage carrier. Service-only results can be captu
 Services whose applicability names models still require the exact admitted model identities.
 
 Preserve the structured `version` as identity. Dated aliases are evaluated at the
-observation time. Exact retired IDs that still redirect remain separate legacy rows and
-derive the target rate from the documented redirect date. The model inventory admits the public
+observation time. Exact retired IDs that still redirect remain separate legacy rows. Each
+redirect resolves independently, so an unresolved target affects only its own legacy row.
+The [November image retirement guide](https://docs.x.ai/developers/migration/imagine-image-quality-nov-2)
+establishes `grok-imagine-image-quality` and the existing `grok-imagine-image-pro` redirect to
+`grok-imagine-image-2.0` at Low quality on the direct image generation and edit routes.
+The lookup fixes Low and the global endpoint, preserves resolution and input-image charges,
+and requires separate evidence for Batch. The guide publishes a date without a time zone.
+Collection admits the new prices from observations after that UTC calendar date as current
+snapshot evidence. Historical lookup still requires a verified start instant.
+The model inventory admits the public
 Realtime identities and transcription engine IDs from the owned Speech to Text `Model Selection`
 table and REST route. The engine has no inferred model-specific rate: STT remains a separately
 metered provider resource, so admitting an engine cannot duplicate that tariff. Internal service

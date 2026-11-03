@@ -32,11 +32,13 @@ publishes a separately metered provider service.
 
 ## Official sources
 
-The public catalog root is the official [model overview](https://platform.claude.com/docs/en/about-claude/models/overview).
+The public catalog root is the official [model overview](https://platform.claude.com/docs/en/models/overview).
 The collector follows a fixed set of first-party documents rather than discovering commercial pages
 from `llms.txt` or scraping the dynamic `claude.com/pricing` application.
 Model-specific launch announcements are not refresh dependencies: maintained overview and release
 notes own current identity, descriptions, and release dates.
+Release and retirement notes accept both apostrophe forms in Anthropic's announcement wording.
+Only an ID paired with a model name supplies a new identity in a launch note.
 
 The main pricing and accounting sources are:
 
@@ -215,7 +217,8 @@ dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain quali
 
 Rows explicitly marked `retired, except on … Claude Models on Google Cloud (Google managed)`
 (with or without Bedrock) describe surviving partner availability, not current direct Claude API
-prices. Exclude those rows before direct-model binding, retaining their exclusion diagnostic and
+prices. Exclude those rows and their tool-overhead claims before direct-model binding, retaining
+their exclusion diagnostics and
 historical catalog identities. Other unknown qualifiers remain unbound or raw; they do not inherit
 this exclusion merely by mentioning a partner.
 

@@ -135,6 +135,11 @@ function signalSpec(
       keys: paths.has("v2/embed") ? [`embed.v2.${image ? "image_tokens" : "input_tokens"}`] : [],
     };
   }
+  if (meter.value === "rerank" && isStandardUnit(variant.price.per, "token"))
+    return {
+      signal: { namespace: "kmodels", value: "input_tokens" },
+      keys: paths.has("v2/rerank") ? ["rerank.v2.input_tokens"] : [],
+    };
   if (meter.value === "rerank")
     return {
       signal: providerSignal(

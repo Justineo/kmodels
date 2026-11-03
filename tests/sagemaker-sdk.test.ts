@@ -79,6 +79,13 @@ const spec = {
 };
 
 describe("SageMaker SDK catalog", () => {
+  it("uses the first manifest version when PEP 440 keys compare equal", () => {
+    const first = header("new-video", "1.0");
+    const second = header("new-video", "1.0.0");
+    expect(sagemakerOpenSpecs(JSON.stringify([first, second]), [])).toEqual([first]);
+    expect(sagemakerOpenSpecs(JSON.stringify([second, first]), [])).toEqual([second]);
+  });
+
   it("rejects conflicting metadata for one exact manifest identity before admission", () => {
     for (const changes of [{ deprecated: true }, { search_keywords: ["Classification"] }]) {
       const original = header("new-video");

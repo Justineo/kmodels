@@ -12,7 +12,11 @@ export async function xaiInferenceBundle(): Promise<LinkedBundle> {
     documents: [
       {
         url: "https://docs.x.ai/llms-full.txt",
-        body: `${await fixture("docs.txt")}\n\n${await fixture("regions.txt")}`,
+        body: [
+          await fixture("docs.txt"),
+          await fixture("regions.txt"),
+          await fixture("image-retirement.txt"),
+        ].join("\n\n"),
       },
     ],
   };

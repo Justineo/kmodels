@@ -208,6 +208,7 @@ it("detects commercial drift instead of silently swapping modes or losing media 
     ["in Standard mode;", "in Contributor mode;"],
     ["rounded down to whole seconds", "rounded up to whole minutes"],
     ["at least 50 frames", "at least 100 frames"],
+    ["Video segmentation</td>", "Image segmentation</td>"],
     ["per 1M tokens", "per 1K tokens"],
   ]) {
     const bundle = await fixture();

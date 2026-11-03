@@ -35,7 +35,9 @@ The parser emits exact-ID associations to the existing canonical model usage off
 come from the current tables; no rate is inferred from a related family, partner, prefix or amount.
 The website and portable lookup share these associations. An absent price declaration withdraws
 that ID's association while preserving the independent catalog identity. An unknown pricing mode,
-unit, new unreviewed hosted line or changed accounting rule rejects the source for review.
+unit, duplicate media meter, new unreviewed hosted line or changed accounting rule rejects the
+source for review. Association evidence links to the Models and Model pricing headings. The rate
+observations link to their individual pricing sections.
 
 The price book binds caller-supplied billable quantities. It does not currently publish extraction
 formulas for all Model API response protocols. In particular, callers must supply uncached and
