@@ -76,6 +76,7 @@ valid model.
 The pricing parser emits direct associations for literal IDs in the owned price-table headings,
 including a uniquely documented alias when that exact alias is priced. It does not spread a
 tariff to every catalog alias, historical version, `latest` name, agent or similar model name.
+An AI Studio model-card fragment can identify the exact priced endpoint within a shared card.
 Gemma 4's explicit family-wide free-tier declaration applies to the exact hosted IDs established
 by the Gemma API catalog. The pricing overlay carries their observed modalities so free input and
 cache meters survive alongside output; missing modality evidence cannot manufacture those meters.
