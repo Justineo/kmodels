@@ -37,11 +37,16 @@ unknown.
 
 ## Sources and refresh isolation
 
-`gemini-models` starts at the official model index and follows official model cards. Fixed
+`gemini-models` starts at the [Google AI Studio model index](https://aistudio.google.com/docs/models)
+and follows official model cards. The migration serves template Markdown directly or in a single
+HTML no-script fallback. Decode its owned model tables and lifecycle rows while keeping legacy
+HTML bundles replayable. Fixed
 first-party companions provide lifecycle, changelog, Gemma identity, and Interactions routes. This
 source owns model identity and does not depend on the pricing page.
 
-`gemini-pricing` independently reads the official pricing page. It is optional and non-exhaustive:
+`gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
+Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
+It is optional and non-exhaustive:
 a failure retains the last verified Gemini pricebook without rejecting fresh model identity. Its
 optional claim-local Discovery document verifies GenerateContent, embedding, and Batch result
 fields used by charge bindings. The first-party Interactions API reference independently supplies

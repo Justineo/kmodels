@@ -525,9 +525,15 @@ function pagePricing(
       diagnostic(input, "/pages/title_identity");
       continue;
     }
-    pageModels.add(page.model);
+    const apiModel = Reflect.get(page.body, "apiModel");
+    const pageId = page.model.endsWith("-cloud")
+      ? page.model.slice(0, -"-cloud".length)
+      : page.model;
+    const taggedPage = pageId !== page.model;
+    if (taggedPage && (!listed.has(pageId) || apiModel !== pageId)) continue;
+    pageModels.add(pageId);
     if (Reflect.get(page.body, "billing") === "total_input_tokens_only")
-      inputOnlyModels.add(page.model);
+      inputOnlyModels.add(pageId);
     const tags = Reflect.get(page.body, "tags");
     const tagged = new Set<string>();
     if (Array.isArray(tags))
@@ -545,8 +551,8 @@ function pagePricing(
         tagged.add(parsedId.data);
       }
     else if (tags !== undefined) diagnostic(input, "/pages/tags");
-    const apiModel = Reflect.get(page.body, "apiModel");
     const pricedApiModel =
+      !taggedPage &&
       typeof apiModel === "string" &&
       apiModel !== page.model &&
       apiModel.startsWith(`${page.model}:`) &&
@@ -589,7 +595,7 @@ function pagePricing(
         else if (amount !== undefined) diagnostic(input, `/pages/cost/variants/${field}`);
       }
     }
-    pricing.set(page.model, [...(pricing.get(page.model) ?? []), ...value]);
+    pricing.set(pageId, [...(pricing.get(pageId) ?? []), ...value]);
     if (pricedApiModel !== undefined)
       pricing.set(pricedApiModel, [...(pricing.get(pricedApiModel) ?? []), ...value]);
   }

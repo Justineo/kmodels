@@ -27,6 +27,21 @@ jobs:
           vp env doctor
           vp node --version
 
+      - name: Verify the Catalog repair workflow frontmatter lock
+        run: |
+          set -euo pipefail
+          compiler="$RUNNER_TEMP/gh-aw-v0.89.21"
+          curl --fail --silent --show-error --location \
+            https://github.com/github/gh-aw/releases/download/v0.89.21/linux-amd64 -o "$compiler"
+          printf '%s  %s\n' 1c74ff5fc28b1891d32b67f4348a9b7f750946b6d4a721e909187a848868016b "$compiler" | sha256sum --check
+          chmod +x "$compiler"
+          expected="$("$compiler" hash-frontmatter .github/workflows/catalog-repair.md)"
+          locked="$(sed -n '1s/.*"frontmatter_hash":"\([a-f0-9]*\)".*/\1/p' .github/workflows/catalog-repair.lock.yml)"
+          if [[ "$expected" != "$locked" ]]; then
+            echo "::error::Catalog repair workflow lock is stale. Regenerate it with the pinned compiler and action tag."
+            exit 1
+          fi
+
   verify:
     runs-on: ubuntu-latest
     outputs:
@@ -54,4 +69,5 @@ jobs:
         id: validate
         env:
           VALIDATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          VITEST_MAX_WORKERS: "2"
         run: vp node scripts/validate-changes.ts "$VALIDATION_BASE"

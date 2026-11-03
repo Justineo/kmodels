@@ -87,7 +87,12 @@ jobs:
       - name: Commit validated changes
         id: commit
         run: |
-          git add data/catalog.json data/pricing.json.gz data/pricing-inputs.json.gz data/website-assets.json data/website-assets.pack data/export-assets.json data/export-assets.pack data/fetch-state.json data/quarantine.json data/refresh-summary.json
+          git add data/catalog.json data/pricing.json.gz data/pricing-inputs.json.gz data/inference-pricing.json data/website-assets.json data/website-assets.pack data/export-assets.json data/export-assets.pack data/fetch-state.json data/quarantine.json data/refresh-summary.json
+          if ! git diff --quiet -- data/ || [ -n "$(git ls-files --others --exclude-standard -- data/)" ]; then
+            echo "::error::Refresh left generated catalog changes outside the staged publication."
+            git status --short -- data/
+            exit 1
+          fi
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0

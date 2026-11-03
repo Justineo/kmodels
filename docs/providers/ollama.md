@@ -63,6 +63,8 @@ also publish a valid token cost card. For example, the priced `mistral-large-3` 
 invokes `mistral-large-3:675b`. Its page and central family prices then cover that documented route,
 including unresolved cached-input cells. This does not create a general family-to-size rule:
 missing, conflicting or unlisted API examples establish no tagged price association.
+For an exact listed tag, its own Cloud tag page may supply the rate card when the
+page title and its Cloud API request example both agree with that tag's identity.
 Page discovery takes the union of Cloud search links and exact first-party model links in the
 owned central tariff. Search omission therefore does not hide a still-listed, still-priced route.
 The existing page count and byte bounds still apply.

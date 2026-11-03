@@ -20,6 +20,7 @@ import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import { catalogEnvelopeSchema } from "../src/catalog/schema.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { loadWebsiteCatalog } from "../src/catalog/website-runtime.ts";
+import { inferencePriceMappingSchema } from "../src/pricing/inference-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 async function json(path: string): Promise<unknown> {
@@ -33,6 +34,16 @@ function expectUniqueValues<T>(actual: readonly T[], expected: Iterable<T>, labe
 }
 
 describe("generated static catalog", () => {
+  it("commits inference mappings for the same catalog and price versions", async () => {
+    const [{ catalog, pricing }, input] = await Promise.all([
+      generatedData(),
+      json("data/inference-pricing.json"),
+    ]);
+    const mapping = inferencePriceMappingSchema.parse(input);
+    expect(mapping.core_catalog_version).toBe(catalog.catalog_version);
+    expect(mapping.pricing_data_version).toBe(pricing.pricing_data_version);
+  });
+
   it("publishes every provider with coverage and resolvable provenance", async () => {
     const { catalog } = await generatedData();
     const providerIds = catalog.providers.map(({ id }) => id);

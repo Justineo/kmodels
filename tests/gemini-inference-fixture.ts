@@ -23,9 +23,11 @@ export async function geminiInferenceFixtures(): Promise<{
   function bundle(id: string): LinkedBundle {
     const source = manifest?.sources.find((s) => s.id === id);
     if (!source?.linkedDocuments) throw new Error("Missing Gemini source");
-    const index = pages.find(({ url }) => url === source.url);
+    const indexUrl = `https://ai.google.dev/gemini-api/docs/${id.replace(/^gemini-/, "")}`;
+    const index = pages.find(({ url }) => url === indexUrl);
     if (!index) throw new Error("Missing Gemini index");
     const fixed = new Set(source.linkedDocuments.documents?.map(({ url }) => url));
+    if (id === "gemini-models") fixed.add("https://ai.google.dev/api/interactions-api");
     return {
       index,
       documents: pages.filter(

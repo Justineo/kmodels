@@ -19,6 +19,7 @@ import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
 import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
+import { geminiStudioMarkdown } from "./gemini.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { sha256 } from "./io.ts";
 import {
@@ -264,7 +265,11 @@ function checkedUrl(raw: string, source: SourceManifest): URL {
   const url = new URL(raw);
   if (url.protocol !== "https:") throw new Error("Only HTTPS sources are allowed");
   if (!source.allowedHosts.includes(url.hostname))
-    throw new Error("Redirect left the reviewed host allowlist");
+    throw new Error(
+      source.access === "public" && source.auth === undefined
+        ? `Redirect left the reviewed host allowlist: ${url.hostname}`
+        : "Redirect left the reviewed host allowlist",
+    );
   return url;
 }
 
@@ -1126,6 +1131,7 @@ function generatedFetchResult(body: string): FetchResult {
 function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): URL[] {
   const crawl = source.linkedDocuments;
   if (crawl === undefined) return [];
+  if (source.extractor.kind === "gemini-catalog") body = geminiStudioMarkdown(body) ?? body;
   const urls = new Map<string, URL>();
   const add = (target: string | undefined): void => {
     if (target === undefined) return;
@@ -1157,6 +1163,9 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
     for (const url of cohereModelDocumentUrls(body, source.url)) add(url.href);
   else if (indexFormat === "markdown" || indexFormat === "mixed")
     for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
+  if (source.extractor.kind === "gemini-catalog")
+    for (const match of body.matchAll(/{% (?:button|card)\b[^%]*\bhref="([^"]+)"[^%]*%}/g))
+      add(match[1]);
   if (indexFormat === "typescript")
     for (const match of body.matchAll(
       /^\s*import\s+(?:[^'"\n]+\s+from\s+)?['"]([^'"]+)['"];?\s*$/gm,
@@ -2170,6 +2179,21 @@ export function normalizeVercelModelPage(body: string, searchOnly = false): stri
         .get()
         .filter((value) => value !== ""),
     );
+  const inputColumn = headers.indexOf("Input");
+  if (inputColumn >= 0 && values[inputColumn] === "") {
+    const [summary, duplicate] = $("dt")
+      .filter(
+        (_index, label) => normalizedText($(label).find('[aria-hidden="true"]').text()) === "Price",
+      )
+      .next("dd")
+      .map((_index, price) => normalizedText($(price).children(".sr-only").text()))
+      .get();
+    const hourly = summary?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?), Per hour of audio$/);
+    if (hourly?.[1] !== undefined && duplicate === undefined) {
+      values[inputColumn] = `$${hourly[1]}/hr`;
+      titles[inputColumn] = ["Per hour of audio"];
+    }
+  }
   return JSON.stringify({
     title,
     provider,
@@ -2639,10 +2663,22 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   if (modelPageBase.href !== "https://ollama.com/library/")
     throw new Error("Ollama model-page base URL is not reviewed");
   const pricingDocument = documentation.documents.find(({ url }) => url === ollamaPricingUrl);
-  const pageIds = [
+  const familyPages = [
     ...new Set([...catalogIds, ...ollamaPricedModelPageIds(pricingDocument?.payload.body ?? "")]),
   ].sort();
-  assertItemCount("Ollama cloud transport model pages", pageIds.length, 0, transport.maxModels);
+  assertItemCount(
+    "Ollama cloud transport family pages",
+    familyPages.length,
+    0,
+    transport.maxModels,
+  );
+  const taggedPages = [...listed].flatMap((id) => {
+    const [family, tag] = id.split(":");
+    return family !== undefined && tag !== undefined && familyPages.includes(family)
+      ? [`${id}-cloud`]
+      : [];
+  });
+  const pageIds = [...new Set([...familyPages, ...taggedPages])].sort();
   const pageResults = await mapConcurrent(pageIds, transport.concurrency, async (model) => {
     const key = `${source.id}/model-page/${sha256(model)}`;
     try {

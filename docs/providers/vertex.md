@@ -81,6 +81,10 @@ capability guides do not establish the price amounts.
 
 ## Inference model ID lookup
 
+Google Cloud's Anthropic pricing section may shorten display labels to family and version,
+such as `Opus 5.5`. Resolve that spelling within the Anthropic publisher when joining rate rows.
+The official API ID table independently supplies the request spelling.
+
 Catalog sources emit the literal managed Model IDs established by labeled model-card fields or
 exact Model Garden links. These identify the native managed model component, separately from a
 display name or an account's deployment name. Associations join only existing model-scoped `sync`
@@ -181,16 +185,22 @@ from source collection and mapping implementation.
   not require every recognized meter to belong to the shared vocabulary. Image and document cache
   tokens use the same reported quantities for both cached billing and uncached-input subtraction.
 - Each numeric context header owns its bound, using safe whole-token counts. A missing opposite
-  quote cannot create a complementary range. A referenced footnote must be readable and agree with
-  that header; only its own endpoint panel or adjacent table notes can establish the contract.
-  Unknown, missing or contradictory declarations retain each affected quote and known scope as
-  raw applicability evidence, including the original amount, unit, meter, labels and owned notes.
+  quote cannot create a complementary range. Only the table's own readable footnotes can constrain
+  its bound. If the exact same threshold disagrees only on inclusivity, publish the intersection
+  for each quoted column and preserve the exact disputed token count as raw applicability evidence.
+  Unknown, missing or otherwise contradictory declarations retain each affected quote and known scope
+  as raw evidence, including the original amount, unit, meter, labels and owned notes.
   Readable sibling columns and endpoint panels survive independently.
   Labeled-cell shape checks retain the literal column heading, so another context band cannot
   supply a label sequence that silently chooses between conflicting prices in the affected cell.
   The public Claude tables currently disagree at the 100K and some 200K boundaries: headers use
-  strict `>` while their notes use “longer than or equal to”. Those affected claims remain unknown;
-  neither a direct provider's tariff nor a choice of preferred statement resolves the conflict.
+  strict `>` while their notes use “longer than or equal to”. A complementary short and long
+  pair in the [Cloud Billing SKU list](https://cloud.google.com/skus/sku-groups/gemini-enterprise-flexible-savings-plan-eligible-skus)
+  can corroborate the header for the exact model, region, meter, processing tier, and cache TTL.
+  Claude SKUs can be listed under a model-specific billing service or under the Vertex AI service
+  with an explicit Claude model label. A dot or a space can separate the version components.
+  The SKU pair establishes the cutoff and the price table supplies the amounts. Without that
+  pair, only the exact disputed count remains unknown.
   Owned context/location failures produce explicit diagnostics and enter repair investigation even
   on unchanged source bytes. Ordinary raw prices do not acquire that contract-failure trigger.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only

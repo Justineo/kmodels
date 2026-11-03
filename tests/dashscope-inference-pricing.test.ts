@@ -136,18 +136,19 @@ function inputPrices(result: ReturnType<ReturnType<typeof lookup>>) {
 
 it("keeps literal IDs and published regional prices independent of inferred ID prefixes", () => {
   const args = { provider_id: "dashscope", model_id: "qwen-plus" };
-  const initial = lookup()(args);
+  const query = lookup();
+  const initial = query(args);
   expect(initial.status).toBe("candidates");
   expect(initial.missing_conditions).toContainEqual({ namespace: "kmodels", value: "region" });
   for (const [size, numerator] of [
     ["128000", "23"],
     ["128001", "69"],
   ] as const) {
-    const result = lookup()({ ...args, selectors: [...globalUS, context(size)] });
+    const result = query({ ...args, selectors: [...globalUS, context(size)] });
     expect(result.status, JSON.stringify(result.missing_conditions)).toBe("matched");
     expect(inputPrices(result)).toEqual([{ numerator, denominator: "200000000" }]);
   }
-  const regional = lookup()({
+  const regional = query({
     ...args,
     selectors: [
       condition("region", "US (Virginia)"),
@@ -159,7 +160,7 @@ it("keeps literal IDs and published regional prices independent of inferred ID p
   expect(regional.status, JSON.stringify(regional.missing_conditions)).toBe("matched");
   expect(inputPrices(regional)).toEqual([{ numerator: "1", denominator: "2500000" }]);
   for (const id of ["Qwen-plus", "us.qwen-plus", "qwen-plus-us", "my-deployment"]) {
-    expect(lookup()({ ...args, model_id: id }).reason).toBe("unreviewed_id");
+    expect(query({ ...args, model_id: id }).reason).toBe("unreviewed_id");
   }
   expect(baseline.inference?.mapping.rules.every((rule) => rule.fixed_selectors.length === 0)).toBe(
     true,
@@ -193,6 +194,74 @@ it("distinguishes known price exclusions from unknown prices and IDs", () => {
   expect(world.reason).toBeUndefined();
   expect(world.candidates.length).toBeGreaterThan(0);
   expect(world.candidates.flatMap((c) => c.offer.terms).some((t) => t.kind === "rate")).toBe(true);
+});
+
+it("publishes literal Beijing IDs and CNY rates from the mainland price book", async () => {
+  const candidate = await collect((bundles) => {
+    const bundle = bundles.get("dashscope-pricing");
+    if (!bundle) throw new Error("Missing fixture");
+    bundle.documents.push({
+      url: "https://help.aliyun.com/en/model-studio/model-pricing",
+      body: `<section><h4>China (Beijing)</h4><table><thead><tr>
+        <th>Model ID</th><th>Input price (per 1 million tokens)</th>
+        <th>Output price (per 1 million tokens)</th>
+        </tr></thead><tbody><tr>
+        <td><p>qwen-long</p><blockquote><p>50% batch inference discount</p></blockquote></td>
+        <td>CNY 0.5</td><td>CNY 2</td>
+        </tr><tr>
+        <td><p>qwen-doc-turbo</p></td><td>CNY 1</td><td>CNY 3</td>
+        </tr><tr>
+        <td><p>unreviewed-model</p><p>Special contract only</p></td><td>CNY 1</td><td>CNY 3</td>
+        </tr></tbody></table>
+        <table><thead><tr><th>Model ID</th><th>Mode</th><th>Input tokens per request</th>
+        <th>Input price (per 1 million tokens)</th><th>Output price (per 1 million tokens)</th>
+        </tr></thead><tbody><tr>
+        <td>qwen-beijing-tiered</td><td>Thinking mode only</td><td>0&lt;Token≤32K</td><td>CNY 1</td><td>CNY 3</td>
+        </tr><tr>
+        <td>qwen-beijing-tiered</td><td>Thinking mode only</td><td>32K&lt;Token≤128K</td><td>CNY 2</td><td>CNY 6</td>
+        </tr></tbody></table></section>`,
+    });
+  });
+  const args = { provider_id: "dashscope", model_id: "qwen-long" };
+  expect(lookup()(args).reason).toBe("unreviewed_id");
+  const query = lookup(candidate);
+  const result = query({
+    ...args,
+    selectors: [condition("region", "China (Beijing)")],
+  });
+  expect(new Set(result.candidates.map(({ offer }) => offer.name))).toEqual(
+    new Set(["Batch inference", "On-demand inference"]),
+  );
+  expect(inputPrices(result)).toEqual(
+    expect.arrayContaining([
+      { numerator: "1", denominator: "2000000" },
+      { numerator: "1", denominator: "4000000" },
+    ]),
+  );
+  expect(JSON.stringify(result.candidates)).toContain('"currency":"CNY"');
+  expect(
+    query({
+      ...args,
+      model_id: "qwen-doc-turbo",
+      selectors: [condition("region", "China (Beijing)")],
+    }).status,
+  ).toBe("matched");
+  expect(query({ ...args, model_id: "unreviewed-model" }).reason).toBe("unreviewed_id");
+  const tiered = (tokens: string) =>
+    query({
+      ...args,
+      model_id: "qwen-beijing-tiered",
+      selectors: [
+        condition("region", "China (Beijing)"),
+        condition("operation", "thinking_mode_only"),
+        context(tokens),
+      ],
+    });
+  expect(inputPrices(tiered("32000"))).toEqual([{ numerator: "1", denominator: "1000000" }]);
+  expect(inputPrices(tiered("32001"))).toEqual([{ numerator: "1", denominator: "500000" }]);
+  expect(query({ ...args, selectors: [condition("region", "Singapore")] }).reason).toBe(
+    "no_applicable_price",
+  );
 });
 
 it("does not require protocol or accounting documents for literal price-table mappings", async () => {
