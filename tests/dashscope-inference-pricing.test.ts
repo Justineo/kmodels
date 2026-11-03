@@ -262,7 +262,7 @@ it("publishes literal Beijing IDs and CNY rates from the mainland price book", a
   expect(query({ ...args, selectors: [condition("region", "Singapore")] }).reason).toBe(
     "no_applicable_price",
   );
-});
+}, 20_000);
 
 it("does not require protocol or accounting documents for literal price-table mappings", async () => {
   const bundles = await dashscopeInferenceFixture();

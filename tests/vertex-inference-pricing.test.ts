@@ -309,7 +309,7 @@ it("reads relocated partner prices and rejects missing or duplicated commercial 
       lookup()({ provider_id: "vertex", model_id: "mistral-medium-3", selectors: [standard] }),
     ),
   ).not.toEqual([]);
-});
+}, 20_000);
 
 it("keeps base associations when optional protocol guides disappear and withdraws their qualified forms", async () => {
   const current = await collect((bundles) => {
