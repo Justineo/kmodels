@@ -1,8 +1,8 @@
 {
-  "catalog_version": "5ee08cd69f29f2e74a4fd0e42d28e4c0c2ce7e6ec379e92343ca21dcc77a0d78",
-  "generated_at": "2026-11-04T01:03:34.051Z",
+  "catalog_version": "8ada8d38c8889541e8273d5895c4497ee8623957cfeffa9dac989e0938818574",
+  "generated_at": "2026-11-04T02:04:15.059Z",
   "outcome": "changed",
-  "previous_catalog_version": "7bc4076ad03c4a6f1c2bc2339e5b47646c056ebf42f8b117f4753fb84f3eb285",
+  "previous_catalog_version": "5ee08cd69f29f2e74a4fd0e42d28e4c0c2ce7e6ec379e92343ca21dcc77a0d78",
   "providers": [
     {
       "attempt": {
@@ -276,9 +276,9 @@
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 640,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -331,7 +331,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 41374,
+                "excluded": 41422,
                 "explicit_non_numeric": 0,
                 "normalized": 5004,
                 "raw": 0,
@@ -339,14 +339,14 @@
                 "unresolved": 20,
                 "unsupported": 0
               },
-              "observed_items": 46398,
+              "observed_items": 46446,
               "reason_counts": {
                 "sagemaker_marketplace_batch_or_training": 265,
                 "sagemaker_marketplace_billable_inference": 3,
                 "sagemaker_marketplace_non_usage_term": 254,
                 "sagemaker_marketplace_public_pricing_unavailable": 20,
                 "sagemaker_marketplace_realtime_software_capacity": 652,
-                "sagemaker_outside_request_pricing": 40855,
+                "sagemaker_outside_request_pricing": 40903,
                 "sagemaker_public_hosting_capacity": 4025,
                 "sagemaker_public_invocation_meter": 324
               },
@@ -407,13 +407,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-pricing"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -425,13 +432,15 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_schema_changed",
+          "message": "Commercial source bundle contains rejected documents: [source]",
+          "outcome": "failed"
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 36,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -447,15 +456,46 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 0,
-              "diagnostics": [],
+              "diagnostic_count": 6,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Claude Opus 4.1 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Claude Sonnet 4 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Claude Opus 4.1 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "Claude Sonnet 4 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "tool overhead: Claude Opus 4.1 and Bedrock)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_model_unbound",
+                  "sample": "tool overhead: Claude Sonnet 4 and Bedrock)"
+                }
+              ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 24,
+                "excluded": 18,
                 "explicit_non_numeric": 0,
                 "normalized": 46,
                 "raw": 0,
-                "unbound": 0,
+                "unbound": 6,
                 "unresolved": 0,
                 "unsupported": 0
               },
@@ -471,8 +511,9 @@
                 "code_execution_web_assisted_bound": 1,
                 "fast_model_price_row": 2,
                 "inference_geo_multiplier_applied": 1,
-                "retired_partner_only_price": 8,
-                "token_overhead_included_in_usage": 16,
+                "pricing_model_unbound": 6,
+                "retired_partner_only_price": 4,
+                "token_overhead_included_in_usage": 14,
                 "web_search_service_bound": 1
               },
               "unit": "reviewed source pricing item"
@@ -598,7 +639,7 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 1
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "anthropic",
       "publication": "accepted",
       "signals": [
@@ -607,13 +648,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "anthropic-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -815,9 +863,9 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 16,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -838,7 +886,7 @@
                 {
                   "disposition": "unsupported",
                   "reason_code": "claude_price_label_unsupported",
-                  "sample": "Claude Opus 4.1 (retired, except on Bedrock and Claude Models on Google Cloud (Google managed))"
+                  "sample": "Claude Opus 4.1 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
                 },
                 {
                   "disposition": "unsupported",
@@ -848,7 +896,7 @@
                 {
                   "disposition": "unsupported",
                   "reason_code": "claude_price_label_unsupported",
-                  "sample": "Claude Sonnet 4 (retired, except on Bedrock and Claude Models on Google Cloud (Google managed))"
+                  "sample": "Claude Sonnet 4 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)"
                 },
                 {
                   "disposition": "unsupported",
@@ -982,8 +1030,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-claude-pricing"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1001,7 +1055,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1111,9 +1165,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1171,13 +1225,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -2138,43 +2199,35 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1443,
+            "parsed_models": 1446,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
       "models": {
-        "added": 9,
+        "added": 3,
         "added_model_refs": [
-          "huggingface/Intel/dpt-large-ade",
-          "huggingface/Rakib/roberta-base-on-cuad",
-          "huggingface/VietAI/vit5-base",
-          "huggingface/facebook/esm2_t33_650M_UR50D",
-          "huggingface/markussagen/xlm-roberta-longformer-base-4096",
-          "huggingface/michiyasunaga/BioLinkBERT-large",
-          "huggingface/thenlper/gte-large-zh",
-          "huggingface/vinai/bertweet-large",
-          "huggingface/yiyanghkust/finbert-esg"
+          "huggingface/GanymedeNil/text2vec-large-chinese",
+          "huggingface/facebook/deit-base-patch16-224",
+          "huggingface/klue/roberta-large"
         ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1443,
-        "previous": 1435,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/facebook/mbart-large-cc25"
-        ],
-        "unchanged": 1434
+        "current": 1446,
+        "previous": 1443,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1443
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1443,
+        "current_models": 1446,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 8
+          "unknown_models": 3
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2202,8 +2255,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1423,
-        "unknown_models": 1443
+        "unknown_model_refs_omitted": 1426,
+        "unknown_models": 1446
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
@@ -2969,7 +3022,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 29,
+            "consecutive_failures": 30,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -3573,7 +3626,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3597,7 +3650,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3621,7 +3674,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3645,7 +3698,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3669,7 +3722,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3693,7 +3746,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3717,7 +3770,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3741,7 +3794,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3765,7 +3818,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3789,7 +3842,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3797,7 +3850,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3805,7 +3858,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3813,7 +3866,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3821,7 +3874,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3829,7 +3882,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3837,7 +3890,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 270,
+                "consecutive_failures": 271,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -3948,8 +4001,8 @@
         "unchanged": 497
       },
       "pricing": {
-        "commercial_hash": "dca8216eae7d5d64d3434666fc27d22666458905f867a533571e1a49145f5774",
-        "outcome": "provenance_only",
+        "commercial_hash": "1b4808d7610d5ad6a46bd6260a64c9de66c471905290959ee3b2c70416960cb0",
+        "outcome": "commercial",
         "previous_commercial_hash": "dca8216eae7d5d64d3434666fc27d22666458905f867a533571e1a49145f5774"
       },
       "pricing_coverage": {
@@ -4507,22 +4560,22 @@
       }
     }
   ],
-  "publication": "complete",
+  "publication": "partial",
   "schema_version": 2,
   "totals": {
     "accepted": 20,
-    "added_models": 9,
+    "added_models": 3,
     "added_sources": 0,
     "changed_models": 0,
-    "changed_sources": 32,
-    "models": 4190,
-    "pricing_accepted": 19,
+    "changed_sources": 36,
+    "models": 4193,
+    "pricing_accepted": 18,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
-    "pricing_retained": 0,
+    "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
