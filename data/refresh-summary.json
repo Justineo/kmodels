@@ -1,8 +1,8 @@
 {
-  "catalog_version": "6b3f3083d363a3c46689b7473dec8cb997eb01c695f360941dc2909048a9dc71",
-  "generated_at": "2026-11-04T06:04:26.653Z",
+  "catalog_version": "b21c7218f53c431287baf68978c8638a28f6c91170a9fe5e4b31fda89ac0fda0",
+  "generated_at": "2026-11-04T07:04:06.505Z",
   "outcome": "changed",
-  "previous_catalog_version": "b42c531ccbde9421c4249cb795e1bcea7e2d19b2d4f17ddcd47422241bd63b48",
+  "previous_catalog_version": "6b3f3083d363a3c46689b7473dec8cb997eb01c695f360941dc2909048a9dc71",
   "providers": [
     {
       "attempt": {
@@ -178,7 +178,7 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "consecutive_failures": 4,
+            "consecutive_failures": 5,
             "last_success_at": "2026-11-04T02:04:15.059Z",
             "message": "Request aborted",
             "outcome": "fetch_failed",
@@ -2180,27 +2180,71 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1380,
+            "parsed_models": 1416,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1380,
-          "field": "models",
-          "previous": 1450
-        },
-        {
-          "current": 1380,
-          "field": "routes",
-          "previous": 1450
-        }
-      ],
       "models": {
-        "added": 10,
+        "added": 47,
         "added_model_refs": [
+          "huggingface/Angelakeke/RaTE-NER-Deberta",
+          "huggingface/BAAI/bge-reranker-base",
+          "huggingface/FacebookAI/xlm-roberta-large-finetuned-conll03-english",
+          "huggingface/HooshvareLab/bert-base-parsbert-uncased",
+          "huggingface/IlyaGusev/rut5_base_sum_gazeta",
+          "huggingface/Intel/dpt-large-ade",
+          "huggingface/Voicelab/herbert-base-cased-sentiment",
+          "huggingface/ai-forever/ru-en-RoSBERTa",
+          "huggingface/aubmindlab/bert-base-arabertv02-twitter",
+          "huggingface/basel/ATTACK-BERT",
+          "huggingface/bespin-global/klue-sroberta-base-continue-learning-by-mnr",
+          "huggingface/cross-encoder/ms-marco-TinyBERT-L2-v2",
+          "huggingface/dbmdz/bert-large-cased-finetuned-conll03-english",
+          "huggingface/dccuchile/bert-base-spanish-wwm-cased",
+          "huggingface/facebook/convnextv2-nano-1k-224",
+          "huggingface/google-bert/bert-base-chinese",
+          "huggingface/google-bert/bert-base-german-cased",
+          "huggingface/google-bert/bert-base-multilingual-uncased",
+          "huggingface/hotchpotch/japanese-reranker-small-v2",
+          "huggingface/ixa-ehu/roberta-eus-euscrawl-base-cased",
+          "huggingface/jhu-clsp/ettin-encoder-68m",
+          "huggingface/keepitreal/vietnamese-sbert",
+          "huggingface/klue/bert-base",
+          "huggingface/klue/roberta-base",
+          "huggingface/ku-nlp/deberta-v2-large-japanese-char-wwm",
+          "huggingface/martin-ha/toxic-comment-model",
+          "huggingface/metinovadilet/KyrgyzBert",
+          "huggingface/microsoft/swin-small-patch4-window7-224",
+          "huggingface/nlpaueb/legal-bert-base-uncased",
+          "huggingface/nlpaueb/sec-bert-base",
+          "huggingface/nvidia/segformer-b0-finetuned-cityscapes-512-1024",
+          "huggingface/openmmlab/upernet-convnext-tiny",
+          "huggingface/patronus-studio/wolf-defender-prompt-injection",
+          "huggingface/patronus-studio/wolf-defender-prompt-injection-small",
+          "huggingface/redmadrobot-rnd/rubert-base-pii-ner",
+          "huggingface/rizvandwiki/gender-classification-2",
+          "huggingface/sayeed99/segformer_b3_clothes",
+          "huggingface/sdadas/st-polish-paraphrase-from-mpnet",
+          "huggingface/sentence-transformers/all-mpnet-base-v1",
+          "huggingface/sentence-transformers/bert-base-nli-mean-tokens",
+          "huggingface/shi-labs/oneformer_ade20k_swin_tiny",
+          "huggingface/sileod/deberta-v3-large-tasksource-nli",
+          "huggingface/sshalimov04/ru-reranker-edge-150m",
+          "huggingface/textattack/bert-base-uncased-RTE",
+          "huggingface/thenlper/gte-large-zh",
+          "huggingface/wordcab/t5-small-email-summarizer",
+          "huggingface/yiyanghkust/finbert-esg"
+        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 1416,
+        "previous": 1380,
+        "removed": 11,
+        "removed_model_refs": [
           "huggingface/Dr-BERT/DrBERT-7GB",
+          "huggingface/allegro/herbert-base-cased",
           "huggingface/convaiinnovations/laya-typed-decisions",
           "huggingface/descript/dac_16khz",
           "huggingface/facebook/mbart-large-cc25",
@@ -2211,104 +2255,16 @@
           "huggingface/philschmid/bart-large-cnn-samsum",
           "huggingface/tencent/Hy-MT2-1.8B"
         ],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1380,
-        "previous": 1450,
-        "removed": 80,
-        "removed_model_refs": [
-          "huggingface/Angelakeke/RaTE-NER-Deberta",
-          "huggingface/Anwarkh1/Skin_Cancer-Image_Classification",
-          "huggingface/BAAI/bge-reranker-base",
-          "huggingface/BAAI/bge-small-en-v1.5",
-          "huggingface/CAMeL-Lab/bert-base-arabic-camelbert-mix",
-          "huggingface/FacebookAI/xlm-roberta-large-finetuned-conll03-english",
-          "huggingface/GanymedeNil/text2vec-large-chinese",
-          "huggingface/HooshvareLab/bert-base-parsbert-uncased",
-          "huggingface/IlyaGusev/rut5_base_sum_gazeta",
-          "huggingface/Intel/dpt-large-ade",
-          "huggingface/OpenAssistant/reward-model-deberta-v3-base",
-          "huggingface/Tropic-AI/moBERTo",
-          "huggingface/Twitter/twhin-bert-base",
-          "huggingface/VietAI/vit5-base",
-          "huggingface/Voicelab/herbert-base-cased-sentiment",
-          "huggingface/aari1995/German_Semantic_STS_V2",
-          "huggingface/ai-forever/ru-en-RoSBERTa",
-          "huggingface/aubmindlab/bert-base-arabertv02-twitter",
-          "huggingface/avichr/heBERT",
-          "huggingface/basel/ATTACK-BERT",
-          "huggingface/bespin-global/klue-sroberta-base-continue-learning-by-mnr",
-          "huggingface/ckiplab/bert-base-chinese-ner",
-          "huggingface/clarin-pl/roberta-polish-kgr10",
-          "huggingface/cross-encoder/ms-marco-TinyBERT-L2-v2",
-          "huggingface/dbmdz/bert-large-cased-finetuned-conll03-english",
-          "huggingface/dccuchile/bert-base-spanish-wwm-cased",
-          "huggingface/dima806/vehicle_10_types_image_detection",
-          "huggingface/facebook/convnextv2-nano-1k-224",
-          "huggingface/facebook/deit-base-patch16-224",
-          "huggingface/facebook/detr-resnet-50-panoptic",
-          "huggingface/google-bert/bert-base-chinese",
-          "huggingface/google-bert/bert-base-german-cased",
-          "huggingface/google-bert/bert-base-multilingual-uncased",
-          "huggingface/google/bigbird-roberta-large",
-          "huggingface/google/canine-c",
-          "huggingface/google/pegasus-xsum",
-          "huggingface/hfl/chinese-bert-wwm",
-          "huggingface/hotchpotch/japanese-reranker-small-v2",
-          "huggingface/hw2942/bert-base-chinese-finetuning-financial-news-sentiment-v2",
-          "huggingface/ixa-ehu/roberta-eus-euscrawl-base-cased",
-          "huggingface/jhgan/ko-sbert-multitask",
-          "huggingface/jhu-clsp/ettin-encoder-68m",
-          "huggingface/keepitreal/vietnamese-sbert",
-          "huggingface/klue/bert-base",
-          "huggingface/klue/roberta-base",
-          "huggingface/klue/roberta-large",
-          "huggingface/ku-nlp/deberta-v2-large-japanese-char-wwm",
-          "huggingface/llm-jp/llm-jp-modernbert-base",
-          "huggingface/markussagen/xlm-roberta-longformer-base-4096",
-          "huggingface/martin-ha/toxic-comment-model",
-          "huggingface/metinovadilet/KyrgyzBert",
-          "huggingface/michiyasunaga/BioLinkBERT-large",
-          "huggingface/microsoft/swin-small-patch4-window7-224",
-          "huggingface/mlburnham/Political_DEBATE_large_v1.0",
-          "huggingface/nlpaueb/legal-bert-base-uncased",
-          "huggingface/nlpaueb/sec-bert-base",
-          "huggingface/nvidia/mit-b2",
-          "huggingface/nvidia/segformer-b0-finetuned-cityscapes-512-1024",
-          "huggingface/openmmlab/upernet-convnext-tiny",
-          "huggingface/patronus-studio/wolf-defender-prompt-injection",
-          "huggingface/patronus-studio/wolf-defender-prompt-injection-small",
-          "huggingface/qilowoq/bge-reranker-v2-m3-en-ru",
-          "huggingface/redmadrobot-rnd/rubert-base-pii-ner",
-          "huggingface/rizvandwiki/gender-classification-2",
-          "huggingface/sayeed99/segformer_b3_clothes",
-          "huggingface/sbcBI/sentiment_analysis_model",
-          "huggingface/sdadas/st-polish-paraphrase-from-mpnet",
-          "huggingface/sentence-transformers/all-mpnet-base-v1",
-          "huggingface/sentence-transformers/bert-base-nli-mean-tokens",
-          "huggingface/severinsimmler/xlm-roberta-longformer-base-16384",
-          "huggingface/shi-labs/oneformer_ade20k_swin_tiny",
-          "huggingface/sileod/deberta-v3-large-tasksource-nli",
-          "huggingface/sshalimov04/ru-reranker-edge-150m",
-          "huggingface/textattack/bert-base-uncased-RTE",
-          "huggingface/textattack/bert-base-uncased-SST-2",
-          "huggingface/thenlper/gte-large-zh",
-          "huggingface/umm-maybe/AI-image-detector",
-          "huggingface/vinai/bertweet-large",
-          "huggingface/wordcab/t5-small-email-summarizer",
-          "huggingface/yiyanghkust/finbert-esg"
-        ],
-        "unchanged": 1370
+        "unchanged": 1369
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1380,
+        "current_models": 1416,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -70
+          "unknown_models": 36
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2325,6 +2281,7 @@
           "huggingface/Alibaba-NLP/gte-modernbert-base",
           "huggingface/Alibaba-NLP/gte-reranker-modernbert-base",
           "huggingface/AnasAlokla/multilingual_go_emotions",
+          "huggingface/Angelakeke/RaTE-NER-Deberta",
           "huggingface/AnnaWegmann/Style-Embedding",
           "huggingface/Arunavaonly/Bangla-twoclass-Sentiment-Analyzer",
           "huggingface/Ateeqq/ai-vs-human-image-detector",
@@ -2333,18 +2290,15 @@
           "huggingface/BAAI/bge-base-zh",
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en",
-          "huggingface/BAAI/bge-large-en-v1.5",
-          "huggingface/BAAI/bge-large-zh"
+          "huggingface/BAAI/bge-large-en-v1.5"
         ],
-        "unknown_model_refs_omitted": 1360,
-        "unknown_models": 1380
+        "unknown_model_refs_omitted": 1396,
+        "unknown_models": 1416
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -3002,7 +2956,7 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3036,7 +2990,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 19,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3111,7 +3065,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 34,
+            "consecutive_failures": 35,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -3163,20 +3117,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3380,9 +3327,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 102,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3586,26 +3533,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -3622,9 +3563,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3700,13 +3641,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "typesafe-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {}
@@ -3722,7 +3670,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3746,7 +3694,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3770,7 +3718,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3794,7 +3742,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3818,7 +3766,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3842,7 +3790,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3866,7 +3814,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3890,7 +3838,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3914,7 +3862,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 31,
+                "consecutive_failures": 32,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3938,7 +3886,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3946,7 +3894,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3954,7 +3902,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3962,7 +3910,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3970,7 +3918,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3978,7 +3926,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3986,7 +3934,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 275,
+                "consecutive_failures": 276,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -4097,9 +4045,9 @@
         "unchanged": 498
       },
       "pricing": {
-        "commercial_hash": "e4e13b0a7189743c09f8953fc39bab5a85d2be1d3f4c66fd99ee5f4b12f2645a",
+        "commercial_hash": "fa71b815c1b4ea40aea1d582e9539ea0be9e88b7f5535f10fac31ec6c3f8ed27",
         "outcome": "commercial",
-        "previous_commercial_hash": "e170002deb3b463ec102431e23035d71f0ca1f01be9bee7ac6676b1374aa3794"
+        "previous_commercial_hash": "e4e13b0a7189743c09f8953fc39bab5a85d2be1d3f4c66fd99ee5f4b12f2645a"
       },
       "pricing_coverage": {
         "current_models": 498,
@@ -4660,18 +4608,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 20,
-    "added_models": 10,
+    "added_models": 47,
     "added_sources": 0,
     "changed_models": 0,
-    "changed_sources": 35,
-    "models": 4128,
+    "changed_sources": 34,
+    "models": 4164,
     "pricing_accepted": 18,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
     "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 80,
+    "removed_models": 11,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
