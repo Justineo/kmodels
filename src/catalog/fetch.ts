@@ -3,6 +3,7 @@ import { createSign } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
+import { fireworksModelPaths } from "./fireworks.ts";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
 import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
@@ -1171,7 +1172,9 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
       /^\s*import\s+(?:[^'"\n]+\s+from\s+)?['"]([^'"]+)['"];?\s*$/gm,
     ))
       add(match[1]);
-  if (indexFormat === "html" || indexFormat === "mixed") {
+  if (source.extractor.kind === "fireworks-serverless") {
+    for (const path of fireworksModelPaths(body)) add(path);
+  } else if (indexFormat === "html" || indexFormat === "mixed") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
     if (crawl.includeScripts)

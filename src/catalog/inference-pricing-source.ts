@@ -9,6 +9,8 @@ export const sourceInferencePriceSchema = inferencePriceRuleSchema
   .omit({ provider_id: true, offer_refs: true })
   .extend({ offer_key: z.string().min(1), source_ref: z.string().min(1) });
 
+export type SourceInferencePrice = z.infer<typeof sourceInferencePriceSchema>;
+
 export const inferencePriceSourceSchema = z
   .strictObject({
     record: pricingSourceRecordSchema.extend({ provider_id: z.string().min(1) }),
