@@ -10,12 +10,18 @@ export const vercelPageSearchPriceSchema = z.strictObject({
 });
 export type VercelPageSearchPrice = z.infer<typeof vercelPageSearchPriceSchema>;
 
+export interface VercelPageSearchPrices {
+  prices: VercelPageSearchPrice[];
+  /** The canonical page published its own readable backing-model payload. */
+  modelObserved: boolean;
+}
+
 /** The model-detail payload owns displayed amounts; the pricing component owns their unit. */
-export function vercelPageSearchPrices(body: string): VercelPageSearchPrice[] {
+export function vercelPageSearchPrices(body: string): VercelPageSearchPrices {
   const $ = load(body);
   const canonical = $('link[rel="canonical"]').attr("href");
   const slug = canonical?.match(/^https:\/\/vercel\.com\/ai-gateway\/models\/([a-z0-9._-]+)$/)?.[1];
-  if (slug === undefined) return [];
+  if (slug === undefined) return { prices: [], modelObserved: false };
   const detail = z.tuple([
     z.literal("$"),
     z.string(),
@@ -28,8 +34,10 @@ export function vercelPageSearchPrices(body: string): VercelPageSearchPrice[] {
               chef: z.string().min(1),
               primaryModel: z.literal(slug),
               provider: z.string().min(1),
-              xSearchPostCost: decimal.optional(),
-              xSearchUserCost: decimal.optional(),
+              // A model that cannot use X search publishes no amounts here, and an unreadable
+              // amount is not a claim. Only exact decimals establish a page price.
+              xSearchPostCost: z.unknown().optional(),
+              xSearchUserCost: z.unknown().optional(),
             })
             .strip(),
         ),
@@ -37,6 +45,7 @@ export function vercelPageSearchPrices(body: string): VercelPageSearchPrice[] {
       .strip(),
   ]);
   const prices: VercelPageSearchPrice[] = [];
+  let modelObserved = false;
   for (const element of $("script").toArray()) {
     const payload = $(element)
       .text()
@@ -49,16 +58,15 @@ export function vercelPageSearchPrices(body: string): VercelPageSearchPrice[] {
         const parsed = detail.safeParse(JSON.parse(line.slice(line.indexOf(":") + 1)));
         if (!parsed.success) continue;
         for (const model of parsed.data[3].backingModels) {
-          if (model.xSearchPostCost === undefined && model.xSearchUserCost === undefined) continue;
+          modelObserved = true;
+          const posts = decimal.safeParse(model.xSearchPostCost);
+          const profiles = decimal.safeParse(model.xSearchUserCost);
+          if (!posts.success && !profiles.success) continue;
           prices.push({
             model_id: `${model.chef}/${model.primaryModel}`,
             provider: model.provider,
-            ...(model.xSearchPostCost === undefined
-              ? {}
-              : { posts_per_thousand: model.xSearchPostCost }),
-            ...(model.xSearchUserCost === undefined
-              ? {}
-              : { profiles_per_thousand: model.xSearchUserCost }),
+            ...(posts.success ? { posts_per_thousand: posts.data } : {}),
+            ...(profiles.success ? { profiles_per_thousand: profiles.data } : {}),
           });
         }
       }
@@ -66,7 +74,7 @@ export function vercelPageSearchPrices(body: string): VercelPageSearchPrice[] {
       // Unreadable optional Flight data cannot establish a commercial claim.
     }
   }
-  return prices;
+  return { prices, modelObserved };
 }
 
 export const vercelPricingContractsSchema = z.strictObject({

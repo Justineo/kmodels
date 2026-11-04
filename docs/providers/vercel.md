@@ -115,6 +115,10 @@ units. These become independent native-search fees with caller-supplied fetched-
 They do not borrow another seller's usage fields. Endpoint `x_search_post`/`x_search_user` observations
 converge only when they agree exactly after scaling; absent, duplicate, malformed or disagreeing page
 claims retain the endpoint's raw evidence. Field names alone do not establish a denominator.
+A canonical page whose own backing model publishes no X-search amounts is not a contract violation:
+the page is accepted with no search prices, so a model that cannot use X search keeps the endpoint's
+raw meter instead of failing the dependency. Only a page with no readable canonical title or backing
+model payload raises the constraint failure.
 
 The image guide's AI SDK example returns `const { images } = await generateImage(...)`; that
 returned array is the completed-image quantity. Older examples that expose the same result as

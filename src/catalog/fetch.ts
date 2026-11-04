@@ -1868,11 +1868,11 @@ function normalizedText(value: string): string {
 export function normalizeVercelModelPage(body: string, searchOnly = false): string {
   const $ = load(body);
   const title = normalizedText($("h1").first().text());
-  const searchPrices = vercelPageSearchPrices(body);
+  const { prices: searchPrices, modelObserved } = vercelPageSearchPrices(body);
   if (searchOnly) {
     assertSourceConstraint(
-      "Vercel model page omitted exact search prices",
-      title !== "" && searchPrices.length > 0,
+      "Vercel model page omitted its backing-model pricing payload",
+      title !== "" && modelObserved,
       body,
     );
     return JSON.stringify({ title, search_prices: searchPrices });
