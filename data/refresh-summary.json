@@ -1,8 +1,8 @@
 {
-  "catalog_version": "6dbcb48d112038d70dac591c6a0a6236ae778cfd94c833f53e9fe33c5cfd4930",
-  "generated_at": "2026-11-04T22:02:48.884Z",
+  "catalog_version": "2a0b426defa2122cce26075c500f0c25e0a8cf2b2bb906a08b30d28eae915131",
+  "generated_at": "2026-11-04T23:02:47.511Z",
   "outcome": "changed",
-  "previous_catalog_version": "d2158517dcf453ff05d5ecf98e4e3da957960fb36d73a7aff954019a4205db40",
+  "previous_catalog_version": "6dbcb48d112038d70dac591c6a0a6236ae778cfd94c833f53e9fe33c5cfd4930",
   "providers": [
     {
       "attempt": {
@@ -14,6 +14,21 @@
           {
             "content_changed": true,
             "contract_findings": [
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "0a50676c03d01eb7",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/inference-pricing/profile-geography/us-gov.openai.gpt-5.6-luna"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
               {
                 "diagnostic_count": 1,
                 "diagnostics": [
@@ -39,6 +54,21 @@
                     "kind": "unknown_value",
                     "observed": "string",
                     "path": "/inference-pricing/request-id-meaning/https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.md"
+                  }
+                ],
+                "disposition": "accept_with_signal",
+                "observed_items": 1
+              },
+              {
+                "diagnostic_count": 1,
+                "diagnostics": [
+                  {
+                    "affected_items": 1,
+                    "expected": "reviewed source contract",
+                    "fingerprint": "f51ca0743ab4e36d",
+                    "kind": "unknown_value",
+                    "observed": "string",
+                    "path": "/inference-pricing/profile-geography/us-gov.openai.gpt-5.6-terra"
                   }
                 ],
                 "disposition": "accept_with_signal",
@@ -178,10 +208,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-11-04T21:02:45.737Z",
-            "message": "Request aborted",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 124,
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -189,14 +219,814 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "aliases": 2,
+          "availability": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "global.openai.gpt-5.6-luna",
+                  "in.openai.gpt-5.6-luna",
+                  "us-gov.openai.gpt-5.6-luna",
+                  "us.openai.gpt-5.6-luna"
+                ],
+                "path": "aliases",
+                "previous": [
+                  "global.openai.gpt-5.6-luna",
+                  "in.openai.gpt-5.6-luna",
+                  "us.openai.gpt-5.6-luna"
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "aliases",
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-5.6-luna"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "global.openai.gpt-5.6-terra",
+                  "in.openai.gpt-5.6-terra",
+                  "us-gov.openai.gpt-5.6-terra",
+                  "us.openai.gpt-5.6-terra"
+                ],
+                "path": "aliases",
+                "previous": [
+                  "global.openai.gpt-5.6-terra",
+                  "in.openai.gpt-5.6-terra",
+                  "us.openai.gpt-5.6-terra"
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-gov-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-mantle/in-region",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/geo",
+                    "region": "us-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "af-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-northeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-4"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-5"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-6"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ap-southeast-7"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "ca-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-central-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-north-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-south-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "eu-west-3"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "il-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-central-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "me-south-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "sa-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-east-2"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-1"
+                  },
+                  {
+                    "deployment_type": "bedrock-runtime/global",
+                    "region": "us-west-2"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "aliases",
+              "availability"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-5.6-terra"
+          }
+        ],
         "current": 147,
         "previous": 147,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 147
+        "unchanged": 145
       },
       "pricing": {
         "commercial_hash": "cc9264882968c82b3d9d57328e345a24d051d32c3c226a3fbeb3331aed9faa33",
@@ -248,10 +1078,10 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 2,
-        "source_contract_drift": 2,
-        "source_fetch_failed": 1
+        "scope_limited": 1,
+        "source_contract_drift": 4
       }
     },
     {
@@ -269,9 +1099,9 @@
             "source_id": "sagemaker-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 640,
             "source_id": "sagemaker-sdk"
           },
@@ -355,9 +1185,9 @@
             "source_id": "sagemaker-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 620,
             "source_id": "sagemaker-api-us-west-2"
           }
@@ -366,14 +1196,247 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 7,
+        "changed_fields": {
+          "deployment": 7,
+          "modalities": 7,
+          "model_card": 3
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/deepseek-reasoning-deepseek-v4-1-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.2",
+                "path": "deployment.package_version",
+                "previous": "1.0.1"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-od-nvidia-locateanything-3b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.2",
+                "path": "deployment.package_version",
+                "previous": "1.0.1"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-txt2img-black-forest-labs-flux-2-small-decoder"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.8.3",
+                "path": "deployment.package_version",
+                "previous": "1.8.2"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-4-e4b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.3.0",
+                "path": "deployment.package_version",
+                "previous": "1.2.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "video",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-nvidia-nemotron3-nano-omni-30ba3b-reasoning-fp8"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license",
+                "previous": "Apache 2.0"
+              },
+              {
+                "current": "1.1.3",
+                "path": "deployment.package_version",
+                "previous": "1.1.2"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qwen3-vl-8b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.21",
+                "path": "deployment.package_version",
+                "previous": "1.0.20"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g5.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.10.2",
+                    "instance_types": [
+                      "ml.g4dn.xlarge",
+                      "ml.g5.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.10.2",
+                    "instance_types": [
+                      "ml.g4dn.xlarge",
+                      "ml.g5.2xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/model-inpainting-stabilityai-stable-diffusion2-inpainting-fp16"
+          }
+        ],
         "current": 640,
         "previous": 640,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 640
+        "unchanged": 633
       },
       "pricing": {
         "commercial_hash": "c1d2db48534475edbeb4ffcbe62770abbe9639de383dd1a2ff107dbe182d3d45",
@@ -407,20 +1470,32 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
+            "source_id": "sagemaker-api-us-west-2"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
             "source_id": "sagemaker-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-sdk"
           }
         ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -1059,9 +2134,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1212,13 +2287,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-catalog"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1234,9 +2316,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 49,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1277,9 +2359,9 @@
             "source_id": "cohere-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 22,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1392,7 +2474,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "cohere-pricing"
+            "source_id": "cohere-models"
           }
         ],
         "current": 3,
@@ -1792,21 +2874,21 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 67,
+            "outcome": "changed",
+            "parsed_models": 68,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 67,
+              "model_records": 68,
               "normalized_facts": 868,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 62,
               "raw_facts": 21,
               "raw_models": 6,
-              "unknown_models": 5
+              "unknown_models": 6
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -1846,12 +2928,14 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 1,
+        "added_model_refs": [
+          "databricks/databricks-kimi-k3-1-pro"
+        ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 67,
+        "current": 68,
         "previous": 67,
         "removed": 0,
         "removed_model_refs": [],
@@ -1863,18 +2947,20 @@
         "previous_commercial_hash": "3b3eff957f48a092d2fd18aace76b3f26d967de6569f2668c8fce5df58a2fcac"
       },
       "pricing_coverage": {
-        "current_models": 67,
+        "current_models": 68,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 0
+          "unknown_models": 1
         },
         "normalized_rate_models": 60,
         "not_applicable_models": 0,
         "offer_models": 67,
         "raw_fact_models": 8,
-        "unknown_model_refs": [],
+        "unknown_model_refs": [
+          "databricks/databricks-kimi-k3-1-pro"
+        ],
         "unknown_model_refs_omitted": 0,
-        "unknown_models": 0
+        "unknown_models": 1
       },
       "pricing_publication": "accepted",
       "provider_id": "databricks",
@@ -1883,13 +2969,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2086,8 +3179,8 @@
       },
       "pricing": {
         "commercial_hash": "1ca3c32db44333e5e89889127a8fd4f4878a508ded79d0bd4a7fe2488f77414f",
-        "outcome": "commercial",
-        "previous_commercial_hash": "f1f78cddeddf6b06d4cafa0258388b4106e135edb6321d32ad1e97c47931aec3"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "1ca3c32db44333e5e89889127a8fd4f4878a508ded79d0bd4a7fe2488f77414f"
       },
       "pricing_coverage": {
         "current_models": 27,
@@ -2296,48 +3389,37 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1447,
+            "parsed_models": 1452,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1447,
-          "field": "models",
-          "previous": 1451
-        },
-        {
-          "current": 1447,
-          "field": "routes",
-          "previous": 1451
-        }
-      ],
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1447,
-        "previous": 1451,
-        "removed": 4,
-        "removed_model_refs": [
+        "added": 5,
+        "added_model_refs": [
           "huggingface/Helsinki-NLP/opus-mt-en-de",
+          "huggingface/deepvk/USER-bge-m3",
           "huggingface/mrm8488/bert-mini2bert-mini-finetuned-cnn_daily_mail-summarization",
           "huggingface/nvidia/segformer-b3-finetuned-ade-512-512",
           "huggingface/utrobinmv/t5_translate_en_ru_zh_small_1024"
         ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 1452,
+        "previous": 1447,
+        "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 1447
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1447,
+        "current_models": 1452,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -4
+          "unknown_models": 5
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2365,15 +3447,13 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1427,
-        "unknown_models": 1447
+        "unknown_model_refs_omitted": 1432,
+        "unknown_models": 1452
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -2487,7 +3567,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 13,
+            "consecutive_failures": 14,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2664,7 +3744,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 9,
+                "consecutive_failures": 10,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2724,7 +3804,7 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -2758,7 +3838,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 19,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2833,7 +3913,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 49,
+            "consecutive_failures": 50,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2885,13 +3965,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "mistral-pricing"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3280,9 +4367,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3386,14 +4473,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-accounting"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3411,7 +4492,7 @@
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -3645,7 +4726,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3653,7 +4734,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3661,7 +4742,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3669,7 +4750,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3677,7 +4758,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3685,7 +4766,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3693,7 +4774,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -3701,7 +4782,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -3709,7 +4790,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -3717,7 +4798,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -3725,7 +4806,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -3733,7 +4814,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -3741,7 +4822,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -3749,7 +4830,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -3757,7 +4838,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -3765,7 +4846,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 290,
+                "consecutive_failures": 291,
                 "dependency_id": "vercel-models/endpoints/3fcdf7b90d0d428c39e44b430e7d5b337fe9ab2b3da07e7e1fe56d133e1f2ece",
                 "http_status": 404,
                 "impact": "claim",
@@ -3866,304 +4947,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "routes": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "digitalocean",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "inference-net",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "minimax",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "nebius",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "parasail",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "togetherai",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "inference-net",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "minimax",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "nebius",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "parasail",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "togetherai",
-                    "provider_model_id": "minimax/minimax-m3.1-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/minimax/minimax-m3.1-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "inference-net",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "modal",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "moonshotai",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "morph",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "nebius",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "parasail",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "togetherai",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "wafer",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "inference-net",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "modal",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "moonshotai",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "nebius",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "togetherai",
-                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/moonshotai/kimi-k3.1-pro"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 498,
         "previous": 498,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 496
+        "unchanged": 498
       },
       "pricing": {
-        "commercial_hash": "10683c6f1ae8047b8dfa5ba0f39f6b2ef1d3bee3531af96be733cc4aa8e2298e",
+        "commercial_hash": "a2eaf5fde98516cea55d3f26d26b8d7085505cfe173797b5581f6337fdb0a7b7",
         "outcome": "commercial",
-        "previous_commercial_hash": "a8a85c900a43e38cb8dfee26d9413588f4bacf3f204652a62ed6fb1691ed7506"
+        "previous_commercial_hash": "10683c6f1ae8047b8dfa5ba0f39f6b2ef1d3bee3531af96be733cc4aa8e2298e"
       },
       "pricing_coverage": {
         "current_models": 498,
@@ -4723,18 +5519,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 22,
-    "added_models": 0,
+    "added_models": 6,
     "added_sources": 0,
-    "changed_models": 2,
-    "changed_sources": 34,
-    "models": 4390,
+    "changed_models": 9,
+    "changed_sources": 38,
+    "models": 4396,
     "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
     "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
-    "removed_models": 4,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
