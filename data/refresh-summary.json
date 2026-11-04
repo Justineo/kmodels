@@ -1,8 +1,8 @@
 {
-  "catalog_version": "cc5c431507156aaaca8111d082b9a48e7e3c19a48ba1ba7f6d16a0b0ec268a4b",
-  "generated_at": "2026-11-04T08:04:17.626Z",
+  "catalog_version": "fbc7724e0a26be7fce9c30b90ced3c58c89ba128972ea378ddf35bf6c2cb1e9c",
+  "generated_at": "2026-11-04T09:03:52.310Z",
   "outcome": "changed",
-  "previous_catalog_version": "b21c7218f53c431287baf68978c8638a28f6c91170a9fe5e4b31fda89ac0fda0",
+  "previous_catalog_version": "cc5c431507156aaaca8111d082b9a48e7e3c19a48ba1ba7f6d16a0b0ec268a4b",
   "providers": [
     {
       "attempt": {
@@ -178,7 +178,7 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "consecutive_failures": 6,
+            "consecutive_failures": 7,
             "last_success_at": "2026-11-04T02:04:15.059Z",
             "message": "Request aborted",
             "outcome": "fetch_failed",
@@ -270,16 +270,16 @@
             "source_id": "sagemaker-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 640,
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 640,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -356,9 +356,9 @@
             "source_id": "sagemaker-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 620,
             "source_id": "sagemaker-api-us-west-2"
           }
@@ -367,14 +367,3447 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 79,
+        "changed_fields": {
+          "deployment": 79,
+          "modalities": 49,
+          "model_card": 65
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "1.0.3",
+                "path": "deployment.package_version",
+                "previous": "1.0.2"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-img2img-flux-2-klein-base-4b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.1.24",
+                "path": "deployment.package_version",
+                "previous": "1.1.23"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-ahxt-litellama-460m-1t"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.3.18",
+                "path": "deployment.package_version",
+                "previous": "1.3.17"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-ai-forever-mgpt"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.4.18",
+                "path": "deployment.package_version",
+                "previous": "1.4.17"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-calm2-7b-chat-bf16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-diffusiongemma-26b-a4b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.2.21",
+                "path": "deployment.package_version",
+                "previous": "1.2.20"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-dolphin-2-5-mixtral-8x7b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.1.22",
+                "path": "deployment.package_version",
+                "previous": "1.1.21"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-dolphin-2-7-mixtral-8x7b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "32K-128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.4.0",
+                "path": "deployment.package_version",
+                "previous": "1.3.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-falcon-h1-1-5b-deep-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Gemma",
+                "path": "model_card.license"
+              },
+              {
+                "current": "10B-70B",
+                "path": "model_card.size"
+              },
+              {
+                "current": "1.0.21",
+                "path": "deployment.package_version",
+                "previous": "1.0.19"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-gemma-2-27b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Gemma",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.0.22",
+                "path": "deployment.package_version",
+                "previous": "1.0.21"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-gemma-2-2b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Gemma",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.0.23",
+                "path": "deployment.package_version",
+                "previous": "1.0.21"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-gemma-2-2b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Gemma",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.1.18",
+                "path": "deployment.package_version",
+                "previous": "1.1.17"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-gemma-2-9b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Gemma",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.1.20",
+                "path": "deployment.package_version",
+                "previous": "1.1.18"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-gemma-2-9b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.2.24",
+                "path": "deployment.package_version",
+                "previous": "1.2.22"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-huggingfaceh4-zephyr-7b-beta"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-inkling-small"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.3",
+                "path": "deployment.package_version",
+                "previous": "1.1.2"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-kimi-k2-5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.3.18",
+                "path": "deployment.package_version",
+                "previous": "1.3.17"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-mistral-7b-openorca-gptq"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "7B"
+              },
+              {
+                "current": "1.0.25",
+                "path": "deployment.package_version",
+                "previous": "1.0.24"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-nexusflow-starling-lm-7b-beta"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "Llama 3 Community License",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.1.19",
+                "path": "deployment.package_version",
+                "previous": "1.1.18"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-nousresearch-hermes-2-pro-llama-3-8B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-ornith-1-0-35b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-ornith-1-0-9b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-qwen3-5-122b-a10b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-qwen3-6-27b-fp8"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "4K-8K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "BigCode Open RAIL-M v1",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.2.16",
+                "path": "deployment.package_version",
+                "previous": "1.2.15"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-llm-starcoderbase"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": [
+                  "Afrikaans",
+                  "Amharic",
+                  "Arabic",
+                  "Azerbaijani",
+                  "Belarusian",
+                  "Bulgarian",
+                  "Bangla",
+                  "Bosnian",
+                  "Catalan",
+                  "Czech",
+                  "Welsh",
+                  "Danish",
+                  "German",
+                  "Greek",
+                  "English",
+                  "Esperanto",
+                  "Spanish",
+                  "Estonian",
+                  "Basque",
+                  "Persian",
+                  "Finnish",
+                  "French",
+                  "Irish",
+                  "Galician",
+                  "Gujarati",
+                  "Hausa",
+                  "Hebrew",
+                  "Hindi",
+                  "Croatian",
+                  "Hungarian",
+                  "Armenian",
+                  "Indonesian",
+                  "Italian",
+                  "Japanese",
+                  "Javanese",
+                  "Georgian",
+                  "Kazakh",
+                  "Khmer",
+                  "Kannada",
+                  "Korean",
+                  "Kurdish",
+                  "Kyrgyz",
+                  "Latin",
+                  "Lao",
+                  "Lithuanian",
+                  "Latvian",
+                  "Malagasy",
+                  "Macedonian",
+                  "Malayalam",
+                  "Mongolian"
+                ],
+                "path": "model_card.languages",
+                "previous": [
+                  "Afrikaans",
+                  "Amharic",
+                  "Arabic",
+                  "Azerbaijani",
+                  "Belarusian",
+                  "Bulgarian",
+                  "Bengali",
+                  "Bosnian",
+                  "Catalan",
+                  "Czech",
+                  "Welsh",
+                  "Danish",
+                  "German",
+                  "Greek",
+                  "English",
+                  "Esperanto",
+                  "Spanish",
+                  "Estonian",
+                  "Basque",
+                  "Persian",
+                  "Finnish",
+                  "French",
+                  "Irish",
+                  "Galician",
+                  "Gujarati",
+                  "Hausa",
+                  "Hebrew",
+                  "Hindi",
+                  "Croatian",
+                  "Hungarian",
+                  "Armenian",
+                  "Indonesian",
+                  "Italian",
+                  "Japanese",
+                  "Javanese",
+                  "Georgian",
+                  "Kazakh",
+                  "Khmer",
+                  "Kannada",
+                  "Korean",
+                  "Kurdish",
+                  "Kyrgyz",
+                  "Latin",
+                  "Lao",
+                  "Lithuanian",
+                  "Latvian",
+                  "Malagasy",
+                  "Macedonian",
+                  "Malayalam",
+                  "Mongolian"
+                ]
+              },
+              {
+                "current": "2.1.22",
+                "path": "deployment.package_version",
+                "previous": "2.1.21"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-sentencesimilarity-multilingual-e5-base"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-base-cased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-base-multilingual-cased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-base-multilingual-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-base-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-large-cased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-large-cased-whole-word-masking"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-large-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-bert-large-uncased-whole-word-masking"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-distilbert-base-cased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-distilbert-base-multilingual-cased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-roberta-base"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-roberta-base-openai-detector"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-roberta-large"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "MIT",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "2.3.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-roberta-large-openai-detector"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "CC-BY-NC-4.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-xlm-clm-ende-1024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "CC-BY-NC-4.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-xlm-mlm-ende-1024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "CC-BY-NC-4.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-xlm-mlm-enro-1024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "CC-BY-NC-4.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-xlm-mlm-tlm-xnli15-1024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "Hugging Face",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "CC-BY-NC-4.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.12",
+                "path": "deployment.package_version",
+                "previous": "3.0.11"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "huggingface",
+                    "framework_version": "1.7.1",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-spc-xlm-mlm-xnli15-1024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textembedding-all-MiniLM-L12-v2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.3",
+                "path": "deployment.package_version",
+                "previous": "1.0.2"
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textembedding-paraphrase-multilingual-MiniLM-L12-v2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.3",
+                "path": "deployment.package_version",
+                "previous": "1.0.2"
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textembedding-qwen3-embedding-0-6b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "2B"
+              },
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textembedding-qwen3-vl-embedding-2b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textembedding-redis-langcache-embed-v3-small"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": "gpt2",
+                "path": "model_card.upstream_id"
+              },
+              {
+                "current": "3.1.3",
+                "path": "deployment.package_version",
+                "previous": "3.1.2"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textgeneration-gpt2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": [
+                  "English"
+                ],
+                "path": "model_card.languages"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.0.23",
+                "path": "deployment.package_version",
+                "previous": "1.0.22"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-instruct-3Bv1fp16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "<4K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": [
+                  "English"
+                ],
+                "path": "model_card.languages"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "1.0.23",
+                "path": "deployment.package_version",
+                "previous": "1.0.22"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-textgeneration1-redpajama-incite-instruct-7B1fp16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.2",
+                "path": "deployment.package_version",
+                "previous": "1.0.1"
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-tts-qwen3-tts-customvoice"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "3.0.10",
+                "path": "deployment.package_version",
+                "previous": "3.0.9"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-txt2img-black-forest-labs-flux-1-schnell"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "8K-32K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-baidu-unlimited-ocr"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.2.0",
+                "path": "deployment.package_version",
+                "previous": "1.1.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-command-a-plus-05-2026-w4a4"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "2.0.12",
+                "path": "deployment.package_version",
+                "previous": "2.0.11"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-3-27b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.11",
+                "path": "deployment.package_version",
+                "previous": "1.0.10"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-3-4b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-4-12b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.32.1",
+                "path": "deployment.package_version",
+                "previous": "1.32.0"
+              }
+            ],
+            "fields": [
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-4-31b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "32K-128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1B-10B",
+                "path": "model_card.size",
+                "previous": "2B"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-gemma-4-e2b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Gated",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license",
+                "previous": "Apache 2.0"
+              },
+              {
+                "current": "3.1.13",
+                "path": "deployment.package_version",
+                "previous": "3.1.12"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-mistral-pixtral-12b-2409"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": [
+                  "English",
+                  "French",
+                  "German",
+                  "Spanish",
+                  "Portuguese",
+                  "Italian",
+                  "Japanese",
+                  "Korean",
+                  "Russian",
+                  "Chinese",
+                  "Arabic",
+                  "Persian",
+                  "Indonesian",
+                  "Malay",
+                  "Nepali",
+                  "Polish",
+                  "Romanian",
+                  "Serbian",
+                  "Swedish",
+                  "Turkish",
+                  "Ukrainian",
+                  "Vietnamese",
+                  "Hindi",
+                  "Bangla"
+                ],
+                "path": "model_card.languages",
+                "previous": [
+                  "English",
+                  "French",
+                  "German",
+                  "Spanish",
+                  "Portuguese",
+                  "Italian",
+                  "Japanese",
+                  "Korean",
+                  "Russian",
+                  "Chinese",
+                  "Arabic",
+                  "Persian",
+                  "Indonesian",
+                  "Malay",
+                  "Nepali",
+                  "Polish",
+                  "Romanian",
+                  "Serbian",
+                  "Swedish",
+                  "Turkish",
+                  "Ukrainian",
+                  "Vietnamese",
+                  "Hindi",
+                  "Bengali"
+                ]
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license",
+                "previous": "Apache 2.0"
+              },
+              {
+                "current": "1.2.3",
+                "path": "deployment.package_version",
+                "previous": "1.2.2"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-mistral-small-3-1-24b-base-2503"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": [
+                  "English",
+                  "French",
+                  "German",
+                  "Spanish",
+                  "Portuguese",
+                  "Italian",
+                  "Japanese",
+                  "Korean",
+                  "Russian",
+                  "Chinese",
+                  "Arabic",
+                  "Persian",
+                  "Indonesian",
+                  "Malay",
+                  "Nepali",
+                  "Polish",
+                  "Romanian",
+                  "Serbian",
+                  "Swedish",
+                  "Turkish",
+                  "Ukrainian",
+                  "Vietnamese",
+                  "Hindi",
+                  "Bangla"
+                ],
+                "path": "model_card.languages",
+                "previous": [
+                  "English",
+                  "French",
+                  "German",
+                  "Spanish",
+                  "Portuguese",
+                  "Italian",
+                  "Japanese",
+                  "Korean",
+                  "Russian",
+                  "Chinese",
+                  "Arabic",
+                  "Persian",
+                  "Indonesian",
+                  "Malay",
+                  "Nepali",
+                  "Polish",
+                  "Romanian",
+                  "Serbian",
+                  "Swedish",
+                  "Turkish",
+                  "Ukrainian",
+                  "Vietnamese",
+                  "Hindi",
+                  "Bengali"
+                ]
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license",
+                "previous": "Apache 2.0"
+              },
+              {
+                "current": "1.2.2",
+                "path": "deployment.package_version",
+                "previous": "1.2.1"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-mistral-small-3-2-24b-instruct-2506"
+          },
+          {
+            "field_changes": [
+              {
+                "current": ">128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "video",
+                  "audio"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-nemotron-3-nano-omni-30b-a3b-reasoning-bf16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-nvidia-nemotron-3-5-bolt-74b-a9b-bf16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-nvidia-nemotron-3-5-super-vl-120b-a12b-bf16"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.0.1",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-nvidia-nemotron-3-5-super-vl-120b-a12b-nvfp4"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "32K-128K",
+                "path": "model_card.context_window"
+              },
+              {
+                "current": "1.1.0",
+                "path": "deployment.package_version",
+                "previous": "1.0.0"
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-olmocr-2-7b-1025"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access",
+                "previous": "Open Weight"
+              },
+              {
+                "current": "1.1.4",
+                "path": "deployment.package_version",
+                "previous": "1.1.3"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qvq-72b-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.14.1",
+                "path": "deployment.package_version",
+                "previous": "1.14.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qwen3-5-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.15.1",
+                "path": "deployment.package_version",
+                "previous": "1.15.0"
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "image",
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qwen3-5-4b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.25.1",
+                "path": "deployment.package_version",
+                "previous": "1.25.0"
+              }
+            ],
+            "fields": [
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qwen3-6-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "1.3.1",
+                "path": "deployment.package_version",
+                "previous": "1.3.0"
+              }
+            ],
+            "fields": [
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/huggingface-vlm-qwen3-8-27b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "MXNet",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "2.0.20",
+                "path": "deployment.package_version",
+                "previous": "2.0.19"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/mxnet-tcembedding-robertafin-base-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "MXNet",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "2.0.20",
+                "path": "deployment.package_version",
+                "previous": "2.0.19"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/mxnet-tcembedding-robertafin-base-wiki-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "MXNet",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "2.0.20",
+                "path": "deployment.package_version",
+                "previous": "2.0.19"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/mxnet-tcembedding-robertafin-large-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Open",
+                "path": "model_card.access"
+              },
+              {
+                "current": "MXNet",
+                "path": "model_card.framework"
+              },
+              {
+                "current": "Apache-2.0",
+                "path": "model_card.license"
+              },
+              {
+                "current": "2.0.20",
+                "path": "deployment.package_version",
+                "previous": "2.0.19"
+              },
+              {
+                "current": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.g4dn.xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ],
+                "path": "deployment.profiles",
+                "previous": [
+                  {
+                    "configurations": [],
+                    "context_settings": [],
+                    "default_instance_type": "ml.p3.2xlarge",
+                    "framework": "mxnet",
+                    "framework_version": "1.9.0",
+                    "instance_types": [
+                      "ml.c5.2xlarge",
+                      "ml.c5.xlarge",
+                      "ml.g4dn.xlarge",
+                      "ml.m5.large",
+                      "ml.m5.xlarge",
+                      "ml.p3.2xlarge"
+                    ],
+                    "name": "default"
+                  }
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [
+                  "embedding"
+                ],
+                "path": "modalities.output",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "model_card",
+              "deployment",
+              "modalities"
+            ],
+            "model_ref": "amazon-sagemaker/mxnet-tcembedding-robertafin-large-wiki-uncased"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "3.23.0",
+                "path": "deployment.package_version",
+                "previous": "3.22.1"
+              }
+            ],
+            "fields": [
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/openai-reasoning-gpt-oss-120b"
+          }
+        ],
         "current": 640,
         "previous": 640,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 640
+        "unchanged": 561
       },
       "pricing": {
         "commercial_hash": "c1d2db48534475edbeb4ffcbe62770abbe9639de383dd1a2ff107dbe182d3d45",
@@ -408,13 +3841,32 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-api-us-west-2"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-sdk"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -1631,94 +5083,17 @@
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 626,
-          "field": "availability",
-          "previous": 627
-        }
-      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "availability": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "mu",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "ptu_v2",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-plus-2026-04-02"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 248,
         "previous": 248,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 247
+        "unchanged": 248
       },
       "pricing": {
         "commercial_hash": "b0ef2607a7ee368680253fc9d9a95982e13f494439726f78aa7947dfe76c05bb",
@@ -1748,7 +5123,6 @@
       "provider_id": "dashscope",
       "publication": "accepted",
       "signals": [
-        "catalog_count_decrease",
         "partial_contract_mismatch"
       ],
       "sources": {
@@ -1967,13 +5341,15 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_schema_changed",
+          "message": "Commercial source bundle contains rejected documents: [source]",
+          "outcome": "failed"
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 4,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1989,36 +5365,39 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 0,
-              "diagnostics": [],
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "commercial_source_contract_drift",
+                  "sample": "Search/Fetch: Missing or ambiguous server-tool billing policy"
+                }
+              ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 2,
+                "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 33,
+                "normalized": 27,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 0,
+                "unresolved": 1,
                 "unsupported": 0
               },
-              "observed_items": 35,
+              "observed_items": 28,
               "reason_counts": {
                 "billing_period_rule_verified": 2,
+                "commercial_source_contract_drift": 1,
                 "legacy_redirect_bound": 1,
-                "price_fact_normalized": 24,
-                "provider_service_pricing_bound": 4,
-                "service_amount_authority_price_page": 2,
-                "service_billing_rule_verified": 1,
-                "service_transition_verified": 1
+                "price_fact_normalized": 24
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "deepseek-catalog"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 7,
             "source_id": "deepseek-updates"
           },
@@ -2062,20 +5441,33 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 0
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "deepseek",
       "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "deepseek-catalog"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "deepseek-updates"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2251,39 +5643,198 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1423,
+            "parsed_models": 1276,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
+      "count_decreases": [
+        {
+          "current": 1276,
+          "field": "models",
+          "previous": 1423
+        },
+        {
+          "current": 1276,
+          "field": "routes",
+          "previous": 1423
+        }
+      ],
       "models": {
-        "added": 7,
+        "added": 3,
         "added_model_refs": [
-          "huggingface/OpenAssistant/reward-model-deberta-v3-base",
-          "huggingface/Tropic-AI/moBERTo",
-          "huggingface/VietAI/vit5-base",
-          "huggingface/dima806/vehicle_10_types_image_detection",
-          "huggingface/hw2942/bert-base-chinese-finetuning-financial-news-sentiment-v2",
-          "huggingface/michiyasunaga/BioLinkBERT-large",
-          "huggingface/vinai/bertweet-large"
+          "huggingface/BAAI/bge-small-en-v1.5",
+          "huggingface/hfl/chinese-bert-wwm",
+          "huggingface/inokufu/flaubert-base-uncased-xnli-sts"
         ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1423,
-        "previous": 1416,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1416
+        "current": 1276,
+        "previous": 1423,
+        "removed": 150,
+        "removed_model_refs": [
+          "huggingface/Ateeqq/ai-vs-human-image-detector",
+          "huggingface/BAAI/bge-base-en",
+          "huggingface/BAAI/bge-base-zh-v1.5",
+          "huggingface/BAAI/bge-large-zh-v1.5",
+          "huggingface/BAAI/bge-reranker-large",
+          "huggingface/BM-K/KoSimCSE-roberta-multitask",
+          "huggingface/ChrisLalk/German-Emotions",
+          "huggingface/DeepPavlov/rubert-base-cased",
+          "huggingface/Dumi2025/log-anomaly-detection-model-new",
+          "huggingface/EbanLee/kobart-summary-v3",
+          "huggingface/Hello-SimpleAI/chatgpt-detector-roberta-chinese",
+          "huggingface/Helsinki-NLP/opus-mt-ROMANCE-en",
+          "huggingface/Helsinki-NLP/opus-mt-en-de",
+          "huggingface/Helsinki-NLP/opus-mt-en-ru",
+          "huggingface/Helsinki-NLP/opus-mt-en-sv",
+          "huggingface/Helsinki-NLP/opus-mt-ja-en",
+          "huggingface/HooshvareLab/bert-fa-base-uncased-sentiment-snappfood",
+          "huggingface/Horizon-Labs/punctuation-restoration-small",
+          "huggingface/Jean-Baptiste/roberta-large-ner-english",
+          "huggingface/JungleLee/bert-toxic-comment-classification",
+          "huggingface/Leo97/KoELECTRA-small-v3-modu-ner",
+          "huggingface/Luyu/co-condenser-marco",
+          "huggingface/MayZhou/e5-small-lora-ai-generated-detector",
+          "huggingface/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+          "huggingface/MoritzLaurer/DeBERTa-v3-xsmall-mnli-fever-anli-ling-binary",
+          "huggingface/MoritzLaurer/deberta-v3-base-zeroshot-v1.1-all-33",
+          "huggingface/MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
+          "huggingface/Musixmatch/umberto-commoncrawl-cased-v1",
+          "huggingface/NeuML/pubmedbert-base-embeddings-matryoshka",
+          "huggingface/Omartificial-Intelligence-Space/Arabic-Triplet-Matryoshka-V2",
+          "huggingface/OpenMatch/cocodr-base-msmarco",
+          "huggingface/OpenMed/OpenMed-NER-BloodCancerDetect-TinyMed-135M",
+          "huggingface/OpenMed/OpenMed-NER-PharmaDetect-SuperMedical-125M",
+          "huggingface/Recognai/bert-base-spanish-wwm-cased-xnli",
+          "huggingface/Smogy/SMOGY-Ai-images-detector",
+          "huggingface/Snowflake/snowflake-arctic-embed-l",
+          "huggingface/Snowflake/snowflake-arctic-embed-m-v1.5",
+          "huggingface/StanfordAIMI/stanford-deidentifier-with-radiology-reports-and-i2b2",
+          "huggingface/StephanAkkerman/FinTwitBERT-sentiment",
+          "huggingface/TechWolf/ConTeXT-Skill-Extraction-base",
+          "huggingface/UBC-NLP/ARBERT",
+          "huggingface/Vsevolod/company-names-similarity-sentence-transformer",
+          "huggingface/ZurichNLP/unsup-simcse-xlm-roberta-base",
+          "huggingface/ai-forever/ruBert-base",
+          "huggingface/ai-forever/sbert_large_nlu_ru",
+          "huggingface/airesearch/wangchanberta-base-att-spm-uncased",
+          "huggingface/albert/albert-base-v1",
+          "huggingface/alexandrainst/scandi-nli-large",
+          "huggingface/allenai/specter",
+          "huggingface/almanach/camembert-base-legacy",
+          "huggingface/almanach/camembert-bio-base",
+          "huggingface/antoinelouis/biencoder-camembert-base-mmarcoFR",
+          "huggingface/aubmindlab/bert-base-arabertv2",
+          "huggingface/bhadresh-savani/distilbert-base-uncased-emotion",
+          "huggingface/blanchefort/rubert-base-cased-sentiment-rusentiment",
+          "huggingface/cafeai/cafe_aesthetic",
+          "huggingface/cahya/distilbert-base-indonesian",
+          "huggingface/cambridgeltl/SapBERT-from-PubMedBERT-fulltext-mean-token",
+          "huggingface/cardiffnlp/twitter-roberta-base-hate",
+          "huggingface/cardiffnlp/twitter-roberta-large-2022-154m",
+          "huggingface/clarin-pl/FastPDN",
+          "huggingface/cnicu/t5-small-booksum",
+          "huggingface/codefuse-ai/F2LLM-v2-330M",
+          "huggingface/cointegrated/rubert-tiny-toxicity",
+          "huggingface/cointegrated/rubert-tiny2",
+          "huggingface/com-kotobalabs/open-jev-deberta-v3-large",
+          "huggingface/csarron/mobilebert-uncased-squad-v2",
+          "huggingface/danielheinz/e5-base-sts-en-de",
+          "huggingface/dbmdz/bert-base-historic-multilingual-cased",
+          "huggingface/ehsanaghaei/SecureBERT",
+          "huggingface/emilyalsentzer/Bio_ClinicalBERT",
+          "huggingface/facebook/convnextv2-atto-1k-224",
+          "huggingface/facebook/convnextv2-tiny-22k-384",
+          "huggingface/facebook/deit-tiny-patch16-224",
+          "huggingface/facebook/mask2former-swin-base-IN21k-ade-semantic",
+          "huggingface/facebook/mask2former-swin-large-ade-panoptic",
+          "huggingface/facebook/mask2former-swin-large-cityscapes-panoptic",
+          "huggingface/freelawproject/modernbert-embed-base_finetune_512",
+          "huggingface/funnel-transformer/small",
+          "huggingface/google/bigbird-pegasus-large-arxiv",
+          "huggingface/google/bit-50",
+          "huggingface/google/canine-s",
+          "huggingface/google/vit-large-patch16-224",
+          "huggingface/ibm-granite/granite-embedding-125m-english",
+          "huggingface/ibm-granite/granite-guardian-hap-125m",
+          "huggingface/infgrad/stella-base-zh-v3-1792d",
+          "huggingface/jackaduma/SecRoBERTa",
+          "huggingface/jhgan/ko-sroberta-multitask",
+          "huggingface/jhu-clsp/mmBERT-small",
+          "huggingface/joeddav/distilbert-base-uncased-go-emotions-student",
+          "huggingface/kalyan-ks/ettin-68m-nemotron-pii",
+          "huggingface/ku-nlp/roberta-base-japanese-char-wwm",
+          "huggingface/lxyuan/distilbert-base-multilingual-cased-sentiments-student",
+          "huggingface/matei-dorian/segformer-b5-finetuned-human-parsing",
+          "huggingface/michiyasunaga/BioLinkBERT-base",
+          "huggingface/michiyasunaga/LinkBERT-large",
+          "huggingface/microsoft/deberta-v2-xxlarge",
+          "huggingface/microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+          "huggingface/microsoft/swin-tiny-patch4-window7-224",
+          "huggingface/microsoft/swinv2-base-patch4-window8-256",
+          "huggingface/microsoft/swinv2-large-patch4-window12-192-22k",
+          "huggingface/microsoft/swinv2-tiny-patch4-window8-256",
+          "huggingface/microsoft/xtremedistil-l6-h256-uncased",
+          "huggingface/mixedbread-ai/deepset-mxbai-embed-de-large-v1",
+          "huggingface/mixedbread-ai/mxbai-rerank-large-v1",
+          "huggingface/ml6team/keyphrase-extraction-distilbert-inspec",
+          "huggingface/mrm8488/bert-mini2bert-mini-finetuned-cnn_daily_mail-summarization",
+          "huggingface/mrm8488/deberta-v3-ft-financial-news-sentiment-analysis",
+          "huggingface/mxlcw/rubert-tiny2-russian-financial-sentiment",
+          "huggingface/ncbi/MedCPT-Article-Encoder",
+          "huggingface/nlpie/tiny-clinicalbert",
+          "huggingface/nomic-ai/modernbert-embed-base-unsupervised",
+          "huggingface/nvidia/segformer-b1-finetuned-ade-512-512",
+          "huggingface/nvidia/segformer-b3-finetuned-ade-512-512",
+          "huggingface/obi/deid_roberta_i2b2",
+          "huggingface/oliverguhr/fullstop-punctuation-multilang-large",
+          "huggingface/pablocosta/bertabaporu-base-uncased",
+          "huggingface/perplexity-ai/pplx-embed-v2-late-0.6b",
+          "huggingface/philomath-1209/programming-language-identification",
+          "huggingface/philschmid/tiny-bert-sst2-distilled",
+          "huggingface/prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2",
+          "huggingface/prithivMLmods/open-age-detection",
+          "huggingface/redis/langcache-embed-v1",
+          "huggingface/rufimelo/Legal-BERTimbau-sts-base",
+          "huggingface/s2593817/sft-sql-embedding",
+          "huggingface/sayed0am/arabic-english-bge-m3",
+          "huggingface/sdadas/mmlw-retrieval-roberta-large",
+          "huggingface/sdadas/mmlw-roberta-large",
+          "huggingface/sdadas/polish-roberta-base-v2",
+          "huggingface/sdadas/st-polish-paraphrase-from-distilroberta",
+          "huggingface/sentence-transformers/distiluse-base-multilingual-cased-v2",
+          "huggingface/sentence-transformers/msmarco-distilbert-dot-v5",
+          "huggingface/sentence-transformers/multi-qa-mpnet-base-cos-v1",
+          "huggingface/sentence-transformers/sentence-t5-base",
+          "huggingface/sentence-transformers/sentence-t5-large",
+          "huggingface/sentence-transformers/stsb-distilbert-base",
+          "huggingface/smilegate-ai/kor_unsmile",
+          "huggingface/sshleifer/distilbart-cnn-6-6",
+          "huggingface/sshleifer/distilbart-xsum-12-6",
+          "huggingface/studio-ousia/luke-base",
+          "huggingface/tabularisai/multilingual-sentiment-analysis",
+          "huggingface/thenlper/gte-large",
+          "huggingface/timpal0l/mdeberta-v3-base-squad2",
+          "huggingface/trmteb/turkish-embedding-model",
+          "huggingface/ufal/robeczech-base",
+          "huggingface/utrobinmv/t5_translate_en_ru_zh_small_1024",
+          "huggingface/uw-madison/nystromformer-512",
+          "huggingface/valhalla/distilbart-mnli-12-6",
+          "huggingface/valurank/distilroberta-bias",
+          "huggingface/voidful/albert_chinese_tiny"
+        ],
+        "unchanged": 1273
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1423,
+        "current_models": 1276,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 7
+          "unknown_models": -147
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2303,21 +5854,23 @@
           "huggingface/Angelakeke/RaTE-NER-Deberta",
           "huggingface/AnnaWegmann/Style-Embedding",
           "huggingface/Arunavaonly/Bangla-twoclass-Sentiment-Analyzer",
-          "huggingface/Ateeqq/ai-vs-human-image-detector",
-          "huggingface/BAAI/bge-base-en",
           "huggingface/BAAI/bge-base-en-v1.5",
           "huggingface/BAAI/bge-base-zh",
-          "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en",
-          "huggingface/BAAI/bge-large-en-v1.5"
+          "huggingface/BAAI/bge-large-en-v1.5",
+          "huggingface/BAAI/bge-large-zh",
+          "huggingface/BAAI/bge-m3",
+          "huggingface/BAAI/bge-m3-unsupervised"
         ],
-        "unknown_model_refs_omitted": 1403,
-        "unknown_models": 1423
+        "unknown_model_refs_omitted": 1256,
+        "unknown_models": 1276
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -2341,9 +5894,15 @@
     },
     {
       "attempt": {
-        "outcome": "accepted",
+        "failure": {
+          "code": "source_schema_changed",
+          "message": "Kimi retirement notices are missing"
+        },
+        "outcome": "rejected",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_schema_changed",
+          "message": "Kimi retirement notices are missing",
+          "outcome": "failed"
         },
         "sources": [
           {
@@ -2425,321 +5984,11 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 21,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-04T08:04:17.626Z",
+            "message": "Kimi retirement notices are missing",
+            "outcome": "parse_failed",
             "source_id": "kimi-catalog"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 21,
-            "source_id": "kimi-international-catalog"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 6,
-            "pricing_extraction": {
-              "custom_quote_models": 0,
-              "free_models": 0,
-              "model_records": 6,
-              "normalized_facts": 40,
-              "not_applicable_models": 0,
-              "not_published_models": 0,
-              "numeric_models": 6,
-              "raw_facts": 0,
-              "raw_models": 0,
-              "unknown_models": 0
-            },
-            "pricing_reconciliation": {
-              "basis": "source_item",
-              "diagnostic_count": 3,
-              "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_web_search_success_input_not_documented"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_tool_promotion_end_not_published"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "batch_cached_tokens_not_documented"
-                }
-              ],
-              "disposition_counts": {
-                "ambiguous": 0,
-                "excluded": 0,
-                "explicit_non_numeric": 10,
-                "normalized": 46,
-                "raw": 0,
-                "unbound": 3,
-                "unresolved": 0,
-                "unsupported": 0
-              },
-              "observed_items": 59,
-              "reason_counts": {
-                "batch_cached_tokens_not_documented": 1,
-                "file_service_promotional_free": 1,
-                "formula_tool_promotion_end_not_published": 1,
-                "formula_tool_promotional_free": 9,
-                "formula_web_search_success_input_not_documented": 1,
-                "price_fact_normalized": 40,
-                "pricing_input_contract_bound": 1,
-                "rest_tool_service_normalized": 3,
-                "web_search_service_normalized": 2
-              },
-              "unit": "reviewed source pricing item"
-            },
-            "source_id": "kimi-pricing"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 6,
-            "pricing_extraction": {
-              "custom_quote_models": 0,
-              "free_models": 0,
-              "model_records": 6,
-              "normalized_facts": 40,
-              "not_applicable_models": 0,
-              "not_published_models": 0,
-              "numeric_models": 6,
-              "raw_facts": 0,
-              "raw_models": 0,
-              "unknown_models": 0
-            },
-            "pricing_reconciliation": {
-              "basis": "source_item",
-              "diagnostic_count": 3,
-              "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_web_search_success_input_not_documented"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "formula_tool_promotion_end_not_published"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "batch_cached_tokens_not_documented"
-                }
-              ],
-              "disposition_counts": {
-                "ambiguous": 0,
-                "excluded": 0,
-                "explicit_non_numeric": 10,
-                "normalized": 46,
-                "raw": 0,
-                "unbound": 3,
-                "unresolved": 0,
-                "unsupported": 0
-              },
-              "observed_items": 59,
-              "reason_counts": {
-                "batch_cached_tokens_not_documented": 1,
-                "file_service_promotional_free": 1,
-                "formula_tool_promotion_end_not_published": 1,
-                "formula_tool_promotional_free": 9,
-                "formula_web_search_success_input_not_documented": 1,
-                "price_fact_normalized": 40,
-                "pricing_input_contract_bound": 1,
-                "rest_tool_service_normalized": 3,
-                "web_search_service_normalized": 2
-              },
-              "unit": "reviewed source pricing item"
-            },
-            "source_id": "kimi-international-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 13,
-            "source_id": "kimi-releases"
-          },
-          {
-            "content_changed": true,
-            "contract_findings": [
-              {
-                "diagnostic_count": 6,
-                "diagnostics": [
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "46b89b71244a070e",
-                    "kind": "unknown_field",
-                    "observed": "array",
-                    "path": "/permission",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "fa737174d2f0d342",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/limit",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "0f8e7f4f745219a0",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/modalities",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "df391b81d29533e1",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/tools",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "aaaff6321adbaa87",
-                    "kind": "unknown_field",
-                    "observed": "string",
-                    "path": "/parent",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "d90fbd39aa93a658",
-                    "kind": "unknown_field",
-                    "observed": "string",
-                    "path": "/root",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 3
-              }
-            ],
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 3,
-            "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "contract_findings": [
-              {
-                "diagnostic_count": 6,
-                "diagnostics": [
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "46b89b71244a070e",
-                    "kind": "unknown_field",
-                    "observed": "array",
-                    "path": "/permission",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "fa737174d2f0d342",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/limit",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "0f8e7f4f745219a0",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/modalities",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "df391b81d29533e1",
-                    "kind": "unknown_field",
-                    "observed": "object",
-                    "path": "/tools",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "aaaff6321adbaa87",
-                    "kind": "unknown_field",
-                    "observed": "string",
-                    "path": "/parent",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  },
-                  {
-                    "affected_items": 3,
-                    "fingerprint": "d90fbd39aa93a658",
-                    "kind": "unknown_field",
-                    "observed": "string",
-                    "path": "/root",
-                    "sample_model_ids": [
-                      "kimi-k2.6",
-                      "kimi-k2.7-code",
-                      "kimi-k2.7-code-highspeed"
-                    ]
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 3
-              }
-            ],
-            "extractor_changed": false,
-            "outcome": "changed",
-            "parsed_models": 3,
-            "source_id": "kimi-china-api"
           }
         ]
       },
@@ -2774,48 +6023,26 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 0
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "kimi",
-      "publication": "accepted",
+      "publication": "retained",
       "signals": [
-        "unreviewed_extension"
+        "possible_structural_change"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-china-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 9
       },
-      "status": "fresh",
+      "status": "stale",
       "warning_codes": {
-        "catalog_api_set_mismatch": 2,
-        "missing_field": 3,
-        "scope_limited": 2,
-        "source_contract_extension": 2
+        "source_parse_failed": 1
       }
     },
     {
@@ -3084,7 +6311,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 36,
+            "consecutive_failures": 37,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -3318,16 +6545,16 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 154,
             "source_id": "openai-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 73,
             "source_id": "openai-changelog"
           },
@@ -3391,9 +6618,9 @@
             "source_id": "openai-overview"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 66,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3496,14 +6723,43 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "description": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Retired deep research model",
+                "path": "description",
+                "previous": "Our most powerful deep research model"
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "openai/o3-deep-research"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Retired deep research model",
+                "path": "description",
+                "previous": "Faster, more affordable deep research model"
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "openai/o4-mini-deep-research"
+          }
+        ],
         "current": 164,
         "previous": 164,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 164
+        "unchanged": 162
       },
       "pricing": {
         "commercial_hash": "60dbba36fab44229a06849d756bc018d6cbca7ae260872ec2ddb476a7ad72468",
@@ -3552,7 +6808,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
@@ -3564,14 +6820,32 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
+            "source_id": "openai-changelog"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
             "source_id": "openai-overview"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-pricing"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3588,9 +6862,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3666,13 +6940,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "typesafe-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {}
@@ -3685,10 +6966,10 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3712,7 +6993,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3736,7 +7017,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3760,7 +7041,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3784,7 +7065,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3808,7 +7089,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3832,7 +7113,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3856,7 +7137,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3880,7 +7161,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 33,
+                "consecutive_failures": 34,
                 "contract_findings": [
                   {
                     "diagnostic_count": 1,
@@ -3904,7 +7185,7 @@
                 "outcome": "parse_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3912,7 +7193,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3920,7 +7201,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3928,7 +7209,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3936,7 +7217,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3944,7 +7225,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3952,7 +7233,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 277,
+                "consecutive_failures": 278,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -3962,7 +7243,7 @@
             ],
             "dependency_failures_omitted": 42,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 498,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -4064,8 +7345,8 @@
       },
       "pricing": {
         "commercial_hash": "a96e3e9441ecaa66374bd193671eb35e55c576a7071ae8a3198ca14c84f12c67",
-        "outcome": "commercial",
-        "previous_commercial_hash": "fa71b815c1b4ea40aea1d582e9539ea0be9e88b7f5535f10fac31ec6c3f8ed27"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "a96e3e9441ecaa66374bd193671eb35e55c576a7071ae8a3198ca14c84f12c67"
       },
       "pricing_coverage": {
         "current_models": 498,
@@ -4091,20 +7372,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -4625,21 +7899,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 20,
-    "added_models": 7,
+    "accepted": 19,
+    "added_models": 3,
     "added_sources": 0,
-    "changed_models": 1,
-    "changed_sources": 33,
-    "models": 4171,
-    "pricing_accepted": 18,
+    "changed_models": 81,
+    "changed_sources": 38,
+    "models": 4024,
+    "pricing_accepted": 16,
     "pricing_not_observed": 1,
     "pricing_removed": 0,
-    "pricing_retained": 1,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 20,
-    "removed_models": 0,
+    "removed_models": 150,
     "removed_sources": 0,
-    "retained": 0,
+    "retained": 1,
     "withheld": 0
   }
 }
