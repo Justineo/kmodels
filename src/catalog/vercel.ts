@@ -336,7 +336,8 @@ const modelPageDocumentSchema = z.union([
   modelPageRateDocumentSchema,
   z.strictObject({
     title: z.string().min(1),
-    search_prices: z.array(vercelPageSearchPriceSchema).min(1),
+    // A page may publish no exact search amounts when its model cannot use X search.
+    search_prices: z.array(vercelPageSearchPriceSchema),
   }),
 ]);
 

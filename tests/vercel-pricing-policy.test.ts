@@ -637,30 +637,66 @@ describe("Vercel price authority", () => {
     const payload =
       '169:["$","$L171",null,{"backingModels":[{"chef":"spacexai","primaryModel":"grok-4.6","provider":"xai","xSearchPostCost":"5","xSearchUserCost":"10"}]}]\n';
     const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/grok-4.6"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
-    expect(vercelPageSearchPrices(html)).toEqual([
-      {
-        model_id: "spacexai/grok-4.6",
-        provider: "xai",
-        posts_per_thousand: "5",
-        profiles_per_thousand: "10",
-      },
-    ]);
+    expect(vercelPageSearchPrices(html)).toEqual({
+      prices: [
+        {
+          model_id: "spacexai/grok-4.6",
+          provider: "xai",
+          posts_per_thousand: "5",
+          profiles_per_thousand: "10",
+        },
+      ],
+      modelObserved: true,
+    });
     expect(JSON.parse(normalizeVercelModelPage(`<h1>Grok 4.6</h1>${html}`, true))).toMatchObject({
       title: "Grok 4.6",
       search_prices: [{ model_id: "spacexai/grok-4.6", provider: "xai", posts_per_thousand: "5" }],
     });
     expect(() => normalizeVercelModelPage("<h1>Grok 4.6</h1>", true)).toThrow(
-      "omitted exact search prices",
+      "omitted its backing-model pricing payload",
     );
     expect(
       vercelPageSearchPrices(html.replace("https://vercel.com/", "https://example.test/")),
-    ).toEqual([]);
-    expect(vercelPageSearchPrices(html.replace("/models/grok-4.6", "/models/other"))).toEqual([]);
+    ).toEqual({ prices: [], modelObserved: false });
+    expect(vercelPageSearchPrices(html.replace("/models/grok-4.6", "/models/other"))).toEqual({
+      prices: [],
+      modelObserved: false,
+    });
     expect(
       vercelPageSearchPrices(
         html.replace('\\"xSearchPostCost\\":\\"5\\"', '\\"xSearchPostCost\\":\\"unknown\\"'),
       ),
+    ).toEqual({
+      prices: [{ model_id: "spacexai/grok-4.6", provider: "xai", profiles_per_thousand: "10" }],
+      modelObserved: true,
+    });
+  });
+  it("normalizes a canonical page whose own backing model publishes no X-search amounts", async () => {
+    const body = await readFile(
+      new URL("./fixtures/vercel/pricing-contracts.txt", import.meta.url),
+      "utf8",
+    );
+    const payload =
+      '16a:["$","$L172",null,{"backingModels":[{"chef":"spacexai","primaryModel":"grok-imagine-image","provider":"xai","type":"image","imageCost":"0.02"}]}]\n';
+    const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/grok-imagine-image"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+    expect(vercelPageSearchPrices(html)).toEqual({ prices: [], modelObserved: true });
+    const page = JSON.parse(normalizeVercelModelPage(`<h1>Grok Imagine Image</h1>${html}`, true));
+    expect(page).toEqual({ title: "Grok Imagine Image", search_prices: [] });
+    const route = endpoint("xai");
+    const { result } = parse(
+      { varies_by_provider: true },
+      [{ ...route, pricing: { ...route.pricing, x_search_post: "0.005", x_search_user: "0.01" } }],
+      model.id,
+      {},
+      normalizeVercelPricingScript(body),
+      page,
+    );
+    expect(
+      result.models[0]?.price_facts.filter((f) => f.conditions.operation !== undefined),
     ).toEqual([]);
+    expect(result.models[0]?.raw_price_facts).toContainEqual(
+      expect.objectContaining({ reason: "unknown_unit" }),
+    );
   });
   it("retains contradictory tier quotes for canonical conflict resolution", () => {
     const { result } = parse({
