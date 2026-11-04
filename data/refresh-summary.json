@@ -1,8 +1,8 @@
 {
-  "catalog_version": "4b1e59b6754f385810701887e5011312b5e278e9699cc71780a26bbe57de4a1a",
-  "generated_at": "2026-11-04T17:02:51.517Z",
+  "catalog_version": "be386af65f0b8ffbd5cb3f871fb3a59fce96fba89c86278b681946367b904d52",
+  "generated_at": "2026-11-04T19:02:36.874Z",
   "outcome": "changed",
-  "previous_catalog_version": "5d04b576b3bdb0e8715b86c4264a44dcd2c13599fd5b781cb0a4fca25f4e3c88",
+  "previous_catalog_version": "4b1e59b6754f385810701887e5011312b5e278e9699cc71780a26bbe57de4a1a",
   "providers": [
     {
       "attempt": {
@@ -178,10 +178,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-04T17:02:51.517Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -248,10 +248,10 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1,
-        "source_contract_drift": 2
+        "source_contract_drift": 2,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -1145,9 +1145,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1205,13 +1205,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1785,9 +1792,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 67,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1830,9 +1837,9 @@
             "source_id": "databricks-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 56,
             "source_id": "databricks-api"
           }
@@ -1876,13 +1883,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2015,6 +2035,132 @@
         "catalog_api_set_mismatch": 1,
         "scope_limited": 1
       }
+    },
+    {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 26,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 26,
+              "normalized_facts": 126,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 1,
+              "raw_models": 1,
+              "unknown_models": 26
+            },
+            "pricing_reconciliation": {
+              "basis": "model_output",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 0,
+                "normalized": 25,
+                "raw": 1,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 26,
+              "reason_counts": {
+                "normalized_price_facts": 25,
+                "preserved_raw_facts": 1
+              },
+              "unit": "parsed model record"
+            },
+            "source_id": "fireworks-serverless"
+          }
+        ]
+      },
+      "models": {
+        "added": 26,
+        "added_model_refs": [
+          "fireworks/accounts/fireworks/models/deepseek-v4p1-flash",
+          "fireworks/accounts/fireworks/models/deepseek-v4p1-flash-1017",
+          "fireworks/accounts/fireworks/models/ember-1",
+          "fireworks/accounts/fireworks/models/glm-5p3",
+          "fireworks/accounts/fireworks/models/glm-5p3-flash",
+          "fireworks/accounts/fireworks/models/gpt-oss-120b",
+          "fireworks/accounts/fireworks/models/inkling",
+          "fireworks/accounts/fireworks/models/kimi-k3",
+          "fireworks/accounts/fireworks/models/minimax-m3",
+          "fireworks/accounts/fireworks/models/minimax-m3p1-flash",
+          "fireworks/accounts/fireworks/models/muse-spark-open",
+          "fireworks/accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+          "fireworks/accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b",
+          "fireworks/accounts/fireworks/models/qwen3-embedding-8b",
+          "fireworks/accounts/fireworks/models/qwen3-reranker-8b",
+          "fireworks/accounts/fireworks/models/qwen3p8-max",
+          "fireworks/accounts/fireworks/models/rune",
+          "fireworks/accounts/fireworks/models/ultramarine-1-flash-us",
+          "fireworks/accounts/fireworks/routers/deepseek-v4p1-flash-1017-ultrafast",
+          "fireworks/accounts/fireworks/routers/deepseek-v4p1-flash-1017-us",
+          "fireworks/accounts/fireworks/routers/deepseek-v4p1-flash-us",
+          "fireworks/accounts/fireworks/routers/glm-5p3-fast",
+          "fireworks/accounts/fireworks/routers/glm-5p3-flash-us",
+          "fireworks/accounts/fireworks/routers/glm-5p3-us",
+          "fireworks/accounts/fireworks/routers/kimi-k3-fast",
+          "fireworks/accounts/fireworks/routers/kimi-k3-us"
+        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 26,
+        "previous": 0,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 0
+      },
+      "pricing": {
+        "commercial_hash": "028016670b6f59e1200ff8fda6baf9d2fef3312903353cc455cf49eb3fdc1fef",
+        "outcome": "added"
+      },
+      "pricing_coverage": {
+        "current_models": 26,
+        "delta": {
+          "resolved_models": 26,
+          "unknown_models": 0
+        },
+        "normalized_rate_models": 25,
+        "not_applicable_models": 0,
+        "offer_models": 26,
+        "raw_fact_models": 1,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
+      },
+      "pricing_publication": "accepted",
+      "provider_id": "fireworks",
+      "publication": "accepted",
+      "signals": [],
+      "sources": {
+        "added": 1,
+        "added_source_ids": [
+          "fireworks-serverless"
+        ],
+        "changed": 0,
+        "changed_sources": [],
+        "current": 1,
+        "previous": 0,
+        "removed": 0,
+        "removed_source_ids": [],
+        "unchanged": 0
+      },
+      "status": "fresh",
+      "warning_codes": {}
     },
     {
       "attempt": {
@@ -2184,58 +2330,46 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1452,
+            "parsed_models": 1450,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
-      "models": {
-        "added": 10,
-        "added_model_refs": [
-          "huggingface/Helsinki-NLP/opus-mt-en-jap",
-          "huggingface/Snowflake/snowflake-arctic-embed-l",
-          "huggingface/alexandrainst/scandi-nli-large",
-          "huggingface/blanchefort/rubert-base-cased-sentiment-rusentiment",
-          "huggingface/codefuse-ai/F2LLM-v2-330M",
-          "huggingface/danielheinz/e5-base-sts-en-de",
-          "huggingface/facebook/convnextv2-tiny-22k-384",
-          "huggingface/oliverguhr/fullstop-punctuation-multilang-large",
-          "huggingface/sentence-transformers/sentence-t5-large",
-          "huggingface/ufal/robeczech-base"
-        ],
-        "changed": 1,
-        "changed_fields": {
-          "updated_date": 1
+      "count_decreases": [
+        {
+          "current": 1450,
+          "field": "models",
+          "previous": 1452
         },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "2026-11-04",
-                "path": "updated_date",
-                "previous": "2026-10-29"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/CIRCL/vulnerability-severity-classification-roberta-base"
-          }
+        {
+          "current": 1450,
+          "field": "routes",
+          "previous": 1452
+        }
+      ],
+      "models": {
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 1450,
+        "previous": 1452,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/Helsinki-NLP/opus-mt-tc-big-el-en",
+          "huggingface/davebulaval/MeaningBERT"
         ],
-        "current": 1452,
-        "previous": 1442,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1441
+        "unchanged": 1450
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1452,
+        "current_models": 1450,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 10
+          "unknown_models": -2
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2263,13 +2397,15 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1432,
-        "unknown_models": 1452
+        "unknown_model_refs_omitted": 1430,
+        "unknown_models": 1450
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [],
+      "signals": [
+        "catalog_count_decrease"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -2383,7 +2519,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 9,
+            "consecutive_failures": 10,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2560,7 +2696,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 5,
+                "consecutive_failures": 6,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2729,7 +2865,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 45,
+            "consecutive_failures": 46,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2804,6 +2940,178 @@
         "source_fetch_failed": 1,
         "source_partial": 1
       }
+    },
+    {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "not_observed"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 85,
+            "source_id": "nvidia-nim-models"
+          }
+        ]
+      },
+      "models": {
+        "added": 85,
+        "added_model_refs": [
+          "nvidia/01-ai/yi-large",
+          "nvidia/adept/fuyu-8b",
+          "nvidia/ai21labs/jamba-1.5-large-instruct",
+          "nvidia/aisingapore/sea-lion-7b-instruct",
+          "nvidia/bigcode/starcoder2-15b",
+          "nvidia/databricks/dbrx-instruct",
+          "nvidia/deepseek-ai/deepseek-coder-6.7b-instruct",
+          "nvidia/deepseek-ai/deepseek-v4.1-flash",
+          "nvidia/google/codegemma-1.1-7b",
+          "nvidia/google/codegemma-7b",
+          "nvidia/google/deplot",
+          "nvidia/google/diffusiongemma-26b-a4b-it",
+          "nvidia/google/gemma-2b",
+          "nvidia/google/gemma-3-12b-it",
+          "nvidia/google/gemma-3-4b-it",
+          "nvidia/google/gemma-4-31b-it",
+          "nvidia/google/recurrentgemma-2b",
+          "nvidia/ibm/granite-3.0-3b-a800m-instruct",
+          "nvidia/ibm/granite-3.0-8b-instruct",
+          "nvidia/ibm/granite-34b-code-instruct",
+          "nvidia/ibm/granite-8b-code-instruct",
+          "nvidia/meta/codellama-70b",
+          "nvidia/meta/llama-3.2-11b-vision-instruct",
+          "nvidia/meta/llama-3.2-90b-vision-instruct",
+          "nvidia/meta/llama-guard-4-12b",
+          "nvidia/meta/llama2-70b",
+          "nvidia/meta/muse-glimmer-30b",
+          "nvidia/microsoft/kosmos-2",
+          "nvidia/microsoft/phi-3-vision-128k-instruct",
+          "nvidia/microsoft/phi-3.5-moe-instruct",
+          "nvidia/minimaxai/minimax-m3.1-flash",
+          "nvidia/mistralai/codestral-22b-instruct-v0.1",
+          "nvidia/mistralai/mistral-7b-instruct-v0.3",
+          "nvidia/mistralai/mistral-large",
+          "nvidia/mistralai/mistral-large-2-instruct",
+          "nvidia/mistralai/mistral-large-4-1t-a52b",
+          "nvidia/mistralai/mixtral-8x22b-v0.1",
+          "nvidia/moonshotai/kimi-k2.6",
+          "nvidia/nv-mistralai/mistral-nemo-12b-instruct",
+          "nvidia/nvidia/ai-synthetic-video-detector",
+          "nvidia/nvidia/cosmos-reason2-8b",
+          "nvidia/nvidia/embed-qa-4",
+          "nvidia/nvidia/ising-calibration-1.5-31b",
+          "nvidia/nvidia/llama-3.1-nemoguard-8b-content-safety",
+          "nvidia/nvidia/llama-3.1-nemoguard-8b-topic-control",
+          "nvidia/nvidia/llama-3.1-nemotron-51b-instruct",
+          "nvidia/nvidia/llama-3.1-nemotron-70b-instruct",
+          "nvidia/nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+          "nvidia/nvidia/llama-3.1-nemotron-ultra-253b-v1",
+          "nvidia/nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+          "nvidia/nvidia/llama-3.2-nv-embedqa-1b-v1",
+          "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2",
+          "nvidia/nvidia/llama3-chatqa-1.5-70b",
+          "nvidia/nvidia/mistral-nemo-minitron-8b-8k-instruct",
+          "nvidia/nvidia/nemotron-3-embed-1b",
+          "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+          "nvidia/nvidia/nemotron-3-super-120b-a12b",
+          "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+          "nvidia/nvidia/nemotron-3.5-bolt-e4b",
+          "nvidia/nvidia/nemotron-3.5-content-safety",
+          "nvidia/nvidia/nemotron-3.5-embed-1b",
+          "nvidia/nvidia/nemotron-3.5-embed-8b",
+          "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
+          "nvidia/nvidia/nemotron-3.5-super-vl-120b-a12b",
+          "nvidia/nvidia/nemotron-4-340b-instruct",
+          "nvidia/nvidia/nemotron-4-340b-reward",
+          "nvidia/nvidia/nemotron-nano-3-30b-a3b",
+          "nvidia/nvidia/nemotron-parse",
+          "nvidia/nvidia/nemotron-parse-2.0",
+          "nvidia/nvidia/neva-22b",
+          "nvidia/nvidia/nv-embedqa-mistral-7b-v2",
+          "nvidia/nvidia/nvclip",
+          "nvidia/nvidia/riva-translate-4b-instruct",
+          "nvidia/nvidia/riva-translate-4b-instruct-v2",
+          "nvidia/nvidia/vila",
+          "nvidia/openai/gpt-oss-20b",
+          "nvidia/poolside/laguna-xs-2.1",
+          "nvidia/snowflake/arctic-embed-l",
+          "nvidia/stepfun-ai/step-5-preview",
+          "nvidia/writer/palmyra-creative-122b",
+          "nvidia/writer/palmyra-fin-70b-32k",
+          "nvidia/writer/palmyra-med-70b",
+          "nvidia/writer/palmyra-med-70b-32k",
+          "nvidia/z-ai/glm-5.3-flash",
+          "nvidia/zyphra/zamba2-7b-instruct"
+        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 85,
+        "previous": 0,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 0
+      },
+      "pricing": {
+        "outcome": "none"
+      },
+      "pricing_coverage": {
+        "current_models": 85,
+        "delta": {
+          "resolved_models": 0,
+          "unknown_models": 85
+        },
+        "normalized_rate_models": 0,
+        "not_applicable_models": 0,
+        "offer_models": 0,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "nvidia/01-ai/yi-large",
+          "nvidia/adept/fuyu-8b",
+          "nvidia/ai21labs/jamba-1.5-large-instruct",
+          "nvidia/aisingapore/sea-lion-7b-instruct",
+          "nvidia/bigcode/starcoder2-15b",
+          "nvidia/databricks/dbrx-instruct",
+          "nvidia/deepseek-ai/deepseek-coder-6.7b-instruct",
+          "nvidia/deepseek-ai/deepseek-v4.1-flash",
+          "nvidia/google/codegemma-1.1-7b",
+          "nvidia/google/codegemma-7b",
+          "nvidia/google/deplot",
+          "nvidia/google/diffusiongemma-26b-a4b-it",
+          "nvidia/google/gemma-2b",
+          "nvidia/google/gemma-3-12b-it",
+          "nvidia/google/gemma-3-4b-it",
+          "nvidia/google/gemma-4-31b-it",
+          "nvidia/google/recurrentgemma-2b",
+          "nvidia/ibm/granite-3.0-3b-a800m-instruct",
+          "nvidia/ibm/granite-3.0-8b-instruct",
+          "nvidia/ibm/granite-34b-code-instruct"
+        ],
+        "unknown_model_refs_omitted": 65,
+        "unknown_models": 85
+      },
+      "pricing_publication": "not_observed",
+      "provider_id": "nvidia",
+      "publication": "accepted",
+      "signals": [],
+      "sources": {
+        "added": 1,
+        "added_source_ids": [
+          "nvidia-nim-models"
+        ],
+        "changed": 0,
+        "changed_sources": [],
+        "current": 1,
+        "previous": 0,
+        "removed": 0,
+        "removed_source_ids": [],
+        "unchanged": 0
+      },
+      "status": "fresh",
+      "warning_codes": {}
     },
     {
       "attempt": {
@@ -2971,9 +3279,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 154,
             "source_id": "openai-models"
           },
@@ -2999,9 +3307,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 102,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3044,9 +3352,9 @@
             "source_id": "openai-overview"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 66,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3099,9 +3407,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3205,20 +3513,44 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
+            "source_id": "openai-accounting"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
             "source_id": "openai-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-pricing"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3235,9 +3567,211 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 82,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 82,
+              "normalized_facts": 86,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 51,
+              "raw_models": 51,
+              "unknown_models": 82
+            },
+            "pricing_reconciliation": {
+              "basis": "model_output",
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "parser_output_unknown",
+                  "sample": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 0,
+                "normalized": 30,
+                "raw": 51,
+                "unbound": 0,
+                "unresolved": 1,
+                "unsupported": 0
+              },
+              "observed_items": 82,
+              "reason_counts": {
+                "normalized_price_facts": 30,
+                "parser_output_unknown": 1,
+                "preserved_raw_facts": 51
+              },
+              "unit": "parsed model record"
+            },
+            "source_id": "together-serverless"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 270,
+            "source_id": "together-api"
+          }
+        ]
+      },
+      "models": {
+        "added": 82,
+        "added_model_refs": [
+          "together/ByteDance-Seed/Seedream-3.0",
+          "together/ByteDance-Seed/Seedream-4.0",
+          "together/ByteDance/Seedance-1.0-lite",
+          "together/ByteDance/Seedance-1.0-pro",
+          "together/ByteDance/Seedance-2.0",
+          "together/ByteDance/Seedance-2.5",
+          "together/ByteDance/Seedream-5.0-lite",
+          "together/MiniMaxAI/MiniMax-H3",
+          "together/MiniMaxAI/MiniMax-M3.1-Flash",
+          "together/Prism-ML/Ternary-Bonsai-27B",
+          "together/Qwen/Qwen-Image",
+          "together/Qwen/Qwen-Image-2.0",
+          "together/Qwen/Qwen-Image-2.0-Pro",
+          "together/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "together/Qwen/Qwen3.5-9B",
+          "together/Qwen/Qwen3.6-Plus",
+          "together/Qwen/Qwen3.7-Max",
+          "together/Qwen/Qwen3.7-Plus",
+          "together/Qwen/Qwen3.8-Flash",
+          "together/RunDiffusion/Juggernaut-pro-flux",
+          "together/Rundiffusion/Juggernaut-Lightning-Flux",
+          "together/Wan-AI/Wan2.6-image",
+          "together/Wan-AI/wan2.7-i2v",
+          "together/Wan-AI/wan2.7-r2v",
+          "together/Wan-AI/wan2.7-t2v",
+          "together/alibaba/happyhorse-1.0-i2v",
+          "together/alibaba/happyhorse-1.0-r2v",
+          "together/alibaba/happyhorse-1.0-t2v",
+          "together/alibaba/happyhorse-1.1-i2v",
+          "together/alibaba/happyhorse-1.1-r2v",
+          "together/alibaba/happyhorse-1.1-t2v",
+          "together/black-forest-labs/FLUX-3",
+          "together/black-forest-labs/FLUX.1-kontext-max",
+          "together/black-forest-labs/FLUX.1-kontext-pro",
+          "together/black-forest-labs/FLUX.1.1-pro",
+          "together/black-forest-labs/FLUX.2-dev",
+          "together/black-forest-labs/FLUX.2-flex",
+          "together/black-forest-labs/FLUX.2-max",
+          "together/black-forest-labs/FLUX.2-pro",
+          "together/canopylabs/orpheus-3b-0.1-ft",
+          "together/cartesia/sonic",
+          "together/cartesia/sonic-2",
+          "together/cartesia/sonic-3",
+          "together/deepseek-ai/DeepSeek-V4-Pro-0813",
+          "together/deepseek-ai/DeepSeek-V4.1-Flash",
+          "together/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+          "together/google/flash-image-2.5",
+          "together/google/flash-image-3.1",
+          "together/google/flash-image-3.1-lite",
+          "together/google/gemini-3-pro-image",
+          "together/google/veo-3.1",
+          "together/google/veo-3.1-lite",
+          "together/hexgrad/Kokoro-82M",
+          "together/ideogram/ideogram-3.0",
+          "together/ideogram/ideogram-4.0",
+          "together/meta-models/Muse-Glimmer-30B",
+          "together/meta-models/Muse-Spark-Open-816B-A42B",
+          "together/minimax/hailuo-02",
+          "together/minimax/video-01-director",
+          "together/moonshotai/Kimi-K3",
+          "together/moonshotai/Kimi-K3.1-Pro",
+          "together/nvidia/NVIDIA-Nemotron-3.5-Super-VL",
+          "together/nvidia/nemotron-3-asr-streaming-0.6b",
+          "together/nvidia/nemotron-3.5-asr-streaming-0.6b",
+          "together/nvidia/parakeet-tdt-0.6b-v3",
+          "together/openai/gpt-image-1.5",
+          "together/openai/gpt-image-2",
+          "together/openai/gpt-oss-120b",
+          "together/openai/whisper-large-v3",
+          "together/pixverse/pixverse-v5",
+          "together/pixverse/pixverse-v5.6",
+          "together/pixverse/pixverse-v6",
+          "together/prunaai/p-image-ideogram",
+          "together/reflection/Beam-1.0-501B-A23B",
+          "together/stabilityai/stable-diffusion-xl-base-1.0",
+          "together/together/Tev1-4B-experimental",
+          "together/vidu/vidu-q1",
+          "together/vidu/vidu-q3",
+          "together/vidu/vidu-q3-turbo",
+          "together/zai-org/GLM-5.2",
+          "together/zai-org/GLM-5.3",
+          "together/zai-org/GLM-5.3-Flash"
+        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 82,
+        "previous": 0,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 0
+      },
+      "pricing": {
+        "commercial_hash": "96a703c787f79039b702d4f25028d5eee4debae197fcd3b6e243671cbd833c53",
+        "outcome": "added"
+      },
+      "pricing_coverage": {
+        "current_models": 82,
+        "delta": {
+          "resolved_models": 81,
+          "unknown_models": 1
+        },
+        "normalized_rate_models": 30,
+        "not_applicable_models": 0,
+        "offer_models": 81,
+        "raw_fact_models": 51,
+        "unknown_model_refs": [
+          "together/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 1
+      },
+      "pricing_publication": "accepted",
+      "provider_id": "together",
+      "publication": "accepted",
+      "signals": [],
+      "sources": {
+        "added": 2,
+        "added_source_ids": [
+          "together-api",
+          "together-serverless"
+        ],
+        "changed": 0,
+        "changed_sources": [],
+        "current": 2,
+        "previous": 0,
+        "removed": 0,
+        "removed_source_ids": [],
+        "unchanged": 0
+      },
+      "status": "fresh",
+      "warning_codes": {
+        "catalog_api_set_mismatch": 1,
+        "scope_limited": 1
+      }
+    },
+    {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3313,13 +3847,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "typesafe-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {}
@@ -3335,223 +3876,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/6138a0af8de44c519e547bf54a806ffc8c4a4bdc13e10a5e90705242b55fc600",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/89a4d1a0452cb803397ed17847e878bd326870ab707c2b549afaa4d2e4898e52",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/8d9245eb437dfa87894d9efd221b3fbc00b4d276b66e22d701d8c474842b57d0",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/91e275ebbba22d81eb0370531cbd78b6222dc288a4a890d4e7fa5a516d9e64e3",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/9869a2bb4cf93b33717647725296fdbbdd7a1a3689c3c73e2ba799032f86e578",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/c3dab4eb08eb7a39ef54d1a0b10e50ec85b28d4766a14e4684f043b331f13f72",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/f358c8ee85dab24972851252b1835086bb96143f86d436860c35bba64a7af097",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/f929a24c181237f75403230aa0265d19d91580b5ccd7e08210683afaca372df9",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 42,
-                "contract_findings": [
-                  {
-                    "diagnostic_count": 1,
-                    "diagnostics": [
-                      {
-                        "affected_items": 1,
-                        "expected": "reviewed source contract",
-                        "fingerprint": "292143a08eb15811",
-                        "kind": "constraint_violation",
-                        "observed": "string",
-                        "path": "/"
-                      }
-                    ],
-                    "disposition": "reject",
-                    "observed_items": 1
-                  }
-                ],
-                "dependency_id": "vercel-models/model-page/ff11a434f1eee32279fe6f97a1e22efd94f5e52ca9b40cfccf312d6fa38dc1db",
-                "impact": "claim",
-                "message": "Vercel model page omitted exact search prices contract mismatch: constraint_violation at / (expected reviewed source contract, observed string)",
-                "outcome": "parse_failed"
-              },
-              {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3559,7 +3884,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3567,7 +3892,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3575,7 +3900,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3583,7 +3908,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3591,7 +3916,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3599,23 +3924,95 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 286,
+                "consecutive_failures": 287,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
+                "http_status": 404,
+                "impact": "claim",
+                "message": "HTTP 404",
+                "outcome": "fetch_failed"
+              },
+              {
+                "consecutive_failures": 287,
+                "dependency_id": "vercel-models/endpoints/3fcdf7b90d0d428c39e44b430e7d5b337fe9ab2b3da07e7e1fe56d133e1f2ece",
                 "http_status": 404,
                 "impact": "claim",
                 "message": "HTTP 404",
                 "outcome": "fetch_failed"
               }
             ],
-            "dependency_failures_omitted": 42,
-            "extractor_changed": false,
+            "dependency_failures_omitted": 33,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 498,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 498,
-              "normalized_facts": 5889,
+              "normalized_facts": 5898,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 495,
@@ -3672,13 +4069,13 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 1276,
+                "normalized": 1279,
                 "raw": 208,
                 "unbound": 51,
                 "unresolved": 0,
                 "unsupported": 1
               },
-              "observed_items": 1536,
+              "observed_items": 1539,
               "reason_counts": {
                 "catalog_price_empty": 15,
                 "catalog_price_object": 428,
@@ -3688,7 +4085,7 @@
                 "model_page_price": 20,
                 "pricing_input_contract_bound": 1,
                 "pricing_unit_unsupported": 205,
-                "route_price_object": 772,
+                "route_price_object": 775,
                 "route_price_unbound": 36
               },
               "unit": "reviewed source pricing item"
@@ -3702,6 +4099,7 @@
         "added_model_refs": [],
         "changed": 1,
         "changed_fields": {
+          "limits": 1,
           "routes": 1
         },
         "changed_models": [
@@ -3711,6 +4109,27 @@
                 "current": [
                   {
                     "provider": "alibaba",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "inference-net",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "modal",
                     "provider_model_id": "moonshotai/kimi-k3.1-pro",
                     "source_ref": "vercel-models",
                     "status": "live",
@@ -3741,17 +4160,49 @@
                 "path": "routes",
                 "previous": [
                   {
+                    "provider": "alibaba",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
                     "provider": "moonshotai",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "nebius",
+                    "provider_model_id": "moonshotai/kimi-k3.1-pro",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "togetherai",
                     "provider_model_id": "moonshotai/kimi-k3.1-pro",
                     "source_ref": "vercel-models",
                     "status": "live",
                     "task": "language"
                   }
                 ]
+              },
+              {
+                "current": 1000000,
+                "path": "limits.context_tokens",
+                "previous": 1048576
+              },
+              {
+                "current": 262144,
+                "path": "limits.max_output_tokens",
+                "previous": 1048576
               }
             ],
             "fields": [
-              "routes"
+              "routes",
+              "limits"
             ],
             "model_ref": "vercel/moonshotai/kimi-k3.1-pro"
           }
@@ -3763,9 +4214,9 @@
         "unchanged": 497
       },
       "pricing": {
-        "commercial_hash": "d70b0d7141254d97008c0fd9defa4efb0f81cfb5f62b39328b6d7d9779212ec5",
+        "commercial_hash": "a4b64a51683d78dc16a5e24dc5363ea8fe088307f3ba1f69e99d2da9d1275b07",
         "outcome": "commercial",
-        "previous_commercial_hash": "4d8d2eb472c60ffa86574ef79a815fad0ab750d189d3f87382583ca3c2be70c5"
+        "previous_commercial_hash": "d70b0d7141254d97008c0fd9defa4efb0f81cfb5f62b39328b6d7d9779212ec5"
       },
       "pricing_coverage": {
         "current_models": 498,
@@ -3785,7 +4236,6 @@
       "provider_id": "vercel",
       "publication": "accepted",
       "signals": [
-        "partial_contract_mismatch",
         "persistent_source_failure"
       ],
       "sources": {
@@ -3795,7 +4245,7 @@
         "changed_sources": [
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "field_paths_changed": false,
             "source_id": "vercel-models"
           }
@@ -4325,19 +4775,19 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 19,
-    "added_models": 10,
-    "added_sources": 0,
-    "changed_models": 2,
-    "changed_sources": 31,
-    "models": 4200,
-    "pricing_accepted": 16,
-    "pricing_not_observed": 1,
+    "accepted": 22,
+    "added_models": 193,
+    "added_sources": 4,
+    "changed_models": 1,
+    "changed_sources": 39,
+    "models": 4391,
+    "pricing_accepted": 18,
+    "pricing_not_observed": 2,
     "pricing_removed": 0,
     "pricing_retained": 3,
     "pricing_withheld": 0,
-    "providers": 20,
-    "removed_models": 0,
+    "providers": 23,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
