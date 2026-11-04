@@ -8,6 +8,10 @@ import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } 
 
 export type Extractor =
   | { kind: "typesafe-catalog"; minModels: number; maxModels: number }
+  | { kind: "together-serverless" }
+  | { kind: "together-api" }
+  | { kind: "fireworks-serverless" }
+  | { kind: "nvidia-nim-models" }
   | { kind: "openai-catalog" }
   | { kind: "openai-model-pricing" }
   | { kind: "openai-api" }
@@ -456,6 +460,145 @@ const kimiPricingSource = (
 });
 
 export const manifests = [
+  {
+    provider: {
+      id: "together",
+      name: "Together AI",
+      kind: "hosted",
+      homepage: "https://www.together.ai/",
+      docs_url: "https://docs.together.ai/docs/serverless/models",
+      catalog_scope: "global",
+    },
+    sources: [
+      {
+        id: "together-serverless",
+        url: "https://docs.together.ai/docs/serverless/models.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "together-serverless" },
+        extractorVersion: "together-serverless-v1",
+        fields: [
+          "model_id",
+          "name",
+          "tasks",
+          "api_endpoints",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "pricing",
+        ],
+        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        allowedHosts: ["docs.together.ai"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "together-api",
+        url: "https://api.together.ai/v1/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "together-api" },
+        extractorVersion: "together-api-v1",
+        fields: ["model_id", "limits"],
+        allowedHosts: ["api.together.ai"],
+        maxResponseBytes: mebibytes(2),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "TOGETHER_API_KEY" },
+      },
+    ],
+  },
+  {
+    provider: {
+      id: "fireworks",
+      name: "Fireworks AI",
+      kind: "hosted",
+      homepage: "https://fireworks.ai/",
+      docs_url: "https://docs.fireworks.ai/serverless/overview",
+      catalog_scope: "global",
+    },
+    sources: [
+      {
+        id: "fireworks-serverless",
+        url: "https://fireworks.ai/models",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "fireworks-serverless" },
+        extractorVersion: "fireworks-serverless-v1",
+        fields: [
+          "model_id",
+          "name",
+          "tasks",
+          "service_families",
+          "api_endpoints",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "release_stage",
+          "pricing",
+        ],
+        pricingEvidence: firstPartyPricing("price_book", "exact_id"),
+        allowedHosts: ["fireworks.ai", "docs.fireworks.ai"],
+        maxResponseBytes: mebibytes(32),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/models\/[a-z0-9._-]+\/[a-z0-9._-]+\/$/,
+          minDocuments: 1,
+          maxDocuments: 100,
+          concurrency: 4,
+          maxDocumentBytes: mebibytes(1),
+          documents: fixedDocuments([
+            ["pricing", "https://docs.fireworks.ai/serverless/pricing.md", 1, "markdown"],
+            ["modes", "https://docs.fireworks.ai/serverless/serverless-modes.md", 1, "markdown"],
+            ["us", "https://docs.fireworks.ai/serverless/us-only-serverless.md", 1, "markdown"],
+          ]),
+        },
+      },
+    ],
+  },
+  {
+    provider: {
+      id: "nvidia",
+      name: "NVIDIA NIM",
+      kind: "hosted",
+      homepage: "https://build.nvidia.com/models",
+      docs_url: "https://docs.api.nvidia.com/nim/docs/api-quickstart",
+      catalog_scope: "global",
+    },
+    catalogOnly: true,
+    sources: [
+      {
+        id: "nvidia-nim-models",
+        url: "https://integrate.api.nvidia.com/v1/models",
+        type: "api",
+        access: "public",
+        format: "json",
+        stability: "semi_structured",
+        extractor: { kind: "nvidia-nim-models" },
+        extractorVersion: "nvidia-nim-models-v1",
+        fields: ["model_id"],
+        allowedHosts: ["integrate.api.nvidia.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+    ],
+  },
   {
     provider: {
       id: "typesafe",

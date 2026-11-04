@@ -64,3 +64,6 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Kimi](docs/providers/kimi.md)
 - [Cerebras](docs/providers/cerebras.md)
 - [Ollama](docs/providers/ollama.md)
+- [Together AI](docs/providers/together.md)
+- [Fireworks AI](docs/providers/fireworks.md)
+- [NVIDIA NIM](docs/providers/nvidia-nim.md)

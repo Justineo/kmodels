@@ -73,8 +73,10 @@ network:
     - docs.cloud.google.com
     - docs.cohere.com
     - docs.databricks.com
+    - docs.fireworks.ai
     - docs.mistral.ai
     - docs.ollama.com
+    - docs.together.ai
     - docs.typesafe.ai
     - docs.x.ai
     - docs.z.ai
@@ -84,6 +86,7 @@ network:
     - help.aliyun.com
     - huggingface.co
     - inference-docs.cerebras.ai
+    - integrate.api.nvidia.com
     - jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com
     - learn.microsoft.com
     - mistral.ai

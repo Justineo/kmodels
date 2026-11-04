@@ -4,6 +4,7 @@ import bedrock from "@lobehub/icons-static-svg/icons/bedrock-color.svg?raw";
 import cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg?raw";
 import cohere from "@lobehub/icons-static-svg/icons/cohere-color.svg?raw";
 import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
+import fireworks from "@lobehub/icons-static-svg/icons/fireworks-color.svg?raw";
 import gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?raw";
 import googleCloud from "@lobehub/icons-static-svg/icons/googlecloud-color.svg?raw";
 import huggingFace from "@lobehub/icons-static-svg/icons/huggingface-color.svg?raw";
@@ -11,8 +12,10 @@ import kimi from "@lobehub/icons-static-svg/icons/kimi.svg?raw";
 import kimiColor from "@lobehub/icons-static-svg/icons/kimi-color.svg?raw";
 import meta from "@lobehub/icons-static-svg/icons/meta-color.svg?raw";
 import mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg?raw";
+import nvidia from "@lobehub/icons-static-svg/icons/nvidia-color.svg?raw";
 import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
 import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
+import together from "@lobehub/icons-static-svg/icons/together-brand-color.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
 import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
@@ -65,13 +68,16 @@ const providerSources = {
   dashscope: alibabaCloud,
   databricks,
   deepseek: deepSeek,
+  fireworks,
   gemini,
   huggingface: huggingFace,
   kimi,
   meta,
   mistral,
+  nvidia,
   ollama,
   openai: openAi,
+  together,
   typesafe,
   vercel,
   vertex: googleCloud,
