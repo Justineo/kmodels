@@ -1723,6 +1723,23 @@ async function fetchConfiguredDocuments(
   };
 }
 
+const vercelBatchGuidePath = "/docs/ai-gateway/models-and-providers/batch-processing.md";
+
+function vercelBatchOnlyIds(
+  ids: readonly string[],
+  documents: readonly FetchedDocument[],
+): string[] {
+  const guide = documents.find(({ url }) => new URL(url).pathname === vercelBatchGuidePath);
+  if (guide === undefined) return [];
+  const prose = guide.payload.body.replace(/\s+/g, " ");
+  if (
+    !prose.includes("The IDs that end in `-batch` are the complete list of batch-capable models") ||
+    !prose.includes("Synchronous requests don't accept `-batch` IDs")
+  )
+    return [];
+  return ids.filter((id) => id.endsWith("-batch"));
+}
+
 async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
   const transport = source.transport;
   const extractor = source.extractor;
@@ -1763,22 +1780,27 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     slugOwners.set(slug, id);
   }
 
-  const endpointDocuments = await mapConcurrent(ids, transport.concurrency, async (id) => {
-    const key = `${source.id}/endpoints/${sha256(id)}`;
-    const url = checkedUrl(`${source.url}/${id}/endpoints`, source);
-    if (url.hostname !== "ai-gateway.vercel.sh" || url.pathname !== `/v1/models/${id}/endpoints`)
-      throw new Error("Vercel endpoint URL left the reviewed API path");
-    try {
-      const raw = await fetchPayload(
-        requestSource(source, key, url, "json", transport.maxEndpointBytes),
-      );
-      const { body, searchModelId } = normalizeVercelEndpointResponse(raw.body);
-      const payload = { ...raw, body, contentHash: sha256(body) };
-      return { key, url: url.href, payload, searchModelId };
-    } catch (error) {
-      return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
-    }
-  });
+  const batchOnlyIds = new Set(vercelBatchOnlyIds(ids, documentation.documents));
+  const endpointDocuments = await mapConcurrent(
+    ids.filter((id) => !batchOnlyIds.has(id)),
+    transport.concurrency,
+    async (id) => {
+      const key = `${source.id}/endpoints/${sha256(id)}`;
+      const url = checkedUrl(`${source.url}/${id}/endpoints`, source);
+      if (url.hostname !== "ai-gateway.vercel.sh" || url.pathname !== `/v1/models/${id}/endpoints`)
+        throw new Error("Vercel endpoint URL left the reviewed API path");
+      try {
+        const raw = await fetchPayload(
+          requestSource(source, key, url, "json", transport.maxEndpointBytes),
+        );
+        const { body, searchModelId } = normalizeVercelEndpointResponse(raw.body);
+        const payload = { ...raw, body, contentHash: sha256(body) };
+        return { key, url: url.href, payload, searchModelId };
+      } catch (error) {
+        return { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) };
+      }
+    },
+  );
 
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
   if (modelPageBase.href !== "https://vercel.com/ai-gateway/models/")

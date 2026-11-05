@@ -191,6 +191,75 @@ it("keeps endpoint response-contract failures visible beside a usable Vercel mod
   ).toBe(true);
 });
 
+function vercelModelsSource() {
+  const source: SourceManifest | undefined = manifests
+    .find(({ provider }) => provider.id === "vercel")
+    ?.sources.find((source: SourceManifest) => source.transport?.kind === "vercel-models");
+  if (source === undefined || source.extractor.kind !== "vercel-catalog")
+    throw new Error("Missing Vercel transport");
+  return { source, minModels: source.extractor.minModels };
+}
+
+const vercelBatchGuide = [
+  "# AI Gateway Batch Processing",
+  "",
+  "Each batch-capable model has a `<model>-batch` entry in `GET /v1/models`.",
+  "",
+  "The IDs that end in `-batch` are the complete list of batch-capable models.",
+  "",
+  "Synchronous requests don't accept `-batch` IDs.",
+  "",
+].join("\n");
+
+it("skips synchronous endpoint discovery for reviewed batch-only Vercel IDs", async () => {
+  const { source, minModels: count } = vercelModelsSource();
+  const batchCount = 3;
+  const data = Array.from({ length: count }, (_, index) => ({
+    id: index < batchCount ? `test/model-${index}-batch` : `test/model-${index}`,
+    pricing: { input: "0.1" },
+  }));
+  transport.responses.set(
+    "vercel.com",
+    Array.from({ length: 11 }, () => `HTTP/1.1 200 OK\r\n\r\n${vercelBatchGuide}`),
+  );
+  transport.responses.set("ai-gateway.vercel.sh", [
+    `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ object: "list", data })}`,
+    ...Array.from({ length: count }, () => 'HTTP/1.1 200 OK\r\n\r\n{"wrong":"endpoint envelope"}'),
+  ]);
+  const result = await fetchSource(source);
+  const endpointCalls = transport.calls.filter((url) => url.endsWith("/endpoints"));
+  expect(endpointCalls).toHaveLength(count - batchCount);
+  const batchUrls = data.slice(0, batchCount).map(({ id }) => `/v1/models/${id}/endpoints`);
+  expect(endpointCalls.filter((url) => batchUrls.some((path) => url.endsWith(path)))).toEqual([]);
+  const failures = result.dependencyFailures?.filter(({ dependency_id }) =>
+    dependency_id.startsWith(`${source.id}/endpoints/`),
+  );
+  expect(failures).toHaveLength(count - batchCount);
+  expect(
+    failures?.every(({ outcome, impact }) => outcome === "parse_failed" && impact === "claim"),
+  ).toBe(true);
+});
+
+it("keeps endpoint discovery for batch IDs when the Vercel batch guide is unavailable", async () => {
+  const { source, minModels: count } = vercelModelsSource();
+  const batchId = "test/model-0-batch";
+  const data = Array.from({ length: count }, (_, index) => ({
+    id: index === 0 ? batchId : `test/model-${index}`,
+    pricing: { input: "0.1" },
+  }));
+  transport.responses.set("ai-gateway.vercel.sh", [
+    `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ object: "list", data })}`,
+    ...Array.from({ length: count }, () => 'HTTP/1.1 200 OK\r\n\r\n{"wrong":"endpoint envelope"}'),
+  ]);
+  const result = await fetchSource(source);
+  expect(transport.calls.filter((url) => url.endsWith("/endpoints"))).toHaveLength(count);
+  expect(
+    result.dependencyFailures?.some(
+      ({ dependency_id }) => dependency_id === `${source.id}/endpoints/${sha256(batchId)}`,
+    ),
+  ).toBe(true);
+});
+
 it("keeps a malformed Ollama list visible when the independent HTML inventory succeeds", async () => {
   const source: SourceManifest | undefined = manifests
     .find(({ provider }) => provider.id === "ollama")

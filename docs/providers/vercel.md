@@ -75,8 +75,12 @@ for production collection; model and route joins retain their existing evidence.
 The model list is the exhaustive inventory and primary model-level price source. The documented
 per-model endpoint API enriches exact route identity and route-specific rates. A public model page
 is fetched when the model-list price object is empty or an endpoint publishes X Search pricing keys
-that require independent page evidence. The exact hourly-audio disclosure can fill an empty Input
-cell on a streaming transcription card. Compound hover prices are read from the
+that require independent page evidence. Endpoint discovery covers only IDs published for
+synchronous use: the reviewed Batch guide states that IDs ending in `-batch` are the complete
+batch-capable set and that synchronous requests do not accept them, so their endpoint documents are
+not requested and their amounts come from the model list. Without that reviewed statement the
+transport keeps the conservative full-ID endpoint discovery. The exact hourly-audio disclosure can
+fill an empty Input cell on a streaming transcription card. Compound hover prices are read from the
 page's own immutable client registry and normalized only when the primary amount and advertised
 variant count agree.
 
