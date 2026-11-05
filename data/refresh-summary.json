@@ -1,8 +1,8 @@
 {
-  "catalog_version": "61cf9fc70a6d7dc45491afcf6b349ecdb89995385d3ba509a38654b625ec48b7",
-  "generated_at": "2026-11-05T06:04:33.047Z",
+  "catalog_version": "029926a6e0cb1ae5f6d393e0cb9ab1feea0c58486a85b4b81e97eac287447fea",
+  "generated_at": "2026-11-05T07:04:04.142Z",
   "outcome": "changed",
-  "previous_catalog_version": "c43abe6f133fc3ee4ffd783cf5f7aa4c12cec38dbcd5a78ff4208ad972477b04",
+  "previous_catalog_version": "61cf9fc70a6d7dc45491afcf6b349ecdb89995385d3ba509a38654b625ec48b7",
   "providers": [
     {
       "attempt": {
@@ -208,10 +208,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "consecutive_failures": 2,
-            "last_success_at": "2026-11-05T03:03:53.787Z",
-            "message": "Request aborted",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 124,
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -256,8 +256,7 @@
       "provider_id": "amazon-bedrock",
       "publication": "accepted",
       "signals": [
-        "partial_contract_mismatch",
-        "persistent_source_failure"
+        "partial_contract_mismatch"
       ],
       "sources": {
         "added": 0,
@@ -279,23 +278,17 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 2,
-        "source_contract_drift": 4,
-        "source_fetch_failed": 1
+        "scope_limited": 1,
+        "source_contract_drift": 4
       }
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Source response body transfer failed or timed out"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Source response body transfer failed or timed out",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -306,11 +299,97 @@
             "source_id": "sagemaker-models"
           },
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-11-05T04:03:55.681Z",
-            "message": "Source response body transfer failed or timed out",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 640,
             "source_id": "sagemaker-sdk"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 640,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 640,
+              "normalized_facts": 0,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 640
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 20,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 41425,
+                "explicit_non_numeric": 0,
+                "normalized": 5004,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 20,
+                "unsupported": 0
+              },
+              "observed_items": 46449,
+              "reason_counts": {
+                "sagemaker_marketplace_batch_or_training": 265,
+                "sagemaker_marketplace_billable_inference": 3,
+                "sagemaker_marketplace_non_usage_term": 254,
+                "sagemaker_marketplace_public_pricing_unavailable": 20,
+                "sagemaker_marketplace_realtime_software_capacity": 652,
+                "sagemaker_outside_request_pricing": 40906,
+                "sagemaker_public_hosting_capacity": 4025,
+                "sagemaker_public_invocation_meter": 324
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "sagemaker-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 620,
+            "source_id": "sagemaker-api-us-west-2"
           }
         ]
       },
@@ -351,9 +430,9 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 5
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "amazon-sagemaker",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
@@ -366,9 +445,10 @@
         "removed_source_ids": [],
         "unchanged": 4
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "catalog_api_set_mismatch": 1,
+        "scope_limited": 1
       }
     },
     {
@@ -381,9 +461,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 36,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -591,20 +671,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1102,9 +1175,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1162,20 +1235,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2254,20 +2320,16 @@
         ]
       },
       "models": {
-        "added": 3,
-        "added_model_refs": [
-          "huggingface/BAAI/bge-large-zh-v1.5",
-          "huggingface/google/pegasus-cnn_dailymail",
-          "huggingface/michiyasunaga/LinkBERT-large"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 1452,
-        "previous": 1449,
+        "previous": 1452,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1449
+        "unchanged": 1452
       },
       "pricing": {
         "outcome": "none"
@@ -2276,7 +2338,7 @@
         "current_models": 1452,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 3
+          "unknown_models": 0
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2424,7 +2486,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 20,
+            "consecutive_failures": 21,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2601,7 +2663,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 16,
+                "consecutive_failures": 17,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2770,7 +2832,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 56,
+            "consecutive_failures": 57,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2864,7 +2926,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 2,
+                "consecutive_failures": 3,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3158,9 +3220,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 104,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3399,26 +3461,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -3571,7 +3627,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3635,7 +3691,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3676,47 +3732,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "modalities": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [],
-                "path": "modalities.input",
-                "previous": [
-                  "text"
-                ]
-              }
-            ],
-            "fields": [
-              "modalities"
-            ],
-            "model_ref": "typesafe/jev-1.13.0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [],
-                "path": "modalities.input",
-                "previous": [
-                  "text"
-                ]
-              }
-            ],
-            "fields": [
-              "modalities"
-            ],
-            "model_ref": "typesafe/jev-1.14.0"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "pricing": {
         "commercial_hash": "72c276b0e2da3af3edef28cec3f22bd871761e481a9237baa13eb92ba3dc9e04",
@@ -3746,20 +3769,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "typesafe-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3777,7 +3793,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/04a513706b96eb65bba7a6a6a2fd225b1508e3f3e2f0854a35e4c522e95bd612",
                 "http_status": 404,
                 "impact": "claim",
@@ -3785,7 +3801,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/0877a3259f0a143d3f078a3ecabfb2d9c000d8b51551c0accb19130e67fcf21c",
                 "http_status": 404,
                 "impact": "claim",
@@ -3793,7 +3809,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/0f172b319be2e97d757186f8cbdefbc3279d68dda0c1c028a0ea84f6d66272ce",
                 "http_status": 404,
                 "impact": "claim",
@@ -3801,7 +3817,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/0f365ec4eb1d75371eb43ba1167ac4f3dac5092107c940387f83510bd5593f83",
                 "http_status": 404,
                 "impact": "claim",
@@ -3809,7 +3825,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1187541758553e00eb8bbbeea533913f7f4937792611025e10fd01c411b3fcf6",
                 "http_status": 404,
                 "impact": "claim",
@@ -3817,7 +3833,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1573a9724f72728c37f60bd6cc06e719abc9d5ac02636371ef448d6d50017e28",
                 "http_status": 404,
                 "impact": "claim",
@@ -3825,7 +3841,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1861b131b552affb46e91b951ca4727b375d8bf18b887b28e3480b7536060fd5",
                 "http_status": 404,
                 "impact": "claim",
@@ -3833,7 +3849,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1c22f629828ed8970b35494ed0ea4c768f7bf2e99a290007510668abb2f5f74e",
                 "http_status": 404,
                 "impact": "claim",
@@ -3841,7 +3857,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1d262237e607f2bfba1c667003dd3dd1277fca49b81f7c1a149ca89c733f59c4",
                 "http_status": 404,
                 "impact": "claim",
@@ -3849,7 +3865,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1de01f98bf35d7c10e65644f88f257aae442025d76ce7aef70acd1242b0bd030",
                 "http_status": 404,
                 "impact": "claim",
@@ -3857,7 +3873,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/1fae97dfceb0d76ee8d37483b999fabccce8e2d709cb2562859566357fe5bfdd",
                 "http_status": 404,
                 "impact": "claim",
@@ -3865,7 +3881,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/2326f8ebea021630ee69e5dac2479804d7cba366834123981ad8dc6b602548e9",
                 "http_status": 404,
                 "impact": "claim",
@@ -3873,7 +3889,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/26d2d843c20e5a177e43544260cf9b6413efb1b4a1eebcb688d280dcb95b796a",
                 "http_status": 404,
                 "impact": "claim",
@@ -3881,7 +3897,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/28c7af7431542e21206210a44d61172288a7b1ab9c70c75eeb0915c6b461eeac",
                 "http_status": 404,
                 "impact": "claim",
@@ -3889,7 +3905,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/30af27db891380305a857af73fce6d50ddcfb8ea547b71b975cbbaa82f52ae30",
                 "http_status": 404,
                 "impact": "claim",
@@ -3897,7 +3913,7 @@
                 "outcome": "fetch_failed"
               },
               {
-                "consecutive_failures": 297,
+                "consecutive_failures": 298,
                 "dependency_id": "vercel-models/endpoints/3fcdf7b90d0d428c39e44b430e7d5b337fe9ab2b3da07e7e1fe56d133e1f2ece",
                 "http_status": 404,
                 "impact": "claim",
@@ -3998,39 +4014,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "availability": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "regional_inference",
-                    "region": "us"
-                  }
-                ],
-                "path": "availability"
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "vercel/moonshotai/kimi-k3.1-pro"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 499,
         "previous": 499,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 498
+        "unchanged": 499
       },
       "pricing": {
-        "commercial_hash": "2baf43e3e1c585ae400ae921046586a2a5f4900bbe56c42cb18ccc08259ef0eb",
+        "commercial_hash": "cfdbb0b90a94d4a6f53d73d5337f4f26f16c76a8a08265268d35fd5cc6d78cea",
         "outcome": "commercial",
-        "previous_commercial_hash": "419a00f8f0c8444b0b5e1e9d10560a6dc18e97ec6ae88b28577c53fb28672a5c"
+        "previous_commercial_hash": "2baf43e3e1c585ae400ae921046586a2a5f4900bbe56c42cb18ccc08259ef0eb"
       },
       "pricing_coverage": {
         "current_models": 499,
@@ -4589,21 +4585,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 21,
-    "added_models": 3,
+    "accepted": 22,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 3,
-    "changed_sources": 36,
+    "changed_models": 0,
+    "changed_sources": 32,
     "models": 4421,
-    "pricing_accepted": 17,
+    "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
-    "pricing_retained": 4,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
     "removed_models": 0,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 1,
     "withheld": 0
   }
 }
