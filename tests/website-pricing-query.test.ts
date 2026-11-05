@@ -136,6 +136,35 @@ describe("website pricing query", () => {
     expect(projectWebsitePricingNotes(data)).toHaveLength(5);
   });
 
+  it("displays escaped currency in pricing notes as plain text", () => {
+    const data = offer([]);
+    const details = [
+      String.raw`\\$0.17`,
+      String.raw`From \$0.15`,
+      "$0.24",
+      "Unit: video",
+      String.raw`A\B`,
+    ];
+    data.unnormalized = [
+      {
+        key: "video",
+        label: "Video generation",
+        reason: "Unknown applicability",
+        impact: "base_price",
+        details,
+      },
+    ];
+
+    expect(projectWebsitePricingNotes(data)[0]?.details).toEqual([
+      "$0.17",
+      "From $0.15",
+      "$0.24",
+      "Unit: video",
+      String.raw`A\B`,
+    ]);
+    expect(data.unnormalized[0]?.details?.[0]).toBe(String.raw`\\$0.17`);
+  });
+
   it("shows a rate immediately when it is invariant across the available context", () => {
     const result = projectWebsiteRateQuery(
       offer([{ amount: "$2", scope: region("us", "eu") }]),

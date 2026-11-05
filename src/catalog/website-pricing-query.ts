@@ -86,7 +86,7 @@ export function projectWebsitePricingNotes(
     group.push(row);
     groups.set(key, group);
   }
-  return [...groups.values()].flatMap((rows) => {
+  const notes = [...groups.values()].flatMap((rows) => {
     const first = rows[0];
     if (first === undefined) return [];
     if (first.possible_scope === undefined) return [first];
@@ -102,6 +102,11 @@ export function projectWebsitePricingNotes(
       return rows;
     }
   });
+  return notes.map((note) =>
+    note.details === undefined
+      ? note
+      : { ...note, details: note.details.map((detail) => detail.replace(/\\+\$(?=\d)/g, "$")) },
+  );
 }
 
 export function projectWebsitePricingTimeline(
