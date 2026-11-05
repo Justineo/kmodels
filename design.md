@@ -23,6 +23,8 @@ This index points to the repository's current decisions. Detailed documents are 
   relation, candidate/missing-condition semantics, direct UI and compatibility boundary.
 - [Catalog schema scope](docs/catalog-schema-upgrade.md): additive pricing associations and compatibility.
 - [Collection](docs/collection.md): source trust, scopes, matching, validation, fallback, provenance, and generated data.
+- [Provider research and collection guidelines](docs/agent-provider-research.md): an agent workflow
+  for first-party discovery, transport verification, extraction, and consumer replay.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
 - [Review and repair method](docs/refresh-repair-audit.md): finite review scope, source-to-consumer evidence, diagnostic admission, periodic review and historical-data repair.
