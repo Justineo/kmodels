@@ -1,8 +1,8 @@
 {
-  "catalog_version": "7b15151b8bed0ab5ef75618e8eee6bbafcb18ff6e41e3c5ace498a246c03e22e",
-  "generated_at": "2026-11-05T17:02:51.979Z",
+  "catalog_version": "689370b016eaaa9ef636c0e8382f3f3a40c6f3d485181db924a65b62cf14dfe0",
+  "generated_at": "2026-11-05T18:03:09.134Z",
   "outcome": "changed",
-  "previous_catalog_version": "ba1dbbaf8fe452e5e0b8fbb0256d02f9eaf424609f0fac1a1189021e8b2dda11",
+  "previous_catalog_version": "7b15151b8bed0ab5ef75618e8eee6bbafcb18ff6e41e3c5ace498a246c03e22e",
   "providers": [
     {
       "attempt": {
@@ -208,10 +208,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-05T17:02:51.979Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -278,10 +278,10 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1,
-        "source_contract_drift": 4
+        "source_contract_drift": 4,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -306,9 +306,9 @@
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 640,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -437,20 +437,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "sagemaker-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -993,9 +986,9 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 187,
             "source_id": "azure-api"
           }
@@ -1060,8 +1053,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1079,7 +1078,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1829,9 +1828,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 68,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1922,13 +1921,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2178,61 +2184,49 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 89,
+            "parsed_models": 90,
             "source_id": "gemini-models"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 37,
+            "parsed_models": 38,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 37,
-              "normalized_facts": 896,
+              "model_records": 38,
+              "normalized_facts": 901,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 37,
+              "numeric_models": 38,
               "raw_facts": 50,
               "raw_models": 13,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 2,
-              "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "pricing_model_unbound",
-                  "sample": "gemini-omni-1.2-flash"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "pricing_model_unbound",
-                  "sample": "gemini-omni-1.2-flash"
-                }
-              ],
+              "diagnostic_count": 0,
+              "diagnostics": [],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 80,
-                "explicit_non_numeric": 241,
-                "normalized": 610,
+                "explicit_non_numeric": 243,
+                "normalized": 613,
                 "raw": 58,
-                "unbound": 2,
+                "unbound": 0,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 991,
+              "observed_items": 994,
               "reason_counts": {
-                "free_tier_not_numeric": 229,
+                "free_tier_not_numeric": 231,
                 "gemma_free_tier_rate": 4,
                 "gemma_paid_tier_unavailable": 4,
                 "non_price_commercial_row": 80,
                 "paid_tier_not_numeric": 8,
                 "pricing_input_contract_bound": 1,
-                "pricing_model_unbound": 2,
-                "pricing_rate_bound": 605,
+                "pricing_rate_bound": 608,
                 "pricing_unknown_meter": 33,
                 "pricing_unsupported_structure": 25
               },
@@ -2250,31 +2244,238 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 89,
+        "added": 1,
+        "added_model_refs": [
+          "gemini/gemini-omni-1.2-flash"
+        ],
+        "changed": 10,
+        "changed_fields": {
+          "description": 1,
+          "limits": 1,
+          "replacement_model_ids": 10,
+          "retired_at": 1,
+          "status": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Gemini Omni Flash is a high-performance model for fast, conversational video generation and editing. It excels at turning text and images into video, lets you refine and edit generated videos through natural language conversations using the Interactions API, and supports video extension, up to 4K output resolution, and advanced interpolation.",
+                "path": "description",
+                "previous": "Gemini Omni Flash is a high-performance model for fast, conversational video generation and editing. It excels at turning text and images into video, lets you refine and edit generated videos through natural language conversations using the Interactions API, and supports video extension, resolution upscaling, and advanced interpolation."
+              },
+              {
+                "current": 131072,
+                "path": "limits.context_tokens",
+                "previous": 1048576
+              },
+              {
+                "current": 131072,
+                "path": "limits.max_input_tokens",
+                "previous": 1048576
+              },
+              {
+                "current": "2026-12-03",
+                "path": "retired_at"
+              },
+              {
+                "current": "deprecated",
+                "path": "status",
+                "previous": "active"
+              },
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": []
+              }
+            ],
+            "fields": [
+              "description",
+              "limits",
+              "retired_at",
+              "status",
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/gemini-omni-1.1-flash",
+            "previous_status": "active",
+            "status": "deprecated"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/gemini-omni-flash-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-2.0-generate-001"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.0-fast-generate-001"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.0-fast-generate-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.0-generate-001"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.0-generate-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.1-fast-generate-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.1-generate-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "gemini-omni-1.2-flash"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "gemini-omni-1.1-flash"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/veo-3.1-lite-generate-preview"
+          }
+        ],
+        "current": 90,
         "previous": 89,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 89
+        "unchanged": 79
       },
       "pricing": {
-        "commercial_hash": "f10038361a5a82553a00a3d67e83d682b7fe863cf9ef6de0ab90625600c204ad",
+        "commercial_hash": "5b8d3b81fcc0f0cbb5c413459d48ff79114c9cb64aebcd3a73abeabdfe90e0e3",
         "outcome": "commercial",
-        "previous_commercial_hash": "a62f3e23f4465067d7c8034a6502c0e6e730508a855f8547b57b50c06933c4a5"
+        "previous_commercial_hash": "f10038361a5a82553a00a3d67e83d682b7fe863cf9ef6de0ab90625600c204ad"
       },
       "pricing_coverage": {
-        "current_models": 89,
+        "current_models": 90,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 37,
+        "normalized_rate_models": 38,
         "not_applicable_models": 0,
-        "offer_models": 37,
+        "offer_models": 38,
         "raw_fact_models": 13,
         "unknown_model_refs": [
           "gemini/antigravity-preview-05-2026",
@@ -2347,45 +2548,51 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1451,
+            "parsed_models": 1447,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
       "count_decreases": [
         {
-          "current": 1451,
+          "current": 1447,
           "field": "models",
-          "previous": 1452
+          "previous": 1451
         },
         {
-          "current": 1451,
+          "current": 1447,
           "field": "routes",
-          "previous": 1452
+          "previous": 1451
         }
       ],
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/google/bigbird-pegasus-large-arxiv"
+        ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1451,
-        "previous": 1452,
-        "removed": 1,
+        "current": 1447,
+        "previous": 1451,
+        "removed": 5,
         "removed_model_refs": [
-          "huggingface/google/bigbird-pegasus-large-arxiv"
+          "huggingface/Helsinki-NLP/opus-mt-ar-en",
+          "huggingface/Helsinki-NLP/opus-mt-en-zh",
+          "huggingface/LazarusNLP/NusaBERT-base",
+          "huggingface/StanfordAIMI/stanford-deidentifier-base",
+          "huggingface/snunlp/KR-SBERT-V40K-klueNLI-augSTS"
         ],
-        "unchanged": 1451
+        "unchanged": 1446
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1451,
+        "current_models": 1447,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": -4
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2413,8 +2620,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1431,
-        "unknown_models": 1451
+        "unknown_model_refs_omitted": 1427,
+        "unknown_models": 1447
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
@@ -2535,7 +2742,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 30,
+            "consecutive_failures": 31,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2712,7 +2919,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2772,7 +2979,7 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -2806,7 +3013,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 19,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2881,7 +3088,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 66,
+            "consecutive_failures": 67,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2933,20 +3140,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -2975,7 +3175,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 12,
+                "consecutive_failures": 13,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3241,17 +3441,17 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 156,
+            "outcome": "changed",
+            "parsed_models": 157,
             "source_id": "openai-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 75,
+            "outcome": "changed",
+            "parsed_models": 76,
             "source_id": "openai-changelog"
           },
           {
@@ -3272,15 +3472,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 104,
+            "parsed_models": 105,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 3,
-              "model_records": 104,
-              "normalized_facts": 378,
+              "model_records": 105,
+              "normalized_facts": 382,
               "not_applicable_models": 2,
               "not_published_models": 0,
-              "numeric_models": 96,
+              "numeric_models": 97,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 3
@@ -3293,13 +3493,13 @@
                 "ambiguous": 0,
                 "excluded": 7,
                 "explicit_non_numeric": 5,
-                "normalized": 354,
+                "normalized": 358,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 366,
+              "observed_items": 370,
               "reason_counts": {
                 "cache_write_multiplier_bound": 4,
                 "cache_write_multiplier_not_applied": 4,
@@ -3307,25 +3507,25 @@
                 "long_context_multiplier_bound": 8,
                 "model_card_without_pricing_claim": 3,
                 "not_applicable": 2,
-                "pricing_cell_bound": 342
+                "pricing_cell_bound": 346
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "openai-overview"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 68,
+            "outcome": "changed",
+            "parsed_models": 69,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 1,
-              "model_records": 68,
-              "normalized_facts": 922,
+              "model_records": 69,
+              "normalized_facts": 927,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 67,
+              "numeric_models": 68,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -3377,15 +3577,15 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 299,
+                "excluded": 304,
                 "explicit_non_numeric": 1,
-                "normalized": 615,
+                "normalized": 620,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
                 "unsupported": 9
               },
-              "observed_items": 924,
+              "observed_items": 934,
               "reason_counts": {
                 "commercial_fact_outside_invocation_scope": 2,
                 "container_billing_minimum": 2,
@@ -3393,8 +3593,8 @@
                 "fixed_search_content_rule": 1,
                 "free_pricing_cell_bound": 1,
                 "price_estimate_not_billing_basis": 3,
-                "pricing_cell_bound": 603,
-                "pricing_cell_not_quoted": 163,
+                "pricing_cell_bound": 608,
+                "pricing_cell_not_quoted": 168,
                 "provider_service_pricing_bound": 9,
                 "public_price_shape_unsupported": 8,
                 "unreviewed_pricing_table": 1
@@ -3404,9 +3604,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3452,32 +3652,50 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 166,
+        "added": 1,
+        "added_model_refs": [
+          "openai/gpt-6-cyber"
+        ],
+        "changed": 1,
+        "changed_fields": {
+          "description": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Cybersecurity model for authorized vulnerability research and security testing.",
+                "path": "description",
+                "previous": "Our most advanced cybersecurity model for authorized vulnerability research and security testing."
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "openai/gpt-5.6-cyber"
+          }
+        ],
+        "current": 167,
         "previous": 166,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 166
+        "unchanged": 165
       },
       "pricing": {
-        "commercial_hash": "7ff6e86c228e63e0866d8b0ff4adda3e4cb6febbf67c5e9d7214c9530cb4e092",
-        "outcome": "provenance_only",
+        "commercial_hash": "30b3c0c085fd9cf4809f475010bb56e78e94c946f92ec6b2c43ce5c60f040b91",
+        "outcome": "commercial",
         "previous_commercial_hash": "7ff6e86c228e63e0866d8b0ff4adda3e4cb6febbf67c5e9d7214c9530cb4e092"
       },
       "pricing_coverage": {
-        "current_models": 126,
+        "current_models": 127,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 78,
+        "normalized_rate_models": 79,
         "not_applicable_models": 2,
-        "offer_models": 79,
-        "raw_fact_models": 13,
+        "offer_models": 80,
+        "raw_fact_models": 14,
         "unknown_model_refs": [
           "openai/gpt-4-turbo-2024-04-09",
           "openai/gpt-4.1-2025-04-14",
@@ -3510,8 +3728,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 6,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-accounting"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3522,14 +3746,32 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
+            "source_id": "openai-changelog"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
             "source_id": "openai-overview"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-pricing"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 6
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3598,9 +3840,9 @@
             "source_id": "together-serverless"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 270,
             "source_id": "together-api"
           },
@@ -3660,20 +3902,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "together-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3855,15 +4090,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 499,
+            "parsed_models": 500,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 499,
-              "normalized_facts": 5929,
+              "model_records": 500,
+              "normalized_facts": 5933,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 496,
+              "numeric_models": 497,
               "raw_facts": 206,
               "raw_models": 120,
               "unknown_models": 3
@@ -3917,23 +4152,23 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 1289,
+                "normalized": 1292,
                 "raw": 206,
                 "unbound": 51,
                 "unresolved": 0,
                 "unsupported": 1
               },
-              "observed_items": 1547,
+              "observed_items": 1550,
               "reason_counts": {
                 "catalog_price_empty": 15,
-                "catalog_price_object": 428,
+                "catalog_price_object": 429,
                 "catalog_route_prices": 56,
                 "generic_search_services_partial": 1,
                 "model_page_ambiguous_variants": 3,
                 "model_page_price": 20,
                 "pricing_input_contract_bound": 1,
                 "pricing_unit_unsupported": 203,
-                "route_price_object": 784,
+                "route_price_object": 786,
                 "route_price_unbound": 36
               },
               "unit": "reviewed source pricing item"
@@ -3943,31 +4178,33 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 1,
+        "added_model_refs": [
+          "vercel/google/gemini-omni-1.2-flash"
+        ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 499,
+        "current": 500,
         "previous": 499,
         "removed": 0,
         "removed_model_refs": [],
         "unchanged": 499
       },
       "pricing": {
-        "commercial_hash": "8cd01016e7e05cd4e1d6581ab1da89fcf7baaaf9cceded4a9a424e28bb386d4b",
+        "commercial_hash": "cdb4f13b83e44cf933504b0fe59f97e1e6c1f62624e4e18e46f82676345db77a",
         "outcome": "commercial",
-        "previous_commercial_hash": "5198387a40fef205390df8340b6d0c154a3be14b210c96df0541bc5048c5a598"
+        "previous_commercial_hash": "8cd01016e7e05cd4e1d6581ab1da89fcf7baaaf9cceded4a9a424e28bb386d4b"
       },
       "pricing_coverage": {
-        "current_models": 499,
+        "current_models": 500,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 496,
+        "normalized_rate_models": 497,
         "not_applicable_models": 0,
-        "offer_models": 499,
+        "offer_models": 500,
         "raw_fact_models": 5,
         "unknown_model_refs": [],
         "unknown_model_refs_omitted": 0,
@@ -4183,37 +4420,35 @@
             "source_id": "vertex-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 54,
             "source_id": "vertex-model-garden-api"
           }
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "vertex/gemini-omni-1.2-flash"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 114,
-        "previous": 113,
+        "previous": 114,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 113
+        "unchanged": 114
       },
       "pricing": {
         "commercial_hash": "63b07a27ba2e107513d74c485f05e95a4a8b4d998b6e575d349b7905df45cbab",
-        "outcome": "commercial",
-        "previous_commercial_hash": "031c353dd73c00068ddf0e0483425c8f2c02a97436b6fb48c28ae16ce1b2087e"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "63b07a27ba2e107513d74c485f05e95a4a8b4d998b6e575d349b7905df45cbab"
       },
       "pricing_coverage": {
         "current_models": 64,
         "delta": {
-          "resolved_models": 1,
+          "resolved_models": 0,
           "unknown_models": 0
         },
         "normalized_rate_models": 49,
@@ -4244,19 +4479,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 5,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "vertex-google-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vertex-model-garden-api"
           },
           {
             "content_changed": true,
@@ -4281,7 +4510,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -4522,18 +4751,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 22,
-    "added_models": 1,
+    "added_models": 4,
     "added_sources": 0,
-    "changed_models": 0,
-    "changed_sources": 38,
-    "models": 4422,
+    "changed_models": 11,
+    "changed_sources": 40,
+    "models": 4421,
     "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
     "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
-    "removed_models": 1,
+    "removed_models": 5,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
