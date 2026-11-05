@@ -65,10 +65,12 @@ network:
     - api.featherless.ai
     - aws.amazon.com
     - azure.microsoft.com
+    - build.nvidia.com
     - cloud.google.com
     - cohere.com
     - console.groq.com
     - developers.openai.com
+    - docs.api.nvidia.com
     - docs.aws.amazon.com
     - docs.cloud.google.com
     - docs.cohere.com
@@ -104,6 +106,7 @@ network:
     - www.databricks.com
     - www.kimi.com
     - www.kimi.ai
+    - www.together.ai
 
 tools:
   edit:

@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { hostedInferencePrice, hostedUsageRate, usdAmount } from "./hosted-usage-rate.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownSection, markdownTableRows } from "./markdown.ts";
 import { baseModel } from "./model.ts";
-import { publishedRate, rawPricingFact, wholeTokenCount } from "./pricing.ts";
+import { multiplyDecimal, publishedRate, rawPricingFact, wholeTokenCount } from "./pricing.ts";
 import type { ParsedProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount, assertSourceConstraint, parseSourceJson } from "./source-contract.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
@@ -60,15 +61,155 @@ function cell(row: Row, column: string): string {
   return value;
 }
 
-function section(input: SourceParseInput, heading: string): string {
-  const body = markdownSection(input.body, 2, heading);
-  assertSourceConstraint(`Together catalog omitted ${heading}`, body !== undefined, undefined);
-  return body;
+function section(body: string, heading: string, depth = 2): string {
+  const value = markdownSection(body, depth, heading);
+  assertSourceConstraint(
+    `Together documentation omitted ${heading}`,
+    value !== undefined,
+    undefined,
+  );
+  return value;
+}
+
+function tableModelId(row: Row, idColumn: string): string {
+  return modelIdSchema.parse(cell(row, idColumn).replace(/^\x60(.*)\x60$/u, "$1"));
+}
+
+function bindLifecycle(models: Map<string, ParsedProviderModel>, body: string): void {
+  const history = section(section(body, "Deprecation history"), "Inference", 3);
+  const scheduled = section(body, "Scheduled deprecations");
+  const removalDate = z.iso.date();
+  for (const row of markdownTableRows(scheduled, [
+    "Model",
+    "Removal date",
+    "Recommended replacement",
+  ])) {
+    const model = models.get(tableModelId(row, "Model"));
+    if (model === undefined) continue;
+    model.status = "deprecated";
+    model.retired_at = removalDate.parse(cell(row, "Removal date"));
+    const replacement = row.get("Recommended replacement")?.match(/^`([^`]+)`$/u)?.[1];
+    if (replacement !== undefined) model.replacement_model_ids = [modelIdSchema.parse(replacement)];
+  }
+  for (const row of markdownTableRows(history, ["Model", "Removal date"])) {
+    const id = row.get("Model")?.match(/^`([^`]+)`$/u)?.[1];
+    const model = id === undefined ? undefined : models.get(id);
+    if (model === undefined) continue;
+    const date = removalDate.parse(cell(row, "Removal date"));
+    if (model.status === "retired" && model.retired_at !== undefined && date < model.retired_at)
+      continue;
+    model.status = "retired";
+    model.retired_at = date;
+    delete model.api_endpoints;
+    model.price_facts = [];
+    model.raw_price_facts = [];
+  }
+  const redirects = section(body, "Active model redirects");
+  for (const row of markdownTableRows(redirects, ["Original model", "Redirects to"])) {
+    const original = tableModelId(row, "Original model");
+    const target = models.get(tableModelId(row, "Redirects to"));
+    if (!models.has(original) && target !== undefined && target.status !== "retired")
+      target.aliases.push(original);
+  }
+}
+
+function bindAudioBatch(models: Map<string, ParsedProviderModel>, body: string): void {
+  const supported = section(body, "Supported models");
+  const discounts = section(supported, "Discounted models", 3);
+  const discount = discounts.match(
+    /^Selected serverless models run at (\d+)% off batch rates:$/mu,
+  )?.[1];
+  assertSourceConstraint(
+    "Together Batch discount changed format",
+    discount !== undefined && Number(discount) > 0 && Number(discount) < 100,
+    undefined,
+  );
+  const multiplier = multiplyDecimal(String(100 - Number(discount)), "0.01");
+  for (const row of markdownTableRows(discounts, ["Model ID"])) {
+    const id = tableModelId(row, "Model ID");
+    const model = models.get(id);
+    if (model === undefined || model.status === "retired" || !model.tasks.includes("transcription"))
+      continue;
+    const rate = model.price_facts.find(
+      ({ meter, unit }) => meter === "input_audio" && unit === "minute",
+    );
+    assertSourceConstraint(
+      "Together discounted audio model lacks an audio-minute rate",
+      rate !== undefined,
+      id,
+    );
+    rate.conditions = { operation: "standard" };
+    model.price_facts.push(
+      hostedUsageRate(
+        {
+          ...rate,
+          price: multiplyDecimal(rate.price, multiplier),
+          conditions: { operation: "batch" },
+          derived: true,
+          derivation: `Serverless audio-minute rate multiplied by ${multiplier}, per successful Batch response`,
+          raw_price: `${discount}%`,
+          raw_unit: "discount on standard rate",
+        },
+        { kind: "table", value: `Batch overview/Discounted models/${id}` },
+        "processed_audio_seconds",
+      ),
+    );
+    model.capabilities.batch = true;
+    const audioLine = supported
+      .split("\n")
+      .find(
+        (line) =>
+          line.includes(`\x60${id}\x60`) &&
+          line.includes("`/v1/audio/transcriptions`") &&
+          line.includes("`/v1/audio/translations`"),
+      );
+    if (audioLine !== undefined) {
+      model.api_endpoints?.push({ name: "Translations", path: "/v1/audio/translations" });
+      model.tasks.push("translation");
+    }
+  }
+}
+
+function catalogRows(
+  body: string,
+  heading: string,
+  idColumn: string,
+  columns: string[] = [],
+): Row[] {
+  const text = section(body, heading);
+  if (
+    /^\s*There are currently no (?:embedding|rerank|moderation) models offered via serverless\./u.test(
+      text,
+    )
+  )
+    return [];
+  return markdownTableRows(text, ["Model name", idColumn, ...columns]);
+}
+
+const mediaModelIdColumn = "Model string for API";
+
+function catalogIdColumn(task: ModelTask): string {
+  return task === "image_generation" || task === "video_generation"
+    ? mediaModelIdColumn
+    : "API model string";
+}
+
+export function togetherCatalogIds(body: string): Set<string> {
+  return new Set([
+    ...sectionRoutes.flatMap(([heading, task]) => {
+      const column = catalogIdColumn(task);
+      return catalogRows(body, heading, column).map((row) => tableModelId(row, column));
+    }),
+    ...catalogRows(body, "Audio models", mediaModelIdColumn).map((row) =>
+      tableModelId(row, mediaModelIdColumn),
+    ),
+  ]);
 }
 
 function togetherModel(input: SourceParseInput, row: Row, idColumn: string): ParsedProviderModel {
-  const id = modelIdSchema.parse(cell(row, idColumn).replace(/^\x60(.*)\x60$/u, "$1"));
+  const id = tableModelId(row, idColumn);
   const name = cell(row, "Model name").replace(/\\([[\]])/gu, "$1");
+  const publisher = row.get("Organization");
   return {
     ...baseModel({
       providerId: input.provider.id,
@@ -78,6 +219,7 @@ function togetherModel(input: SourceParseInput, row: Row, idColumn: string): Par
       observedAt: input.observedAt,
     }),
     status: "active",
+    ...(publisher ? { model_card: { publisher } } : {}),
   };
 }
 
@@ -144,7 +286,7 @@ function mediaPrice(
 }
 
 function audioModel(input: SourceParseInput, row: Row): ParsedProviderModel {
-  const model = togetherModel(input, row, "Model string for API");
+  const model = togetherModel(input, row, mediaModelIdColumn);
   const modality = cell(row, "Modality");
   const speech = modality === "Text-to-Speech";
   assertSourceConstraint(
@@ -193,9 +335,15 @@ function audioModel(input: SourceParseInput, row: Row): ParsedProviderModel {
 }
 
 export function parseTogetherServerless(input: SourceParseInput): SourceParseResult {
+  const bundle = linkedBundleSchema.parse(
+    parseSourceJson(input.body, "Together Serverless bundle"),
+  );
+  const docs = (path: string) =>
+    linkedDocumentBody(bundle, path, `Together bundle omitted ${path}`);
+  const body = bundle.index.body;
   const models = new Map<string, ParsedProviderModel>();
   const usPrices = new Map<string, Row>();
-  const usSection = markdownSection(input.body, 2, "US-only inference");
+  const usSection = markdownSection(body, 2, "US-only inference");
   if (usSection !== undefined) {
     for (const row of markdownTableRows(usSection, ["Model", "Input", "Cached input", "Output"])) {
       const label = cell(row, "Model").match(/^(.+) \(US-only\)$/u)?.[1];
@@ -209,22 +357,11 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
   }
   const boundUs = new Set<string>();
   for (const [heading, task, endpoint, path, inputs, outputs] of sectionRoutes) {
-    const body = section(input, heading);
-    if (
-      /^\s*There are currently no (?:embedding|rerank|moderation) models offered via serverless\./u.test(
-        body,
-      )
-    )
-      continue;
     const isText = task === "text_generation";
     const isMedia = task === "image_generation" || task === "video_generation";
-    const idColumn = isMedia ? "Model string for API" : "API model string";
-    const columns = [
-      "Model name",
-      idColumn,
-      ...(isText ? ["Context length", inputColumn, outputColumn] : []),
-    ];
-    const rows = markdownTableRows(body, columns);
+    const idColumn = catalogIdColumn(task);
+    const columns = isText ? ["Context length", inputColumn, outputColumn] : [];
+    const rows = catalogRows(body, heading, idColumn, columns);
     const sectionIds = new Set<string>();
     for (const row of rows) {
       const model = togetherModel(input, row, idColumn);
@@ -310,9 +447,7 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
       models.set(id, model);
     }
   }
-  for (const row of markdownTableRows(section(input, "Audio models"), [
-    "Model name",
-    "Model string for API",
+  for (const row of catalogRows(body, "Audio models", mediaModelIdColumn, [
     "Modality",
     "Pricing",
   ])) {
@@ -330,6 +465,25 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
     undefined,
   );
   assertItemCount("Together serverless models", models.size, 1, 500);
+  bindLifecycle(models, docs("/docs/deprecations.md"));
+  bindAudioBatch(models, docs("/docs/inference/batch/overview.md"));
+  for (const [path, name] of [
+    ["messages", "Messages"],
+    ["responses", "Responses"],
+  ] as const) {
+    const guide = bundle.documents.find(
+      ({ url }) => new URL(url).pathname === `/docs/inference/${path}-api.md`,
+    );
+    if (guide === undefined) continue;
+    for (const row of markdownTableRows(section(guide.body, "Supported models"), [
+      "API model string",
+      "Serverless inference",
+    ])) {
+      if (row.get("Serverless inference") !== "✓") continue;
+      const model = models.get(tableModelId(row, "API model string"));
+      model?.api_endpoints?.push({ name, path: `/v1/${path}` });
+    }
+  }
   const published = [...models.values()];
   return {
     models: published,
@@ -345,11 +499,22 @@ const apiModels = z
   .array(
     z.object({
       id: modelIdSchema,
+      type: z.string().nullish(),
+      license: z.string().trim().max(2048).nullish(),
       context_length: z.number().int().nonnegative().nullish(),
     }),
   )
   .min(1)
   .max(5_000);
+
+const tokenContextTypes = new Set([
+  "chat",
+  "language",
+  "code",
+  "embedding",
+  "rerank",
+  "moderation",
+]);
 
 export function parseTogetherApi(input: SourceParseInput): ParsedProviderModel[] {
   const rows = apiModels.parse(parseSourceJson(input.body, "Together models API"));
@@ -358,7 +523,7 @@ export function parseTogetherApi(input: SourceParseInput): ParsedProviderModel[]
     new Set(rows.map(({ id }) => id)).size === rows.length,
     undefined,
   );
-  return rows.map(({ id, context_length }) => ({
+  return rows.map(({ id, type, license, context_length }) => ({
     ...baseModel({
       providerId: input.provider.id,
       id,
@@ -366,6 +531,14 @@ export function parseTogetherApi(input: SourceParseInput): ParsedProviderModel[]
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    limits: context_length ? { context_tokens: context_length } : {},
+    ...(license ? { model_card: { license } } : {}),
+    limits:
+      type !== undefined &&
+      type !== null &&
+      tokenContextTypes.has(type) &&
+      context_length != null &&
+      context_length > 1
+        ? { context_tokens: context_length }
+        : {},
   }));
 }
