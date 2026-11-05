@@ -1,8 +1,8 @@
 {
-  "catalog_version": "e83e9df2f0bc074e76ce379f4ee1fda752ebc30bb94429849d49b64833e3ce55",
-  "generated_at": "2026-11-05T21:02:48.980Z",
+  "catalog_version": "b511f21dbb92a6f73a9499eb0d570170295394f68ed703168f21111cf63b8896",
+  "generated_at": "2026-11-05T22:02:18.477Z",
   "outcome": "changed",
-  "previous_catalog_version": "f59675edac00361f5cd7e3bbf808efc6cf5dfa25f850af3c12a431e3428b0ba7",
+  "previous_catalog_version": "e83e9df2f0bc074e76ce379f4ee1fda752ebc30bb94429849d49b64833e3ce55",
   "providers": [
     {
       "attempt": {
@@ -208,10 +208,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-05T21:02:48.980Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -278,10 +278,10 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1,
-        "source_contract_drift": 4
+        "source_contract_drift": 4,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -306,9 +306,9 @@
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 640,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -385,10 +385,10 @@
             "source_id": "sagemaker-pricing"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 620,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-05T21:02:48.980Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "sagemaker-api-us-west-2"
           }
         ]
@@ -437,18 +437,25 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-pricing"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
-        "scope_limited": 1
+        "inventory_fallback": 1,
+        "source_fetch_failed": 1
       }
     },
     {
@@ -979,9 +986,9 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 187,
             "source_id": "azure-api"
           }
@@ -1046,8 +1053,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1065,7 +1078,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1815,9 +1828,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 67,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1860,9 +1873,9 @@
             "source_id": "databricks-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 55,
             "source_id": "databricks-api"
           }
@@ -1914,7 +1927,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "databricks-api"
+            "source_id": "databricks-models"
           }
         ],
         "current": 2,
@@ -2334,20 +2347,16 @@
         ]
       },
       "models": {
-        "added": 3,
-        "added_model_refs": [
-          "huggingface/ibm-granite/granite-embedding-311m-multilingual-r2",
-          "huggingface/malteos/scincl",
-          "huggingface/staka/fugumt-ja-en"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 1453,
-        "previous": 1450,
+        "previous": 1453,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1450
+        "unchanged": 1453
       },
       "pricing": {
         "outcome": "none"
@@ -2356,7 +2365,7 @@
         "current_models": 1453,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 3
+          "unknown_models": 0
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2504,7 +2513,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 34,
+            "consecutive_failures": 35,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2681,7 +2690,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 30,
+                "consecutive_failures": 31,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2850,7 +2859,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 70,
+            "consecutive_failures": 71,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2937,7 +2946,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 16,
+                "consecutive_failures": 17,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3560,9 +3569,9 @@
             "source_id": "together-serverless"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 270,
             "source_id": "together-api"
           },
@@ -3622,13 +3631,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "together-api"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3644,7 +3660,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -3708,7 +3724,7 @@
               }
             ],
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3786,20 +3802,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "typesafe-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3904,225 +3913,27 @@
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 495,
-          "field": "models",
-          "previous": 499
-        },
-        {
-          "current": 794,
-          "field": "routes",
-          "previous": 803
-        }
-      ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 5,
-        "changed_fields": {
-          "deprecated_at": 1,
-          "routes": 5
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-2.5-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-2.5-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-2.5-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/google/gemini-2.5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-2.5-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-2.5-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-2.5-pro",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/google/gemini-2.5-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-3.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-3.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-3.6-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/google/gemini-3.6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-3.7-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-3.7-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              },
-              {
-                "current": "2027-01-28",
-                "path": "deprecated_at"
-              }
-            ],
-            "fields": [
-              "routes",
-              "deprecated_at"
-            ],
-            "model_ref": "vercel/google/gemini-3.7-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-omni-flash-preview",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "google",
-                    "provider_model_id": "google/gemini-omni-flash-preview",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "vertex",
-                    "provider_model_id": "google/gemini-omni-flash-preview",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/google/gemini-omni-flash-preview"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 495,
-        "previous": 499,
-        "removed": 4,
-        "removed_model_refs": [
-          "vercel/google/gemini-3.1-flash-image-preview",
-          "vercel/google/gemini-3.7-flash-batch",
-          "vercel/google/veo-3.0-fast-generate-001",
-          "vercel/google/veo-3.0-generate-001"
-        ],
-        "unchanged": 490
+        "previous": 495,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 495
       },
       "pricing": {
-        "commercial_hash": "60304302067bdb6bfa17be4dd803604726b563614f5759cb740df15c4d74677a",
+        "commercial_hash": "377949adc683f592cba5db680b863861579ad2a915cb8aec9cfdb7fd3b5ad62b",
         "outcome": "commercial",
-        "previous_commercial_hash": "941520b22dccf80c6cded0d204de72d14fedfd08c5c4c3bb2fbb599c1d8eaa1f"
+        "previous_commercial_hash": "60304302067bdb6bfa17be4dd803604726b563614f5759cb740df15c4d74677a"
       },
       "pricing_coverage": {
         "current_models": 495,
         "delta": {
-          "resolved_models": -4,
+          "resolved_models": 0,
           "unknown_models": 0
         },
         "normalized_rate_models": 492,
@@ -4136,9 +3947,7 @@
       "pricing_publication": "accepted",
       "provider_id": "vercel",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -4676,10 +4485,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 22,
-    "added_models": 3,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 5,
-    "changed_sources": 35,
+    "changed_models": 0,
+    "changed_sources": 37,
     "models": 4422,
     "pricing_accepted": 18,
     "pricing_not_observed": 2,
@@ -4687,7 +4496,7 @@
     "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
-    "removed_models": 4,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
