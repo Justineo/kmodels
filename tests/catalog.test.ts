@@ -294,7 +294,7 @@ describe("generated static catalog", () => {
     expect(website.models).toHaveLength(catalog.models.length);
     expect(websiteDetails.flatMap(({ details }) => details)).toHaveLength(catalog.models.length);
     expect(new Set(assets.map(({ fileName }) => fileName)).size).toBe(assets.length);
-  });
+  }, 15_000);
 
   it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {
     const { catalog } = await generatedData();

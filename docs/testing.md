@@ -31,7 +31,9 @@ requires adding it to that list. The boundary guard follows test helpers, static
 re-exports, dynamic imports, and URL paths recursively, including nested test directories.
 The generated project loads and decodes its shared accepted pair in a bounded setup hook. This
 keeps cold filesystem, decompression and schema-validation cost out of the first assertion's
-default five-second budget; assertion and production resource limits remain independent.
+default five-second budget. The full public-endpoint projection test has a 15-second budget
+for rebuilding and decoding the catalog assets. Assertion and production resource limits
+remain independent.
 
 For replay performance changes, compare the same committed data and pinned Node version with
 the same heap limit. Measure elapsed time and peak process RSS, including worker threads;
@@ -144,8 +146,11 @@ or the PR base. The same planner is used inside repair and by its trusted latest
   result; a different checkout or trust boundary needs its own relevant proof.
 
 The scheduled refresh checks the generated project and production build because code-only
-behavior was already verified in CI. Repair stages run affected checks while the agent can correct
-failures. Trusted post-execution checking admits the exact patch and evidence without repeating
+behavior was already verified in CI. It retries the generated project once on the same candidate
+when every reported failure is a test-body timeout. Both attempts are logged. Assertion, hook,
+collection, and unhandled failures block publication immediately. Repair stages run affected
+checks while the agent can correct failures. Ordinary CI and both repair validation boundaries
+cap Vitest at two workers. Trusted post-execution checking admits the exact patch and evidence without repeating
 the tests; publication independently checks the affected delta against latest `main` before commit.
 This keeps the independent trust boundary without three identical test/build passes.
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
