@@ -220,7 +220,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   Information priority is meter, amount, and unit; then rate-changing choices; then pricing notes on
   demand. Pricing notes translate unsupported normalized structures into a concise provider
   condition and user impact; internal reason codes, raw-impact names, and unconditional scope labels
-  are not UI copy. Identical note content with the same impact, reason and validity is displayed once,
+  are not UI copy. Display dollar amounts as plain text without Markdown escape backslashes.
+  Identical note content with the same impact, reason and validity is displayed once,
   with the union of its published scopes. A scope qualification is omitted only when that union covers
   every current offer state; available selector values alone do not prove complete coverage. Unknown
   scopes remain unknown, and different conditions or dates retain separate notes. Canonical facts and
