@@ -15,7 +15,7 @@ import mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg?raw";
 import nvidia from "@lobehub/icons-static-svg/icons/nvidia-color.svg?raw";
 import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
 import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
-import together from "@lobehub/icons-static-svg/icons/together-brand-color.svg?raw";
+import together from "@lobehub/icons-static-svg/icons/together-color.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
 import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
