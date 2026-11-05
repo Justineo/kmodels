@@ -4,6 +4,9 @@ import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
 import { fireworksModelPaths } from "./fireworks.ts";
+import { nvidiaNimCardUrls } from "./nvidia-nim.ts";
+import { togetherCatalogIds } from "./together.ts";
+import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
 import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
@@ -1174,6 +1177,8 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
       add(match[1]);
   if (source.extractor.kind === "fireworks-serverless") {
     for (const path of fireworksModelPaths(body)) add(path);
+  } else if (source.extractor.kind === "nvidia-nim-cards") {
+    for (const url of nvidiaNimCardUrls(body)) add(url);
   } else if (indexFormat === "html" || indexFormat === "mixed") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
@@ -1626,6 +1631,68 @@ function documentEntry(
     maxResponseBytes: document.maxResponseBytes,
     ...(document.optional === undefined ? {} : { optional: document.optional }),
     ...(document.claimLocal === undefined ? {} : { claimLocal: document.claimLocal }),
+  };
+}
+
+async function fetchTogetherModelLibrary(
+  source: SourceManifest,
+  catalogUrl: string,
+): Promise<FetchResult> {
+  const catalogKey = `${source.id}/serverless`;
+  const catalog = await fetchPayload(
+    requestSource(source, catalogKey, new URL(catalogUrl), "markdown", 1024 * 1024),
+  );
+  const ids = togetherCatalogIds(catalog.body);
+  const pages: FetchedDocument[] = [];
+  const urls = new Set<string>();
+  const maxPages = 16;
+  let pageUrl: URL | undefined = new URL(source.url);
+  while (pageUrl !== undefined && pages.length < maxPages) {
+    const key = `${source.id}/index/${pages.length + 1}`;
+    const payload = await fetchPayload(
+      requestSource(source, key, pageUrl, "html", 2 * 1024 * 1024),
+    );
+    pages.push({ key, url: pageUrl.href, payload });
+    const { cards, next } = togetherLibraryPage(payload.body);
+    for (const card of cards) if (ids.has(card.id)) urls.add(card.url);
+    pageUrl = next === undefined ? undefined : togetherNextLibraryPage(next, pageUrl);
+  }
+  if (pageUrl !== undefined)
+    throw new Error("Together Model Library exceeded the reviewed page limit");
+  assertItemCount("Together Serverless model cards", urls.size, 1, 150);
+  const [index, ...otherPages] = pages;
+  if (index === undefined) throw new Error("Together Model Library omitted its index");
+  const results = await mapConcurrent([...urls].sort(), 8, (href) => {
+    const url = new URL(href);
+    return fetchDocumentEntry(source, {
+      key: `${source.id}${url.pathname}`,
+      url,
+      format: "html",
+      maxResponseBytes: 1024 * 1024,
+      optional: true,
+      claimLocal: true,
+    });
+  });
+  const documents = [
+    ...otherPages,
+    ...results.filter((result): result is FetchedDocument => "payload" in result),
+  ];
+  const body = JSON.stringify({
+    index: { url: index.url, body: index.payload.body },
+    documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Together Model Library exceeded the aggregate byte limit");
+  return {
+    ...generatedFetchResult(body),
+    dependencies: [
+      observation(catalogKey, catalog),
+      observation(index.key, index.payload),
+      ...documents.map(({ key, payload }) => observation(key, payload)),
+    ],
+    dependencyFailures: results.filter(
+      (result): result is DependencyFailure => "dependency_id" in result,
+    ),
   };
 }
 
@@ -2576,6 +2643,8 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   if (source.transport?.kind === "dashscope-deployable-models")
     return fetchDashscopeDeployableModels(source);
   if (source.transport?.kind === "huggingface-models") return fetchHuggingFaceModels(source);
+  if (source.transport?.kind === "together-model-library")
+    return fetchTogetherModelLibrary(source, source.transport.catalogUrl);
   if (source.transport?.kind === "vercel-models") return fetchVercelModels(source);
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
@@ -2651,7 +2720,10 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   const discovered = discoveredUrls.map((url): DocumentEntry => {
     const filename = url.pathname.split("/").filter(Boolean).at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
-    const stem = filename.replace(/\.(?:md|ts)$/, "");
+    const stem =
+      source.extractor.kind === "nvidia-nim-cards"
+        ? url.pathname.slice(1)
+        : filename.replace(/\.(?:md|ts)$/, "");
     return {
       key: `${source.id}/${stem}`,
       url,

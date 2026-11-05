@@ -16,6 +16,7 @@ const hostedEntry = z.object({
   contextLength: z.string().nullable(),
   tags: z.array(z.string()),
   supportsImageInput: z.boolean(),
+  provider: z.object({ company: z.object({ name: z.string().trim().min(1).max(2048) }) }).nullish(),
 });
 const flightFrame = z.tuple([z.literal(1), z.string()]);
 const libraryFrame = z.tuple([
@@ -31,6 +32,10 @@ const libraryOrigin = "https://fireworks.ai";
 const chatPath = "/inference/v1/chat/completions";
 const tokenUnit = "USD per 1M tokens";
 const usdTriplet = z.tuple([z.string(), z.string(), z.string()]);
+
+function documentedId(value: string | undefined): string {
+  return modelIdSchema.parse(value?.match(/^`([^`]+)`$/u)?.[1]);
+}
 
 function libraryEntries(body: string) {
   const $ = load(body);
@@ -196,6 +201,9 @@ function readCard(
     observedAt: input.observedAt,
   });
   model.status = "active";
+  const description = $('meta[name="description"]').attr("content")?.trim();
+  if (description) model.description = description;
+  if (entry.provider) model.model_card = { publisher: entry.provider.company.name };
   if (entry.contextLength !== null) {
     const count = wholeTokenCount(entry.contextLength);
     assertSourceConstraint(
@@ -229,12 +237,160 @@ function readCard(
   return { model, cardAmount, cardUnit };
 }
 
+function addSpotModels(
+  input: SourceParseInput,
+  models: Map<string, ParsedProviderModel>,
+  body: string,
+): void {
+  const priceColumns = ["Uncached input", "Cached input", "Output"] as const;
+  const prices = markdownTableRows(requiredSection(body, 2, "Pricing"), [
+    "Model",
+    "Tier",
+    ...priceColumns,
+  ]);
+  const identities = markdownTableRows(requiredSection(body, 2, "Models"), [
+    "Model",
+    "Spot model identifier",
+    "Standard model identifier",
+  ]);
+  for (const row of identities) {
+    const id = publicId.parse(documentedId(row.get("Spot model identifier")));
+    const standardId = publicId.parse(documentedId(row.get("Standard model identifier")));
+    const label = row.get("Model");
+    const matched = prices.filter(
+      (price) => price.get("Model") === label && price.get("Tier") === "Spot",
+    );
+    const rate = matched[0];
+    assertSourceConstraint(
+      "Fireworks Spot model lacks a unique rate or ID",
+      !!label && id !== standardId && !models.has(id) && matched.length === 1 && rate !== undefined,
+      id,
+    );
+    const model = baseModel({
+      providerId: input.provider.id,
+      id,
+      name: `${label} (Spot)`,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    });
+    const standard = models.get(standardId);
+    model.status = "active";
+    model.tasks = ["text_generation"];
+    model.modalities = standard?.modalities ?? { input: ["text"], output: ["text"] };
+    model.api_endpoints = [{ name: "Chat completions", path: chatPath }];
+    model.price_facts = tokenRates(
+      input,
+      id,
+      priceColumns.map((column) => rate.get(column)).join(" / "),
+      "Spot Serverless/Pricing",
+    );
+    models.set(id, model);
+  }
+}
+
+function addLegacyEmbeddings(
+  input: SourceParseInput,
+  models: Map<string, ParsedProviderModel>,
+  body: string,
+  pricing: string,
+): void {
+  const legacy = body.match(
+    /^> \[accordion\] BERT-based models \(legacy\)\r?\n((?:^>[^\n]*\n?)*)/mu,
+  )?.[1];
+  assertSourceConstraint(
+    "Fireworks omitted the legacy embedding model table",
+    legacy !== undefined,
+    undefined,
+  );
+  const parameters = "Base model parameter count";
+  const usd = "\\$ / 1M input tokens";
+  const rates = new Map(
+    markdownTableRows(requiredSection(pricing, 2, "Embeddings"), [parameters, usd]).map((row) => [
+      row.get(parameters),
+      row.get(usd),
+    ]),
+  );
+  for (const row of markdownTableRows(legacy.replace(/^> ?/gmu, ""), [
+    "Model id",
+    "Dimensions",
+    "Parameters",
+  ])) {
+    const id = documentedId(row.get("Model id"));
+    if (models.has(id)) continue;
+    const dimensions = wholeTokenCount(row.get("Dimensions") ?? "");
+    const size = Number(row.get("Parameters")?.match(/^([1-9]\d*)M$/u)?.[1]);
+    const band = size <= 150 ? "up to 150M" : "150M – 350M";
+    const amount = usdAmount(rates.get(band) ?? "");
+    assertSourceConstraint(
+      "Fireworks legacy embedding model lacks a reviewed size, dimensions, or rate",
+      size > 0 && size <= 350 && dimensions !== undefined && dimensions > 0 && amount !== undefined,
+      id,
+    );
+    const model = baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    });
+    model.status = "legacy";
+    model.tasks = ["embeddings"];
+    model.modalities = { input: ["text"], output: ["embedding"] };
+    model.api_endpoints = [{ name: "Embeddings", path: "/inference/v1/embeddings" }];
+    model.limits.embedding_dimensions = [dimensions];
+    model.price_facts = [
+      hostedUsageRate(
+        publishedRate(
+          "input_text",
+          amount,
+          "million_tokens",
+          input.source.id,
+          "USD per 1M input tokens",
+        ),
+        { kind: "table", value: `Serverless Pricing/Embeddings/${band}` },
+        "input_tokens",
+      ),
+    ];
+    models.set(id, model);
+  }
+}
+
+function bindRetrievalAliases(models: Map<string, ParsedProviderModel>, body: string): void {
+  for (const [heading, task] of [
+    ["Generating embeddings", "embeddings"],
+    ["Reranking documents", "reranking"],
+  ] as const) {
+    const section = markdownSection(body, 2, heading);
+    const qwen = section?.match(/^> \[tab\] Qwen3\r?\n((?:^>(?! \[tab\])[^\n]*\n?)*)/mu)?.[1];
+    if (qwen === undefined) continue;
+    for (const row of markdownTableRows(qwen.replace(/^> ?/gmu, ""), [
+      "Model",
+      "Model ID",
+      "Availability",
+    ])) {
+      if (row.get("Availability") !== "Serverless and dedicated") continue;
+      const path = row
+        .get("Model")
+        ?.match(
+          /^\[[^\]]+\]\(https:\/\/app\.fireworks\.ai\/models\/(fireworks\/[a-z0-9._-]+)\)$/u,
+        )?.[1];
+      const linked = row
+        .get("Model ID")
+        ?.match(/^\[`([^`]+)`\]\(https:\/\/app\.fireworks\.ai\/models\/([^/)]+\/[^/)]+)\)$/u);
+      if (path === undefined || linked?.[1] !== path || linked[2] !== path || models.has(path))
+        continue;
+      const model = models.get(`accounts/${path.replace("/", "/models/")}`);
+      if (model?.tasks.includes(task)) model.aliases.push(modelIdSchema.parse(path));
+    }
+  }
+}
+
 export function parseFireworksServerless(input: SourceParseInput): SourceParseResult {
   const bundle = linkedBundleSchema.parse(
     parseSourceJson(input.body, "Fireworks model library bundle"),
   );
-  const docs = (page: string) =>
-    linkedDocumentBody(bundle, `/serverless/${page}.md`, `Fireworks bundle omitted ${page}`);
+  const docs = (page: string, area = "serverless") =>
+    linkedDocumentBody(bundle, `/${area}/${page}.md`, `Fireworks bundle omitted ${page}`);
   const pricing = docs("pricing");
   const decisionRows = pricesFromTable(pricing, "Decision models");
   const decisionIds = new Set(decisionRows.map(({ id }) => id));
@@ -377,16 +533,51 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
         }),
       );
   }
+  const media = docs("video-audio-inputs", "guides");
+  const mediaRows = markdownTableRows(requiredSection(media, 2, "Available models"), [
+    "Model",
+    "Input support",
+    "Notes",
+  ]);
+  const serverless = requiredSection(
+    requiredSection(media, 2, "Choose an inference option"),
+    3,
+    "Serverless",
+  );
+  for (const row of mediaRows) {
+    if (
+      row.get("Notes") !== "Serverless" ||
+      !row.get("Input support")?.split(", ").includes("video")
+    )
+      continue;
+    const label = row.get("Model");
+    for (const id of serverless.matchAll(/^accounts\/fireworks\/models\/[a-z0-9._-]+$/gmu)) {
+      const model = models.get(id[0]);
+      if (model !== undefined && model.name === label && !model.modalities.input.includes("video"))
+        model.modalities.input.push("video");
+    }
+  }
+  addSpotModels(input, models, docs("spot-serverless", "guides"));
+  const retrieval = docs("querying-embeddings-models", "guides");
+  addLegacyEmbeddings(input, models, retrieval, pricing);
+  bindRetrievalAliases(models, retrieval);
   const published = [...models.values()];
   return {
     models: published,
     inference_prices: published
       .filter((model) => model.price_facts.length > 0 || model.raw_price_facts.length > 0)
-      .map((model) =>
+      .flatMap((model) => [
         hostedInferencePrice(model, input.source.id, {
           kind: "provider_key",
           value: model.model_id,
         }),
-      ),
+        ...model.aliases.map((alias) => ({
+          ...hostedInferencePrice(model, input.source.id, {
+            kind: "table",
+            value: `Embeddings and Reranking/Qwen3/${alias}`,
+          }),
+          model_id: alias,
+        })),
+      ]),
   };
 }

@@ -1,7 +1,12 @@
 import { parseTypesafeCatalog } from "./typesafe.ts";
 import { parseTogetherApi, parseTogetherServerless } from "./together.ts";
+import { parseTogetherCards, parseTogetherReleases } from "./together-metadata.ts";
 import { parseFireworksServerless } from "./fireworks.ts";
-import { parseNvidiaNimModels } from "./nvidia-nim.ts";
+import {
+  parseNvidiaNimCards,
+  parseNvidiaNimModels,
+  parseNvidiaNimRetrieval,
+} from "./nvidia-nim.ts";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import {
@@ -104,10 +109,18 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return parseTogetherServerless(input);
     case "together-api":
       return { models: parseTogetherApi(input) };
+    case "together-cards":
+      return { models: parseTogetherCards(input) };
+    case "together-releases":
+      return { models: parseTogetherReleases(input) };
     case "fireworks-serverless":
       return parseFireworksServerless(input);
     case "nvidia-nim-models":
       return { models: parseNvidiaNimModels(input) };
+    case "nvidia-nim-cards":
+      return { models: parseNvidiaNimCards(input) };
+    case "nvidia-nim-retrieval":
+      return { models: parseNvidiaNimRetrieval(input) };
     case "cerebras-public":
       return parseCerebrasPublic(input);
     case "cerebras-catalog":
