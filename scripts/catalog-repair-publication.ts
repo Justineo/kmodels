@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const patchPath = "/tmp/gh-aw/aw-catalog-repair.patch";
+const stageFailurePath = "/tmp/gh-aw/agent/catalog-repair-stage-failure.txt";
 const maximumPatchBytes = 4 * 1024 * 1024;
 
 export type RepairOutcome =
@@ -119,13 +120,17 @@ export function repairPatchHash(patch: string): string {
 }
 
 /** Also runs inside the agent so failed checks can be repaired before final output. */
-export function validateRepair(): void {
+export function validateRepair(failurePath?: string): void {
   // The sandbox inherits the runner's output path, but cannot access that host file.
   // This child only validates; the trusted publication step owns workflow outputs.
   const { GITHUB_OUTPUT: _output, ...env } = process.env;
   const result = spawnSync("vp", ["node", "scripts/validate-changes.ts", baseSha()], {
     stdio: "inherit",
-    env,
+    env: {
+      ...env,
+      VITEST_MAX_WORKERS: "2",
+      ...(failurePath === undefined ? {} : { KMODELS_VALIDATION_FAILURE_PATH: failurePath }),
+    },
   });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0)
@@ -207,6 +212,7 @@ export async function runRepairPublication(operation: string | undefined): Promi
     case "stage": {
       // A failed retry must not leave a previously approved detection patch behind.
       await rm(patchPath, { force: true });
+      await rm(stageFailurePath, { force: true });
       const review = spawnSync("vp", ["node", "scripts/catalog-repair-review.ts", "check-repair"], {
         stdio: "inherit",
       });
@@ -216,7 +222,7 @@ export async function runRepairPublication(operation: string | undefined): Promi
       git(["add", "--all"]);
       const patch = stagedPatch(baseSha());
       admitStagedPatch(baseSha(), patch);
-      validateRepair();
+      validateRepair(stageFailurePath);
       git(["add", "--all"]);
       if (stagedPatch(baseSha()) !== patch)
         throw new Error(
@@ -252,7 +258,16 @@ export async function runRepairPublication(operation: string | undefined): Promi
         await rm(patchPath, { force: true });
       } else {
         admitStagedPatch(baseSha(), patch);
-        if ((await readFile(patchPath, "utf8")) !== patch)
+        const staged = await readFile(patchPath, "utf8").catch(async (error: unknown) => {
+          if (!object(error) || error.code !== "ENOENT") throw error;
+          const detail = (await readFile(stageFailurePath, "utf8").catch(() => "")).trim();
+          throw new Error(
+            `Catalog repair requires a successful stage before requesting publication${
+              detail === "" ? "" : `: ${JSON.stringify(detail.slice(0, 1000))}`
+            }`,
+          );
+        });
+        if (staged !== patch)
           throw new Error("Catalog repair changed after staging its detection patch");
         const directory = environment("REPAIR_ARTIFACT_DIR");
         await mkdir(directory, { recursive: true });

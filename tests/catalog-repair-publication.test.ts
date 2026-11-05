@@ -12,7 +12,8 @@ vi.mock("node:child_process", () => ({ spawnSync: git }));
 vi.mock("node:fs/promises", () => ({
   readFile: async (path: string) => {
     const value = files.get(path);
-    if (value === undefined) throw new Error(`Missing test file ${path}`);
+    if (value === undefined)
+      throw Object.assign(new Error(`Missing test file ${path}`), { code: "ENOENT" });
     return value;
   },
   writeFile: async (path: string, value: string) => {
@@ -337,36 +338,51 @@ it("does not discard a dirty checkout or continue a conflicted retry", async () 
 
 it("returns failed validation to the agent and stages only a successful unchanged retry", async () => {
   const patch = "reviewed patch";
+  const failurePath = "/tmp/gh-aw/agent/catalog-repair-stage-failure.txt";
+  const failure = "vp test --run --project unit failed (1)";
   files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");
   let failTests = true;
   let changeDuringValidation = false;
   let validated = false;
-  git.mockImplementation((command: string, args: string[]) => {
-    if (command === "vp") {
-      if (args[1] === "scripts/validate-changes.ts") {
-        if (failTests) return { status: 1 };
-        validated = true;
+  git.mockImplementation(
+    (command: string, args: string[], options?: { env?: NodeJS.ProcessEnv }) => {
+      if (command === "vp") {
+        if (args[1] === "scripts/validate-changes.ts") {
+          if (failTests) {
+            expect(options?.env?.KMODELS_VALIDATION_FAILURE_PATH).toBe(failurePath);
+            files.set(failurePath, `${failure}\n`);
+            return { status: 1 };
+          }
+          validated = true;
+        }
+        return success("");
       }
+      if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
+      if (args.includes("--binary"))
+        return success(changeDuringValidation && validated ? "changed patch" : patch);
       return success("");
-    }
-    if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
-    if (args.includes("--binary"))
-      return success(changeDuringValidation && validated ? "changed patch" : patch);
-    return success("");
-  });
+    },
+  );
   await expect(runRepairPublication("stage")).rejects.toThrow("Affected repair checks failed");
   expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
   expect(git.mock.calls.some(([command, args]) => command === "vp" && args[1] === "build")).toBe(
     false,
   );
+  files.set("/tmp/repair-output.jsonl", JSON.stringify(repair));
+  await expect(runRepairPublication("capture")).rejects.toThrow(failure);
+  expect(files.has("/tmp/repair-test/repair.json")).toBe(false);
 
   failTests = false;
   await runRepairPublication("stage");
+  expect(files.has(failurePath)).toBe(false);
   expect(files.get("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(patch);
   const validation = git.mock.calls.find(
     ([command, args]) => command === "vp" && args[1] === "scripts/validate-changes.ts",
   );
-  expect(validation?.[2].env).toMatchObject({ REPAIR_BASE_SHA: "1".repeat(40) });
+  expect(validation?.[2].env).toMatchObject({
+    REPAIR_BASE_SHA: "1".repeat(40),
+    VITEST_MAX_WORKERS: "2",
+  });
   expect(validation?.[2].env).not.toHaveProperty("GITHUB_OUTPUT");
   expect(process.env.GITHUB_OUTPUT).toBe("/tmp/repair-test-output");
   expect(
@@ -396,8 +412,10 @@ it("rejects incomplete investigation before staging or spending time on the full
 });
 
 it("does not accept a killed or unavailable validation process", () => {
+  process.env.VITEST_MAX_WORKERS = "12";
   git.mockReturnValueOnce({ status: null, signal: "SIGTERM" });
   expect(validateRepair).toThrow("Affected repair checks failed (SIGTERM)");
+  expect(git.mock.calls[0]?.[2].env).toMatchObject({ VITEST_MAX_WORKERS: "2" });
   git.mockReturnValueOnce({ error: new Error("vp unavailable") });
   expect(validateRepair).toThrow("vp unavailable");
 });

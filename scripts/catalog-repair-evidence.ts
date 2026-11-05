@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 const runSchema = z.object({
   databaseId: z.number().int().positive(),
+  attempt: z.number().int().positive().default(1),
   headSha: z.string().regex(/^[0-9a-f]{40}$/),
   url: z.string().url(),
   conclusion: z.string(),
@@ -26,6 +27,7 @@ export const refreshExecutionSchema = z.object({
   failed_steps: z.array(z.string()),
   repair_required: z.boolean(),
   evidence_incomplete: z.boolean(),
+  verification_failure: z.literal("test_timeout").optional(),
   report_path: z.string().optional(),
   log_path: z.string().optional(),
 });
@@ -64,35 +66,32 @@ export async function loadRefreshExecution(
           "--limit",
           "1",
           "--json",
-          "databaseId,headSha,url,conclusion,createdAt",
+          "databaseId,attempt,headSha,url,conclusion,createdAt",
         ]),
       ),
     );
   if (run === undefined) return undefined;
   const runId = String(run.databaseId);
-  const { jobs } = jobsSchema.parse(
-    JSON.parse(await gh(["run", "view", runId, "--repo", repository, "--json", "jobs"])),
-  );
+  const view = ["run", "view", runId, "--repo", repository, "--attempt", String(run.attempt)];
+  const { jobs } = jobsSchema.parse(JSON.parse(await gh([...view, "--json", "jobs"])));
   const failedSteps = jobs.flatMap(({ steps }) =>
     steps
       .filter(({ conclusion }) => ["failure", "timed_out", "cancelled"].includes(conclusion))
       .map(({ name }) => name),
-  );
-  const repairRequired = failedSteps.some((name) =>
-    ["Collect official sources", "Verify generated catalog", "Build generated catalog"].includes(
-      name,
-    ),
   );
   const { artifacts } = artifactsSchema.parse(
     JSON.parse(
       await gh(["api", `repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`]),
     ),
   );
-  const artifactName = `catalog-refresh-${runId}`;
-  const hasReport = artifacts.some(({ name, expired }) => name === artifactName && !expired);
+  const legacyArtifact = `catalog-refresh-${runId}`;
+  const attemptArtifact = `${legacyArtifact}-attempt-${run.attempt}`;
+  const available = new Set(artifacts.filter(({ expired }) => !expired).map(({ name }) => name));
+  const artifactName = [attemptArtifact, legacyArtifact].find((name) => available.has(name));
+  let verificationFailure: "test_timeout" | undefined;
   let reportPath: string | undefined;
-  if (hasReport) {
-    const reportDirectory = join(directory, runId);
+  if (artifactName !== undefined) {
+    const reportDirectory = join(directory, artifactName);
     await gh([
       "run",
       "download",
@@ -105,10 +104,30 @@ export async function loadRefreshExecution(
       reportDirectory,
     ]);
     reportPath = join(reportDirectory, "refresh-report.json");
+    if (
+      artifactName === attemptArtifact &&
+      run.conclusion === "failure" &&
+      failedSteps.includes("Verify generated catalog")
+    ) {
+      const result = await readFile(
+        join(reportDirectory, "generated-verification.txt"),
+        "utf8",
+      ).catch((error: unknown) => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+        throw error;
+      });
+      if (result === "test_timeout\n") verificationFailure = "test_timeout";
+    }
   }
+  const repairRequired = failedSteps.some(
+    (name) =>
+      name === "Collect official sources" ||
+      name === "Build generated catalog" ||
+      (name === "Verify generated catalog" && verificationFailure === undefined),
+  );
   let logPath: string | undefined;
   if (run.conclusion === "failure") {
-    const log = await gh(["run", "view", runId, "--repo", repository, "--log-failed"]);
+    const log = await gh([...view, "--log-failed"]);
     if (log.trim() === "") throw new Error("Failed refresh has no readable failure log");
     logPath = join(directory, "refresh-failure.log");
     await writeFile(logPath, log.slice(-65_536));
@@ -118,9 +137,11 @@ export async function loadRefreshExecution(
     failed_steps: failedSteps,
     repair_required: repairRequired,
     evidence_incomplete:
-      !hasReport ||
+      artifactName === undefined ||
+      verificationFailure !== undefined ||
       !["success", "failure"].includes(run.conclusion) ||
       (run.conclusion === "failure" && !repairRequired),
+    ...(verificationFailure === undefined ? {} : { verification_failure: verificationFailure }),
     ...(reportPath === undefined ? {} : { report_path: reportPath }),
     ...(logPath === undefined ? {} : { log_path: logPath }),
   };

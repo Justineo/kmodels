@@ -9,7 +9,11 @@ Status: implemented
   artifact, run identity, failed steps, and bounded failure log with read-only Actions access.
   Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
   Collection, generated-data verification, and build failures enter execution review even when
-  the provider report contains no repair candidate. Operational failures or a missing report
+  the provider report contains no repair candidate. A generated verification that reports only
+  test-body timeouts on both attempts leaves operational evidence in the refresh artifact
+  for that workflow run attempt.
+  This evidence keeps the refresh incomplete without starting code-repair inference on its own.
+  Operational failures or a missing report
   remain explicitly incomplete; GitHub evidence retrieval errors fail preparation instead of
   silently falling back to a healthy old report. Local runs without execution evidence use the
   committed report. Code-repair inference also begins when the selected refresh report contains
@@ -209,7 +213,10 @@ Status: implemented
   transient failures get one diagnostic rerun; deterministic failures require a correction.
   Staging removes any stale detection patch first and rejects mutations during validation.
   The staged validation child does not inherit `GITHUB_OUTPUT`: runner file-command paths may not
-  exist inside the agent sandbox. The trusted parent retains its own output channel.
+  exist inside the agent sandbox. The trusted parent retains its own output channel. Staged and
+  publication validation both use the ordinary CI cap of two Vitest workers. A failed stage
+  preserves the failed validation command and exit status in investigation evidence. A premature
+  publication request surfaces that detail when the staged patch is missing.
   Staging and publication admission also reject changes to manifest `min*`/`max*` limit
   declarations, including removal or replacement with an expression. Tests passing cannot justify
   lowering a count floor or raising a resource ceiling. Operator-reviewed source-contract migrations
@@ -407,8 +414,10 @@ Status: implemented
   independent provider partitions through a four-worker pool before one parallel
   candidate-validation pass. Large providers therefore run concurrently without
   parsing the 100+ MB resource more than once. Per-test
-  timeouts remain an inner diagnostic; the 30-minute refresh job timeout is the
-  outer safety cap.
+  timeouts remain an inner diagnostic. The refresh retries verification once on the same
+  candidate when only test-body timeouts occurred. Both attempts stay in the job log, and a
+  second timeout-only failure blocks publication. The 40-minute job cap gives the retry
+  room to complete within the hourly schedule.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
   overlaps provider validation with canonical serialization, then freezes and
   brands the exact candidate object. Commit concurrently compresses deterministic

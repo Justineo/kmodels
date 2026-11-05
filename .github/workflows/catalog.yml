@@ -16,7 +16,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -69,17 +69,38 @@ jobs:
         env:
           KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
 
+      - name: Verify generated catalog
+        env:
+          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification-attempt.txt
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/generated-verification.txt"
+          for attempt in 1 2; do
+            rm -f "$KMODELS_GENERATED_VERIFICATION_PATH"
+            status=0
+            vp run test:data --reporter=default --reporter=./scripts/generated-verification-reporter.ts || status=$?
+            if [[ "$status" != 1 || ! -f "$KMODELS_GENERATED_VERIFICATION_PATH" ||
+                  $(<"$KMODELS_GENERATED_VERIFICATION_PATH") != test_timeout ]]; then
+              exit "$status"
+            fi
+            if [[ "$attempt" == 1 ]]; then
+              echo "::warning::Generated catalog verification hit a test timeout. Retrying once with the same candidate."
+            fi
+          done
+          mv "$KMODELS_GENERATED_VERIFICATION_PATH" "$RUNNER_TEMP/generated-verification.txt"
+          echo "::error::Generated catalog verification timed out again on the retry."
+          exit 1
+
       - name: Upload refresh evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: catalog-refresh-${{ github.run_id }}
-          path: ${{ runner.temp }}/refresh-report.json
+          name: catalog-refresh-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/refresh-report.json
+            ${{ runner.temp }}/generated-verification.txt
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Verify generated catalog
-        run: vp run test:data
 
       - name: Build generated catalog
         run: vp run build

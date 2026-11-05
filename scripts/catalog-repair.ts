@@ -200,6 +200,11 @@ const markdown =
           `Run: ${execution.run.url} (${execution.run.conclusion}); checkout: ${execution.run.headSha}.`,
           `Report: ${configuredPath ?? "data/refresh-summary.json (committed fallback)"}.`,
           `Failed steps: ${execution.failed_steps.join(", ") || "none"}.`,
+          ...(execution.verification_failure === "test_timeout"
+            ? [
+                "Generated catalog verification timed out on both attempts. The candidate was not published.",
+              ]
+            : []),
           ...(execution.log_path === undefined
             ? []
             : [`Failure log: ${execution.log_path} (bounded tail).`]),
@@ -241,7 +246,9 @@ if (candidates.length === 0 && !executionNeedsReview) {
           ? {
               type: "report_incomplete",
               reason:
-                "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
+                execution?.verification_failure === "test_timeout"
+                  ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
+                  : "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
             }
           : { type: "noop", message: "No deterministic catalog code-repair candidate was found" },
       )}\n`,
