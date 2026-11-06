@@ -4,8 +4,8 @@ Status: implemented
 
 - GitHub Actions checks every push and pull request, including the portable pricing package build
   and packed Node/browser conformance checks. Package preparation never publishes to npm.
-- A separate six-hourly `Catalog repair` workflow uses a deterministic code-repair admission gate. The schedule
-  alone never starts Copilot: preparation reads the latest completed main-branch refresh's report
+- The six-hourly incident schedule in `Catalog repair` uses a deterministic code-repair admission
+  gate. Preparation reads the latest completed main-branch refresh's report
   artifact, run identity, failed steps, and bounded failure log with read-only Actions access.
   Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
   Collection, generated-data verification, and build failures enter execution review even when
@@ -24,11 +24,9 @@ Status: implemented
   consecutive failures, including commercial companions. A persistent 403/timeout must not silently
   keep old prices outside the queue; investigation can establish a source successor or an honest
   operational block. The gate excludes transient fetch failures, missing credentials and unresolved
-  pricing by itself. It deliberately does not pre-judge which changed
-  source caused a provider regression; Copilot reviews every listed candidate and decides whether a
-  safe code repair exists. Preparation admits one error-driven provider per run, using a stable
-  rotation over configured providers by six-hour UTC slot. The independent periodic-review slot is
-  admitted once daily in the first UTC slot. With 20 providers, persistent error candidates receive
+  pricing by itself. Admission records the observed symptoms and leaves reproduction to
+  investigation. Preparation admits one error-driven provider per run, using a stable
+  rotation over configured providers by six-hour UTC slot. With 20 providers, persistent error candidates receive
   a slot within five days instead of waiting a full 20-day daily rotation.
   All candidates for that error provider stay together. The context and immutable admission retain
   every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
@@ -37,7 +35,7 @@ Status: implemented
   Source-acquisition completeness uses the same admitted-provider scope. A failure elsewhere stays
   unresolved in the full report without expanding this batch into a whole-catalog investigation;
   the architecture-review slot checks acquisition globally. Refresh execution evidence remains
-  a workflow-wide requirement.
+  workflow-wide evidence for incident runs.
   A provider simply not publishing a price is never a repair candidate,
   but a parser that rejects the whole catalog because one model lacks a price is repairable.
   Repair preserves valid sibling models and keeps an unobserved price unknown. A `not_published`
@@ -79,26 +77,26 @@ Status: implemented
   agent outcome gate rejects issue/comment/PR requests even when accompanied by a repair intent.
   The agent has only read permissions. A custom `commit_repair` safe-output job receives the
   write permissions required for direct publication and deployment dispatch; it runs only after
-  successful agent validation, safe-output processing, and successful threat detection.
+  successful investigation evidence checks, safe-output processing, and successful threat detection.
 - Neither hourly refresh nor scheduled repair runs Jev. The [manual semantic experiment](semantic-audit.md)
   remains available, but has not demonstrated incremental production defect discovery. Follow the
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
   repair-context CLI can consume explicitly supplied experimental evidence; the scheduled workflow
   supplies no semantic-audit directory, key, or cache.
-- The first UTC slot each day also admits one comprehensive review independently of errors through
-  `KMODELS_PERIODIC_REVIEW=true`. UTC days rotate deterministically over sorted manifest providers,
+- The daily 02:07 UTC schedule admits one comprehensive review with its own run and investigation
+  budget. It keeps incident candidates deferred and leaves refresh execution follow-up to the incident
+  schedule. UTC days rotate deterministically over sorted manifest providers,
   then a global architecture review: currently 20 providers plus one global slot per 21-day cycle.
   Provider reviews inspect current first-party discovery, identity/lifecycle, complete price/service
   inventory and scopes, quantity/selector acquisition, retention/replay, calculator/display parity
   and simplicity. The global slot examines shared model consistency and collection/repair feedback.
-  Reviews use the existing serialized job and evidence artifacts; there is no second scheduler or
-  production semantic classifier. Eight prepared coverage areas require concrete conclusions and
-  hashed evidence. Publication and consumer areas additionally require successful transition and
+  Both schedules share the serialized workflow and evidence artifacts. Eight prepared coverage
+  areas require concrete conclusions and hashed evidence. Publication and consumer areas additionally require successful transition and
   consumer receipts; parser counts cannot close either boundary. Blocked areas keep their next
   action and prevent a healthy no-op, while an independent verified repair can still publish.
-  The trusted terminal summary exposes completed/blocked scope and deferred candidates; a delivered
-  patch does not establish a completed periodic review. A failed slot is incomplete, visible in Actions, and revisited
-  on its next cycle; a manual dispatch in the first UTC slot can rerun that day's review.
+  The trusted terminal summary tracks pending, blocked, and completed work separately from patch
+  delivery. An unfinished periodic review remains visible in Actions and is revisited
+  on its next cycle. `gh workflow run catalog-repair.lock.yml -f periodic=true` reruns that day's review.
   Error-driven candidates continue to be investigated every six hours regardless of the selected
   review provider.
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
@@ -135,8 +133,8 @@ Status: implemented
   empty, unsupported, or contradictory final outputs even when the model process exits successfully.
   Incomplete admission errors include the bounded, JSON-escaped blocker reason so the failed-step
   log distinguishes an investigated source blocker from an unexplained engine failure.
-  A `commit_repair` intent runs all four required validations and the portable package checks in
-  deterministic post-execution steps. The actual working-tree patch is bounded to 100 files and
+  A `commit_repair` intent submits a focused, evidence-backed repair for trusted validation.
+  The actual working-tree patch is bounded to 100 files and
   4 MiB and admitted only for catalog TypeScript, unit-test files, reviewed fixtures, provider
   guides, and the manual semantic-disposition file. Repair infrastructure (including the public
   evidence helper and its tests), scripts, dependencies,
@@ -144,8 +142,9 @@ Status: implemented
   New source hosts that require a network-policy change remain incomplete.
   Safe outputs run only after the complete agent job succeeds. Empty patches fail instead of
   being ignored. A trusted publication script is restored from the workflow's original commit;
-  the candidate cannot edit that script. It binds the candidate artifact to its base commit and
-  SHA-256 patch hash and rejects any change during validation.
+  the candidate cannot edit that script. It binds the admitted artifact to its base commit and
+  SHA-256 patch hash. Threat detection downloads the admitted artifact, checks its digest and
+  receives that patch before inference. It verifies the same bytes after detection.
   The publication job checks out latest `main`, applies that exact patch with Git's three-way
   conflict check, validates the affected delta against current data, and commits only the exact
   validated tree. Credentials are not persisted during checkout or exposed to validation steps.
@@ -197,35 +196,24 @@ Status: implemented
   Vite+ installs the Node.js version from `.node-version` and the frozen dependency graph before
   inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's
   tool-cache PATH scan cannot select a different Node.js version for project commands.
-  The agent checks its prepared environment before diagnosis and uses focused regression tests
-  while repairing. After its final edit it formats explicit changed paths with `vp fmt` and runs
-  `vp check`, resolving every failed command before staging its patch and requesting publication.
+  The agent uses focused regression tests while repairing. After its final edit it formats explicit
+  changed paths with `vp fmt` and reruns the focused regression and relevant controls before submission.
   The standalone `oxfmt` wrapper is IDE-only; `vp exec oxfmt --write` fails without formatting.
   The shell allowlist includes `jq` for read-only JSON inspection. File changes and replay scripts
   use the edit/create tools; the shared evidence directory is already prepared. Direct shell
   `mkdir`/`rm`/`cp` and Git checkout/reset remain outside the allowlist. Correct a denied invocation instead of repeatedly
   requesting variants: the runner terminates after numerous permission denials. Receipt commands
   run individually, without output pipes or an extra `vp` prefix after the probe separator.
-  `vp node scripts/catalog-repair-publication.ts stage` selects checks for the changed contract
-  with the protected validation planner before capturing the actual patch for framework
-  threat detection. A failed command returns control to the agent, which diagnoses and corrects
-  allowed changes and retries the affected gate, up to three attempts per run. Apparently
-  transient failures get one diagnostic rerun; deterministic failures require a correction.
-  Staging removes any stale detection patch first and rejects mutations during validation.
-  The staged validation child does not inherit `GITHUB_OUTPUT`: runner file-command paths may not
-  exist inside the agent sandbox. The trusted parent retains its own output channel. Staged and
-  publication validation both use the ordinary CI cap of two Vitest workers. A failed stage
-  preserves the failed validation command and exit status in investigation evidence. A premature
-  publication request surfaces that detail when the staged patch is missing.
-  Staging and publication admission also reject changes to manifest `min*`/`max*` limit
+  Admission and publication reject changes to manifest `min*`/`max*` limit
   declarations, including removal or replacement with an expression. Tests passing cannot justify
   lowering a count floor or raising a resource ceiling. Operator-reviewed source-contract migrations
   happen outside automatic repair; URL and extractor-version updates remain eligible.
-  The agent requests `commit_repair` only after staging succeeds. The post-execution gate verifies
-  that patch against the final working tree and uploads an admitted candidate artifact after
-  trusted evidence and path checks. It does not repeat the tests. Staging and latest-main
-  publication use the same impact planner; publication runs independently on the clean trusted
-  checkout, including changes from the repair base to latest main. Repair infrastructure tests
+  The agent requests `commit_repair` after focused proof and `check-repair`. The runner owns
+  patch capture and the artifact handoff, so an independent repair can proceed without an agent
+  staging command or a second full test pass inside the model's time budget. The trusted publication
+  job runs the affected validation planner, including changes from the repair base to latest main.
+  Publication caps Vitest at two workers and isolates the planner from the step output file.
+  Repair infrastructure tests
   also run before inference so a broken harness does not consume a model run. An
   unavailable toolchain or blocked validation produces a structured incomplete report without a
   publication request. Automatic repair publication requires every selected check to pass.
@@ -257,18 +245,21 @@ Status: implemented
   acquisition blocker with a failed fetch and no possible parser replay may omit navigation.
   A blocked refresh execution may instead use an `execution` diagnostic against its sanitized
   failed steps/log, without live collection or credentials; provider candidates cannot use this exception.
-  A blocker names its source/contract/tooling/scope category and exact next action. Independent
-  repaired candidates can publish alongside evidenced blockers; residual omissions remain explicit.
-  Unfinished work stays `pending` and prevents publication. An incomplete outcome may retain pending
-  candidates only after the prepared investigation deadline, or with a failed command receipt for
+  A blocker names its source/contract/tooling/scope category and exact next action. An evidenced
+  repair can publish alongside blockers and pending candidates. Pending work retains its reason and
+  next action in the checked scope. The submitted diff contains only the coherent repair.
+  Without a repair, an incomplete outcome may retain pending
+  candidates only after the prepared investigation deadline or with a failed command receipt for
   an environment interruption. The agent must not spend unused time waiting for this deadline;
   it continues independent investigation or establishes actual blockers.
   `vp node scripts/catalog-repair-review.ts probe KIND PHASE -- VP_ARGUMENTS` runs a diagnostic,
-  saves its stdout, stderr and exit status, and returns a check reference; add the observed `result`
-  explanation to the review. `hash PATH` hashes a complete saved artifact, distinct from the source
+  saves its stdout, stderr and exit status, and returns a check reference. The review adds only
+  the observed `result` explanation. The checker reads command metadata from the hashed receipt.
+  `hash PATH` hashes a complete saved artifact, distinct from the source
   body hash inside public evidence files. `check` returns missing work to the agent while it can
-  still investigate; `check-incomplete` permits only justified interrupted pending work. `stage`
-  calls `check-repair` before affected validation. A separate post-execution gate restores the review
+  still investigate. `check-incomplete` permits justified interrupted pending work. `check-repair`
+  requires at least one evidenced repair and an explicit status for every admitted candidate.
+  A separate post-execution gate restores the review
   checker from the original workflow commit and cross-checks the final record before outcome
   admission. Evidence stays inside the agent evidence directory, with symlink escapes rejected;
   the admission and public/sanitized investigation directory are retained for 30 days even on failure.
@@ -280,11 +271,9 @@ Status: implemented
   Agent execution has an explicit 45-minute limit inside a 60-minute agent job. The
   [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
   bounds inference and its tool calls; the job limit separately leaves time for setup,
-  post-execution validation, and artifact upload. The agent budgets 20 minutes for evidence and
-  focused repairs, 20 for affected validation and corrections, and 5 for final reporting. It
-  completes candidate triage before staging and publishes promptly after a successful gate,
-  without reopening independent work. Staging prints an explicit completion receipt only after
-  saving the unchanged validated patch. An engine timeout or failure skips outcome capture,
+  evidence checks, and artifact upload. The agent submits promptly after an independent repair's
+  focused evidence is ready. The 20-minute deadline is used to account for interruption when no
+  repair is ready. An engine timeout or failure skips outcome capture,
   preserving the primary error instead of adding a missing-output-file error; publication still
   requires a successful agent job and a fully validated completed outcome.
   Publication unit tests use a private in-memory environment, never host credentials or native

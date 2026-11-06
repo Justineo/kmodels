@@ -23,6 +23,11 @@ vi.mock("node:fs/promises", () => ({
     files.set(path, (files.get(path) ?? "") + value);
   },
   mkdir: async () => {},
+  readdir: async (directory: string) =>
+    [...files.keys()].flatMap((path) => {
+      const name = path.slice(directory.length + 1);
+      return path.startsWith(`${directory}/`) && !name.includes("/") ? [name] : [];
+    }),
   rm: async (path: string) => {
     files.delete(path);
   },
@@ -226,21 +231,28 @@ it("rejects changed artifacts and wrong base commits before running Git", async 
   expect(git).not.toHaveBeenCalled();
 });
 
-it("requires the prepared detection patch and rejects changes introduced by validation", async () => {
+it("captures the same exact patch for detection and publication without agent staging", async () => {
   files.set("/tmp/repair-output.jsonl", JSON.stringify(repair));
   files.set("/tmp/gh-aw/aw-catalog-repair.patch", "old patch");
+  files.set("/tmp/gh-aw/aw-other.bundle", "untrusted bundle");
   git
     .mockReturnValueOnce(success(""))
     .mockReturnValueOnce(success("patch"))
     .mockReturnValueOnce(success(diff("src/catalog/cohere.ts")));
-  await expect(runRepairPublication("capture")).rejects.toThrow("after staging");
-  expect(files.has("/tmp/repair-test/repair.json")).toBe(false);
-  process.env.REPAIR_PATCH_SHA256 = repairPatchHash("old patch");
+  await runRepairPublication("capture");
+  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
+  expect(files.has("/tmp/gh-aw/aw-other.bundle")).toBe(false);
+  expect(files.get("/tmp/repair-test/repair.patch")).toBe("patch");
+  expect(git.mock.calls.every(([command]) => command === "git")).toBe(true);
+  process.env.REPAIR_PATCH_SHA256 = repairPatchHash("patch");
   git
     .mockReturnValueOnce(success(""))
-    .mockReturnValueOnce(success("patch"))
+    .mockReturnValueOnce(success("changed patch"))
     .mockReturnValueOnce(success(diff("src/catalog/cohere.ts")));
-  await expect(runRepairPublication("verify")).rejects.toThrow("changed during validation");
+  await expect(runRepairPublication("verify")).rejects.toThrow("changed after capture");
+});
+
+it("refuses to commit a tree changed by validation", async () => {
   artifact();
   git.mockReturnValueOnce(success("")).mockReturnValueOnce(success("3".repeat(40)));
   await expect(runRepairPublication("commit")).rejects.toThrow("tree changed");
@@ -336,79 +348,23 @@ it("does not discard a dirty checkout or continue a conflicted retry", async () 
   expect(files.has("/tmp/repair-test-output")).toBe(false);
 });
 
-it("returns failed validation to the agent and stages only a successful unchanged retry", async () => {
-  const patch = "reviewed patch";
-  const failurePath = "/tmp/gh-aw/agent/catalog-repair-stage-failure.txt";
-  const failure = "vp test --run --project unit failed (1)";
-  files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");
-  let failTests = true;
-  let changeDuringValidation = false;
-  let validated = false;
-  git.mockImplementation(
-    (command: string, args: string[], options?: { env?: NodeJS.ProcessEnv }) => {
-      if (command === "vp") {
-        if (args[1] === "scripts/validate-changes.ts") {
-          if (failTests) {
-            expect(options?.env?.KMODELS_VALIDATION_FAILURE_PATH).toBe(failurePath);
-            files.set(failurePath, `${failure}\n`);
-            return { status: 1 };
-          }
-          validated = true;
-        }
-        return success("");
-      }
-      if (args.includes("--raw")) return success(diff("src/catalog/cohere.ts"));
-      if (args.includes("--binary"))
-        return success(changeDuringValidation && validated ? "changed patch" : patch);
-      return success("");
-    },
-  );
-  await expect(runRepairPublication("stage")).rejects.toThrow("Affected repair checks failed");
-  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
-  expect(git.mock.calls.some(([command, args]) => command === "vp" && args[1] === "build")).toBe(
-    false,
-  );
-  files.set("/tmp/repair-output.jsonl", JSON.stringify(repair));
-  await expect(runRepairPublication("capture")).rejects.toThrow(failure);
-  expect(files.has("/tmp/repair-test/repair.json")).toBe(false);
-
-  failTests = false;
-  await runRepairPublication("stage");
-  expect(files.has(failurePath)).toBe(false);
-  expect(files.get("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(patch);
-  const validation = git.mock.calls.find(
-    ([command, args]) => command === "vp" && args[1] === "scripts/validate-changes.ts",
-  );
-  expect(validation?.[2].env).toMatchObject({
+it("runs the protected planner without allowing validation to set publication outputs", () => {
+  git.mockReturnValueOnce(success(""));
+  validateRepair();
+  const [command, args, options] = git.mock.calls[0] ?? [];
+  expect([command, args]).toEqual(["vp", ["node", "scripts/validate-changes.ts", "1".repeat(40)]]);
+  expect(options.env).toMatchObject({
     REPAIR_BASE_SHA: "1".repeat(40),
     VITEST_MAX_WORKERS: "2",
   });
-  expect(validation?.[2].env).not.toHaveProperty("GITHUB_OUTPUT");
-  expect(process.env.GITHUB_OUTPUT).toBe("/tmp/repair-test-output");
-  expect(
-    git.mock.calls
-      .filter(([command]) => command === "vp")
-      .slice(-2)
-      .map(([, args]) => args),
-  ).toEqual([
-    ["node", "scripts/catalog-repair-review.ts", "check-repair"],
-    ["node", "scripts/validate-changes.ts", "1".repeat(40)],
-  ]);
-
-  changeDuringValidation = true;
-  validated = false;
-  await expect(runRepairPublication("stage")).rejects.toThrow("changed during validation");
-  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
+  expect(options.env).not.toHaveProperty("GITHUB_OUTPUT");
 });
 
-it("rejects incomplete investigation before staging or spending time on the full validation suite", async () => {
-  files.set("/tmp/gh-aw/aw-catalog-repair.patch", "stale patch");
-  git.mockReturnValueOnce({ status: 1 });
-  await expect(runRepairPublication("stage")).rejects.toThrow("Investigation review failed");
-  expect(files.has("/tmp/gh-aw/aw-catalog-repair.patch")).toBe(false);
-  expect(git.mock.calls.map(([command, args]) => [command, args])).toEqual([
-    ["vp", ["node", "scripts/catalog-repair-review.ts", "check-repair"]],
-  ]);
+it("rejects a repair intent when the runner admitted no investigation", async () => {
+  files.set("/tmp/repair-output.jsonl", JSON.stringify(repair));
+  process.env.REPAIR_REQUIRED = "false";
+  await expect(runRepairPublication("capture")).rejects.toThrow("runner-owned admission");
+  expect(git).not.toHaveBeenCalled();
 });
 
 it("does not accept a killed or unavailable validation process", () => {

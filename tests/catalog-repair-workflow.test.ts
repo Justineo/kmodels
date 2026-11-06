@@ -94,7 +94,11 @@ it("loads completed refresh evidence before selecting repair work", async () => 
     agent.indexOf("Check whether repair work is needed"),
   );
   expect(agent).toContain("id: repair_context");
-  expect(agent).toContain('KMODELS_PERIODIC_REVIEW: "true"');
+  expect(agent).toContain(
+    "KMODELS_PERIODIC_REVIEW: ${{ github.event.schedule == '7 2 * * *' || inputs.periodic == true }}",
+  );
+  expect(workflow).toContain('cron: "7 */6 * * *"');
+  expect(workflow).toContain('cron: "7 2 * * *"');
   expect(agent).toContain('scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"');
   expect(agent).toContain("REPAIR_REQUIRED: ${{ steps.repair_context.outputs.repairable }}");
 });
@@ -108,7 +112,7 @@ it("requires evidence for healthy scheduled reviews and does not force a fabrica
   expect(markdown).not.toContain("a successful outcome requires a nonempty validated code");
 });
 
-it("reserves execution time for validation retries and skips outcome capture after engine failure", async () => {
+it("keeps trusted validation outside inference and skips outcome capture after engine failure", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
   expect(agent).toMatch(/^    timeout-minutes: 60$/m);
@@ -151,6 +155,7 @@ it("keeps trusted publication validation without a redundant post-execution test
   expect(agent).toContain('catalog-repair-publication.ts" capture');
   expect(agent).toContain('catalog-repair-publication.ts" verify');
   expect(agent).not.toContain('catalog-repair-publication.ts" validate');
+  expect(agent).not.toContain("catalog-repair-publication.ts stage");
   expect(agent).toContain("name: admitted-catalog-repair");
   expect(publication.indexOf('catalog-repair-publication.ts" validate')).toBeGreaterThan(
     publication.indexOf('catalog-repair-publication.ts" apply'),
@@ -162,6 +167,22 @@ it("keeps trusted publication validation without a redundant post-execution test
   expect(ci).toContain('vp node scripts/validate-changes.ts "$VALIDATION_BASE"');
   expect(ci).toContain("needs.verify.outputs.repair_toolchain == 'true'");
   expect(ci).not.toContain("collect:fixtures");
+});
+
+it("feeds threat detection the immutable publication artifact before the detector runs", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const detection = job(workflow, "detection");
+  const download = detection.indexOf("Download the admitted patch for detection");
+  const supply = detection.indexOf("Supply the admitted repair to threat detection");
+  const execute = detection.indexOf("Execute threat detection with AWF");
+  expect(download).toBeGreaterThan(0);
+  expect(supply).toBeGreaterThan(download);
+  expect(supply).toBeLessThan(detection.indexOf("Setup threat detection"));
+  expect(detection.indexOf("Verify the detected repair patch")).toBeGreaterThan(execute);
+  expect(detection).toContain("name: admitted-catalog-repair");
+  expect(detection).toContain("sha256sum --check");
+  expect(detection).toContain('cp "$artifact/repair.patch" "$detection/aw-catalog-repair.patch"');
+  expect(detection).toContain("needs.agent.outputs.output_types == 'commit_repair'");
 });
 
 it("keeps issue creation unavailable in both the source policy and generated workflow", async () => {

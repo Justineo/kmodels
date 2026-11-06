@@ -1,11 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const patchPath = "/tmp/gh-aw/aw-catalog-repair.patch";
-const stageFailurePath = "/tmp/gh-aw/agent/catalog-repair-stage-failure.txt";
+const frameworkDirectory = "/tmp/gh-aw";
 const maximumPatchBytes = 4 * 1024 * 1024;
 
 export type RepairOutcome =
@@ -119,24 +118,19 @@ export function repairPatchHash(patch: string): string {
   return createHash("sha256").update(patch).digest("hex");
 }
 
-/** Also runs inside the agent so failed checks can be repaired before final output. */
-export function validateRepair(failurePath?: string): void {
-  // The sandbox inherits the runner's output path, but cannot access that host file.
-  // This child only validates; the trusted publication step owns workflow outputs.
+export function validateRepair(): void {
+  // The validation child must not write publication step outputs.
   const { GITHUB_OUTPUT: _output, ...env } = process.env;
   const result = spawnSync("vp", ["node", "scripts/validate-changes.ts", baseSha()], {
     stdio: "inherit",
     env: {
       ...env,
       VITEST_MAX_WORKERS: "2",
-      ...(failurePath === undefined ? {} : { KMODELS_VALIDATION_FAILURE_PATH: failurePath }),
     },
   });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0)
-    throw new Error(
-      `Affected repair checks failed (${result.signal ?? result.status}). Fix the failure and rerun stage before requesting publication.`,
-    );
+    throw new Error(`Affected repair checks failed (${result.signal ?? result.status})`);
 }
 
 function environment(name: string): string {
@@ -188,11 +182,12 @@ async function output(name: string, value: string): Promise<void> {
   if (path !== undefined) await appendFile(path, `${name}=${value}\n`);
 }
 
-async function publication(): Promise<{ outcome: RepairOutcome; patch: string; base: string }> {
+async function publication() {
   const directory = environment("REPAIR_ARTIFACT_DIR");
   const metadata = await readFile(join(directory, "repair.json"), "utf8");
   const record: unknown = JSON.parse(metadata);
-  if (!object(record) || record.base_sha !== baseSha() || typeof record.patch_sha256 !== "string")
+  const base = baseSha();
+  if (!object(record) || record.base_sha !== base || typeof record.patch_sha256 !== "string")
     throw new Error("Catalog repair artifact has an invalid validation record");
   const outcome = parseRepairOutcome(metadata);
   if (outcome.type !== "commit_repair")
@@ -200,7 +195,7 @@ async function publication(): Promise<{ outcome: RepairOutcome; patch: string; b
   const patch = await readFile(join(directory, "repair.patch"), "utf8");
   if (repairPatchHash(patch) !== record.patch_sha256)
     throw new Error("Catalog repair artifact does not match the validated patch");
-  return { outcome, patch, base: baseSha() };
+  return { outcome, patch, base };
 }
 
 export async function runRepairPublication(operation: string | undefined): Promise<void> {
@@ -209,36 +204,13 @@ export async function runRepairPublication(operation: string | undefined): Promi
       validateRepair();
       break;
     }
-    case "stage": {
-      // A failed retry must not leave a previously approved detection patch behind.
-      await rm(patchPath, { force: true });
-      await rm(stageFailurePath, { force: true });
-      const review = spawnSync("vp", ["node", "scripts/catalog-repair-review.ts", "check-repair"], {
-        stdio: "inherit",
-      });
-      if (review.error !== undefined) throw review.error;
-      if (review.status !== 0)
-        throw new Error("Investigation review failed; complete the evidence record before staging");
-      git(["add", "--all"]);
-      const patch = stagedPatch(baseSha());
-      admitStagedPatch(baseSha(), patch);
-      validateRepair(stageFailurePath);
-      git(["add", "--all"]);
-      if (stagedPatch(baseSha()) !== patch)
-        throw new Error(
-          "Catalog repair changed during validation; review the changes and rerun stage",
-        );
-      await writeFile(patchPath, patch);
-      console.log(
-        "Catalog repair stage passed: affected checks completed and detection patch saved.",
-      );
-      break;
-    }
     case "capture": {
       const outcome = parseRepairOutcome(await readFile(environment("GH_AW_SAFE_OUTPUTS"), "utf8"));
       const required = environment("REPAIR_REQUIRED");
       if (!["true", "false"].includes(required))
         throw new Error("Invalid repair admission decision");
+      if (outcome.type === "commit_repair" && required !== "true")
+        throw new Error("Catalog repair publication requires runner-owned admission");
       if (outcome.type === "noop" && required === "true") {
         const review = spawnSync(
           "vp",
@@ -252,23 +224,17 @@ export async function runRepairPublication(operation: string | undefined): Promi
           );
       }
       git(["add", "--all"]);
-      const patch = stagedPatch(baseSha());
+      const base = baseSha();
+      const patch = stagedPatch(base);
+      for (const name of await readdir(frameworkDirectory)) {
+        if (/^aw-.*\.(?:patch|bundle)$/.test(name))
+          await rm(join(frameworkDirectory, name), { force: true });
+      }
       if (outcome.type === "noop") {
         if (patch !== "") throw new Error("Catalog repair no-op contains code changes");
-        await rm(patchPath, { force: true });
       } else {
-        admitStagedPatch(baseSha(), patch);
-        const staged = await readFile(patchPath, "utf8").catch(async (error: unknown) => {
-          if (!object(error) || error.code !== "ENOENT") throw error;
-          const detail = (await readFile(stageFailurePath, "utf8").catch(() => "")).trim();
-          throw new Error(
-            `Catalog repair requires a successful stage before requesting publication${
-              detail === "" ? "" : `: ${JSON.stringify(detail.slice(0, 1000))}`
-            }`,
-          );
-        });
-        if (staged !== patch)
-          throw new Error("Catalog repair changed after staging its detection patch");
+        admitStagedPatch(base, patch);
+        const patchHash = repairPatchHash(patch);
         const directory = environment("REPAIR_ARTIFACT_DIR");
         await mkdir(directory, { recursive: true });
         await writeFile(join(directory, "repair.patch"), patch);
@@ -276,21 +242,22 @@ export async function runRepairPublication(operation: string | undefined): Promi
           join(directory, "repair.json"),
           JSON.stringify({
             ...outcome,
-            base_sha: baseSha(),
-            patch_sha256: repairPatchHash(patch),
+            base_sha: base,
+            patch_sha256: patchHash,
           }),
         );
-        await output("patch_sha256", repairPatchHash(patch));
+        await output("patch_sha256", patchHash);
       }
       await output("outcome", outcome.type);
       break;
     }
     case "verify": {
+      const { patch: admitted, base } = await publication();
       git(["add", "--all"]);
-      const patch = stagedPatch(baseSha());
-      admitStagedPatch(baseSha(), patch);
-      if (repairPatchHash(patch) !== environment("REPAIR_PATCH_SHA256"))
-        throw new Error("Catalog repair changed during validation");
+      const patch = stagedPatch(base);
+      admitStagedPatch(base, patch);
+      if (repairPatchHash(patch) !== environment("REPAIR_PATCH_SHA256") || admitted !== patch)
+        throw new Error("Catalog repair changed after capture");
       break;
     }
     case "apply":
@@ -311,7 +278,6 @@ export async function runRepairPublication(operation: string | undefined): Promi
     }
     case "commit": {
       const { outcome } = await publication();
-      if (outcome.type !== "commit_repair") throw new Error("Missing repair intent");
       git(["add", "--all"]);
       if (git(["write-tree"]).trim() !== environment("REPAIR_TREE_SHA"))
         throw new Error("Catalog repair publication tree changed during validation");
@@ -370,9 +336,7 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     default:
-      throw new Error(
-        "Expected validate, stage, capture, verify, apply, retry-apply, commit, or push",
-      );
+      throw new Error("Expected validate, capture, verify, apply, retry-apply, commit, or push");
   }
 }
 

@@ -85,27 +85,29 @@ export async function validateRepairReview(
     if (hash !== actual) throw new Error(`Review evidence changed: ${path}`);
   };
   const checkProof = async (check: Record<string, unknown>) => {
-    const command = text(check.command);
     text(check.result);
-    await proof(check.output);
     const output = record(check.output);
-    const receipt = record(JSON.parse(await readEvidence(text(output.path))));
+    const path = text(output.path);
+    const body = await readEvidence(path);
+    if (reviewHash(body) !== output.sha256) throw new Error(`Review evidence changed: ${path}`);
+    const receipt = record(JSON.parse(body));
+    const command = text(receipt.command);
     if (
       receipt.schema_version !== 1 ||
-      receipt.command !== check.command ||
-      receipt.kind !== check.kind ||
-      receipt.phase !== check.phase ||
-      receipt.exit_code !== check.exit_code ||
-      (check.exit_code !== null && !Number.isInteger(check.exit_code))
+      ["command", "kind", "phase", "exit_code"].some(
+        (key) => key in check && receipt[key] !== check[key],
+      ) ||
+      (receipt.exit_code !== null && !Number.isInteger(receipt.exit_code))
     )
       throw new Error("Review check disagrees with its command receipt");
     if (
-      (check.kind === "consumer" || check.kind === "transition") &&
+      (receipt.kind === "consumer" || receipt.kind === "transition") &&
       /(?:fetch|replay)-catalog-evidence\.ts\b/u.test(command)
     )
       throw new Error(
         "Source-only acquisition or parser replay cannot establish consumer or transition proof",
       );
+    return receipt;
   };
   const counts: ReviewSummary = { repaired: 0, not_a_defect: 0, blocked: 0, pending: 0 };
   for (const row of rows) {
@@ -117,20 +119,22 @@ export async function validateRepairReview(
     text(row.reason);
     if (row.status === "pending") {
       text(row.next_action);
-      if (!options.allowPending) throw new Error(`Candidate still needs investigation: ${id}`);
-      const interruption = record(review.interruption);
-      text(interruption.reason);
-      if (interruption.kind === "budget") {
-        const deadline = Date.parse(text(admission.investigation_deadline));
-        if (!Number.isFinite(deadline) || (options.now ?? Date.now()) < deadline)
-          throw new Error("Investigation budget remains; continue the pending candidates");
-      } else if (interruption.kind === "environment") {
-        const check = record(interruption.check);
-        await checkProof(check);
-        if (check.exit_code === 0)
-          throw new Error("Environment interruption requires a failed command");
-      } else {
-        throw new Error("Pending candidates require a budget or environment interruption");
+      if (options.requireNoDefect || (!options.allowPending && !options.requireRepair))
+        throw new Error(`Candidate still needs investigation: ${id}`);
+      if (!options.requireRepair) {
+        const interruption = record(review.interruption);
+        text(interruption.reason);
+        if (interruption.kind === "budget") {
+          const deadline = Date.parse(text(admission.investigation_deadline));
+          if (!Number.isFinite(deadline) || (options.now ?? Date.now()) < deadline)
+            throw new Error("Investigation budget remains; continue the pending candidates");
+        } else if (interruption.kind === "environment") {
+          const check = await checkProof(record(interruption.check));
+          if (check.exit_code === 0)
+            throw new Error("Environment interruption requires a failed command");
+        } else {
+          throw new Error("Pending candidates require a budget or environment interruption");
+        }
       }
       counts.pending += 1;
       continue;
@@ -138,8 +142,8 @@ export async function validateRepairReview(
     const evidence = records(row.evidence);
     if (evidence.length === 0) throw new Error(`Missing source evidence: ${id}`);
     for (const ref of evidence) await proof(ref);
-    const checks = records(row.checks);
-    for (const check of checks) await checkProof(check);
+    const checks: Record<string, unknown>[] = [];
+    for (const check of records(row.checks)) checks.push(await checkProof(check));
     const has = (kind: string, phase?: string, success = false) =>
       checks.some(
         (check) =>
@@ -264,7 +268,7 @@ export function repairScopeSummary(admissionText: string, reviewText: string): s
       ...(row.status === "blocked"
         ? { next_action: text(record(row.blocker).next_action) }
         : row.status === "pending"
-          ? { next_action: text(row.next_action) }
+          ? { reason: text(row.reason), next_action: text(row.next_action) }
           : {}),
       ...(!periodic.has(text(row.id))
         ? {}
@@ -279,7 +283,7 @@ export function repairScopeSummary(admissionText: string, reviewText: string): s
     })),
     deferred: records(admission.deferred_candidates ?? []).map((candidate) => text(candidate.id)),
   };
-  return `\n## Checked repair scope\n\nThese are admitted-scope evidence conclusions, not a whole-catalog health claim. Blocked areas and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
+  return `\n## Checked repair scope\n\nPending and blocked candidates, blocked review areas, and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
 }
 
 export async function readReviewEvidence(path: string, root = evidenceDirectory): Promise<string> {
@@ -360,10 +364,6 @@ async function main(): Promise<void> {
     await writeFile(path, receipt);
     console.log(
       JSON.stringify({
-        kind,
-        phase,
-        command,
-        exit_code: result.status,
         output: { path, sha256: reviewHash(receipt) },
       }),
     );

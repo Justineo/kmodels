@@ -11,7 +11,7 @@ import { manifests } from "../src/catalog/manifests.ts";
 
 const assertCatalogRepairOutcome = (output: string) => parseRepairOutcome(output).type;
 
-it("bounds provider repair admission without dropping candidates or delaying the periodic slot", () => {
+it("bounds incident admission and gives the periodic review its own batch", () => {
   const candidates = manifests.flatMap(({ provider }) =>
     ["source_parse_failure", "pricing_validation"].map((trigger) => ({
       provider_id: provider.id,
@@ -30,20 +30,22 @@ it("bounds provider repair admission without dropping candidates or delaying the
   for (let offset = 0; offset < manifests.length; offset++) {
     const at = new Date(firstDay + offset * 21_600_000);
     const periodic = scheduledCatalogReview(at);
-    const input = [...candidates, periodic];
-    const batch = catalogRepairBatch(input, at);
-    expect(batch.selected).toContain(periodic);
-    const active = batch.selected.filter((candidate) => candidate !== periodic);
+    expect(catalogRepairBatch(candidates, at, "periodic")).toEqual({
+      selected: [periodic],
+      deferred: candidates,
+    });
+    const batch = catalogRepairBatch(candidates, at);
+    const active = batch.selected;
     expect(active).toHaveLength(2);
     expect(new Set(active.map(({ provider_id }) => provider_id)).size).toBe(1);
     active.forEach(({ provider_id }) => reviewed.add(provider_id));
-    expect([...batch.selected, ...batch.deferred]).toHaveLength(input.length);
-    expect(new Set([...batch.selected, ...batch.deferred])).toEqual(new Set(input));
-    expect(catalogRepairBatch(input, new Date(at.getTime() + 21_599_999))).toEqual(batch);
+    expect([...batch.selected, ...batch.deferred]).toHaveLength(candidates.length);
+    expect(new Set([...batch.selected, ...batch.deferred])).toEqual(new Set(candidates));
+    expect(catalogRepairBatch(candidates, new Date(at.getTime() + 21_599_999))).toEqual(batch);
     expect(
-      catalogRepairBatch(input.toReversed(), at)
-        .selected.filter((candidate) => candidate !== periodic)
-        .map(({ provider_id }) => provider_id),
+      catalogRepairBatch(candidates.toReversed(), at).selected.map(
+        ({ provider_id }) => provider_id,
+      ),
     ).toEqual(active.map(({ provider_id }) => provider_id));
   }
   expect([...reviewed].sort()).toEqual(manifests.map(({ provider }) => provider.id).sort());

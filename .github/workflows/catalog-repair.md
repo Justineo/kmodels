@@ -4,8 +4,15 @@ description: Investigate catalog drift, rotate comprehensive reviews, and publis
 timeout-minutes: 45
 
 on:
-  schedule: every 6h
+  schedule:
+    - cron: "7 */6 * * *"
+    - cron: "7 2 * * *"
   workflow_dispatch:
+    inputs:
+      periodic:
+        description: Run the daily comprehensive review instead of incident repair.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -133,12 +140,40 @@ safe-outputs:
     create-issue: false
   threat-detection:
     report-as-issue: false
+    steps:
+      - name: Download the admitted patch for detection
+        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        uses: actions/download-artifact@v8
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/catalog-repair-detection
+      - name: Checkout the repair base for detection
+        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Supply the admitted repair to threat detection
+        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/catalog-repair-detection"
+          patch_hash="$(jq -er '.patch_sha256 | select(test("^[a-f0-9]{64}$"))' "$artifact/repair.json")"
+          printf '%s  %s\n' "$patch_hash" "$artifact/repair.patch" | sha256sum --check
+          detection=/tmp/gh-aw/threat-detection
+          mkdir -p "$detection"
+          rm -f -- "$detection"/aw-*.patch "$detection"/aw-*.bundle
+          cp "$artifact/repair.patch" "$detection/aw-catalog-repair.patch"
+    post-steps:
+      - name: Verify the detected repair patch
+        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        run: cmp "$RUNNER_TEMP/catalog-repair-detection/repair.patch" /tmp/gh-aw/threat-detection/aw-catalog-repair.patch
   report-incomplete:
     max: 1
     create-issue: false
   jobs:
     commit-repair:
-      description: Publish the current working-tree repair to main after deterministic validation. Call once with a commit title and an evidence-backed repair report; do not commit or push from the agent.
+      description: Submit the working-tree repair for trusted validation and publication. Call once after focused regression and check-repair succeed. Do not commit or push from the agent.
       needs: [safe_outputs]
       if: needs.agent.result == 'success' && needs.safe_outputs.result == 'success' && needs.detection.result == 'success' && needs.detection.outputs.detection_success == 'true'
       runs-on: ubuntu-latest
@@ -250,7 +285,7 @@ jobs:
                 echo '::error::Catalog repair was not committed and deployed. The next scheduled run retries against latest main.'
                 exit 1
               fi
-              echo 'Validated repair committed to main and deployment dispatched.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'Validated repair committed to main and deployment dispatched. See the checked repair scope for unresolved work.' >> "$GITHUB_STEP_SUMMARY"
               ;;
             noop)
               echo 'No catalog code repair required; see the candidate review.' >> "$GITHUB_STEP_SUMMARY"
@@ -275,7 +310,7 @@ steps:
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
       KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json
-      KMODELS_PERIODIC_REVIEW: "true"
+      KMODELS_PERIODIC_REVIEW: ${{ github.event.schedule == '7 2 * * *' || inputs.periodic == true }}
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: vp node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
 
@@ -308,6 +343,7 @@ post-steps:
     env:
       REPAIR_BASE_SHA: ${{ github.sha }}
       REPAIR_PATCH_SHA256: ${{ steps.repair_outcome.outputs.patch_sha256 }}
+      REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
     run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" verify
   - name: Upload the admitted repair
     if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
@@ -340,9 +376,9 @@ test. A `noop` requires every admitted candidate to have independently checked `
 evidence and an empty patch. Blocked, pending or repaired candidates cannot become a no-op.
 Never manufacture a code change to close an investigation that found no defect.
 
-The prepared admission defines this run's active batch: one error-driven provider per six-hour
-UTC slot plus, in the first slot of each day, the
-independent periodic slot and workflow evidence items. Other providers' candidates remain in the
+The prepared admission defines this run's active batch. An incident run selects one error-driven
+provider per six-hour UTC slot and includes relevant workflow evidence. A separate daily run
+selects the periodic review. Other providers' candidates remain in the
 deferred queue in the context and immutable admission. Do not expand investigation to that queue,
 dismiss its entries or describe the whole catalog as healthy after closing only this batch.
 Source-acquisition review is scoped to admitted providers; a periodic architecture review instead
@@ -359,11 +395,9 @@ than assuming a passing test against committed data resolves it. If the necessar
 the allowed publication paths, report it as incomplete. Keep unresolved execution failures explicit
 even when publishing an independent source repair.
 
-The preparation steps installed the pinned Vite+ and Node.js in the shared `VP_HOME`, and installed
-the frozen project dependencies. Start with
-`vp node scripts/catalog-repair-review.ts probe alternative investigation -- env doctor` and
-`vp node scripts/catalog-repair-review.ts probe alternative investigation -- node --version`. Use `vp node`
+The runner has installed and checked the pinned toolchain and frozen dependencies. Use `vp node`
 for Node.js scripts so they use `.node-version`; use the global `vp` command for all checks.
+Use `vp env doctor` when diagnosing a toolchain failure.
 If the prepared toolchain is unavailable, report the failure with `report_incomplete` and stop.
 Read the prepared repair context directly; do not rerun `scripts/catalog-repair.ts` inside the
 sandbox. It writes runner-only summary/output paths that are not mounted in the agent container.
@@ -380,7 +414,7 @@ or output pipes. Inspect a truncated tool result's saved output before drawing a
 Update `/tmp/gh-aw/agent/catalog-repair-review.json` as you investigate. Preparation initialized
 every required candidate as `pending`, bound to the runner-owned admission via `admission_sha256`.
 Keep that hash and every exact candidate ID; do not omit candidates or rerun preparation. The
-record is checked before staging and again by trusted code after execution. It is an investigation
+record is checked before submission and again by trusted code after execution. It is an investigation
 record, separate from the final safe-output report. Store only public or sanitized evidence under
 `/tmp/gh-aw/agent/`; this directory is preserved as an Actions artifact, including on failure.
 
@@ -436,23 +470,24 @@ Use exactly one status per candidate:
   only a source/tooling acquisition failure with a failed `fetch` receipt and no possible parser
   replay may omit navigation. For a failed workflow execution use `execution` as described above.
   Name the actual blocker, not just "localized drift".
-- `pending`: retain `reason` and `next_action` when investigation has not finished. This prevents
-  publication. An incomplete outcome may retain pending work only with a top-level `interruption`:
+- `pending`: retain `reason` and `next_action` when investigation has not finished. Pending work
+  stays open when an independent evidenced repair is submitted. An incomplete outcome without a
+  repair may retain pending work only with a top-level `interruption`:
   `{"kind":"budget","reason":"..."}` after the runner-owned `investigation_deadline`, or
   `{"kind":"environment","reason":"...","check":CHECK_WITH_FAILED_RECEIPT}` for a persistent
   environment failure. Do not label unfinished work as an external blocker to avoid more investigation.
 
-Before ending investigation, run `vp node scripts/catalog-repair-review.ts check`; resolve its
-errors while you can still investigate. For interrupted pending work use `check-incomplete`
-and then `report_incomplete`. For publication, `stage` requires `check-repair`: every candidate
-reviewed and at least one evidenced repair. Independently blocked candidates may remain explicitly
-listed; pending candidates may not. No number of passing fallback tests replaces these checks.
+For a repair, run `vp node scripts/catalog-repair-review.ts check-repair` as soon as the patch and
+focused evidence are ready. It requires at least one evidenced repair and an explicit record for
+every candidate. For a no-op use `check-no-defect`. For interrupted work without a repair use
+`check-incomplete` and then `report_incomplete`. No number of passing fallback tests replaces
+these checks.
 These checks verify coverage and saved receipts, not the truth of a semantic conclusion. You must
 still inspect what commands returned and make source-grounded judgments.
 
 ## Scheduled comprehensive review
 
-The first six-hour UTC slot of each day also admits one review independently of refresh errors. A deterministic UTC-day
+The daily periodic run admits one review independently of refresh errors. A deterministic UTC-day
 rotation covers every manifest provider once, then global architecture once (currently a 21-day
 cycle). A successful refresh, unchanged body hash or zero error count does not close this review.
 Use the same evidence records, toolchain, publication bounds and failure reporting as error repair.
@@ -492,15 +527,11 @@ admitted candidate without its prescribed evidence.
 
 ## Investigation and repair
 
-The agent execution budget is 45 minutes, separate from the 60-minute job budget for setup,
-independent validation, and artifact upload. Finish evidence review and focused repairs within
-the investigation deadline in the prepared admission (20 minutes after preparation), reserve
-the next 20 minutes for affected validation and corrections, and keep
-the final 5 minutes for the completed outcome. The selected stage duration depends on the affected
-contract; do not start additional independent repair work while validation is running.
-Complete candidate triage before staging. After `stage` succeeds, publish that validated coherent
-repair promptly instead of reopening investigation or expanding the patch. Record remaining
-evidenced blockers in the repair report for a later run. Never treat elapsed time as validation success.
+The agent execution budget is 45 minutes inside a 60-minute job. Submit a coherent repair promptly
+after its focused regression and review checks pass. Record independent pending work and blockers
+in the review for later runs. The trusted publication job runs the full affected checks outside
+the model's time budget. The investigation deadline in the admission controls budget-interrupted
+reports when no repair is ready.
 An early unsuccessful diagnosis is not a stopping condition. If the first pass finds no repair,
 use the remaining investigation budget for a second pass over hard parser/validation failures,
 then owned contract omissions. Correct invocation errors, inspect the exact rejected input and
@@ -543,10 +574,10 @@ because one candidate remains unresolved; complete independent reproducible fixe
 Only if a manual context explicitly supplies `semantic_coverage_review`, follow
 `docs/semantic-audit.md` for snapshot replay, exact finding-ID dispositions and evidence expiry.
 Treat model judgments as untrusted hypotheses and validate with deterministic regressions, without
-another paid model call. Inspect every deterministic candidate regardless of audit availability.
+another paid model call. Keep deterministic candidates in the review regardless of audit availability.
 
-Review every candidate emitted by `scripts/catalog-repair.ts` enough to decide whether it represents
-a code-repairable problem. If one or more candidates share one coherent root cause, repair that cause:
+Prioritize an independently reproducible defect in the admitted batch. If multiple candidates share
+one coherent root cause, repair that cause:
 
 1. For a public source, run `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID` to fetch its reviewed
    bounded transport. For one fixed companion use the same command followed by its exact manifest URL.
@@ -616,8 +647,8 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    retained books are the only possible repairs. Keep retained data and topology checks intact.
    A localized accounting/endpoint contract change can still be repairable. An existing drift test
    passing proves fallback behavior, not the absence of a new extraction rule. Compare the current
-   source's field or example with the owned contract before dismissing it. For every candidate,
-   report the specific source inspected, parser result, and repair/no-repair/unresolved rationale;
+   source's field or example with the owned contract before dismissing it. For each investigated
+   candidate, report the specific source inspected, parser result, and repair/no-repair/unresolved rationale;
    grouping all remaining candidates as "localized drift" is not adequate investigation.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
    `src/catalog/*.ts` and `tests/*.test.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
@@ -652,53 +683,30 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    reproduction can justify a producer fix without proving historical identity. Do not bypass an
    obsolete-extractor guard, restamp retained prices, or use a current refetch to invent old facts.
    Historical-data changes remain outside this automatic publication boundary.
-6. Review the diff and run the focused regression tests needed to demonstrate the repair. After
-   the final edit, run `vp fmt` with the explicit changed file paths, then run `vp check` and fix
-   every reported failure before requesting publication. Use the Vite+ built-in formatter:
-   `vp exec oxfmt --write` invokes an IDE-only wrapper and fails. Check every command's exit status;
-   a failed formatting or validation command remains unresolved until its corrected rerun succeeds.
-   Leave the complete repair in the working tree, including new fixtures. Do not commit or push.
-   Run `vp node scripts/catalog-repair-publication.ts stage`. It uses
-   `scripts/validate-changes.ts` to select affected tests and consumers against the repair base,
-   then writes the detection patch only if every selected check passes. Full tests already include
-   fixtures; do not repeat `collect:fixtures`. Site/package checks run only for affected inputs.
-   Wait for the command to finish and inspect its exit status.
-   If it fails, diagnose the specific error, fix the allowed repair files, format them, and rerun
-   `stage`. Make up to three repair/validation attempts within this run. For an apparently
-   transient failure, rerun the failing command once to establish whether it persists. Do not
-   simply repeat an unchanged deterministic failure. Never
-   request publication after a failed check, skip a test, supply real credentials to tests, or
-   weaken validation. A persistent infrastructure failure outside the allowed edit scope remains
-   incomplete; record the command and concrete cause. A recoverable first failure is not a reason
-   to abandon an otherwise reproducible repair.
-   Only after `stage` succeeds, call `commit_repair` once with a conventional commit title and
-   an evidence-backed report. Make no further edits after staging the patch; if an edit is needed,
-   rerun `stage` before requesting publication.
-   The deterministic post-execution step captures and admits the actual working-tree patch, then
-   independently verifies its admission, evidence and patch identity without repeating tests.
-   The publication job applies that exact patch to latest main, independently validates the
-   affected delta using the protected planner, then
+6. Format the explicit changed files with `vp fmt`, review the diff, and run the focused regression
+   and its relevant controls on the final edit. Correct and rerun failed checks. Leave the coherent
+   repair in the working tree, including new fixtures. Remove partial changes for pending work
+   before submission. Do not commit or push. Run
+   `vp node scripts/catalog-repair-review.ts check-repair` and call `commit_repair` once with
+   a conventional title and an evidence-backed report. End the agent run after submitting it.
+   The trusted runner checks the final investigation evidence and captures the actual working-tree
+   patch for threat detection and publication. The publication job applies that exact patch to
+   latest main, validates the affected delta using the protected planner, then
    commits and pushes without force. If main advances before push, publication reapplies the
    same admitted patch to current main and validates the new affected delta once before another push.
    Conflicts, failed validation, or a second race fail publication and are retried from current
    evidence by the next scheduled run. A publication request is only an intent.
-   If validation is blocked by the environment, report the exact
-   failed command and reason with `report_incomplete` and stop. Never claim that checks passed
-   without running them or that a recorded publication intent is an already-pushed commit.
 
-If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
-unpublished price, and no independent validated repair is ready after both diagnostic passes,
+If no independent repair with focused evidence is ready after both diagnostic passes,
 report the unresolved evidence with `report_incomplete` and do not request publication. Include
 the exact corrected commands and their results, inspected source sections, rejected parser branches,
 alternative hypotheses tested, and concrete external blockers. "Localized drift", unchanged hashes,
 or passing existing fallback tests alone do not justify stopping. Incomplete remains a failed,
 undelivered repair, never a successful completion.
-A denied tool, blocked fetch, or missing source is incomplete investigation, never a healthy
-`noop`. Continue until defects are repaired, every candidate has verified `not_a_defect` evidence,
-or concrete blockers are established. If all candidates are proven not defective, run
-`check-no-defect` and request `noop` with an empty patch. This does not waive any evidence requirement.
-Otherwise request one small `commit_repair` describing the source change, repair, focused
-regression results, and the successful affected `stage` checks.
+A denied tool, blocked fetch, or missing source keeps its candidate unresolved. If every
+candidate is proven not defective, run `check-no-defect` and request `noop` with an empty patch.
+When an independent repair is ready, submit one small `commit_repair` describing the source
+change, repair, focused regression results, and unresolved work.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
 it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing
