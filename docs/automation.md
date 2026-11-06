@@ -184,7 +184,12 @@ Status: implemented
   `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
   stays outside the framework's log-redaction and artifact directories.
   Preparation, publication, and a separate ordinary-CI smoke job use the same local
-  `.github/actions/setup-repair-toolchain` action. It sources the installer's generated `env`
+  `.github/actions/setup-repair-toolchain` action. In the compiled agent job, a single
+  unconditional checkout at the triggering SHA precedes the local action. A custom checkout
+  replaces the compiler's default. Ordinary runs fetch a shallow checkout, and validation
+  revisions fetch full history to restore the earlier admitted patch. CI checks that both
+  modes can reach setup in the compiled workflow.
+  The action sources the installer's generated `env`
   file and persists the complete PATH for subsequent steps, including Vite+ 1's `fallback-bin`
   directory. Adding only `VP_HOME/bin` leaves a seemingly usable CLI whose environment doctor
   fails before inference. The shared action verifies runtime installation, frozen dependencies,

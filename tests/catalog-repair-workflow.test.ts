@@ -71,6 +71,22 @@ it("exercises the same isolated repair bootstrap in CI, preparation, and publica
   expect(smoke).not.toContain("COPILOT_GITHUB_TOKEN");
 });
 
+it("checks out the agent workspace before setup on both scheduled runs and revisions", async () => {
+  const agent = job(await readFile(compiled, "utf8"), "agent");
+  const steps = agent.split(/\n      - /);
+  const checkouts = steps.filter((step) => step.includes("uses: actions/checkout@"));
+  expect(checkouts).toHaveLength(1);
+  const [checkout] = checkouts;
+  if (checkout === undefined) throw new Error("Missing agent checkout");
+  const setup = steps.findIndex((step) => step.includes("uses: ./.github/actions/"));
+  expect(setup).toBeGreaterThan(steps.indexOf(checkout));
+  expect(checkout).not.toMatch(/^\s*if:/m);
+  expect(checkout).toContain("ref: ${{ github.sha }}");
+  expect(checkout).toContain("persist-credentials: false");
+  expect(checkout).toContain("filter: blob:none");
+  expect(checkout).toContain("fetch-depth: ${{ inputs.retry_run_id != '' && '0' || '1' }}");
+});
+
 it("permits JSON inspection without granting direct shell or Git mutations", async () => {
   const agent = job(await readFile(compiled, "utf8"), "agent");
   expect(agent).toContain("shell(jq:*)");
@@ -190,11 +206,6 @@ it("queues one retry only after the publication checks reject an admitted patch"
   const agent = job(workflow, "agent");
   const publication = job(workflow, "commit_repair");
   expect(agent).toContain("vp node scripts/catalog-repair-retry.ts");
-  const history = agent
-    .split(/\n      - /)
-    .find((step) => step.includes("name: Fetch history for the retry base"));
-  expect(history).toContain("inputs.retry_run_id != ''");
-  expect(history).toContain("fetch-depth: 0");
   const queue = publication
     .split(/\n      - /)
     .find((step) => step.includes("name: Queue one revision after failed publication validation"));

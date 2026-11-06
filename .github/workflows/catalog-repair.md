@@ -339,12 +339,12 @@ jobs:
           esac
 
 steps:
-  - name: Fetch history for the retry base
-    if: inputs.retry_run_id != ''
+  # A custom checkout replaces the compiler's default, so it must run in both modes.
+  - name: Checkout the repair base
     uses: actions/checkout@v7
     with:
       ref: ${{ github.sha }}
-      fetch-depth: 0
+      fetch-depth: ${{ inputs.retry_run_id != '' && '0' || '1' }}
       filter: blob:none
       persist-credentials: false
 
