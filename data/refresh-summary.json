@@ -1,8 +1,8 @@
 {
-  "catalog_version": "414f83cd876a782f9a3a84cc71fb184b3c786e3c893467bd22864814e2b039d4",
-  "generated_at": "2026-11-05T23:02:27.636Z",
+  "catalog_version": "8da6b2515ba78084a8edc32ab818b1721eeceaf2f31272e232195f056fe15da5",
+  "generated_at": "2026-11-06T00:06:55.265Z",
   "outcome": "changed",
-  "previous_catalog_version": "b511f21dbb92a6f73a9499eb0d570170295394f68ed703168f21111cf63b8896",
+  "previous_catalog_version": "414f83cd876a782f9a3a84cc71fb184b3c786e3c893467bd22864814e2b039d4",
   "providers": [
     {
       "attempt": {
@@ -208,7 +208,7 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "consecutive_failures": 2,
+            "consecutive_failures": 3,
             "last_success_at": "2026-11-05T21:02:48.980Z",
             "message": "Request aborted",
             "outcome": "fetch_failed",
@@ -287,15 +287,9 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Source response body transfer failed or timed out"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Source response body transfer failed or timed out",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -306,25 +300,141 @@
             "source_id": "sagemaker-models"
           },
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-11-05T22:02:18.477Z",
-            "message": "Source response body transfer failed or timed out",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 640,
             "source_id": "sagemaker-sdk"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 640,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 640,
+              "normalized_facts": 0,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 640
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 20,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                },
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "sagemaker_marketplace_public_pricing_unavailable"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 41450,
+                "explicit_non_numeric": 0,
+                "normalized": 5004,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 20,
+                "unsupported": 0
+              },
+              "observed_items": 46474,
+              "reason_counts": {
+                "sagemaker_marketplace_batch_or_training": 265,
+                "sagemaker_marketplace_billable_inference": 3,
+                "sagemaker_marketplace_non_usage_term": 254,
+                "sagemaker_marketplace_public_pricing_unavailable": 20,
+                "sagemaker_marketplace_realtime_software_capacity": 652,
+                "sagemaker_outside_request_pricing": 40931,
+                "sagemaker_public_hosting_capacity": 4025,
+                "sagemaker_public_invocation_meter": 324
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "sagemaker-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 620,
+            "source_id": "sagemaker-api-us-west-2"
           }
         ]
       },
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "deployment": 1,
+          "description": 1,
+          "model_card": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Name: Alexa TM 20B | Provider: amazon | DataType: text | ProblemType: Text Generation",
+                "path": "description",
+                "previous": "Name: Alexa TM 20B | Provider: pytorch | DataType: text | ProblemType: Text Generation"
+              },
+              {
+                "current": "10B-70B",
+                "path": "model_card.size",
+                "previous": "20B"
+              },
+              {
+                "current": "2.0.26",
+                "path": "deployment.package_version",
+                "previous": "2.0.25"
+              }
+            ],
+            "fields": [
+              "description",
+              "model_card",
+              "deployment"
+            ],
+            "model_ref": "amazon-sagemaker/pytorch-textgeneration1-alexa20b"
+          }
+        ],
         "current": 640,
         "previous": 640,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 640
+        "unchanged": 639
       },
       "pricing": {
         "commercial_hash": "c1d2db48534475edbeb4ffcbe62770abbe9639de383dd1a2ff107dbe182d3d45",
@@ -351,24 +461,44 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 5
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "amazon-sagemaker",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-api-us-west-2"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "sagemaker-sdk"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 1
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "catalog_api_set_mismatch": 1,
+        "scope_limited": 1
       }
     },
     {
@@ -381,9 +511,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 36,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -591,20 +721,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -622,9 +745,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 262,
             "source_id": "azure-models"
           },
@@ -806,9 +929,9 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 16,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -912,14 +1035,30 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "retired_at": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "2027-02-15",
+                "path": "retired_at",
+                "previous": "2099-12-31"
+              }
+            ],
+            "fields": [
+              "retired_at"
+            ],
+            "model_ref": "azure/mistral-document-ai-2512@1"
+          }
+        ],
         "current": 277,
         "previous": 277,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 277
+        "unchanged": 276
       },
       "pricing": {
         "commercial_hash": "0cc2426b1c9971bf8cb9488b24af423318dcbeb574b237f754c8535e5af540ad",
@@ -980,7 +1119,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "azure-claude-pricing"
+            "source_id": "azure-models"
           },
           {
             "content_changed": true,
@@ -1109,9 +1248,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1169,13 +1308,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1191,9 +1337,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 49,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1343,8 +1489,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cohere-models"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1356,7 +1508,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -1749,9 +1901,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 67,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1805,41 +1957,25 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "capabilities": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.prompt_cache",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "databricks/databricks-kimi-k3-1-pro"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 68,
         "previous": 68,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 67
+        "unchanged": 68
       },
       "pricing": {
         "commercial_hash": "7376d26c317a640cc19b0e3e5f02022c6120ade7612a1ce081433e749024a47c",
-        "outcome": "commercial",
-        "previous_commercial_hash": "3d543bcd91cb02431013a9a48d2e56c17aa04393e3eda13c0dad9c76d025ef85"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "7376d26c317a640cc19b0e3e5f02022c6120ade7612a1ce081433e749024a47c"
       },
       "pricing_coverage": {
         "current_models": 67,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": -1
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 60,
         "not_applicable_models": 0,
@@ -1856,20 +1992,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "databricks-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2276,33 +2405,14 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1447,
+            "parsed_models": 1451,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1447,
-          "field": "models",
-          "previous": 1453
-        },
-        {
-          "current": 1447,
-          "field": "routes",
-          "previous": 1453
-        }
-      ],
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1447,
-        "previous": 1453,
-        "removed": 6,
-        "removed_model_refs": [
+        "added": 6,
+        "added_model_refs": [
           "huggingface/EbanLee/kobart-summary-v3",
           "huggingface/facebook/mask2former-swin-large-ade-panoptic",
           "huggingface/facebook/mask2former-swin-large-cityscapes-panoptic",
@@ -2310,16 +2420,26 @@
           "huggingface/matei-dorian/segformer-b5-finetuned-human-parsing",
           "huggingface/sshleifer/distilbart-cnn-6-6"
         ],
-        "unchanged": 1447
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
+        "current": 1451,
+        "previous": 1447,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/Helsinki-NLP/opus-mt-tr-en",
+          "huggingface/openmmlab/upernet-swin-base"
+        ],
+        "unchanged": 1445
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1447,
+        "current_models": 1451,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -6
+          "unknown_models": 4
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2347,15 +2467,13 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1427,
-        "unknown_models": 1447
+        "unknown_model_refs_omitted": 1431,
+        "unknown_models": 1451
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -2469,7 +2587,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 36,
+            "consecutive_failures": 37,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2646,7 +2764,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 32,
+                "consecutive_failures": 33,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2815,7 +2933,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 72,
+            "consecutive_failures": 73,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2909,7 +3027,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 18,
+                "consecutive_failures": 19,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3882,9 +4000,9 @@
         "unchanged": 495
       },
       "pricing": {
-        "commercial_hash": "89c5e2bed1fecf5e675cab2a123c83f968a12ae32abd472210c9131b422a779d",
+        "commercial_hash": "9d56645fb1bd6e9fe74c7a2b9ca31cc89958cb3bb46f771d1374913763af2e5d",
         "outcome": "commercial",
-        "previous_commercial_hash": "377949adc683f592cba5db680b863861579ad2a915cb8aec9cfdb7fd3b5ad62b"
+        "previous_commercial_hash": "89c5e2bed1fecf5e675cab2a123c83f968a12ae32abd472210c9131b422a779d"
       },
       "pricing_coverage": {
         "current_models": 495,
@@ -4440,21 +4558,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 21,
-    "added_models": 0,
+    "accepted": 22,
+    "added_models": 6,
     "added_sources": 0,
-    "changed_models": 1,
-    "changed_sources": 38,
-    "models": 4416,
-    "pricing_accepted": 17,
+    "changed_models": 2,
+    "changed_sources": 41,
+    "models": 4420,
+    "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
-    "pricing_retained": 4,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
-    "removed_models": 6,
+    "removed_models": 2,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 1,
     "withheld": 0
   }
 }
