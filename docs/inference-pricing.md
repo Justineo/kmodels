@@ -82,7 +82,10 @@ Return the original query, evidence status and all surviving commercial candidat
   monetary total without billable quantities.
 - `candidates`: evidenced price rules remain possible, but additional commercial conditions or an
   explicit commercial offer choice are needed. Return the candidates with their applicability and
-  missing conditions. Do not collapse them into a quote or select an arbitrary representative.
+  missing conditions. Published numeric rates with imprecise validity remain visible as candidates
+  with an `unresolved_validity` gap. Their original validity labels accompany the amounts, and the
+  calculator still requires an exact effective time. Do not collapse them into a quote or select an
+  arbitrary representative.
 - `unknown`: no reliable mapping or usable price evidence establishes an answer. Include the reason,
   such as unreviewed ID, ambiguous identity, withdrawn mapping evidence or unresolved raw pricing.
   Incompatible supplied conditions are explained rather than silently replaced.
@@ -144,14 +147,16 @@ Optional protocol/capability documents are not prerequisites for independently e
 Preserve the model list and ordinary model details. Show exact inference model IDs separately from
 display names. For an ID, show matching prices, the conditions that affect them, and evidence status.
 Use existing rate units and commercial offer groups. Expose a selector or comparison only when it
-changes the candidate prices; do not concatenate task, URL, Region, lifecycle and execution scope
-into opaque target/case options. Multiple IDs that share prices can be grouped without losing their
-individual copyable values.
+changes the candidate prices or their conditions; keep the choices recognizable by their exact IDs.
+Group IDs when their complete matching rules and available pricing inputs are identical. Preserve
+each ID as a copyable value and retain the group's mapping evidence.
 
-The header labels the catalog's primary identifier `Catalog ID`. The pricing ID selector contains
-only identifiers with explicit associations when any exist for that record. If none exist, show
-the original identifier as `Catalog ID` with unknown mapping status; do not present it as a verified
-inference ID. Static alternate identifiers remain independently searchable and copyable.
+The header labels the catalog's primary identifier `Catalog ID`. Pricing uses explicit associations
+for that record. A single inference ID equal to the catalog ID is labeled `Same as Catalog ID`, with
+the copyable value in the header. With multiple groups, the selector shows their exact ID values.
+If the mapping is unknown, show that status and keep the catalog ID in the header. An ID mapping
+owned by another catalog record is excluded even when its literal value matches the current
+record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.
 
 Missing conditions remain visible beside candidate prices. Unknown mappings are labeled unknown.
 Condition controls update after every selection. An unfilled condition disappears when the shared

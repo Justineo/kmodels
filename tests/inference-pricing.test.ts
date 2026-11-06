@@ -606,6 +606,46 @@ it("does not turn an expired tariff into a matched price", () => {
   );
 });
 
+it("returns published date-only rates as candidates without resolving their effective time", () => {
+  const data = structuredClone(typesafe);
+  const association = typesafeRule();
+  const offer = data.providers[0]?.books
+    .flatMap(({ offers }) => offers)
+    .find(({ id }) => association.offer_refs.includes(id));
+  if (offer === undefined) throw new Error("Missing TypeSafe offer");
+  for (const term of offer.terms) {
+    if (term.kind !== "rate") continue;
+    for (const variant of term.variants)
+      variant.validity = { until: { value: "2026-11-30", precision: "date" } };
+  }
+  const result = createInferencePriceLookup(
+    data,
+    mapping(data, [association]),
+  )({ provider_id: "typesafe", model_id: association.model_id });
+  expect(result.status).toBe("candidates");
+  expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
+    expect.objectContaining({ code: "unresolved_validity" }),
+  );
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" ? term.variants.map(({ validity }) => validity) : [],
+      ),
+    ),
+  ).toContainEqual({ until: { value: "2026-11-30", precision: "date" } });
+  const projected = websiteInferencePrice(result, new Map());
+  const matching = inferenceMatchData(createPricingSnapshot(data), [association]);
+  expect(queryWebsiteInferencePrice({ ...projected, matching }, [], at)).toMatchObject({
+    status: "candidates",
+    explanation: expect.stringContaining("Price validity is not fully established"),
+    candidates: [
+      expect.objectContaining({
+        row_keys: expect.arrayContaining([expect.stringContaining(":rate:")]),
+      }),
+    ],
+  });
+});
+
 it("isolates reusable lookup inputs and results from caller mutation", () => {
   const data = structuredClone(typesafe);
   const associations = mapping(data, [typesafeRule()]);
@@ -818,12 +858,55 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   });
   expect(html).toContain("us.openai.gpt-6-astra");
   expect(html).toContain("Inference model ID");
+  expect(html).toContain('aria-label="Copy inference model ID us.openai.gpt-6-astra"');
+  expect(html).toContain("#ui-copy");
+  expect(html).not.toContain(">Copy<");
   expect(html).toContain("Candidate prices");
   expect(html).toContain("$66");
   expect(html).toContain("Geo cross region");
   expect(html).toContain("Mapping evidence");
   expect(html).not.toContain("Inspect target");
   expect(html).not.toContain("Task and documented scope");
+});
+
+it("shares pricing across equivalent inference IDs and keeps different fixed scopes selectable", async () => {
+  const pair = fixturePairs.get("amazon-bedrock");
+  if (!pair) throw new Error("Missing Bedrock fixture pair");
+  const us = profileRule("us");
+  const alias = rule(bedrock, "us-profile-alias", us.model_ref, us.fixed_selectors);
+  const global = profileRule("global");
+  const results = websiteInferencePrices(
+    pair.catalog,
+    pair.envelope,
+    mapping(bedrock, [us, alias, global]),
+  );
+  const prices = results.get(us.model_ref) ?? [];
+  const website = websitePublication(pair.catalog, pair.envelope.data, "a".repeat(64), results);
+  const offers = website.offers.flatMap(({ offers }) => offers);
+
+  const equivalent = await renderComponent(InferencePrices, {
+    modelRef: us.model_ref,
+    prices: prices.filter(({ model_id }) => model_id !== global.model_id),
+    offers,
+  });
+  expect(equivalent).not.toContain('id="inference-model-id"');
+  expect(equivalent).toContain(`Copy inference model ID ${us.model_id}`);
+  expect(equivalent).toContain(`Copy inference model ID ${alias.model_id}`);
+  expect(equivalent).toContain("$66");
+
+  const mixed = await renderComponent(InferencePrices, {
+    modelRef: us.model_ref,
+    prices: prices.toReversed(),
+    offers,
+  });
+  expect(mixed).toContain('id="inference-model-id"');
+  expect(mixed).toContain(`${alias.model_id} · ${us.model_id}`);
+  expect(mixed).toContain(`value="${global.model_id}"`);
+  expect(mixed).not.toContain(`value="${us.model_id}"`);
+  expect(mixed).toContain(`aria-label="Copy inference model ID ${global.model_id}"`);
+  expect(mixed).toContain(`>${global.model_id}</code>`);
+  expect(mixed).toContain("#ui-copy");
+  expect(mixed).not.toContain(">Copy<");
 });
 
 it("keeps interactive regional selection, exclusions and displayed rows aligned with public lookup", () => {
@@ -942,7 +1025,10 @@ it("preserves accounting conflicts and time exclusions in the audit-free UI matc
     expect(ui.reason).toBe(result.reason);
     if (scenario === "conflict") expect(ui.explanation).toContain("conflict");
     if (scenario === "expired") expect(ui.candidates).toEqual([]);
-    if (scenario === "imprecise") expect(ui.explanation).toContain("incomplete");
+    if (scenario === "imprecise") {
+      expect(ui.status).toBe("candidates");
+      expect(ui.explanation).toContain("Price validity is not fully established");
+    }
   }
 });
 

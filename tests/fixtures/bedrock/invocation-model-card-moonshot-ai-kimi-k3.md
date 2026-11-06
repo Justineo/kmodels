@@ -28,6 +28,22 @@ Kimi K3 is Moonshot AI's most capable open-weight model, combining native vision
 **Tip**  
 Whenever possible, we recommend using the `bedrock-runtime` endpoint for new applications. For Kimi K3, we recommend using the Chat Completions API. See [Inference endpoints supported by Amazon Bedrock](endpoints.md) for details.
 
+## Pricing
+
+| **Inference option** | **Input** | **Output** | **Cache read** | **Cache write (30 min)** |
+| -------------------- | --------- | ---------- | -------------- | ------------------------ |
+| Global CRIS          | $3.00     | $15.00     | $0.30          | $3.75                    |
+| US CRIS              | $3.30     | $16.50     | $0.33          | $4.125                   |
+| IN CRIS              | $3.30     | $16.50     | $0.33          | $4.125                   |
+
+_All prices are per 1 million tokens. Pricing shown is for the Standard tier._
+
+**Priority and Flex tier support:** In addition to Standard, Kimi K3 supports the Priority and Flex service tiers. Priority is billed at **1.75x** the Standard per-token rate (a 75% premium) and Flex at **0.5x** the Standard rate (a 50% discount); apply these multipliers to whichever Standard base rate (Global or US CRIS) applies to your request. For details on each service tier, see [service tiers](service-tiers-inference.html).
+
+## Service Tiers
+
+Kimi K3 supports service tiers on the Responses, Chat Completions, Converse, and `InvokeModel` APIs.
+
 ## Programmatic Access
 
 <a name="model-card-moonshot-ai-kimi-k3-programmatic-access"></a>

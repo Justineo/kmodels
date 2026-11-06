@@ -18,9 +18,7 @@ records whether the edge came from `model_id` or `aliases`. The mapping is
 one-to-many; consumers must not select an arbitrary target when an identifier
 is ambiguous.
 
-The website carries the same aliases in its compact index, includes them in
-literal search, and shows them as copyable alternate identifiers in model
-details.
+The website carries the same aliases in its compact index and includes them in literal search.
 
 ## Positive deployment evidence
 
@@ -51,15 +49,15 @@ provider evidence described in each provider guide.
 
 ## UI projection
 
-The UI labels the original catalog identifier as `Catalog ID`, keeps it directly copyable, places static aliases in a
-collapsed disclosure, and summarizes positive deployment/region tuples as
-`Availability details`. It explains that listed regions are documented facts,
+The UI keeps the original identifier directly copyable as `Catalog ID` in the inspector header.
+Pricing displays evidenced inference IDs with the same copy control. The inspector summarizes
+positive deployment/region tuples as `Availability details`. It explains that listed regions are documented facts,
 not an exhaustive support matrix.
 
-Pricing lists the independently evidenced request IDs when associations exist. It does not add the
-catalog ID to that list unless it has its own association. Without an association, the lookup value
-remains labeled `Catalog ID`, with unknown mapping status and ordinary catalog prices. An alternate
-identifier may also be a request ID; the roles overlap without becoming identity equivalence.
+Pricing uses independently evidenced request IDs for the selected catalog row. When the only
+request ID equals the catalog ID, Pricing references the copyable ID in the header. When mapping
+is unknown, Pricing shows that status and ordinary catalog prices. A catalog alias can also be a
+request ID when provider evidence establishes that role.
 
 ## Price lookup boundary
 

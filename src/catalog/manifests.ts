@@ -1,4 +1,5 @@
 import type { PriceDimension } from "./pricing-schema.ts";
+import { bedrockMeteredRatesUrl } from "./bedrock-nova-pricing.ts";
 import { ollamaUsageRelease, ollamaUsageSourceBase } from "./ollama-accounting.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
 import { sagemakerCatalogUrl } from "./sagemaker.ts";
@@ -1347,7 +1348,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v45",
+        extractorVersion: "bedrock-catalog-v47",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1372,7 +1373,12 @@ export const manifests = [
           "deprecated_at",
           "retired_at",
         ],
-        allowedHosts: ["aws.amazon.com", "docs.aws.amazon.com", "pricing.us-east-1.amazonaws.com"],
+        allowedHosts: [
+          "aws.amazon.com",
+          "b0.p.awsstatic.com",
+          "docs.aws.amazon.com",
+          "pricing.us-east-1.amazonaws.com",
+        ],
         maxResponseBytes: mebibytes(64),
         scope: "global",
         exhaustive: true,
@@ -1443,6 +1449,7 @@ export const manifests = [
               true,
             ],
             ["bedrock-public-pricing", "https://aws.amazon.com/bedrock/pricing/", 8, "html", true],
+            ["bedrock-metered-rates", bedrockMeteredRatesUrl, 4, "json", true],
             [
               "bedrock-cohere-embed-v4-marketplace",
               "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",

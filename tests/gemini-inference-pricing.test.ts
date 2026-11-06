@@ -250,17 +250,16 @@ it("keeps date-only promotion boundaries unresolved rather than inventing a UTC 
     offer_ref: offer("gemini-4-argon", "sync"),
     selectors: [paid, standard],
   });
-  expect(result.reason).toBe("unresolved_price");
+  expect(result.status).toBe("candidates");
   expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
     expect.objectContaining({ code: "unresolved_validity" }),
   );
   expect(
-    baseline.pricing.data.books
-      .flatMap(({ offers }) => offers)
-      .flatMap(({ terms }) => terms)
+    result.candidates
+      .flatMap(({ offer }) => offer.terms)
       .flatMap((term) => (term.kind === "rate" ? term.variants : []))
-      .some(({ validity }) => validity?.until?.value === "2026-11-30"),
-  ).toBe(true);
+      .map(({ validity }) => validity?.until),
+  ).toContainEqual({ value: "2026-11-30", precision: "date" });
 });
 it("does not borrow prices for latest aliases, regional IDs, agents or private resources", () => {
   for (const model_id of [

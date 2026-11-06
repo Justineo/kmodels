@@ -64,6 +64,12 @@ informational Price List differs, so an exact page row may replace only the same
 The losing Price List amount remains informational evidence. Unequal observations within the same
 reviewed page retain equal authority and become a bounded canonical conflict; their order cannot
 select a winner.
+The Nova `Geo Cross-region inference and in-region` token tables also establish route scope.
+The optional [metered unit map](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrock/USD/current/bedrock.json)
+resolves their price tokens to native rate codes by billing Region. A Geo rate requires the same
+model, Region, tier, meter, native unit and amount in the Price List plus positive Runtime
+availability and the profile's own Source Region row. An exact join can keep both routes if
+both are documented. Unqualified SKUs without that join retain their existing interpretation.
 The Embed 4 reader accepts the current product-name-first Marketplace title only alongside its
 exact product heading and listing ID. A title-layout change cannot disable the authoritative
 product tariff while leaving conflicting bulk SKUs as the only visible current rates.
@@ -79,15 +85,20 @@ Exact model-card Pricing tables supplement the Price Lists when the card states 
 identifies the matching endpoint and inference-profile aliases. A partial bulk inventory cannot
 suppress another published tariff or meter. Coequal card and bulk observations reach canonical
 assembly together: equal amounts combine their evidence, while unequal overlapping amounts remain
-bounded conflicts. A card does not silently override a native SKU. Kimi K3 currently publishes
-Global and US cross-Region input, output, 30-minute cache-write,
+bounded conflicts. A card does not silently override a native SKU. Kimi K3 publishes
+Global, US and India cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
-These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Its
-Priority and Flex multipliers use the API scope positively stated in that card's owned Service Tiers
-section. The older Responses/Chat Completions restriction and the current declaration supporting
-those APIs plus Converse/InvokeModel produce their respective exact operation selectors. Missing
-or contradictory declarations retain Standard rates and report tier scope drift. An API selector
-does not authorize borrowing another operation's usage counters.
+These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Named
+CRIS price rows use the reviewed Bedrock geography vocabulary and require a matching profile alias
+on the card. Unqualified `Geo CRIS` requires one evidenced alias geography. Unknown row labels and
+unbound geographies produce reconciliation findings. The same geography vocabulary applies to
+OpenAI card qualifiers and inference profile declarations.
+Kimi K3's Priority and Flex multiplier clause names Global and US base rates. Derived prices stay
+within those geographies and the API scope stated in Service Tiers. The older Responses/Chat
+Completions restriction and the current declaration supporting those APIs plus Converse/InvokeModel
+produce their respective exact operation selectors. Missing or contradictory declarations retain
+Standard rates and report tier scope drift. An API selector does not authorize borrowing another
+operation's usage counters.
 The same reader accepts cards without a cache-write column, including
 [Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
 Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is
@@ -105,11 +116,17 @@ Unresolved card cells use dedicated `model_card_price:*` raw term keys. Their pa
 collide with ordinary numeric meter terms or reject independently bound native SKUs.
 The OpenAI Bedrock cards use separately owned Standard and Ultrafast tables. Each heading supplies
 its own exact short/long input-context bound; its model context window supplies none. Commercial
-rows are limited to the card's positive regional and endpoint availability. An explicit Geo CRIS
-geography must match a published inference-profile alias; a regional qualifier restricts that row.
+rows are limited to the card's positive regional and endpoint availability. Named Geo CRIS rows
+accept the published geography before `Geo CRIS` or in parentheses. When a card has multiple
+commercial profile geographies, the profile's own Source Region table bounds both named and
+unqualified Geo CRIS rates. Unresolved profile regions never inherit another geography's rates.
+GPT-6 Luna's `Call the model` and `Supported Regions` sections supply the same evidence, including
+the endpoint-scoped `Source Region` and `US Geo CRIS` columns and literal `Supported` cells.
 The card already includes its stated commercial fee, so no extra percentage is applied. Both
 `30m` and `30-minute` cache-write headers mean a 1,800-second cache TTL with a per-token charge,
-not a multiplication of the token quantity. An em dash is an explicitly unavailable component.
+not a multiplication of the token quantity. An unqualified cache-write column uses that TTL when
+the card's Prompt caching section establishes it as the sole supported TTL. An em dash is an
+explicitly unavailable component.
 
 For [GPT-6 Astra](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html),
 literal Ultrafast amounts come from its tables rather than a guessed speed or price multiplier.

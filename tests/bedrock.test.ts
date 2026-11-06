@@ -614,7 +614,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v45");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v47");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -630,6 +630,7 @@ describe("Bedrock adapters", () => {
       ["bedrock-invocation-rerank-field", true, true],
       ["bedrock-invocation-rerank-use", true, true],
       ["bedrock-public-pricing", true, undefined],
+      ["bedrock-metered-rates", true, undefined],
       ["bedrock-cohere-embed-v4-marketplace", true, undefined],
       ["pricing-bedrock", true, undefined],
       ["pricing-foundation-models", true, undefined],
@@ -1027,6 +1028,28 @@ describe("Bedrock adapters", () => {
     expect(
       contradictory?.price_facts.filter(({ conditions }) => conditions.service_tier !== "standard"),
     ).toEqual([]);
+    card.body = body.replace(
+      /^\| US CRIS.*$/m,
+      "$&\n| XX CRIS | $8 | $9 | $1 | $2 |\n| JP CRIS | $8 | $9 | $1 | $2 |",
+    );
+    const unresolved = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+      onPricingReconciliation: (item) => findings.push(item),
+    }).models.find(({ model_id }) => model_id === "moonshotai.kimi-k3");
+    expect(unresolved?.price_facts).toEqual(kimi?.price_facts);
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        {
+          disposition: "unsupported",
+          reason_code: "model_card_price_route_unrecognized",
+          sample: "XX CRIS",
+        },
+        { disposition: "unbound", reason_code: "model_card_price_geo_unbound", sample: "JP CRIS" },
+      ]),
+    );
   });
 
   it("uses Grok's Runtime card for Geo and Global tiers without borrowing Mantle prices", async () => {

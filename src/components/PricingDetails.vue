@@ -31,12 +31,19 @@ const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
 const otherChargesOpen = ref(false);
 const offers = computed(() => props.detail?.offers ?? []);
+const modelInferencePrices = computed(() =>
+  props.inferencePrices?.filter(
+    ({ matching, reason }) =>
+      reason !== "unreviewed_id" &&
+      (!matching?.rules.length ||
+        matching.rules.some(({ model_ref }) => model_ref === props.model.uid)),
+  ),
+);
 const hasKnownMapping = computed(() =>
-  props.inferencePrices?.some(
+  modelInferencePrices.value?.some(
     ({ candidates, matching, reason }) =>
-      candidates.length > 0 ||
-      (matching?.rules.length ?? 0) > 0 ||
-      (reason !== undefined && reason !== "unreviewed_id" && reason !== "ambiguous_identity"),
+      reason !== "ambiguous_identity" &&
+      (candidates.length > 0 || (matching?.rules.length ?? 0) > 0 || reason !== undefined),
   ),
 );
 interface CapacityGroup {
@@ -184,15 +191,17 @@ function toggleOtherCharges(event: Event): void {
 
     <template v-else-if="detail">
       <InferencePrices
-        v-if="inferencePrices?.length"
+        v-if="modelInferencePrices?.length"
         :model-ref="model.uid"
-        :prices="inferencePrices"
+        :catalog-id="model.model_id"
+        :prices="modelInferencePrices"
         :offers="offers"
       />
       <template v-if="!hasKnownMapping">
-        <p v-if="inferencePrices?.length" class="capacity-note">
-          The catalog prices below are not verified for an inference model ID.
-        </p>
+        <div v-if="inferencePrices?.length" class="pricing-outcome" role="status">
+          <strong v-if="!modelInferencePrices?.length">Price mapping unknown</strong>
+          <span>The catalog prices below are not verified for an inference model ID.</span>
+        </div>
         <section
           v-if="capacityGroups.length > 0"
           class="base-rates"
