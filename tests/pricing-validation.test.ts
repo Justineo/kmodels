@@ -163,7 +163,7 @@ describe("canonical pricing serialized catalog validation", () => {
       expect(() => validatePricingCatalog(data, core)).not.toThrow();
       Reflect.set(pricingLimits, "pricingCatalogBytes", bytes - 1);
       expect(() => validatePricingCatalog(data, core)).toThrow(
-        "pricing catalog byte limit exceeded",
+        `pricing catalog byte limit exceeded (${bytes} > ${bytes - 1} bytes)`,
       );
     } finally {
       Reflect.set(pricingLimits, "pricingCatalogBytes", originalLimit);

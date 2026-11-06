@@ -186,8 +186,12 @@ function validatePricingCatalogSize(data: PricingCatalog): void {
     ...data,
     provider_snapshots: data.provider_snapshots.map(conservativeSnapshot),
   };
-  if (pricingByteLength(conservativeCatalog) > pricingLimits.pricingCatalogBytes)
-    fail("catalog", "pricing catalog byte limit exceeded");
+  const bytes = pricingByteLength(conservativeCatalog);
+  if (bytes > pricingLimits.pricingCatalogBytes)
+    fail(
+      "catalog",
+      `pricing catalog byte limit exceeded (${bytes} > ${pricingLimits.pricingCatalogBytes} bytes)`,
+    );
 }
 
 function conservativeSnapshot(snapshot: PricingCatalog["provider_snapshots"][number]) {
