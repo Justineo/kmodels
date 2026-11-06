@@ -1206,9 +1206,15 @@ describe("Anthropic adapters", () => {
     const prices = await fixture("anthropic/pricing.md");
     const native =
       "Claude Haiku 3.5 (retired, except on Claude Models on Google Cloud (Google managed))";
+    const nativeTrailingBedrock =
+      "Claude Haiku 3.5 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)";
+    const nativeLeadingBedrock =
+      "Claude Haiku 3.5 (retired, except on Bedrock and Claude Models on Google Cloud (Google managed))";
     for (const [label, excluded] of [
       [native, true],
-      [native.replace("retired", "available"), false],
+      [nativeTrailingBedrock, true],
+      [nativeLeadingBedrock, true],
+      [nativeTrailingBedrock.replace("retired", "available"), false],
     ] as const) {
       const failures: string[] = [];
       const items: PricingReconciliationItem[] = [];
@@ -1222,14 +1228,34 @@ describe("Anthropic adapters", () => {
         onPricingDependencyFailure: (url) => failures.push(url),
         onPricingReconciliation: (item) => items.push(item),
       });
-      expect(items.some(({ reason_code }) => reason_code === "retired_partner_only_price")).toBe(
-        excluded,
-      );
+      expect(
+        items.some(
+          ({ reason_code, sample }) =>
+            reason_code === "retired_partner_only_price" && sample === label,
+        ),
+      ).toBe(excluded);
       expect(failures.length > 0).toBe(!excluded);
       expect(
         result.models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts.length,
       ).toBeGreaterThan(0);
     }
+  });
+  it("skips retired partner-only tool-overhead rows instead of leaving them unbound", async () => {
+    const label =
+      "Claude Haiku 3.5 (retired, except on Claude Models on Google Cloud (Google managed) and Bedrock)";
+    const prices = (await fixture("anthropic/pricing.md")).replace(
+      "| Claude Opus 4.8 | auto        | 290 tokens                         |",
+      `| ${label} | auto | 313 tokens |\n` +
+        "| Claude Opus 4.8 | auto        | 290 tokens                         |",
+    );
+    const items: PricingReconciliationItem[] = [];
+    await anthropicSource({
+      overrides: { "/docs/en/about-claude/pricing.md": prices },
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    expect(items.filter(({ sample }) => sample === label)).toEqual([
+      { disposition: "excluded", reason_code: "token_overhead_included_in_usage", sample: label },
+    ]);
   });
   it.each(["$1*0 / MTok", "`$1**0** / MTok`"])(
     "does not turn a literal price expression into a scalar (%s)",

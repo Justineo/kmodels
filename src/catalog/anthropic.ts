@@ -1209,7 +1209,7 @@ function pricing(
       .join("\n") || body.slice(0, 4096);
   const fastIds = new Set<string>();
   const partnerOnly =
-    /^Claude [\w. -]+ \(retired, except on (?:Bedrock and )?Claude Models on Google Cloud \(Google managed\)\)$/;
+    /^Claude [\w. -]+ \(retired, except on (?:Bedrock and )?Claude Models on Google Cloud \(Google managed\)(?: and Bedrock)?\)$/;
   for (const { table, kind } of priceTables) {
     for (const values of [...table.rows, ...table.irregular]) {
       const nativeLabel = values[0] ?? "";
