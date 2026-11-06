@@ -339,6 +339,15 @@ jobs:
           esac
 
 steps:
+  - name: Fetch history for the retry base
+    if: inputs.retry_run_id != ''
+    uses: actions/checkout@v7
+    with:
+      ref: ${{ github.sha }}
+      fetch-depth: 0
+      filter: blob:none
+      persist-credentials: false
+
   - name: Install the project runtime and dependencies
     uses: ./.github/actions/setup-repair-toolchain
 
