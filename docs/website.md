@@ -4,11 +4,15 @@ Status: implemented core; provider pricing convergence is in progress
 
 ## Product shape
 
-When the accepted snapshot includes inference ID mappings, model pricing begins with an exact
-**Inference model ID** selector. Its options contain only the raw IDs.
-Include only independently associated IDs for the model; the primary catalog ID is not an implicit
-request ID. With no association, show that value as **Catalog ID** and preserve unknown mapping
-status and ordinary catalog prices. Static alternate identifiers remain separate catalog metadata.
+When the accepted snapshot includes inference ID mappings, model pricing identifies the exact
+**Inference model ID**. Group IDs with identical matching rules and pricing conditions and use
+the same compact ID and copy icon control as in the header. Offer a selector when multiple groups
+remain and show the copy controls for its selected group. When the
+only inference ID equals the header's catalog ID, show **Same as Catalog ID** and keep the raw
+value in the header.
+Use associations for the selected catalog entry. When mapping is unknown,
+keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
+when its pricing association is independently evidenced.
 When an ID has multiple commercial offers, a **Pricing plan** selector uses their
 existing names. Selecting an offer clears old condition inputs and limits the displayed conditions
 and rates to that offer; it does not select a protocol or provide account configuration. Publication runs the
@@ -50,10 +54,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   control even when it repeats the display name, and show a distinct version beside it without
   including that separate field in the copied ID.
   Keep task, delivery, limits, dates, availability, modalities, supported
-  capabilities, endpoints, and pricing in their respective sections. Show
-  every provider-published static alias as a compact copy control in a collapsed
-  `Alternate identifiers` disclosure before Overview, using the same visual
-  treatment as the primary model-ID copy control. Show regional availability in a collapsed
+  capabilities, endpoints, and pricing in their respective sections. The inspector shows the
+  Catalog ID in its header and evidenced Inference model IDs in Pricing. Static aliases remain
+  available for catalog search and identifier lookup.
+  Show regional availability in a collapsed
   `Availability details` disclosure, summarized by region and deployment-type
   counts. Inside, group the documented regions under a readable deployment-type
   label. Leave unlisted regions unknown rather than presenting the data as an

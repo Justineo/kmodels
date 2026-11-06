@@ -72,6 +72,7 @@ network:
     - api.featherless.ai
     - aws.amazon.com
     - azure.microsoft.com
+    - b0.p.awsstatic.com
     - build.nvidia.com
     - cloud.google.com
     - cohere.com

@@ -65,10 +65,8 @@ describe("model details", () => {
     expect(header).toContain("Copy catalog ID model");
     expect(header).toContain("#ui-copy");
     expect(content).toContain('<details class="detail-section detail-disclosure"');
-    expect(content).toContain("Alternate identifiers");
-    expect(content.indexOf("Alternate identifiers")).toBeLessThan(content.indexOf("Overview"));
-    expect(content).toContain("model-latest");
-    expect(content).toContain("Copy alternate identifier model-latest");
+    expect(content).not.toContain("Catalog aliases");
+    expect(content).not.toContain("model-latest");
     expect(content).toContain("Availability details");
     expect(content).toContain("2 observed deployments");
     expect(content).toContain("2 regions · 1 deployment type");

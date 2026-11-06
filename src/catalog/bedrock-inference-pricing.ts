@@ -1,5 +1,12 @@
-import { bedrockCardIdentity, bedrockPublicIds } from "./bedrock-model-ids.ts";
-import { markdownTable } from "./bedrock-markdown.ts";
+import { bedrockCardIdentity, bedrockGeoProfiles, bedrockPublicIds } from "./bedrock-model-ids.ts";
+import {
+  bedrockAvailabilityBlocks,
+  bedrockAvailabilitySupported,
+  bedrockAvailabilityTable,
+  bedrockProgrammaticSection,
+  bedrockRegionalSection,
+  markdownTable,
+} from "./bedrock-markdown.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { uniqueCanonicalValues } from "./canonical-value.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
@@ -14,17 +21,6 @@ interface Document {
 type Rule = NonNullable<SourcePricingFacts["inference_prices"]>[number];
 type Fixed = Partial<Record<"endpoint" | "deployment_scope" | "inference_geo" | "region", string>>;
 const root = "https://docs.aws.amazon.com/bedrock/latest/";
-const geographies = new Map([
-  ["US", "us"],
-  ["EU", "eu"],
-  ["APAC", "apac"],
-  ["India", "in"],
-  ["CA", "ca"],
-  ["Japan", "jp"],
-  ["JP", "jp"],
-  ["Australia", "au"],
-  ["AU", "au"],
-]);
 
 function prose(body: string): string {
   return markdownProse(body.replaceAll("\r\n", "\n"))
@@ -34,27 +30,13 @@ function prose(body: string): string {
 }
 
 function hasInRegionId(regional: string, endpoint: string): boolean {
-  const headings = [
-    ...regional.matchAll(
-      /^\*\*Availability using the `(bedrock-runtime|bedrock-mantle)` endpoint\*\*$/gm,
-    ),
-  ];
-  const matches = headings.filter((heading) => heading[1] === endpoint);
-  if (headings.length > 0 && matches.length !== 1) return false;
-  const heading = matches[0];
-  const section =
-    heading === undefined
-      ? regional
-      : regional.slice(
-          heading.index + heading[0].length,
-          headings.find((other) => other.index > heading.index)?.index,
-        );
-  const table = markdownTable(section, ["Region", "In-Region", "Geo", "Global"]);
+  const blocks = bedrockAvailabilityBlocks(regional).filter(
+    (block) => block.endpoint === undefined || block.endpoint === endpoint,
+  );
+  const block = blocks.length === 1 ? blocks[0] : undefined;
+  const table = block === undefined ? undefined : bedrockAvailabilityTable(block.body);
   return (
-    table?.rows.some((row) => {
-      const support = row[table.header.indexOf("In-Region")] ?? "";
-      return /(?:\(|\/)icon-yes\.png\)/.test(support) && !/(?:\(|\/)icon-no\.png\)/.test(support);
-    }) ?? false
+    table?.rows.some((row) => bedrockAvailabilitySupported(row[table.inRegion] ?? "")) ?? false
   );
 }
 
@@ -142,10 +124,10 @@ export function bedrockInferencePrices(
       continue;
     }
     const body = prose(doc.body);
-    const access = markdownSection(body, 2, "Programmatic Access");
+    const access = bedrockProgrammaticSection(body);
     if (
       access === undefined ||
-      !/(?:To call this model from code, use the following model IDs and endpoint URLs\.|Use the following model IDs? and endpoint URLs? to access this model programmatically\.)/.test(
+      !/(?:To call this model from code, use the following model IDs and endpoint URLs\.|Use the following model IDs? and endpoint URLs? to access this model programmatically\.|Use these model IDs and endpoint URLs to call the model\.)/.test(
         access,
       )
     ) {
@@ -158,19 +140,8 @@ export function bedrockInferencePrices(
         throw new Error("Ambiguous ID table");
       const seen = new Set<string>();
       const pending: Array<{ model: ParsedProviderModel; id: string; fixed: Fixed }> = [];
-      const regional = markdownSection(body, 2, "Regional Availability") ?? "";
-      const headings = [...regional.matchAll(/^\*\*Geo: ([^*\n]+)\*\*$/gm)];
-      const profileGeographies = new Map<string, string | undefined>();
-      for (const [index, heading] of headings.entries()) {
-        const block = regional.slice(heading.index + heading[0].length, headings[index + 1]?.index);
-        const ids = [...block.matchAll(/^Geo [Ii]nference ID: `([^`]+)`\s*$/gm)];
-        const id = ids.length === 1 ? ids[0]?.[1] : undefined;
-        if (id !== undefined)
-          profileGeographies.set(
-            id,
-            profileGeographies.has(id) ? undefined : geographies.get(heading[1] ?? ""),
-          );
-      }
+      const regional = bedrockRegionalSection(body) ?? "";
+      const profilesById = bedrockGeoProfiles(regional);
       for (const row of table.rows) {
         const cell = (header: string) => row[table.header.indexOf(header)] ?? "";
         const endpoint = cell("Endpoint");
@@ -201,7 +172,9 @@ export function bedrockInferencePrices(
         ] as const) {
           for (const id of bedrockPublicIds(cell(column))) {
             const geography =
-              deployment_scope === "global_cross_region" ? "global" : profileGeographies.get(id);
+              deployment_scope === "global_cross_region"
+                ? "global"
+                : profilesById.get(id)?.geography;
             pending.push({
               model,
               id,

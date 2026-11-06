@@ -271,34 +271,6 @@ onUnmounted(() => {
             <p v-if="detail?.description" class="details-description">{{ detail.description }}</p>
             <p v-if="error" class="unknown-note" role="alert">{{ error }}</p>
 
-            <details v-if="model.aliases.length" class="detail-section detail-disclosure">
-              <summary>
-                <span>Alternate identifiers</span>
-                <small>{{ model.aliases.length }}</small>
-                <UiIcon name="chevron-right" />
-              </summary>
-              <div class="detail-disclosure-body">
-                <ul class="identifier-list">
-                  <li v-for="identifier in model.aliases" :key="identifier">
-                    <button
-                      class="identifier-copy"
-                      type="button"
-                      :data-copied="copiedIdentifier === identifier || undefined"
-                      :aria-label="`Copy alternate identifier ${identifier}`"
-                      @click="copyIdentifier(identifier)"
-                    >
-                      <code>{{ identifier }}</code>
-                      <UiIcon :name="copiedIdentifier === identifier ? 'check' : 'copy'" />
-                    </button>
-                  </li>
-                </ul>
-                <p class="unknown-note">
-                  Other provider-published names for this model. Availability can still depend on
-                  the API and deployment.
-                </p>
-              </div>
-            </details>
-
             <section class="detail-section" aria-labelledby="overview-heading">
               <h3 id="overview-heading">Overview</h3>
               <dl class="fact-grid">

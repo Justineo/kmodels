@@ -7,6 +7,7 @@ import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { bedrockInferencePrices } from "../src/catalog/bedrock-inference-pricing.ts";
+import { bedrockMeteredRatesUrl } from "../src/catalog/bedrock-nova-pricing.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { composeCatalogPair, coreCatalogVersion } from "../src/catalog/pricing-pair-transition.ts";
 import {
@@ -136,7 +137,7 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
     previous,
   );
 }
-function select(key: "region" | "operation" | "service_tier", value: string): Selector {
+function select(key: "region" | "operation" | "service_tier" | "speed", value: string): Selector {
   return {
     kind: "categorical",
     dimension: { namespace: "kmodels", value: key },
@@ -166,6 +167,204 @@ function lookup(candidate: CatalogPairCandidate) {
     candidate.inference?.mapping,
   );
 }
+
+it("resolves India Kimi rates by the literal profile without borrowing other geographies' tier multipliers", async () => {
+  const body = await fixture("bedrock/invocation-model-card-moonshot-ai-kimi-k3.md");
+  const candidate = await collect((bundle) => {
+    bundle.documents.push({
+      url: `${root}userguide/model-card-moonshot-ai-kimi-k3.md`,
+      body,
+    });
+  });
+  const query = lookup(candidate);
+  const selectors: Selector[] = [
+    select("service_tier", "standard"),
+    {
+      kind: "decimal",
+      dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+      value: "1800",
+      unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+    },
+  ];
+  const provider_id = "amazon-bedrock";
+  const model_id = "in.moonshotai.kimi-k3";
+  const result = query({ provider_id, model_id, selectors });
+  expect(result.status).toBe("matched");
+  const rates = result.candidates.flatMap(({ offer }) =>
+    offer.terms.flatMap((term) =>
+      term.kind === "rate"
+        ? [[term.meter.value, term.variants.map(({ price }) => price.value)]]
+        : [],
+    ),
+  );
+  expect(rates).toHaveLength(4);
+  expect(rates).toEqual(
+    expect.arrayContaining([
+      ["input_text", [{ numerator: "33", denominator: "10000000" }]],
+      ["output_text", [{ numerator: "33", denominator: "2000000" }]],
+      ["cache_read_text", [{ numerator: "33", denominator: "100000000" }]],
+      ["cache_write_text", [{ numerator: "33", denominator: "8000000" }]],
+    ]),
+  );
+  for (const tier of ["priority", "flex"]) {
+    const paid = [select("service_tier", tier), select("operation", "chat_completions")];
+    expect(query({ provider_id, model_id, selectors: paid }).reason).toBe("no_applicable_price");
+    expect(
+      query({ provider_id, model_id: "us.moonshotai.kimi-k3", selectors: paid }).candidates,
+    ).not.toHaveLength(0);
+  }
+});
+
+it("keeps shared commercial Geo rates and named tier rates within each profile's source Regions", async () => {
+  const candidate = await collect((bundle) => {
+    const card = bundle.documents.find(({ url }) =>
+      url.endsWith("model-card-openai-gpt-6-astra.md"),
+    );
+    if (card === undefined) throw new Error("Missing Bedrock OpenAI fixture");
+    const indiaGeo = [
+      "**Geo: India**",
+      "",
+      "Geo inference ID: `in.openai.gpt-6-astra`",
+      "",
+      "| Source Region | Destination Regions |",
+      "| --- | --- |",
+      "| ap-south-1 (Mumbai) | ap-south-1 (Mumbai) |",
+      "",
+      "",
+    ].join("\n");
+    card.body = card.body
+      .replace("## Programmatic Access", "## Call the model")
+      .replace(
+        "To call this model from code, use the following model IDs and endpoint URLs.",
+        "Use these model IDs and endpoint URLs to call the model.",
+      )
+      .replace("## Regional Availability", "## Supported Regions")
+      .replaceAll("Availability using the `", "The `")
+      .replaceAll("APIs supported on `", "APIs supported on the `")
+      .replaceAll("Input Modalities", "Input modalities")
+      .replaceAll("Output Modalities", "Output modalities")
+      .replace("us.openai.gpt-6-astra |", "us.openai.gpt-6-astra, in.openai.gpt-6-astra |")
+      .replaceAll("Geo CRIS (US)", "US Geo CRIS")
+      .replace(
+        /^\| ap-south-1 \(Mumbai\).*$/m,
+        "| ap-south-1 | Not supported | Supported | Supported |",
+      )
+      .replace("## Quotas and Limits", `${indiaGeo}## Quotas and Limits`);
+  });
+  const query = lookup(candidate);
+  const provider_id = "amazon-bedrock";
+  const standard = [
+    ...conditions.filter(({ dimension }) => !["region", "service_tier"].includes(dimension.value)),
+    select("service_tier", "standard"),
+  ];
+  for (const [prefix, region, otherRegion] of [
+    ["in", "ap-south-1", "us-east-1"],
+    ["us", "us-east-1", "ap-south-1"],
+  ] as const) {
+    const model_id = `${prefix}.openai.gpt-6-astra`;
+    expect(
+      query({ provider_id, model_id, selectors: [...standard, select("region", region)] }).status,
+    ).toBe("matched");
+    expect(
+      query({ provider_id, model_id, selectors: [...standard, select("region", otherRegion)] })
+        .reason,
+    ).toBe("no_applicable_price");
+  }
+  expect(
+    query({ provider_id, model_id: "us.openai.gpt-6-astra", selectors: conditions }).status,
+  ).toBe("matched");
+  expect(
+    query({ provider_id, model_id: "in.openai.gpt-6-astra", selectors: conditions }).reason,
+  ).toBe("no_applicable_price");
+});
+
+it("binds Nova Geo prices through the exact page token and native SKU", async () => {
+  const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-global-tiers.json")));
+  const sku = "FY8T82UUN7VZR55K";
+  const rateCode = `${sku}.JRTCKXETXF.6YS6EN2CT7`;
+  const token = "jAqLUFZWnT3mWI7H1MUtAWVOngCMiV5V5M6X59_t_VU";
+  const location = "US East (N. Virginia)";
+  const build = (amount: string) =>
+    collect((bundle) => {
+      for (const doc of reviewed.documents) {
+        const old = bundle.documents.find(({ url }) => url === doc.url);
+        if (old === undefined) bundle.documents.push({ ...doc });
+        else if (!doc.url.includes("pricing.us-east-1")) old.body = doc.body;
+        else {
+          const combined = priceListSchema.parse(JSON.parse(old.body));
+          const additional = priceListSchema.parse(JSON.parse(doc.body));
+          Object.assign(combined.products, additional.products);
+          Object.assign(combined.terms.OnDemand, additional.terms.OnDemand);
+          combined.products[sku] = {
+            sku,
+            attributes: {
+              model: "Nova 2.0 Lite",
+              location,
+              regionCode: "us-east-1",
+              usagetype: "USE1-Nova2.0Lite-input-tokens",
+              feature: "On-demand Inference",
+              inferenceType: "Input tokens",
+            },
+          };
+          combined.terms.OnDemand[sku] = {
+            term: {
+              priceDimensions: {
+                [rateCode]: {
+                  rateCode,
+                  description:
+                    "$0.00033 per 1K tokens for USE1-Nova2.0Lite-input-tokens in US East (N. Virginia)",
+                  unit: "1K tokens",
+                  pricePerUnit: { USD: "0.0003300000" },
+                },
+              },
+            },
+          };
+          old.body = JSON.stringify(combined);
+        }
+      }
+      const markup = `<h3>Standard Tier</h3><table><thead><tr><th>Amazon Nova models</th><th>Price per 1M input tokens</th><th>Price per 1M output tokens</th></tr></thead><tbody><tr><td>Amazon Nova 2 Lite</td><td>{priceOf!bedrock/bedrock!${token}!*!1000}</td><td>—</td></tr></tbody></table>`;
+      bundle.documents.push(
+        {
+          url: "https://aws.amazon.com/bedrock/pricing/",
+          body: `<h2>Amazon Nova</h2><h3>Pricing for Understanding Models</h3><h4>Geo Cross-region inference and in-region</h4><div data-pricing-markup='${markup}'></div>`,
+        },
+        {
+          url: bedrockMeteredRatesUrl,
+          body: JSON.stringify({
+            regions: {
+              [location]: { [token]: { rateCode, price: amount, RegionlessRateCode: token } },
+            },
+          }),
+        },
+      );
+    });
+  const provider_id = "amazon-bedrock";
+  const model_id = "us.amazon.nova-2-lite-v1:0";
+  const selectors = [
+    select("region", "us-east-1"),
+    select("service_tier", "standard"),
+    select("speed", "standard"),
+  ];
+  const query = lookup(await build("0.0003300000"));
+  const result = query({ provider_id, model_id, selectors });
+  expect(result.status).toBe("matched");
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "input_text"
+          ? term.variants.map(({ price }) => price.value)
+          : [],
+      ),
+    ),
+  ).toEqual([{ numerator: "33", denominator: "100000000" }]);
+  expect(query({ provider_id, model_id: "jp.amazon.nova-2-lite-v1:0", selectors }).reason).toBe(
+    "no_applicable_price",
+  );
+  expect(lookup(await build("0.0003400000"))({ provider_id, model_id, selectors }).reason).toBe(
+    "no_applicable_price",
+  );
+});
+
 it("collects actual IDs through static output and uses the same commercial conditions in the UI", async () => {
   const candidate = await collect();
   const query = lookup(candidate);

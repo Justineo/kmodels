@@ -146,6 +146,8 @@ describe("model pricing details", () => {
       ],
     });
     expect(html).toContain("No applicable prices");
+    expect(html).toContain("Same as Catalog ID");
+    expect(html).not.toContain("Copy inference model ID");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("The catalog prices below");
   });
@@ -170,10 +172,47 @@ describe("model pricing details", () => {
     });
     expect(html).toContain("Price mapping unknown");
     expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
-    expect(html).toContain("Catalog ID");
+    expect(html).not.toContain("Catalog ID");
     expect(html).not.toContain("Inference model ID");
     expect(html).toContain("$2");
     expect(html).not.toContain("Applicable prices");
+  });
+
+  it("preserves catalog prices when the same ID is mapped to another catalog entry", async () => {
+    const catalogOffer = offer([{ amount: "$2", scope: allContexts }]);
+    const html = await renderComponent(PricingDetails, {
+      model,
+      detail: { offers: [catalogOffer] },
+      loading: false,
+      error: undefined,
+      inferencePrices: [
+        {
+          model_id: model.model_id,
+          status: "matched",
+          explanation: "The documented ID mapping identifies these prices.",
+          missing_conditions: [],
+          evidence_urls: [],
+          candidates: [{ offer_ref: "c".repeat(64), selectors: [] }],
+          matching: {
+            generated_at: "2026-11-01T00:00:00.000Z",
+            observed_at: "2026-11-01T00:00:00.000Z",
+            rules: [
+              {
+                model_ref: "test/another-model",
+                offer_refs: ["c".repeat(64)],
+                fixed_selectors: [],
+              },
+            ],
+            offers: [{ id: "c".repeat(64), states: [], relations: [], terms: [] }],
+            referenced_rates: [],
+          },
+        },
+      ],
+    });
+    expect(html).toContain("Price mapping unknown");
+    expect(html).toContain("$2");
+    expect(html).not.toContain("Inference model ID");
+    expect(html).not.toContain("Same as Catalog ID");
   });
 
   it("shows invariant regional rates without making the user choose a region", async () => {

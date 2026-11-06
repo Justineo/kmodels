@@ -191,6 +191,7 @@ function selectOffer(
   const applicable = <T extends Qualified & { semantics: number }>(
     variants: T[],
     termRef?: string,
+    retainUnresolvedRates = false,
   ): number[] => {
     validateSelectors(
       selectors,
@@ -205,13 +206,17 @@ function selectOffer(
       if (gap !== undefined) {
         if (gap === "outside_validity") outsideValidity = true;
         else candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: gap });
+        if (retainUnresolvedRates && gap === "unresolved_validity") {
+          candidate.missing_conditions.push(...match.missing_dimensions);
+          indexes.push(index);
+        }
         return false;
       }
       candidate.missing_conditions.push(...match.missing_dimensions);
       indexes.push(index);
       return true;
     });
-    if (possible.length === 0 && outsideValidity)
+    if (indexes.length === 0 && outsideValidity)
       candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: "outside_validity" });
     if (
       selectVariants(possible, selectors, ({ semantics }) => semantics).gap ===
@@ -248,7 +253,7 @@ function selectOffer(
       }
       return [index];
     });
-    const variants = applicable(term.variants, term.id);
+    const variants = applicable(term.variants, term.id, term.kind === "rate");
     return variants.length + raw_variants.length === 0
       ? []
       : [{ id: term.id, variants, raw_variants }];
