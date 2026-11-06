@@ -1,8 +1,8 @@
 {
-  "catalog_version": "5d66212a46ab1b22c4981ee5ade020a00fd03cc60fc27f06956919a0aa98b76d",
-  "generated_at": "2026-11-06T11:02:31.709Z",
+  "catalog_version": "ca127bc6fa88ae6687490016eb9bc9bd5df4fdba075cf175646e0bbce1217069",
+  "generated_at": "2026-11-06T12:04:19.029Z",
   "outcome": "changed",
-  "previous_catalog_version": "34dc5a49d910cff6c7c63b0747dacd3262e8804ec0b93f34536fdd53c37c5641",
+  "previous_catalog_version": "5d66212a46ab1b22c4981ee5ade020a00fd03cc60fc27f06956919a0aa98b76d",
   "providers": [
     {
       "attempt": {
@@ -149,10 +149,10 @@
             "source_id": "bedrock-accounting"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 124,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-11-06T11:02:31.709Z",
+            "message": "Request aborted",
+            "outcome": "fetch_failed",
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -217,9 +217,9 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
+        "inventory_fallback": 1,
         "missing_field": 2,
-        "scope_limited": 1
+        "source_fetch_failed": 1
       }
     },
     {
@@ -912,9 +912,9 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 187,
             "source_id": "azure-api"
           }
@@ -923,14 +923,29 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "retired_at": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "2099-06-03",
+                "path": "retired_at"
+              }
+            ],
+            "fields": [
+              "retired_at"
+            ],
+            "model_ref": "azure/Muse-Glimmer-30B@1"
+          }
+        ],
         "current": 277,
         "previous": 277,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 277
+        "unchanged": 276
       },
       "pricing": {
         "commercial_hash": "0cc2426b1c9971bf8cb9488b24af423318dcbeb574b237f754c8535e5af540ad",
@@ -979,13 +994,19 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 4,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "azure-accounting"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-api"
           },
           {
             "content_changed": true,
@@ -1004,7 +1025,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -1584,7 +1605,7 @@
             "source_id": "dashscope-lifecycle"
           },
           {
-            "consecutive_failures": 3,
+            "consecutive_failures": 4,
             "contract_findings": [
               {
                 "diagnostic_count": 1,
@@ -2267,38 +2288,46 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1424,
+            "parsed_models": 1425,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
       "models": {
-        "added": 6,
+        "added": 7,
         "added_model_refs": [
-          "huggingface/HooshvareLab/bert-base-parsbert-uncased",
-          "huggingface/IIC/MEL",
-          "huggingface/OpenAssistant/reward-model-deberta-v3-large-v2",
-          "huggingface/clarin-pl/roberta-polish-kgr10",
-          "huggingface/dbmdz/bert-large-cased-finetuned-conll03-english",
-          "huggingface/jeff-legacy/Jeff-Qwen3.5-0.8B"
+          "huggingface/ai-forever/ru-en-RoSBERTa",
+          "huggingface/google-bert/bert-base-chinese",
+          "huggingface/google-bert/bert-base-german-cased",
+          "huggingface/klue/bert-base",
+          "huggingface/s-nlp/roberta_toxicity_classifier",
+          "huggingface/umm-maybe/AI-image-detector",
+          "huggingface/yiyanghkust/finbert-esg"
         ],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1424,
-        "previous": 1418,
-        "removed": 0,
-        "removed_model_refs": [],
+        "current": 1425,
+        "previous": 1424,
+        "removed": 6,
+        "removed_model_refs": [
+          "huggingface/EbanLee/kobart-summary-v3",
+          "huggingface/facebook/esm2_t30_150M_UR50D",
+          "huggingface/google/pegasus-cnn_dailymail",
+          "huggingface/matei-dorian/segformer-b5-finetuned-human-parsing",
+          "huggingface/nvidia/segformer-b3-finetuned-cityscapes-1024-1024",
+          "huggingface/tasksource/deberta-base-long-nli"
+        ],
         "unchanged": 1418
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1424,
+        "current_models": 1425,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 6
+          "unknown_models": 1
         },
         "normalized_rate_models": 0,
         "not_applicable_models": 0,
@@ -2326,8 +2355,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1404,
-        "unknown_models": 1424
+        "unknown_model_refs_omitted": 1405,
+        "unknown_models": 1425
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
@@ -2446,7 +2475,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 44,
+            "consecutive_failures": 45,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2616,29 +2645,18 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Optional commercial source bundle is incomplete at mistral-pricing/priority-tier",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 40,
+                "consecutive_failures": 41,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
                 "last_success_at": "2026-11-04T12:04:16.545Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-models/prompt-caching",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
                 "message": "HTTP 404",
                 "outcome": "fetch_failed"
               }
@@ -2650,7 +2668,7 @@
               "custom_quote_models": 0,
               "free_models": 1,
               "model_records": 69,
-              "normalized_facts": 88,
+              "normalized_facts": 114,
               "not_applicable_models": 21,
               "not_published_models": 0,
               "numeric_models": 46,
@@ -2660,13 +2678,8 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 2,
+              "diagnostic_count": 1,
               "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "discount_policy_drift",
-                  "sample": "cache"
-                },
                 {
                   "disposition": "unbound",
                   "reason_code": "discount_policy_drift",
@@ -2677,18 +2690,19 @@
                 "ambiguous": 0,
                 "excluded": 29,
                 "explicit_non_numeric": 22,
-                "normalized": 88,
+                "normalized": 89,
                 "raw": 0,
-                "unbound": 2,
+                "unbound": 1,
                 "unresolved": 0,
                 "unsupported": 0
               },
               "observed_items": 141,
               "reason_counts": {
                 "definition_without_api_name": 8,
-                "discount_policy_drift": 2,
+                "discount_policy_drift": 1,
                 "free": 1,
                 "historical_retired_price": 20,
+                "normalized_discount_policy": 1,
                 "normalized_repository_price": 88,
                 "not_applicable": 21,
                 "repository_price_not_published": 1
@@ -2700,36 +2714,6 @@
           {
             "content_changed": true,
             "contract_findings": [
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "054bfbe82b98c4df",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/mistralai/platform-docs-public/main/openapi.yaml+/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx/service.code_interpreter.completed_calls"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "2d1e7535620b8554",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/mistralai/platform-docs-public/main/openapi.yaml+/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/websearch/page.mdx/service.web_search.completed_calls"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
               {
                 "diagnostic_count": 1,
                 "diagnostics": [
@@ -2759,92 +2743,6 @@
                 ],
                 "disposition": "accept_with_signal",
                 "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "a3fd2a3133961458",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/mistralai/platform-docs-public/main/openapi.yaml+/mistralai/platform-docs-public/main/src/content/en/docs/studio/search/libraries/page.mdx/service.document_library.completed_calls"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              },
-              {
-                "diagnostic_count": 1,
-                "diagnostics": [
-                  {
-                    "affected_items": 1,
-                    "expected": "reviewed source contract",
-                    "fingerprint": "b4fc120d139211db",
-                    "kind": "unknown_value",
-                    "observed": "string",
-                    "path": "/documents/mistralai/platform-docs-public/main/openapi.yaml+/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/image_generation/page.mdx/service.image_generation.generated_images"
-                  }
-                ],
-                "disposition": "accept_with_signal",
-                "observed_items": 1
-              }
-            ],
-            "dependency_failures": [
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/code-interpreter",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/image-generation",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/libraries",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/priority-tier",
-                "http_status": 404,
-                "impact": "bundle",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/prompt-caching",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
-              },
-              {
-                "consecutive_failures": 1,
-                "dependency_id": "mistral-pricing/web-search",
-                "http_status": 404,
-                "impact": "claim",
-                "last_success_at": "2026-11-06T10:03:15.270Z",
-                "message": "HTTP 404",
-                "outcome": "fetch_failed"
               }
             ],
             "extractor_changed": false,
@@ -2854,60 +2752,76 @@
               "custom_quote_models": 0,
               "free_models": 1,
               "model_records": 19,
-              "normalized_facts": 78,
+              "normalized_facts": 134,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 18,
-              "raw_facts": 63,
-              "raw_models": 16,
+              "raw_facts": 7,
+              "raw_models": 7,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 3,
+              "diagnostic_count": 6,
               "diagnostics": [
                 {
                   "disposition": "unbound",
                   "reason_code": "pricing_policy_unavailable",
-                  "sample": "priority"
+                  "sample": "service:code-execution"
                 },
                 {
                   "disposition": "unbound",
-                  "reason_code": "served_tier_contract_unavailable"
+                  "reason_code": "pricing_policy_unavailable",
+                  "sample": "service:web-search"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_policy_unavailable",
+                  "sample": "service:premium-news"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_policy_unavailable",
+                  "sample": "service:image-generation"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_policy_unavailable",
+                  "sample": "service:library-retrieval"
                 },
                 {
                   "disposition": "unbound",
                   "reason_code": "pricing_input_contract_partial",
-                  "sample": "14/20 Mistral pricing inputs"
+                  "sample": "18/20 Mistral pricing inputs"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 2,
                 "explicit_non_numeric": 0,
-                "normalized": 40,
+                "normalized": 42,
                 "raw": 7,
-                "unbound": 3,
+                "unbound": 6,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 52,
+              "observed_items": 57,
               "reason_counts": {
                 "duplicate_free_evidence": 1,
                 "normalized_public_currency_price": 39,
                 "pricing_input_contract_partial": 1,
-                "pricing_policy_bound": 1,
-                "pricing_policy_unavailable": 1,
+                "pricing_policy_bound": 2,
+                "pricing_policy_unavailable": 5,
                 "public_price_label_unsupported": 7,
                 "regional_pricing_requires_model_availability": 1,
-                "served_tier_contract_unavailable": 1
+                "served_tier_contract_bound": 1
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 80,
+            "consecutive_failures": 81,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2919,18 +2833,17 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 13,
+        "changed": 12,
         "changed_fields": {
-          "capabilities": 12,
-          "release_stage": 1
+          "capabilities": 12
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -2941,9 +2854,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -2954,9 +2867,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -2967,9 +2880,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -2980,9 +2893,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -2993,9 +2906,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3006,9 +2919,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3019,22 +2932,9 @@
           {
             "field_changes": [
               {
-                "current": "stable",
-                "path": "release_stage",
-                "previous": "preview"
-              }
-            ],
-            "fields": [
-              "release_stage"
-            ],
-            "model_ref": "mistral/mistral-large-4@26.10"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3045,9 +2945,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3058,9 +2958,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3071,9 +2971,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3084,9 +2984,9 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.prompt_cache",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
@@ -3099,7 +2999,7 @@
         "previous": 68,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 55
+        "unchanged": 56
       },
       "pricing": {
         "commercial_hash": "247b802b8d43b043b239c4c5e874fb6933503d3c4721a0556a552dd9841b3bf9",
@@ -3122,7 +3022,7 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 1
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "mistral",
       "publication": "accepted",
       "signals": [
@@ -3157,9 +3057,9 @@
       "warning_codes": {
         "inventory_fallback": 1,
         "missing_field": 3,
-        "source_contract_drift": 6,
+        "source_contract_drift": 2,
         "source_fetch_failed": 1,
-        "source_partial": 2
+        "source_partial": 1
       }
     },
     {
@@ -3180,7 +3080,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 26,
+                "consecutive_failures": 27,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3469,9 +3369,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 105,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3710,20 +3610,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "openai-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -4142,9 +4048,9 @@
         "unchanged": 495
       },
       "pricing": {
-        "commercial_hash": "8e16a57536479074d37673238ceb90be414ad71b23e2cc796e31666bdbf46ffa",
+        "commercial_hash": "247cd1521f3dc3757054d3c512403793a9ffcf357cba8db7aa573f856a1792ab",
         "outcome": "commercial",
-        "previous_commercial_hash": "52e4963adb7ed61b29f9e1ed7125435461962bcaf4ff025a14374202c0601dbe"
+        "previous_commercial_hash": "8e16a57536479074d37673238ceb90be414ad71b23e2cc796e31666bdbf46ffa"
       },
       "pricing_coverage": {
         "current_models": 495,
@@ -4701,18 +4607,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 22,
-    "added_models": 6,
+    "added_models": 7,
     "added_sources": 0,
     "changed_models": 13,
-    "changed_sources": 33,
-    "models": 4395,
-    "pricing_accepted": 17,
+    "changed_sources": 35,
+    "models": 4396,
+    "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
-    "pricing_retained": 4,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 23,
-    "removed_models": 0,
+    "removed_models": 6,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
