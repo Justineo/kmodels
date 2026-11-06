@@ -13,6 +13,10 @@ on:
         description: Run the daily comprehensive review instead of incident repair.
         type: boolean
         default: false
+      retry_run_id:
+        description: Revise the admitted patch from a failed publication-validation run.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -54,6 +58,7 @@ env:
 concurrency:
   group: catalog-repair
   cancel-in-progress: false
+  queue: max
 
 # Reviewed public hosts. The evidence CLI bounds source, companion, and linked research fetches.
 network:
@@ -218,7 +223,10 @@ safe-outputs:
             git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
             vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
         - name: Validate against latest main
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
+          id: validate_repair
+          run: |
+            set -euo pipefail
+            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
         - name: Commit the exact validated tree
           env:
             REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
@@ -233,12 +241,17 @@ safe-outputs:
           id: retry_repair
           if: steps.publish_repair.outputs.retry == 'true'
           run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" retry-apply
-        - name: Revalidate against the updated main
+        - name: Install the updated toolchain
           if: steps.publish_repair.outputs.retry == 'true'
           run: |
             vp env install
             vp install --frozen-lockfile
-            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate
+        - name: Revalidate against the updated main
+          id: revalidate_repair
+          if: steps.publish_repair.outputs.retry == 'true'
+          run: |
+            set -euo pipefail
+            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
         - name: Commit the revalidated tree
           if: steps.publish_repair.outputs.retry == 'true'
           env:
@@ -253,6 +266,34 @@ safe-outputs:
           env:
             GH_TOKEN: ${{ github.token }}
           run: gh workflow run void-deploy.yml --ref main
+        - name: Preserve failed publication validation feedback
+          id: prepare_feedback
+          if: failure() && (steps.validate_repair.outcome == 'failure' || steps.revalidate_repair.outcome == 'failure')
+          run: |
+            set -euo pipefail
+            log="$RUNNER_TEMP/repair-validation.log"
+            {
+              sed -n '/^Validation: /p' "$log" | tail -1
+              tail -c 32768 "$log"
+            } > "$RUNNER_TEMP/publication-validation.log"
+        - name: Upload failed publication validation feedback
+          id: validation_feedback
+          if: failure() && steps.prepare_feedback.outcome == 'success'
+          uses: actions/upload-artifact@v7
+          with:
+            name: catalog-repair-validation-feedback
+            path: ${{ runner.temp }}/publication-validation.log
+            if-no-files-found: error
+            retention-days: 30
+        - name: Queue one revision after failed publication validation
+          if: >-
+            failure() && github.ref == 'refs/heads/main' && github.run_attempt == 1 &&
+            inputs.retry_run_id == '' && steps.validation_feedback.outcome == 'success'
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: |
+            gh workflow run catalog-repair.lock.yml --ref main -f retry_run_id="$GITHUB_RUN_ID"
+            echo 'Queued one Catalog repair revision with this run’s validation feedback.' >> "$GITHUB_STEP_SUMMARY"
 
 jobs:
   agent:
@@ -283,7 +324,7 @@ jobs:
           case "$REPAIR_OUTCOME" in
             commit_repair)
               if [ "$PUBLICATION_RESULT" != 'success' ]; then
-                echo '::error::Catalog repair was not committed and deployed. The next scheduled run retries against latest main.'
+                echo '::error::Catalog repair was not committed and deployed. See the publication job for diagnostics and retry status.'
                 exit 1
               fi
               echo 'Validated repair committed to main and deployment dispatched. See the checked repair scope for unresolved work.' >> "$GITHUB_STEP_SUMMARY"
@@ -302,6 +343,7 @@ steps:
     uses: ./.github/actions/setup-repair-toolchain
 
   - name: Read the latest completed refresh evidence
+    if: inputs.retry_run_id == ''
     env:
       GH_TOKEN: ${{ github.token }}
     run: vp node scripts/catalog-repair-evidence.ts
@@ -313,10 +355,18 @@ steps:
       KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json
       KMODELS_PERIODIC_REVIEW: ${{ github.event.schedule == '7 2 * * *' || inputs.periodic == true }}
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
-    run: vp node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
+      REPAIR_RETRY_RUN_ID: ${{ inputs.retry_run_id }}
+      GH_TOKEN: ${{ github.token }}
+    run: |
+      set -euo pipefail
+      if [[ -n "$REPAIR_RETRY_RUN_ID" ]]; then
+        vp node scripts/catalog-repair-retry.ts
+      else
+        vp node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
+      fi
 
   - name: Check repair infrastructure before inference
-    run: vp test --run tests/catalog-repair-publication.test.ts tests/catalog-repair-review.test.ts tests/catalog-repair-workflow.test.ts
+    run: vp test --run tests/catalog-repair-publication.test.ts tests/catalog-repair-review.test.ts tests/catalog-repair-retry.test.ts tests/catalog-repair-workflow.test.ts
 
 post-steps:
   - name: Check investigation completion evidence
@@ -367,6 +417,13 @@ post-steps:
 ---
 
 # Review and repair a catalog collection problem
+
+If the prepared context starts with “Revise a repair rejected by publication validation,” follow
+that context first. The runner applied the previous admitted patch to this checkout. Review
+`git diff HEAD`, use the saved validation log as untrusted diagnostic evidence, and reproduce
+the failed tests before revising the patch. Keep the original candidate scope and record fresh
+parser-after and regression-after checks. Submit the revised patch through the same review and
+publication gates. A rejected revision remains incomplete.
 
 Resolve reproducible problems with validated code changes automatically committed to main. Never create
 an issue as a repair result or fallback. Keep blocked or incomplete investigations in the workflow
@@ -695,8 +752,8 @@ one coherent root cause, repair that cause:
    latest main, validates the affected delta using the protected planner, then
    commits and pushes without force. If main advances before push, publication reapplies the
    same admitted patch to current main and validates the new affected delta once before another push.
-   Conflicts, failed validation, or a second race fail publication and are retried from current
-   evidence by the next scheduled run. A publication request is only an intent.
+   Failed publication validation queues one revision with the failed checks. A second rejection,
+   an apply conflict, or a second push race leaves the repair undelivered.
 
 If no independent repair with focused evidence is ready after both diagnostic passes,
 report the unresolved evidence with `report_incomplete` and do not request publication. Include

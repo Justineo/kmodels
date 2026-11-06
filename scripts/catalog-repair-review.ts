@@ -66,6 +66,12 @@ export async function validateRepairReview(
   const review = record(JSON.parse(reviewText));
   if (admission.schema_version !== 1 || review.admission_sha256 !== reviewHash(admissionText))
     throw new Error("Repair review does not match this run's prepared admission");
+  const retryStarted =
+    admission.retry_started_at === undefined
+      ? undefined
+      : Date.parse(text(admission.retry_started_at));
+  if (retryStarted !== undefined && !Number.isFinite(retryStarted))
+    throw new Error("Invalid repair retry start time");
   const candidates = records(admission.candidates);
   const expected = new Map(candidates.map((candidate) => [text(candidate.id), candidate]));
   if (expected.size !== candidates.length) throw new Error("Duplicate prepared repair candidate");
@@ -149,7 +155,10 @@ export async function validateRepairReview(
         (check) =>
           check.kind === kind &&
           (phase === undefined || check.phase === phase) &&
-          (!success || check.exit_code === 0),
+          (!success || check.exit_code === 0) &&
+          (phase !== "after" ||
+            retryStarted === undefined ||
+            (typeof check.started_at === "string" && Date.parse(check.started_at) >= retryStarted)),
       );
     if (
       ["scheduled_provider_review", "scheduled_architecture_review"].includes(
@@ -190,7 +199,8 @@ export async function validateRepairReview(
           !has("regression", "after", true)
         )
           throw new Error(
-            `Repair needs before/after parser results and a passing regression: ${id}`,
+            `Repair needs before/after parser results and a passing regression: ${id}` +
+              (retryStarted === undefined ? "" : " (after checks must be from this retry)"),
           );
         counts.repaired += 1;
         break;

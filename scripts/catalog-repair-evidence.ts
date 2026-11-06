@@ -19,7 +19,7 @@ const jobsSchema = z.object({
     }),
   ),
 });
-const artifactsSchema = z.object({
+export const artifactsSchema = z.object({
   artifacts: z.array(z.object({ name: z.string(), expired: z.boolean() })),
 });
 export const refreshExecutionSchema = z.object({
@@ -32,12 +32,12 @@ export const refreshExecutionSchema = z.object({
   log_path: z.string().optional(),
 });
 
-type GitHubCommand = (args: string[]) => Promise<string>;
-const github: GitHubCommand = async (args) =>
+export type GitHubCommand = (args: string[], timeout?: number) => Promise<string>;
+export const github: GitHubCommand = async (args, timeout = 60_000) =>
   execFileSync("gh", args, {
     encoding: "utf8",
     maxBuffer: 24 * 1024 * 1024,
-    timeout: 60_000,
+    timeout,
   });
 
 // Download evidence outside the checkout; never install a failed candidate as accepted data.

@@ -185,6 +185,23 @@ it("feeds threat detection the immutable publication artifact before the detecto
   expect(detection).toContain("needs.agent.outputs.output_types == 'commit_repair'");
 });
 
+it("queues one retry only after the publication checks reject an admitted patch", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  const publication = job(workflow, "commit_repair");
+  expect(agent).toContain("vp node scripts/catalog-repair-retry.ts");
+  const queue = publication
+    .split(/\n      - /)
+    .find((step) => step.includes("name: Queue one revision after failed publication validation"));
+  expect(queue).toContain("failure()");
+  expect(queue).toContain("github.run_attempt == 1");
+  expect(queue).toContain("inputs.retry_run_id == ''");
+  expect(queue).toContain("steps.validation_feedback.outcome == 'success'");
+  expect(publication).toContain("steps.validate_repair.outcome == 'failure'");
+  expect(publication).toContain("steps.revalidate_repair.outcome == 'failure'");
+  expect(queue).toContain('retry_run_id="$GITHUB_RUN_ID"');
+});
+
 it("keeps issue creation unavailable in both the source policy and generated workflow", async () => {
   const markdown = await readFile(source, "utf8");
   const workflow = await readFile(compiled, "utf8");

@@ -213,10 +213,21 @@ Status: implemented
   staging command or a second full test pass inside the model's time budget. The trusted publication
   job runs the affected validation planner, including changes from the repair base to latest main.
   Publication caps Vitest at two workers and isolates the planner from the step output file.
+  If a first-attempt publication check fails, the runner preserves the failed command and a
+  bounded log, then queues one revision of the admitted patch. The original run records the
+  failed validation. The revision imports that run’s patch, review and source evidence, applies the
+  patch to its own checkout, and shows the agent the failed check. The agent submits fresh
+  parser-after and regression-after receipts. The revised patch goes through the same threat
+  detection and latest-main validation before it can publish. A failed revision retains its
+  feedback for inspection. Setup, detection, apply, push and deploy failures follow their own gates.
+  An operator can resume an eligible run with
+  `gh workflow run catalog-repair.lock.yml -f retry_run_id=RUN_ID`. Runs that predate the feedback
+  artifact can use the bounded log of the failed validation step. The same serialized workflow
+  queue holds scheduled runs and revisions.
   Repair infrastructure tests
-  also run before inference so a broken harness does not consume a model run. An
-  unavailable toolchain or blocked validation produces a structured incomplete report without a
-  publication request. Automatic repair publication requires every selected check to pass.
+  also run before inference so a broken harness does not consume a model run. An unavailable
+  toolchain produces a structured incomplete report. Automatic repair publication requires every
+  selected check to pass.
   Preparation supplies deduplicated fetch commands built from reviewed public source IDs and a
   runner-owned repair-admission output. Admission requires investigation; it does not assert that
   a defect already exists. An admitted `noop` requires every candidate to have independently checked
