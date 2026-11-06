@@ -42,7 +42,11 @@ stays admitted for the accepted snapshot's provenance. Current acquisition uses 
 
 The undocumented portal and every pricing overlay are optional. Transport, page, or schema failure
 therefore keeps the public catalog usable and retains the last accepted Azure pricing partition with
-a freshness warning.
+a freshness warning. Because the retained partition cites its accounting and retail-price sources,
+those configured pricing-dependency sources stay in the published source records even when price
+assembly fails; dropping them would make retained provenance unresolvable and incorrectly roll the
+fresh catalog core back to the previous snapshot. A source that leaves the manifest, or a model
+fact whose `source_refs` no longer resolve, still rolls the core back.
 
 ## Catalog mapping
 

@@ -741,10 +741,13 @@ function providerSources(
   sources: ReadonlyMap<string, SourceRecord>,
   replaySources: readonly PricingReplaySource[] | undefined,
   inferenceSources: readonly InferencePriceSource[] = [],
+  pricingDependencySources: readonly string[] = [],
 ): SourceRecord[] {
   const sourceIds = new Set([
     ...models.flatMap((model) => model.source_refs),
-    ...(pricing === undefined ? [] : providerPartitionSourceRefs(pricing)),
+    // A failed price assembly can only retain the previous partition, whose provenance still
+    // cites configured pricing sources that contribute no model rows of their own.
+    ...(pricing === undefined ? pricingDependencySources : providerPartitionSourceRefs(pricing)),
     ...(replaySources ?? []).map(({ source_id }) => source_id),
     ...inferenceSources.map(({ record }) => record.id),
   ]);
@@ -754,6 +757,15 @@ function providerSources(
   });
   if (result.length !== sourceIds.size) throw new Error("Provider provenance source is missing");
   return result;
+}
+
+function retainedPricingDependencySources(
+  manifest: ProviderManifest,
+  sources: ReadonlyMap<string, SourceRecord>,
+): string[] {
+  return manifest.sources
+    .filter((source) => isPricingDependencySource(source) && sources.has(source.id))
+    .map(({ id }) => id);
 }
 
 export async function collectProvider(
@@ -1194,6 +1206,7 @@ export async function collectProvider(
       sourceById,
       pricingReplaySources,
       inferencePriceSources,
+      retainedPricingDependencySources(manifest, sourceById),
     );
     return {
       inferencePriceSources,
@@ -1275,7 +1288,14 @@ export async function collectProvider(
         pricing = undefined;
       }
     }
-    const retainedSources = providerSources(oldModels, pricing, sourceById, pricingReplaySources);
+    const retainedSources = providerSources(
+      oldModels,
+      pricing,
+      sourceById,
+      pricingReplaySources,
+      [],
+      retainedPricingDependencySources(manifest, sourceById),
+    );
     return {
       provider: providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),
       models: oldModels,
