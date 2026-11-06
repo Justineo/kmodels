@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b455dedd5349a89b71d62b8a30626a5fc049b8aabead9cb5dd417dac7a2c8ecf",
-  "generated_at": "2026-11-06T03:03:41.974Z",
+  "catalog_version": "3eb472309df380d26013f77c367e75e63e8ccc24385c61c8e0f70eb5c73e0baa",
+  "generated_at": "2026-11-06T04:04:09.189Z",
   "outcome": "changed",
-  "previous_catalog_version": "de896570a07eb70ed18cc3273cd2ebd8ed3bd3fbe72f1c2e9802f6ce321c27d1",
+  "previous_catalog_version": "b455dedd5349a89b71d62b8a30626a5fc049b8aabead9cb5dd417dac7a2c8ecf",
   "providers": [
     {
       "attempt": {
@@ -306,9 +306,9 @@
             "source_id": "sagemaker-sdk"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 640,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -437,20 +437,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "sagemaker-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 4,
         "previous": 4,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -981,9 +974,9 @@
             "source_id": "azure-accounting"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 187,
             "source_id": "azure-api"
           }
@@ -1048,19 +1041,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "azure-accounting"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-api"
           },
           {
             "content_changed": true,
@@ -1079,7 +1066,7 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1096,9 +1083,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1189,9 +1176,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1255,7 +1242,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "cerebras-catalog"
+            "source_id": "cerebras-api"
           }
         ],
         "current": 5,
@@ -2333,21 +2320,21 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1452,
+            "parsed_models": 1451,
             "source_id": "huggingface-hf-inference"
           }
         ]
       },
       "count_decreases": [
         {
-          "current": 1452,
+          "current": 1451,
           "field": "models",
-          "previous": 1453
+          "previous": 1452
         },
         {
-          "current": 1452,
+          "current": 1451,
           "field": "routes",
-          "previous": 1453
+          "previous": 1452
         }
       ],
       "models": {
@@ -2356,19 +2343,19 @@
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1452,
-        "previous": 1453,
+        "current": 1451,
+        "previous": 1452,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/deepvk/USER-bge-m3"
+          "huggingface/microsoft/beit-large-finetuned-ade-640-640"
         ],
-        "unchanged": 1452
+        "unchanged": 1451
       },
       "pricing": {
         "outcome": "none"
       },
       "pricing_coverage": {
-        "current_models": 1452,
+        "current_models": 1451,
         "delta": {
           "resolved_models": 0,
           "unknown_models": -1
@@ -2399,8 +2386,8 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1432,
-        "unknown_models": 1452
+        "unknown_model_refs_omitted": 1431,
+        "unknown_models": 1451
       },
       "pricing_publication": "not_observed",
       "provider_id": "huggingface",
@@ -2521,7 +2508,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 39,
+            "consecutive_failures": 40,
             "last_success_at": "2026-11-04T08:04:17.626Z",
             "message": "Kimi retirement notices are missing",
             "outcome": "parse_failed",
@@ -2698,7 +2685,7 @@
             "content_changed": false,
             "dependency_failures": [
               {
-                "consecutive_failures": 35,
+                "consecutive_failures": 36,
                 "dependency_id": "mistral-models/batch-processing",
                 "http_status": 404,
                 "impact": "claim",
@@ -2867,7 +2854,7 @@
             "source_id": "mistral-pricing"
           },
           {
-            "consecutive_failures": 75,
+            "consecutive_failures": 76,
             "http_status": 401,
             "last_success_at": "2026-11-02T05:26:47.316Z",
             "message": "HTTP 401",
@@ -2954,7 +2941,7 @@
             "content_changed": true,
             "dependency_failures": [
               {
-                "consecutive_failures": 21,
+                "consecutive_failures": 22,
                 "dependency_id": "nvidia-nim-cards/deepseek-ai/deepseek-v4.1-flash",
                 "impact": "claim",
                 "message": "Transient transport failure (curl ERR_CHILD_PROCESS_STDIO_MAXBUFFER: response exceeded byte limit)",
@@ -3243,9 +3230,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 105,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3378,9 +3365,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 0,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -3484,32 +3471,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "openai-accounting"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
             "source_id": "openai-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
           }
         ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -3928,9 +3903,9 @@
         "unchanged": 495
       },
       "pricing": {
-        "commercial_hash": "a5064e82e430be4f091ba1615ccde56443590ef71841a19435678aeca111807c",
+        "commercial_hash": "b8124832cae0b90cd6e78e60ad944b289c2ec4a1c0a9a929d78502bf86f8fd93",
         "outcome": "commercial",
-        "previous_commercial_hash": "5309d2dfe38682e8e3736b801ad3a6f79ac75781813d5de7b7ca4d450dce5662"
+        "previous_commercial_hash": "a5064e82e430be4f091ba1615ccde56443590ef71841a19435678aeca111807c"
       },
       "pricing_coverage": {
         "current_models": 495,
@@ -4490,8 +4465,8 @@
     "added_models": 0,
     "added_sources": 0,
     "changed_models": 0,
-    "changed_sources": 37,
-    "models": 4421,
+    "changed_sources": 33,
+    "models": 4420,
     "pricing_accepted": 18,
     "pricing_not_observed": 2,
     "pricing_removed": 0,
