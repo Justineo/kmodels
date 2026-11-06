@@ -24,6 +24,13 @@ import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 
+const pricingDetailsContext = {
+  provider: undefined,
+  dataVersion: "a".repeat(64),
+  loading: false,
+  error: undefined,
+};
+
 const aws = vi.hoisted(() => ({ send: vi.fn(), destroy: vi.fn() }));
 vi.mock("@aws-sdk/client-sagemaker", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@aws-sdk/client-sagemaker")>()),
@@ -361,6 +368,7 @@ describe("SageMaker price books", () => {
     const inferencePrices = projected.get(speechModel.uid);
     expect(inferencePrices?.[0]).toMatchObject({ status: "unknown", reason: "unreviewed_id" });
     const html = await renderComponent(PricingDetails, {
+      ...pricingDetailsContext,
       model: { ...speechModel, pricing: { outcome: "offers" } },
       detail: websiteModelDetail(pricing, speechModel).pricing,
       inferencePrices,
@@ -476,6 +484,7 @@ describe("SageMaker price books", () => {
       if (modelId === "fixture-speech")
         expect(detail?.offers.some(({ group }) => group === "capacity")).toBe(true);
       const html = await renderComponent(PricingDetails, {
+        ...pricingDetailsContext,
         model: { ...model, pricing: { outcome: "offers" } },
         detail,
       });
@@ -510,6 +519,7 @@ describe("SageMaker price books", () => {
       ]),
     );
     const openHtml = await renderComponent(PricingDetails, {
+      ...pricingDetailsContext,
       model: { ...openModel, pricing: { outcome: "offers" } },
       detail: openDetail,
     });

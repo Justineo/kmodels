@@ -375,7 +375,7 @@ steps:
       fi
 
   - name: Check repair infrastructure before inference
-    run: vp test --run tests/catalog-repair-publication.test.ts tests/catalog-repair-review.test.ts tests/catalog-repair-retry.test.ts tests/catalog-repair-workflow.test.ts
+    run: vp test --run --reporter=minimal --reporter=github-actions --silent=passed-only tests/catalog-repair-publication.test.ts tests/catalog-repair-review.test.ts tests/catalog-repair-retry.test.ts tests/catalog-repair-workflow.test.ts
 
 post-steps:
   - name: Check investigation completion evidence

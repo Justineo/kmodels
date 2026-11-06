@@ -155,6 +155,9 @@ the defect and runs focused regressions. Trusted post-execution checking admits 
 evidence, and threat detection and publication use that same artifact. Publication checks the
 affected delta against latest `main` before commit. Ordinary CI and repair publication cap Vitest at
 two workers.
+Actions test logs show outcome totals, failed-test output, and error annotations. Successful-test
+console output stays out of these logs. The validation planner logs each executed command in
+Actions and prints the full plan on request with `--plan`.
 When a publication check rejects the patch, the revision uses the saved failed command and
 diagnostics, fresh after-repair receipts, and the same complete trusted validation. Tests cover
 eligibility, retry bounds and stale proof rejection.

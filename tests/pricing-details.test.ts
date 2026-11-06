@@ -22,6 +22,14 @@ const model = {
   pricing: { outcome: "offers" },
 } satisfies WebsiteModel;
 
+const pricingDetailsContext = {
+  model,
+  provider: undefined,
+  dataVersion: "a".repeat(64),
+  loading: false,
+  error: undefined,
+};
+
 const allContexts: WebsitePriceApplicability = { any_of: [{ all_of: [] }] };
 type TestDimension = "inference_geo" | "region";
 
@@ -119,20 +127,16 @@ function offer(
 async function render(offers: WebsitePricingOffer[]): Promise<string> {
   const detail = { offers } satisfies WebsitePricingDetail;
   return renderComponent(PricingDetails, {
-    model,
+    ...pricingDetailsContext,
     detail,
-    loading: false,
-    error: undefined,
   });
 }
 
 describe("model pricing details", () => {
   it("does not fall back to unfiltered catalog prices for known price exclusions", async () => {
     const html = await renderComponent(PricingDetails, {
-      model,
+      ...pricingDetailsContext,
       detail: { offers: [offer([{ amount: "$2", scope: region("us", "eu") }])] },
-      loading: false,
-      error: undefined,
       inferencePrices: [
         {
           model_id: "model",
@@ -154,10 +158,8 @@ describe("model pricing details", () => {
 
   it("preserves catalog prices when inference ID associations are unknown", async () => {
     const html = await renderComponent(PricingDetails, {
-      model,
+      ...pricingDetailsContext,
       detail: { offers: [offer([{ amount: "$2", scope: region("us", "eu") }])] },
-      loading: false,
-      error: undefined,
       inferencePrices: [
         {
           model_id: "model",
@@ -181,10 +183,8 @@ describe("model pricing details", () => {
   it("preserves catalog prices when the same ID is mapped to another catalog entry", async () => {
     const catalogOffer = offer([{ amount: "$2", scope: allContexts }]);
     const html = await renderComponent(PricingDetails, {
-      model,
+      ...pricingDetailsContext,
       detail: { offers: [catalogOffer] },
-      loading: false,
-      error: undefined,
       inferencePrices: [
         {
           model_id: model.model_id,
@@ -339,12 +339,9 @@ describe("model pricing details", () => {
       },
     } satisfies WebsiteProvider;
     const html = await renderComponent(PricingDetails, {
-      model,
+      ...pricingDetailsContext,
       provider,
-      dataVersion: "a".repeat(64),
       detail: { offers: [mechanism, service] },
-      loading: false,
-      error: undefined,
     });
     expect(html.match(/Other charges &amp; services/g)).toHaveLength(1);
     expect(html.match(/class="additional-costs"/g)).toHaveLength(1);
@@ -517,9 +514,8 @@ describe("model pricing details", () => {
 
   it("keeps a retryable pricing state when detail loading fails", async () => {
     const html = await renderComponent(PricingDetails, {
-      model,
+      ...pricingDetailsContext,
       detail: undefined,
-      loading: false,
       error: "Model details are temporarily unavailable.",
     });
 
