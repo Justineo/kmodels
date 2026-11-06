@@ -837,6 +837,10 @@ member ordering changes byte order, not UTF-8 byte count. Canonical
 serialization remains authoritative for hashes and published bytes. Catalog and
 provider byte budgets count complete books and their separators independently,
 without allocating a second complete serialized catalog just to measure it.
+The complete catalog budget is 288 MiB, including conservative retained-state metadata.
+It leaves 32 MiB below the pricing mirror's decoded-input limit for the published envelope.
+The provider budgets apply to each partition. A rejected catalog reports its measured byte
+count and the limit.
 
 Stable resource IDs are SHA-256 hashes of domain-separated canonical identity:
 

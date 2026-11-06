@@ -22,7 +22,7 @@ export const pricingLimits = {
   pricingInputBytes: 335_544_320,
   providerPrecompactionBytes: 134_217_728,
   providerPricingBytes: 134_217_728,
-  pricingCatalogBytes: 268_435_456,
+  pricingCatalogBytes: 301_989_888,
 } as const;
 
 export const pricingDecimalPattern = /^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/;
