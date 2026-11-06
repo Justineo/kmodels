@@ -190,6 +190,11 @@ it("queues one retry only after the publication checks reject an admitted patch"
   const agent = job(workflow, "agent");
   const publication = job(workflow, "commit_repair");
   expect(agent).toContain("vp node scripts/catalog-repair-retry.ts");
+  const history = agent
+    .split(/\n      - /)
+    .find((step) => step.includes("name: Fetch history for the retry base"));
+  expect(history).toContain("inputs.retry_run_id != ''");
+  expect(history).toContain("fetch-depth: 0");
   const queue = publication
     .split(/\n      - /)
     .find((step) => step.includes("name: Queue one revision after failed publication validation"));
