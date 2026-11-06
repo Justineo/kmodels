@@ -6,8 +6,9 @@ Status: implemented core; provider pricing convergence is in progress
 
 When the accepted snapshot includes inference ID mappings, model pricing identifies the exact
 **Inference model ID**. Group IDs with identical matching rules and pricing conditions and use
-the same compact ID and copy icon control as in the header. Offer a selector when multiple groups
-remain and show the copy controls for its selected group. When the
+the same compact ID and copy icon control as in the header when all IDs share one group. With
+multiple groups, show a single picker with an option for each exact ID and an adjacent copy icon
+for the selection. Preserve the pricing inputs when switching between IDs within a group. When the
 only inference ID equals the header's catalog ID, show **Same as Catalog ID** and keep the raw
 value in the header.
 Use associations for the selected catalog entry. When mapping is unknown,

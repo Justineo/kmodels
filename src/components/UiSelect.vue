@@ -10,7 +10,7 @@ interface SelectOption {
 const props = defineProps<{
   id?: string;
   options: SelectOption[];
-  placeholder: string;
+  placeholder?: string;
 }>();
 
 const selected = defineModel<string>({ required: true });
@@ -22,7 +22,7 @@ const selectedOption = computed(() =>
 <template>
   <div class="ui-select-control">
     <select :id="id" v-model="selected" class="ui-select">
-      <option value="">
+      <option v-if="placeholder !== undefined" value="">
         <slot name="placeholder-prefix"></slot>
         <span class="ui-select-option-label">{{ placeholder }}</span>
       </option>
