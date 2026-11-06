@@ -199,6 +199,7 @@ it("summarizes only validated periodic coverage and leaves interrupted areas inc
         {
           id: "periodic",
           status: "pending",
+          reason: "Some areas are still open",
           next_action: "Continue area review",
           coverage: "not yet reviewed",
         },
@@ -206,6 +207,7 @@ it("summarizes only validated periodic coverage and leaves interrupted areas inc
     }),
   );
   expect(summary).toContain('"review_complete": false');
+  expect(summary).toContain("Some areas are still open");
   expect(summary).not.toContain("blocked_areas");
 });
 
@@ -387,25 +389,47 @@ it("requires a failed command receipt to stop pending work for an environment fa
   ).toMatchObject({ pending: 1 });
 });
 
-it("allows an independent repair to be delivered with explicitly evidenced remaining blockers", async () => {
+it("allows a repair with evidenced blockers and pending work while rejecting an incomplete no-op", async () => {
   const s = scenario();
   const admission = JSON.stringify({
     schema_version: 1,
     candidates: [
       { id: s.id, trigger: "source_pricing_structure" },
       { id: "mistral/pricing_validation", trigger: "pricing_validation" },
+      { id: "azure/scheduled-review", trigger: "scheduled_provider_review" },
     ],
   });
+  const pending = {
+    id: "azure/scheduled-review",
+    status: "pending",
+    reason: "The periodic review is unfinished",
+    next_action: "Replay the catalog source",
+  };
+  const repaired = s.repaired();
   const review = JSON.stringify({
     admission_sha256: reviewHash(admission),
-    candidates: [s.repaired(), { ...s.blocked(), id: "mistral/pricing_validation" }],
+    candidates: [
+      { ...repaired, checks: repaired.checks.map(({ output, result }) => ({ output, result })) },
+      { ...s.blocked(), id: "mistral/pricing_validation" },
+      pending,
+    ],
   });
   expect(await validateRepairReview(admission, review, s.read, { requireRepair: true })).toEqual({
     repaired: 1,
     blocked: 1,
-    pending: 0,
+    pending: 1,
     not_a_defect: 0,
   });
+  await expect(
+    validateRepairReview(admission, review, s.read, { requireNoDefect: true }),
+  ).rejects.toThrow("still needs investigation");
+  const withoutRepair = JSON.stringify({
+    admission_sha256: reviewHash(admission),
+    candidates: [s.blocked(), { ...s.blocked(), id: "mistral/pricing_validation" }, pending],
+  });
+  await expect(
+    validateRepairReview(admission, withoutRepair, s.read, { requireRepair: true }),
+  ).rejects.toThrow("at least one reviewed repair");
 });
 
 it("accepts sanitized failed-execution review without requiring live collection or credentials", async () => {

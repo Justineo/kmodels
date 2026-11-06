@@ -5,7 +5,6 @@ import {
   catalogRepairBatch,
   catalogRepairEvidenceIncomplete,
   catalogRepairEvidenceCommands,
-  scheduledCatalogReview,
 } from "../src/catalog/catalog-repair.ts";
 import { dirname, join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
@@ -22,8 +21,7 @@ const reportPath = configuredPath ?? new URL("../data/refresh-summary.json", imp
 const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
 const allCandidates = catalogRepairCandidates(report);
 const preparedAt = new Date();
-if (process.env.KMODELS_PERIODIC_REVIEW === "true" && preparedAt.getUTCHours() < 6)
-  allCandidates.push(scheduledCatalogReview(preparedAt));
+const periodic = process.env.KMODELS_PERIODIC_REVIEW === "true";
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
   executionPath === undefined
@@ -68,7 +66,12 @@ if (auditDirectory !== undefined) {
   }
 }
 
-const { selected: candidates, deferred } = catalogRepairBatch(allCandidates, preparedAt);
+const { selected: candidates, deferred } = catalogRepairBatch(
+  allCandidates,
+  preparedAt,
+  periodic ? "periodic" : "incident",
+);
+const repairable = candidates.length > 0 || (!periodic && executionNeedsReview);
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
   report,
   candidates.length === 0 ||
@@ -91,7 +94,7 @@ if (admissionPath !== undefined) {
       description:
         "Source acquisition or required commercial evidence is incomplete within the admitted review scope. Investigate the exact failed sources in the refresh report; unrelated successful candidates cannot establish a healthy no-op for this batch.",
     });
-  if (executionNeedsReview || executionIncomplete)
+  if (!periodic && (executionNeedsReview || executionIncomplete))
     required.push({
       id: "workflow/refresh-execution",
       trigger: "provider_validation",
@@ -175,7 +178,7 @@ const markdown =
       : [
           `## Deferred repair queue (${deferred.length})`,
           "",
-          "Preparation admits one error-driven provider per six-hour UTC slot, plus a daily periodic review in the first slot. These candidates remain unreviewed in the refresh evidence and prepared admission; they are not resolved or healthy. A repeated run uses the same slot rotation against the latest report.",
+          "Incident runs select one error-driven provider per six-hour UTC slot. Periodic runs select their daily review independently. Deferred candidates remain unreviewed in the refresh evidence and prepared admission.",
           "",
           ...deferred.map(
             ({ provider_id, subject_id, trigger }) => `- ${provider_id}/${subject_id}: ${trigger}`,
@@ -208,12 +211,15 @@ const markdown =
           ...(execution.log_path === undefined
             ? []
             : [`Failure log: ${execution.log_path} (bounded tail).`]),
-          ...(executionNeedsReview
+          ...(periodic && (executionNeedsReview || executionIncomplete)
+            ? ["Refresh execution follow-up belongs to the independent incident run."]
+            : []),
+          ...(!periodic && executionNeedsReview
             ? [
                 "Collection or generated-data validation failed. Investigate this execution failure even if the provider report has no candidate. A successful repair of another provider does not resolve it.",
               ]
             : []),
-          ...(executionIncomplete
+          ...(!periodic && executionIncomplete
             ? [
                 "Execution evidence is incomplete or the failure is operational; do not report a healthy no-op. Record unresolved evidence explicitly.",
               ]
@@ -230,13 +236,9 @@ const summaryPath = process.env.GITHUB_STEP_SUMMARY;
 if (summaryPath !== undefined) await appendFile(summaryPath, markdown);
 
 const outputPath = process.argv[2] === "--github-output" ? process.argv[3] : undefined;
-if (outputPath !== undefined)
-  await appendFile(
-    outputPath,
-    `repairable=${candidates.length > 0 || executionNeedsReview ? "true" : "false"}\n`,
-  );
+if (outputPath !== undefined) await appendFile(outputPath, `repairable=${repairable}\n`);
 
-if (candidates.length === 0 && !executionNeedsReview) {
+if (!repairable) {
   const safeOutputsPath = process.env.GH_AW_SAFE_OUTPUTS;
   if (safeOutputsPath !== undefined)
     await appendFile(

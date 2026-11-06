@@ -19,12 +19,12 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
 Preparation selects one error-driven provider per six-hour UTC slot against the stable configured-provider
-rotation, keeping all of that provider's source and validation candidates together. It also admits
-the independent periodic slot and workflow evidence items. Other candidates stay in the prepared
+rotation, keeping all of that provider's source and validation candidates together alongside
+relevant workflow evidence. Other candidates stay in the prepared
 deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
 list. A continuously failing provider gets its own slot at least once per configured-provider cycle
-(five days for 20 providers); same-slot reruns select from the latest evidence. The independent
-periodic review runs only in the first daily slot. Closing a batch is not a whole-catalog health claim.
+(five days for 20 providers). Same-slot reruns select from the latest evidence. The independent
+periodic review has its own daily run and budget. Conclusions apply to the admitted scope.
 Source-acquisition review follows the admitted providers too; an unrelated transport failure must
 not silently expand a bounded batch. Keep those failures visible in the full refresh report. The
 periodic architecture slot reviews acquisition globally, and execution failures remain workflow-wide.
@@ -166,10 +166,10 @@ A source move requires an independent first-party index or link and verified rep
 Transient acquisition and authentication failures remain incomplete evidence, rather than parser
 repair instructions. Missing optional credentials remain normal configured scope.
 
-Every admitted candidate needs a conclusion backed by actual parser replay, source evidence and a
-concrete alternative diagnostic. Independent repairs may complete while another candidate remains
-blocked. A failed investigation cannot be dismissed because neighboring fixtures pass or the
-published fallback is valid.
+Closing a candidate requires source evidence and the checks appropriate to its conclusion.
+An evidenced repair may proceed to validation while independent candidates remain pending or blocked.
+Their next actions stay visible in the checked scope. A healthy no-op still requires a verified
+no-defect conclusion for every admitted candidate.
 
 ## Periodic review
 

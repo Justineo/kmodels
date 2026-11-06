@@ -125,7 +125,7 @@ after each test, including failures.
 
 Use `vp node scripts/validate-changes.ts BASE_SHA` (or `HEAD` for uncommitted work). `--plan`
 prints the paths and selected commands. Ordinary CI compares against the push's previous commit
-or the PR base. The same planner is used inside repair and by its trusted latest-main publication.
+or the PR base. Trusted repair publication uses the same planner against latest main.
 
 - Code changes run formatting/lint/type checks and Vitest's related unit tests. The test-boundary
   guard is included; workflow changes also select the harness workflow checks.
@@ -148,20 +148,20 @@ or the PR base. The same planner is used inside repair and by its trusted latest
 The scheduled refresh checks the generated project and production build because code-only
 behavior was already verified in CI. It retries the generated project once on the same candidate
 when every reported failure is a test-body timeout. Both attempts are logged. Assertion, hook,
-collection, and unhandled failures block publication immediately. Repair stages run affected
-checks while the agent can correct failures. Ordinary CI and both repair validation boundaries
-cap Vitest at two workers. Trusted post-execution checking admits the exact patch and evidence without repeating
-the tests; publication independently checks the affected delta against latest `main` before commit.
-This keeps the independent trust boundary without three identical test/build passes.
+collection, and unhandled failures block publication immediately. The repair agent demonstrates
+the defect and runs focused regressions. Trusted post-execution checking admits the exact patch and
+evidence, and threat detection and publication use that same artifact. Publication checks the
+affected delta against latest `main` before commit. Ordinary CI and repair publication cap Vitest at
+two workers.
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
 validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
 a successful test process alone does not authorize publishing a different patch.
 Investigation-review tests separately exercise candidate coverage and saved evidence consistency:
 missing/stale candidates, the Veo rejected-URL early stop, fallback-only conclusions, missing second
 passes, unsupported source-blocker labels, failed acquisition, before/after parser checks, evidence
-mutation, command-status disagreement, and interrupted pending work. Stage tests require investigation
-review before validation, and workflow tests verify trusted post-execution checking and artifact
-retention. These are deterministic harness regressions; they do not measure whether the model chose
+mutation, command-status disagreement, interrupted pending work, and a valid repair with independent
+pending work. Workflow tests verify trusted post-execution checking, detector input, and artifact
+retention. These are deterministic harness regressions. They do not measure whether the model chose
 or interpreted the right evidence. Review real agent traces to assess investigation quality.
 
 Calculator/package inputs select `vp run package:build` and `vp run package:check`.

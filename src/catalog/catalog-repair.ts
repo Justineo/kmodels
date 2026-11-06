@@ -132,38 +132,30 @@ export interface CatalogRepairCandidate {
   diagnostics: z.infer<typeof diagnosticSchema>[];
 }
 
-/** Admit one error-driven provider per six-hour slot, keeping the independent daily review. */
+/** Keep incident and periodic reviews in separate runs with independent budgets. */
 export function catalogRepairBatch(
   candidates: readonly CatalogRepairCandidate[],
   at: Date,
+  mode: "incident" | "periodic" = "incident",
 ): {
   selected: CatalogRepairCandidate[];
   deferred: CatalogRepairCandidate[];
 } {
   if (!Number.isFinite(at.getTime())) throw new Error("Catalog repair batch requires a valid date");
-  const periodic = (candidate: CatalogRepairCandidate) =>
-    candidate.trigger === "scheduled_provider_review" ||
-    candidate.trigger === "scheduled_architecture_review";
-  const pending = new Set(
-    candidates.filter((candidate) => !periodic(candidate)).map(({ provider_id }) => provider_id),
-  );
+  if (mode === "periodic")
+    return { selected: [scheduledCatalogReview(at)], deferred: [...candidates] };
+  const pending = new Set(candidates.map(({ provider_id }) => provider_id));
   const providers = manifests.map(({ provider }) => provider.id).sort(compareUtf8);
   for (const providerId of pending)
     if (!providers.includes(providerId))
       throw new Error(`Unconfigured repair provider: ${providerId}`);
   const slot = Math.floor(at.getTime() / 21_600_000);
   const start = ((slot % providers.length) + providers.length) % providers.length;
-  const providerId = Array.from(
-    { length: providers.length },
-    (_, offset) => providers[(start + offset) % providers.length],
-  ).find((id) => id !== undefined && pending.has(id));
+  const rotation = [...providers.slice(start), ...providers.slice(0, start)];
+  const providerId = rotation.find((id) => pending.has(id));
   return {
-    selected: candidates.filter(
-      (candidate) => periodic(candidate) || candidate.provider_id === providerId,
-    ),
-    deferred: candidates.filter(
-      (candidate) => !periodic(candidate) && candidate.provider_id !== providerId,
-    ),
+    selected: candidates.filter((candidate) => candidate.provider_id === providerId),
+    deferred: candidates.filter((candidate) => candidate.provider_id !== providerId),
   };
 }
 

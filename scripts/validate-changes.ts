@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, readFile, lstat, writeFile } from "node:fs/promises";
+import { appendFile, readFile, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { moduleDependencies } from "./module-dependencies.ts";
@@ -159,8 +159,6 @@ export async function validateChanges(base: string | undefined, planOnly = false
     const result = spawnSync("vp", args, { stdio: "inherit" });
     if (result.error !== undefined || result.status !== 0) {
       const message = `${command} failed (${result.error?.message ?? result.signal ?? result.status})`;
-      const failurePath = process.env.KMODELS_VALIDATION_FAILURE_PATH;
-      if (failurePath !== undefined) await writeFile(failurePath, `${message}\n`);
       throw result.error ?? new Error(message);
     }
     if (packageBefore !== undefined && packageBefore !== (await packageSourceHash()))
