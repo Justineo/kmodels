@@ -24,22 +24,39 @@ const jobSchema = z.object({
   databaseId: z.number().int().positive(),
   name: z.string(),
   conclusion: z.string(),
-  steps: z.array(z.object({ name: z.string(), conclusion: z.string() })),
+  steps: z.array(
+    z.object({
+      name: z.string(),
+      conclusion: z.string(),
+      startedAt: z.string(),
+      completedAt: z.string(),
+    }),
+  ),
 });
 
-export function repairValidationFeedback(log: string, step: string): string {
+export function repairValidationFeedback(
+  log: string,
+  { startedAt, completedAt }: { startedAt: string; completedAt: string },
+): string {
+  const start = Date.parse(startedAt);
+  const end = Date.parse(completedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+    throw new Error("Invalid publication validation step timestamps");
   const lines = stripVTControlCharacters(log)
     .split("\n")
     .flatMap((line) => {
-      const columns = line.split("\t");
-      if (columns[0] !== "commit_repair" || columns[1] !== step) return [];
-      return [
-        columns
-          .slice(2)
-          .join("\t")
-          .replace(/^\S+Z /, "")
-          .trimEnd(),
-      ];
+      const timestamp = line.match(/^\uFEFF?(\d{4}-\d{2}-\d{2}T\S+Z) /)?.[1];
+      if (timestamp === undefined) return [];
+      const time = Date.parse(timestamp);
+      // The job metadata uses whole seconds and the raw log includes fractions.
+      return time >= start && time < end + 1000
+        ? [
+            line
+              .trimStart()
+              .slice(timestamp.length + 1)
+              .trimEnd(),
+          ]
+        : [];
     });
   const command = lines.findLast((line) => line.startsWith("Validation: "));
   if (command === undefined)
@@ -96,8 +113,12 @@ export async function loadRepairRetry(
         ),
       )
     : repairValidationFeedback(
-        await gh([...view, "--job", String(publication.databaseId), "--log-failed"]),
-        failed.name,
+        await gh([
+          "api",
+          "--allow-escape-sequences",
+          `repos/${repository}/actions/jobs/${publication.databaseId}/logs`,
+        ]),
+        failed,
       );
   if (!feedback.trim() || feedback.length > 65_536)
     throw new Error("Publication validation feedback is empty or exceeds its limit");
