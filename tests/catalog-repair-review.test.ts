@@ -23,7 +23,13 @@ function scenario() {
     return { path, sha256: reviewHash(body) };
   };
   let number = 0;
-  const check = (kind: string, phase = "investigation", exit = 0, commandOverride?: string) => {
+  const check = (
+    kind: string,
+    phase = "investigation",
+    exit = 0,
+    commandOverride?: string,
+    started_at = "2026-10-18T04:10:00Z",
+  ) => {
     number += 1;
     const command = commandOverride ?? `vp node /tmp/replay-${number}.mjs`;
     const receipt = {
@@ -32,6 +38,7 @@ function scenario() {
       phase,
       command,
       exit_code: exit,
+      started_at,
       stdout: "Observed result",
     };
     return {
@@ -118,6 +125,26 @@ it("rejects a parser-only periodic completion and requires evidence at every rev
       s.read,
     ),
   ).toMatchObject({ repaired: 1 });
+});
+
+it("requires fresh parser-after and regression receipts when revising an admitted patch", async () => {
+  const s = scenario();
+  const row = s.repaired();
+  const admission = JSON.stringify({
+    schema_version: 1,
+    candidates: [{ id: s.id, trigger: "source_pricing_structure" }],
+    retry_started_at: "2026-10-18T04:11:00Z",
+  });
+  const review = () =>
+    JSON.stringify({ admission_sha256: reviewHash(admission), candidates: [row] });
+  await expect(
+    validateRepairReview(admission, review(), s.read, { requireRepair: true }),
+  ).rejects.toThrow("after checks must be from this retry");
+  for (const kind of ["parser", "regression"])
+    row.checks.push(s.check(kind, "after", 0, undefined, "2026-10-18T04:12:00Z"));
+  await expect(
+    validateRepairReview(admission, review(), s.read, { requireRepair: true }),
+  ).resolves.toMatchObject({ repaired: 1 });
 });
 
 it("keeps a blocked periodic area visible while allowing an independently verified repair", async () => {

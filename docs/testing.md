@@ -153,6 +153,9 @@ the defect and runs focused regressions. Trusted post-execution checking admits 
 evidence, and threat detection and publication use that same artifact. Publication checks the
 affected delta against latest `main` before commit. Ordinary CI and repair publication cap Vitest at
 two workers.
+When a publication check rejects the patch, the revision uses the saved failed command and
+diagnostics, fresh after-repair receipts, and the same complete trusted validation. Tests cover
+eligibility, retry bounds and stale proof rejection.
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
 validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
 a successful test process alone does not authorize publishing a different patch.
