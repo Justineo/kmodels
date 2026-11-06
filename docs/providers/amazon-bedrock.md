@@ -239,7 +239,9 @@ commercial geography comes from its own `Geo: US` (or other reviewed geography) 
 If prices distinguish geography but that declaration is missing or ambiguous, the association is
 withheld and a source-contract finding is recorded. Prefixes do not establish geography.
 Both published spellings of the Geo inference ID label are recognized, including explicit
-`Geo: AU`, `Geo: CA`, and `Geo: JP` headings.
+`Geo: AU`, `Geo: CA`, `Geo: JP`, and `Geo: US-GOV` headings. GovCloud cards declare their
+geography as `Geo: US-GOV` and publish the matching `us-gov.` profile prefix; the reviewed
+vocabulary stays closed, so an unrecognized label still withholds the association.
 
 The request Region remains a separate caller-supplied price condition. For profiles with regional
 prices, this interpretation requires the [cross-Region guide](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.md)

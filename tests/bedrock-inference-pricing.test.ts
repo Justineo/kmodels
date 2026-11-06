@@ -278,6 +278,67 @@ it("keeps shared commercial Geo rates and named tier rates within each profile's
   ).toBe("no_applicable_price");
 });
 
+it("associates the AWS GovCloud profile geography published by the model card", async () => {
+  const addGovCloud = (bundle: Bundle, label: string) => {
+    const card = bundle.documents.find(({ url }) =>
+      url.endsWith("model-card-openai-gpt-6-astra.md"),
+    );
+    if (card === undefined) throw new Error("Missing Bedrock OpenAI fixture");
+    const govGeo = [
+      `**Geo: ${label}**`,
+      "",
+      "Geo Inference ID: `us-gov.openai.gpt-6-astra`",
+      "",
+      "| Source Region | Destination Regions |",
+      "| --- | --- |",
+      "| us-gov-east-1 (AWS GovCloud (US-East)) | us-gov-east-1 (AWS GovCloud (US-East)), us-gov-west-1 (AWS GovCloud (US-West)) |",
+      "| us-gov-west-1 (AWS GovCloud (US-West)) | us-gov-east-1 (AWS GovCloud (US-East)), us-gov-west-1 (AWS GovCloud (US-West)) |",
+      "",
+      "",
+    ].join("\n");
+    card.body = card.body
+      .replace("## Programmatic Access", "## Call the model")
+      .replace(
+        "To call this model from code, use the following model IDs and endpoint URLs.",
+        "Use these model IDs and endpoint URLs to call the model.",
+      )
+      .replace("## Regional Availability", "## Supported Regions")
+      .replaceAll("Availability using the `", "The `")
+      .replaceAll("APIs supported on `", "APIs supported on the `")
+      .replaceAll("Input Modalities", "Input modalities")
+      .replaceAll("Output Modalities", "Output modalities")
+      .replaceAll("Geo CRIS (US)", "US Geo CRIS")
+      .replace(
+        "| us.openai.gpt-6-astra | global.openai.gpt-6-astra |",
+        "| us.openai.gpt-6-astra, us-gov.openai.gpt-6-astra in the AWS GovCloud (US) Regions | global.openai.gpt-6-astra |",
+      )
+      .replace("## Quotas and Limits", `${govGeo}## Quotas and Limits`);
+  };
+  const govRules = (candidate: CatalogPairCandidate) =>
+    candidate.inference?.mapping.rules.filter(
+      ({ model_id }) => model_id === "us-gov.openai.gpt-6-astra",
+    ) ?? [];
+  const candidate = await collect((bundle) => addGovCloud(bundle, "US-GOV"));
+  expect(govRules(candidate)).toHaveLength(1);
+  expect(govRules(candidate)[0]?.fixed_selectors).toContainEqual({
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: "inference_geo" },
+    value: { namespace: "provider", provider_id: "amazon-bedrock", value: "us-gov" },
+  });
+  expect(
+    lookup(candidate)({ provider_id: "amazon-bedrock", model_id: "us-gov.openai.gpt-6-astra" })
+      .reason,
+  ).not.toBe("unreviewed_id");
+  const undocumented = await collect((bundle) => addGovCloud(bundle, "Undocumented"));
+  expect(govRules(undocumented)).toHaveLength(0);
+  expect(
+    lookup(undocumented)({
+      provider_id: "amazon-bedrock",
+      model_id: "us-gov.openai.gpt-6-astra",
+    }).reason,
+  ).toBe("unreviewed_id");
+}, 20_000);
+
 it("binds Nova Geo prices through the exact page token and native SKU", async () => {
   const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-global-tiers.json")));
   const sku = "FY8T82UUN7VZR55K";
@@ -363,7 +424,7 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
   expect(lookup(await build("0.0003400000"))({ provider_id, model_id, selectors }).reason).toBe(
     "no_applicable_price",
   );
-});
+}, 20_000);
 
 it("collects actual IDs through static output and uses the same commercial conditions in the UI", async () => {
   const candidate = await collect();

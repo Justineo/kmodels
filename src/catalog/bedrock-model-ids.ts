@@ -4,6 +4,7 @@ export type BedrockEndpoint = "bedrock-runtime" | "bedrock-mantle";
 
 const profileGeographies = new Map([
   ["US", "us"],
+  ["US-GOV", "us-gov"],
   ["EU", "eu"],
   ["APAC", "apac"],
   ["India", "in"],
