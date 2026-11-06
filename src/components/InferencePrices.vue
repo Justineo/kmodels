@@ -40,17 +40,15 @@ const priceGroups = computed(() => {
   }
   return [...groups.values()];
 });
-const selectedGroup = computed(
-  () =>
-    priceGroups.value.find(([price]) => price.model_id === selectedId.value) ??
-    priceGroups.value[0],
+const selectedPrice = computed(
+  () => props.prices.find(({ model_id }) => model_id === selectedId.value) ?? props.prices[0],
 );
-const selectedPrice = computed(() => selectedGroup.value?.[0]);
+const selectedGroup = computed(() => {
+  const price = selectedPrice.value;
+  return price && priceGroups.value.find((group) => group.includes(price));
+});
 const idOptions = computed(() =>
-  priceGroups.value.map((group) => ({
-    value: group[0].model_id,
-    label: group.map(({ model_id }) => model_id).join(" · "),
-  })),
+  props.prices.map(({ model_id }) => ({ value: model_id, label: model_id })),
 );
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
@@ -177,10 +175,13 @@ watch(
   },
 );
 function selectId(id: string): void {
+  const samePricing = selectedGroup.value?.some(({ model_id }) => model_id === id);
   selectedId.value = id;
-  selectedOffer.value = "";
   copiedId.value = "";
-  inputs.value = {};
+  if (!samePricing) {
+    selectedOffer.value = "";
+    inputs.value = {};
+  }
 }
 function selectOffer(offer: string): void {
   selectedOffer.value = offer;
@@ -203,16 +204,27 @@ async function copyId(id: string): Promise<void> {
       <span v-else class="id-label">{{
         (selectedGroup?.length ?? 0) > 1 ? "Inference model IDs" : "Inference model ID"
       }}</span>
-      <UiSelect
-        v-if="priceGroups.length > 1"
-        id="inference-model-id"
-        class="id-select"
-        placeholder="Choose inference model ID"
-        :model-value="selected.model_id"
-        :options="idOptions"
-        @update:model-value="selectId"
-      />
-      <p v-if="usesCatalogId" class="id-reference">Same as Catalog ID</p>
+      <div v-if="priceGroups.length > 1" class="id-picker">
+        <UiSelect
+          id="inference-model-id"
+          class="id-select"
+          :title="selected.model_id"
+          :model-value="selected.model_id"
+          :options="idOptions"
+          @update:model-value="selectId"
+        />
+        <button
+          class="identifier-copy id-copy"
+          type="button"
+          :data-copied="copiedId === selected.model_id || undefined"
+          :aria-label="`Copy inference model ID ${selected.model_id}`"
+          :title="copiedId === selected.model_id ? 'Copied' : 'Copy inference model ID'"
+          @click="copyId(selected.model_id)"
+        >
+          <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
+        </button>
+      </div>
+      <p v-else-if="usesCatalogId" class="id-reference">Same as Catalog ID</p>
       <ul v-else class="identifier-list inference-ids">
         <li v-for="{ model_id } in selectedGroup" :key="model_id">
           <button
@@ -326,11 +338,32 @@ async function copyId(id: string): Promise<void> {
   font-size: var(--font-size-body);
   margin: 0 0 var(--space-2);
 }
-.id-select {
+.id-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
-  min-height: var(--control-height-default);
+  min-height: var(--control-height-comfortable);
   border: var(--stroke-hairline) solid var(--color-border-default);
   border-radius: var(--radius-md);
+}
+.id-picker:has(select:focus-visible) {
+  outline: var(--stroke-focus) solid var(--color-accent);
+  outline-offset: var(--space-0-5);
+}
+.id-select {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-meta);
+}
+.id-select :deep(option .ui-select-option-label) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.id-copy {
+  justify-content: center;
+  min-width: var(--control-height-comfortable);
+  border: 0;
+  border-inline-start: var(--stroke-hairline) solid var(--color-border-subtle);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 .match-status {
   margin-block: var(--space-2);

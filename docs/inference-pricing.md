@@ -146,14 +146,14 @@ Optional protocol/capability documents are not prerequisites for independently e
 
 Preserve the model list and ordinary model details. Show exact inference model IDs separately from
 display names. For an ID, show matching prices, the conditions that affect them, and evidence status.
-Use existing rate units and commercial offer groups. Expose a selector or comparison only when it
-changes the candidate prices or their conditions; keep the choices recognizable by their exact IDs.
-Group IDs when their complete matching rules and available pricing inputs are identical. Preserve
-each ID as a copyable value and retain the group's mapping evidence.
+Use existing rate units and commercial offer groups. Group IDs with identical matching rules and
+pricing inputs and retain the group's mapping evidence. When all IDs share one group, show each
+as a copyable value. When prices or conditions differ, show one picker with each exact ID as an
+option and a copy button for the selected ID. Switching within a group keeps the pricing inputs.
 
 The header labels the catalog's primary identifier `Catalog ID`. Pricing uses explicit associations
 for that record. A single inference ID equal to the catalog ID is labeled `Same as Catalog ID`, with
-the copyable value in the header. With multiple groups, the selector shows their exact ID values.
+the copyable value in the header.
 If the mapping is unknown, show that status and keep the catalog ID in the header. An ID mapping
 owned by another catalog record is excluded even when its literal value matches the current
 record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.

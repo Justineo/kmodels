@@ -900,11 +900,13 @@ it("shares pricing across equivalent inference IDs and keeps different fixed sco
     offers,
   });
   expect(mixed).toContain('id="inference-model-id"');
-  expect(mixed).toContain(`${alias.model_id} · ${us.model_id}`);
-  expect(mixed).toContain(`value="${global.model_id}"`);
-  expect(mixed).not.toContain(`value="${us.model_id}"`);
+  for (const { model_id } of [global, us, alias]) {
+    expect(mixed).toContain(`value="${model_id}"`);
+  }
+  expect(mixed).not.toContain("Choose inference model ID");
   expect(mixed).toContain(`aria-label="Copy inference model ID ${global.model_id}"`);
-  expect(mixed).toContain(`>${global.model_id}</code>`);
+  expect(mixed).not.toContain(`aria-label="Copy inference model ID ${us.model_id}"`);
+  expect(mixed).not.toContain(`>${global.model_id}</code>`);
   expect(mixed).toContain("#ui-copy");
   expect(mixed).not.toContain(">Copy<");
 });
