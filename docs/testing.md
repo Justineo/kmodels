@@ -67,6 +67,8 @@ after each test, including failures.
   Verify per-chunk bounds, complete round trips, local dictionary remapping, deterministic order,
   and rejection of missing, reordered or mixed-version chunks. Normal inventory growth creates
   more chunks and has no fixed aggregate-size assertion or warning.
+  Deferred model-detail, shared-offer, and provider pricing assets likewise enforce their
+  2 MiB limit per chunk.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
   This includes table-cell amounts and statuses and model-specific selector examples: a current

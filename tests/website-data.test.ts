@@ -23,10 +23,6 @@ import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreAssets } from "../src/catalog/
 import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
-const websiteDataBudgets = {
-  modelDetailBytes: 82 * 1024 * 1024,
-};
-
 const auditFields = new Set([
   "atom_contract_hash",
   "charge_binding",
@@ -261,12 +257,6 @@ describe("website data", () => {
         ),
       );
     }
-    expect(
-      [...publication.details, ...publication.offers].reduce(
-        (bytes, chunk) => bytes + Buffer.byteLength(JSON.stringify(chunk)),
-        0,
-      ),
-    ).toBeLessThan(websiteDataBudgets.modelDetailBytes);
     expect(foundAuditFields([details, publication.offers])).toEqual([]);
     const hydratedDetails = publishedModelDetails(publication);
     const offers = hydratedDetails.flatMap(({ pricing }) => pricing?.offers ?? []);

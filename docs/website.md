@@ -409,9 +409,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   request IDs while retaining each ID's own fixed selectors. The loader restores
   those references before use; the transport version participates in `data_version`.
   Local condition dictionaries, variant tuples, and shared selector options preserve the same
-  matching input. The uncompressed model-detail and shared-offer assets have an
-  82 MiB aggregate regression budget to accommodate restored provider pricing
-  coverage. The 2 MiB ceiling still applies to each requested chunk.
+  matching input. Inventory and pricing coverage growth can add chunks. The
+  2 MiB ceiling applies to each requested chunk.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
