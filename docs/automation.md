@@ -371,9 +371,10 @@ Status: implemented
   remote, and failures to check the remote, still fail the job.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
-  summary, emits warnings for retained or withheld providers, and keeps the
-  complete report as a 30-day artifact. A failure before report creation is
-  called out explicitly and commits nothing.
+  summary and keeps the complete report as a 30-day artifact. The step log
+  points to the summary and keeps provider warning annotations. Local reporting
+  prints the full Markdown to stdout. A failure before report creation is called
+  out explicitly and commits nothing.
 - The report's provider table pairs current model, source, and pricing-coverage counts with their
   deltas. Model and source deltas show only nonzero `+`, `−`, and `~` terms; coverage deltas
   separately show changes in resolved and unknown model counts. Catalog publication and pricing

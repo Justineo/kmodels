@@ -78,7 +78,7 @@ jobs:
           for attempt in 1 2; do
             rm -f "$KMODELS_GENERATED_VERIFICATION_PATH"
             status=0
-            vp run test:data --reporter=default --reporter=./scripts/generated-verification-reporter.ts || status=$?
+            vp run test:data --reporter=minimal --reporter=github-actions --silent=passed-only --reporter=./scripts/generated-verification-reporter.ts || status=$?
             if [[ "$status" != 1 || ! -f "$KMODELS_GENERATED_VERIFICATION_PATH" ||
                   $(<"$KMODELS_GENERATED_VERIFICATION_PATH") != test_timeout ]]; then
               exit "$status"

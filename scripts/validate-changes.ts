@@ -135,7 +135,8 @@ export async function validateChanges(base: string | undefined, planOnly = false
           ...git(["diff", "--name-only", "-z", base, "--"]).split("\0"),
           ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0"),
         ].filter(Boolean);
-  const commands = validationPlan([...new Set(paths)], {
+  const inActions = process.env.GITHUB_ACTIONS === "true";
+  const selected = validationPlan([...new Set(paths)], {
     full,
     generated: await dependencyClosure(generatedDataTests),
     build: await dependencyClosure(["vite.config.ts", "src/main.ts"]),
@@ -145,7 +146,17 @@ export async function validateChanges(base: string | undefined, planOnly = false
       "scripts/check-pricing-package.ts",
     ]),
   });
-  console.log(JSON.stringify({ base: base ?? null, paths, commands }, null, 2));
+  const commands = selected.map((args) =>
+    inActions && args[0] === "test"
+      ? [...args, "--reporter=minimal", "--reporter=github-actions", "--silent=passed-only"]
+      : args,
+  );
+  if (planOnly || !inActions)
+    console.log(JSON.stringify({ base: base ?? null, paths, commands }, null, 2));
+  else
+    console.log(
+      `Selected ${commands.length} checks for ${full ? "the complete validation gate" : `${paths.length} changed paths`}.`,
+    );
   if (process.env.GITHUB_OUTPUT !== undefined)
     await appendFile(
       process.env.GITHUB_OUTPUT,

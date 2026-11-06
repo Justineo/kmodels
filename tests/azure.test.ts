@@ -1514,7 +1514,11 @@ describe("Azure adapters", () => {
     expect(inferencePrices?.[0]).toMatchObject({ status: "unknown", reason: "unreviewed_id" });
     const html = await renderComponent(PricingDetails, {
       model: { ...model, pricing: { outcome: "offers" } },
+      provider: undefined,
+      dataVersion: pair.pairId,
       detail: websiteModelDetail(pricing, model).pricing,
+      loading: false,
+      error: undefined,
       inferencePrices,
     });
     expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
