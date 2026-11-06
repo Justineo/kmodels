@@ -215,10 +215,10 @@ The same bucket distinction applies to a raw price in an explicitly reviewed fiv
 one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
 dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.
 
-Rows explicitly marked `retired, except on … Claude Models on Google Cloud (Google managed)`
-(with or without Bedrock) describe surviving partner availability, not current direct Claude API
-prices. Exclude those rows and their tool-overhead claims before direct-model binding, retaining
-their exclusion diagnostics and
+Rows explicitly marked `retired, except on … Claude Models on Google Cloud (Google managed)` with
+Bedrock named either before or after that phrase describe surviving partner availability, not current
+direct Claude API prices. Exclude those rows and their tool-overhead claims before direct-model
+binding, retaining their exclusion diagnostics and
 historical catalog identities. Other unknown qualifiers remain unbound or raw; they do not inherit
 this exclusion merely by mentioning a partner.
 
