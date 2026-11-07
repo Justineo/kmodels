@@ -75,3 +75,9 @@ Provider fixtures test extraction and local gaps. Generated-data checks compare 
 with consumer exports. Portable synthetic conformance vectors independently verify evaluator
 semantics and packed Node/browser behavior. These checks complement native evidence; none alone
 proves every published service or charge has been discovered.
+
+Production build verification replays every exact mapped inference ID against its published
+calculation partition and summarizes lookup failures and candidate evidence gaps by provider.
+After a build, `vp node scripts/check-calculation-assets.ts --list-inference-gaps` lists affected
+IDs and reasons. Missing caller conditions alone are normal candidates. The replay covers
+published mappings and supplies a review queue for source investigations, including known gaps.

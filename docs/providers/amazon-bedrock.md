@@ -88,6 +88,13 @@ assembly together: equal amounts combine their evidence, while unequal overlappi
 bounded conflicts. A card does not silently override a native SKU. Kimi K3 publishes
 Global, US and India cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
+The card's single 30-minute cache-write column names a billable token quantity. Bedrock documents
+minimum retention and shows explicit cache requests without a TTL argument in its
+[Kimi K3 launch example](https://aws.amazon.com/blogs/machine-learning/introducing-kimi-k3-on-amazon-bedrock/).
+When the card and
+normalized rates identify only that duration, extraction binds cache writes to the named 30-minute
+quantity and omits TTL from rate applicability. Other models retain evidenced duration selectors.
+The existing Bedrock quantity signal identifies the tariff without claiming an acquisition method.
 These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Named
 CRIS price rows use the reviewed Bedrock geography vocabulary and require a matching profile alias
 on the card. Unqualified `Geo CRIS` requires one evidenced alias geography. Unknown row labels and

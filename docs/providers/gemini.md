@@ -106,9 +106,9 @@ Fresh removal of an ID from the price declaration withdraws its association even
 ordinary catalog price is retained. Independent grounding books remain separately scoped services.
 
 The website and public lookup use the same matcher. Price schedules stated only as calendar dates
-retain that precision: the existing exact-time contract reports `unresolved_validity` rather than
-inventing a timezone or midnight cutoff. This is known price evidence with unresolved applicability,
-not an unknown ID or a zero price. The numeric schedules remain in the canonical price book.
+retain that precision. Lookup displays their published amounts and validity labels as candidates
+with `unresolved_validity`. Exact calculation requires a known effective time. The numeric
+schedules remain in the canonical price book.
 Native public fixtures verify collection, publication, lookup and UI projection, including resource
 name withdrawal, observed tier/context choices and Gemma's paid-tier exclusion. Stored-data adoption
 is separate from this producer integration.

@@ -39,6 +39,20 @@ export function bedrockModelQuantity(
   };
 }
 const providerId = "amazon-bedrock";
+export function bedrockCacheWriteQuantity(ttl: number) {
+  const suffix = ttl === 300 ? "5m" : ttl === 3600 ? "1h" : `${ttl}s`;
+  const key = `cache_write_${suffix}_input_tokens`;
+  const atom: Extract<ProviderAtomRegistryEntry, { kind: "usage_signal" }> = {
+    kind: "usage_signal",
+    key,
+    definition: `Amazon Bedrock cache-write input tokens billed at the ${suffix} TTL rate`,
+    ...(ttl === 1800 ? { label: "Cache write (30 min)" } : {}),
+    unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+    resolution_phase: "outcome",
+  };
+  return { atom, signal: { namespace: "provider" as const, provider_id: providerId, value: key } };
+}
+
 const requestUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }],
 };

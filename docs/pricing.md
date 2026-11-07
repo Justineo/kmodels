@@ -644,6 +644,11 @@ TTL partitions use provider-owned signals unless at least two providers expose
 the same billable counter semantics. Region, service tier, context, quality, and
 similar selectors stay in applicability rather than being encoded inside a
 signal name unless the source exposes a genuinely distinct counter.
+When source evidence identifies a single nominal duration as part of a charge, bind its billable
+quantity directly. Reserve duration selectors for evidence that duration changes applicability.
+A usage signal may carry a display label for the named quantity, which the website uses on the
+corresponding rate row. The portable calculation vocabulary carries the quantity identity and
+definition and omits the display label.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price

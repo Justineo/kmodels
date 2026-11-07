@@ -243,7 +243,7 @@ it("leaves Contributor raw when its required program evidence changes while pres
     }).reason,
   ).toBe("unresolved_price");
 }, 15000);
-it("keeps date-only promotion boundaries unresolved rather than inventing a UTC cutoff", () => {
+it("returns date-only promotion rates with unresolved effective time", () => {
   const result = lookup()({
     provider_id: "gemini",
     model_id: "gemini-4-argon",

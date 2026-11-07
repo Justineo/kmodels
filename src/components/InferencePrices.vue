@@ -109,6 +109,16 @@ const conditionOptions = computed(() => {
       (inputs.value[option.key] ?? "") !== "" || missing.has(canonicalJson(option.dimension)),
   );
 });
+const needsPricingSelection = computed(
+  () =>
+    selected.value?.status === "candidates" &&
+    (selected.value.requires_offer_choice || selected.value.missing_conditions.length > 0),
+);
+const hasPricingControls = computed(
+  () =>
+    conditionOptions.value.length > 0 ||
+    (selected.value?.requires_offer_choice === true && offerOptions.value.length > 1),
+);
 function setInput(key: string, value: string): void {
   inputs.value = { ...inputs.value, [key]: value };
 }
@@ -143,8 +153,9 @@ watch(selectedPrice, scheduleClock);
 onBeforeUnmount(() => {
   if (clock !== undefined) clearTimeout(clock);
 });
-const candidates = computed(
-  () =>
+const candidates = computed(() => {
+  if (needsPricingSelection.value) return [];
+  return (
     selected.value?.candidates.map((candidate) => ({
       ...candidate,
       conditions: candidate.selectors
@@ -163,8 +174,9 @@ const candidates = computed(
               ],
         ),
       offer: props.offers.find(({ id }) => id === candidate.offer_ref),
-    })) ?? [],
-);
+    })) ?? []
+  );
+});
 watch(
   () => props.modelRef,
   () => {
@@ -261,18 +273,25 @@ async function copyId(id: string): Promise<void> {
       <strong>{{
         selected.status === "matched"
           ? "Applicable prices"
-          : selected.status === "candidates"
-            ? "Candidate prices"
+          : needsPricingSelection && hasPricingControls
+            ? "Select pricing options"
             : selected.reason === "no_applicable_price" ||
                 selected.reason === "incompatible_conditions"
               ? "No applicable prices"
-              : selected.reason === "unresolved_price"
+              : selected.status === "candidates" || selected.reason === "unresolved_price"
                 ? "Price evidence incomplete"
                 : "Price mapping unknown"
       }}</strong>
-      <p>{{ selected.explanation }}</p>
+      <p v-if="needsPricingSelection">
+        {{
+          hasPricingControls
+            ? "Complete the required selections to see applicable rates."
+            : "The published evidence does not resolve these pricing conditions."
+        }}
+      </p>
+      <p v-else>{{ selected.explanation }}</p>
       <p v-if="selected.missing_conditions.length">
-        Conditions: {{ selected.missing_conditions.join(", ") }}.
+        Remaining conditions: {{ selected.missing_conditions.join(", ") }}.
       </p>
     </div>
     <article
@@ -296,17 +315,21 @@ async function copyId(id: string): Promise<void> {
       </template>
       <p v-else>Price details are unavailable for this candidate.</p>
     </article>
-    <details v-if="evidenceUrls.length" class="mapping-evidence">
-      <summary>Mapping evidence</summary>
-      <ul>
+    <details v-if="evidenceUrls.length" class="detail-disclosure">
+      <summary>
+        <span>Mapping evidence</span>
+        <small
+          >{{ evidenceUrls.length }} {{ evidenceUrls.length === 1 ? "source" : "sources" }}</small
+        >
+        <UiIcon name="chevron-right" />
+      </summary>
+      <ul class="detail-disclosure-body evidence-list">
         <li v-for="url in evidenceUrls" :key="url">
-          <a
-            v-if="/^https?:\/\//.test(url)"
-            :href="url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >{{ url }}</a
-          ><span v-else>{{ url }}</span>
+          <a v-if="/^https?:\/\//.test(url)" :href="url" target="_blank" rel="noopener noreferrer">
+            <strong>{{ url }}</strong>
+            <UiIcon name="external-link" />
+          </a>
+          <strong v-else>{{ url }}</strong>
         </li>
       </ul>
     </details>
@@ -382,14 +405,5 @@ async function copyId(id: string): Promise<void> {
 }
 .candidate h4 {
   margin: 0 0 var(--space-2);
-}
-.mapping-evidence {
-  margin-top: var(--space-2);
-  font-size: var(--font-size-meta);
-  color: var(--color-text-muted);
-  overflow-wrap: anywhere;
-}
-.mapping-evidence summary {
-  cursor: pointer;
 }
 </style>

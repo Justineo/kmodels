@@ -24,6 +24,8 @@ import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { restoreInferencePrices } from "../src/catalog/website-inference-storage.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
+import { websitePublication } from "../src/catalog/website-data.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -177,15 +179,7 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
     });
   });
   const query = lookup(candidate);
-  const selectors: Selector[] = [
-    select("service_tier", "standard"),
-    {
-      kind: "decimal",
-      dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
-      value: "1800",
-      unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
-    },
-  ];
+  const selectors = [select("service_tier", "standard")];
   const provider_id = "amazon-bedrock";
   const model_id = "in.moonshotai.kimi-k3";
   const result = query({ provider_id, model_id, selectors });
@@ -205,6 +199,47 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
       ["cache_read_text", [{ numerator: "33", denominator: "100000000" }]],
       ["cache_write_text", [{ numerator: "33", denominator: "8000000" }]],
     ]),
+  );
+  const cacheWrite = result.candidates.flatMap(({ offer }) =>
+    offer.terms.flatMap((term) =>
+      term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+    ),
+  );
+  expect(cacheWrite).toHaveLength(1);
+  expect(cacheWrite[0]?.charge_binding).toMatchObject({
+    signal: { namespace: "provider", provider_id, value: "cache_write_1800s_input_tokens" },
+  });
+  expect(cacheWrite[0]?.charge_binding?.quantity_methods).toBeUndefined();
+  if (candidate.inference === undefined) throw new Error("Missing Kimi K3 inference mapping");
+  const rows = websiteInferencePrices(
+    candidate.catalog,
+    candidate.pricing,
+    candidate.inference.mapping,
+  );
+  const website = websitePublication(
+    candidate.catalog,
+    candidate.pricing.data,
+    "a".repeat(64),
+    rows,
+  );
+  const price = rows
+    .get(`${provider_id}/moonshotai.kimi-k3`)
+    ?.find((row) => row.model_id === model_id);
+  if (price === undefined) throw new Error("Missing Kimi K3 India website price");
+  expect(
+    price.pricing_options?.some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
+  ).toBe(false);
+  const projected = queryWebsiteInferencePrice(price, selectors, at);
+  expect(projected.status).toBe("matched");
+  const visibleRates = projected.candidates.flatMap(
+    ({ offer_ref, row_keys }) =>
+      website.offers
+        .flatMap(({ offers }) => offers)
+        .find(({ id }) => id === offer_ref)
+        ?.rates.filter(({ key }) => row_keys?.includes(key)) ?? [],
+  );
+  expect(visibleRates).toContainEqual(
+    expect.objectContaining({ label: "Cache write (30 min)", amount: "$4.125" }),
   );
   for (const tier of ["priority", "flex"]) {
     const paid = [select("service_tier", tier), select("operation", "chat_completions")];

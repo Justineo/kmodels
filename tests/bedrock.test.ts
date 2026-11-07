@@ -614,7 +614,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v48");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v49");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -933,7 +933,13 @@ describe("Bedrock adapters", () => {
             service_tier: "flex",
             operation: "chat_completions",
             inference_geo: "us",
-            cache_ttl_seconds: 1_800,
+          }),
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "amazon-bedrock",
+              value: "cache_write_1800s_input_tokens",
+            },
           }),
         }),
       ]),
@@ -952,7 +958,6 @@ describe("Bedrock adapters", () => {
           endpoint: "bedrock-runtime",
           deployment_scope: "global_cross_region",
           service_tier: "standard",
-          cache_ttl_seconds: 1_800,
         },
       ],
       [
@@ -962,7 +967,6 @@ describe("Bedrock adapters", () => {
           deployment_scope: "geo_cross_region",
           service_tier: "standard",
           inference_geo: "us",
-          cache_ttl_seconds: 1_800,
         },
       ],
     ]);
@@ -988,6 +992,27 @@ describe("Bedrock adapters", () => {
       reason_code: "model_card_price_row_unreadable",
       sample: "US CRIS: Cache write (30 min): Contact sales",
     });
+    card.body = body.replace(
+      /^\| \*\*Inference option\*\*[^\n]*\n\|[^\n]*\n(?:\| (?:Global|US) CRIS[^\n]*\n)+/m,
+      (table) => {
+        const column = ["**Cache write (5 min)**", "---", "$3.50", "$4.00"];
+        const lines = table.trimEnd().split("\n");
+        return `${lines.map((line, index) => `${line} ${column[index]} |`).join("\n")}\n`;
+      },
+    );
+    const multipleColumns = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+    }).models.find(({ model_id }) => model_id === "moonshotai.kimi-k3");
+    expect(
+      new Set(
+        multipleColumns?.price_facts
+          .filter(({ meter }) => meter === "cache_write_text")
+          .map(({ conditions }) => conditions.cache_ttl_seconds),
+      ),
+    ).toEqual(new Set([300, 1800]));
     card.body = body.replace("only the Responses and Chat Completions APIs", "only selected APIs");
     const unknownScope = parseSource({
       provider: provider(value),

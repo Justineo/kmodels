@@ -47,6 +47,7 @@ export interface WebsiteInferenceCandidate {
 }
 export type WebsiteInferenceQuery = Omit<WebsiteInferencePrice, "candidates"> & {
   candidates: WebsiteInferenceCandidate[];
+  requires_offer_choice: boolean;
 };
 
 export function queryWebsiteInferencePrice(
@@ -55,7 +56,11 @@ export function queryWebsiteInferencePrice(
   evaluatedAt: string,
   offerRef?: string,
 ): WebsiteInferenceQuery {
-  if (price.matching === undefined) return price;
+  if (price.matching === undefined)
+    return {
+      ...price,
+      requires_offer_choice: new Set(price.candidates.map(({ offer_ref }) => offer_ref)).size > 1,
+    };
   const result = matchInferencePrices(price.matching, selectors, evaluatedAt, offerRef);
   const { reason: _reason, ...base } = price;
   return {
@@ -64,6 +69,7 @@ export function queryWebsiteInferencePrice(
     ...(result.reason === undefined ? {} : { reason: result.reason }),
     explanation: inferencePriceExplanation(result),
     missing_conditions: result.missing_conditions.map(formatDimension),
+    requires_offer_choice: result.requires_offer_choice,
     candidates: (result.reason === "no_applicable_price" ? [] : result.candidates).map(
       (candidate) => {
         const offer = price.matching?.offers.find(({ id }) => id === candidate.offer_ref);

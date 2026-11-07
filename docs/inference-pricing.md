@@ -158,8 +158,10 @@ If the mapping is unknown, show that status and keep the catalog ID in the heade
 owned by another catalog record is excluded even when its literal value matches the current
 record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.
 
-Missing conditions remain visible beside candidate prices. Unknown mappings are labeled unknown.
-Condition controls update after every selection. An unfilled condition disappears when the shared
+The matcher retains candidate rates for programmatic resolution. The inspector prompts for required
+choices before displaying rates and explains remaining evidence gaps after those choices are complete.
+Unknown mappings are labeled unknown. Condition controls update after every selection. An unfilled
+condition disappears when the shared
 matcher no longer requires it for the remaining prices; explicit user selections remain visible
 and editable. Switching a tier can reveal its newly required conditions without a separate
 invocation configuration step.

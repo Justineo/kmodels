@@ -22,6 +22,7 @@ import {
 } from "./bedrock-model-ids.ts";
 import { extractBedrockPricingInputs } from "./bedrock-accounting.ts";
 import {
+  bedrockCacheWriteQuantity,
   bedrockGroundingFact,
   bedrockServiceTerm,
   bedrockModelQuantity,
@@ -689,6 +690,51 @@ function programmaticAccess(body: string, name: string, url: string): Map<string
   return result;
 }
 
+function kimiK3CacheWriteRates(
+  card: Card,
+  cardRates: readonly SourcePriceFact[],
+  rates: SourcePriceFact[],
+  vocabulary: ProviderAtomRegistryEntry[],
+): SourcePriceFact[] {
+  const header = "Cache write (30 min)";
+  const writeColumns = card.pricingSection?.match(/\|\s*(?:\*\*)?Cache write\b[^|\r\n]*/gi);
+  if (
+    writeColumns?.length !== 1 ||
+    writeColumns[0]?.slice(1).replaceAll("**", "").trim() !== header ||
+    !cardRates.some(({ meter }) => meter === "cache_write_text") ||
+    rates.some(
+      ({ meter, conditions }) =>
+        meter === "cache_write_text" && conditions.cache_ttl_seconds !== 1800,
+    )
+  )
+    return rates;
+  const { atom, signal } = bedrockCacheWriteQuantity(1800);
+  vocabulary.push(atom);
+  return rates.map((rate) => {
+    if (rate.meter !== "cache_write_text") return rate;
+    const { cache_ttl_seconds: _, ...conditions } = rate.conditions;
+    return {
+      ...rate,
+      conditions,
+      charge_binding: {
+        signal,
+        aggregation: conditions.service_tier === "batch" ? "job" : "attempt",
+        observations: [
+          {
+            source_ref: rate.source_ref,
+            locator: rate.source_locator ?? { kind: "table", value: header },
+            raw: {
+              label: header,
+              amount: rate.raw_price ?? rate.price,
+              unit: rate.raw_unit ?? rate.unit,
+            },
+          },
+        ],
+      },
+    };
+  });
+}
+
 function modelCardRates(
   card: Card,
   access: CardId,
@@ -705,16 +751,24 @@ function modelCardRates(
   const blocks = content.split(/^\*\*AWS GovCloud \(US\)\*\*[ \t]*\r?$/m);
   if (blocks.length > 2) throw new Error("Bedrock card repeated the GovCloud pricing heading");
   const geographies = bedrockAliasGeographies(access.aliases);
-  const columns = [
-    ["Input", "input_text"],
-    ["Output", "output_text"],
-    ["Cache read", "cache_read_text"],
-    ["Cache write (30 min)", "cache_write_text"],
+  const tokenColumns = [
+    ["Input", "input_text", undefined],
+    ["Output", "output_text", undefined],
+    ["Cache read", "cache_read_text", undefined],
   ] as const;
   const prices: SourcePriceFact[] = [];
   for (const [index, block] of blocks.entries()) {
     const table = markdownTable(block, ["Inference option", "Input", "Output", "Cache read"]);
     if (table === undefined) continue;
+    const columns = [
+      ...tokenColumns,
+      ...table.header.flatMap((header) => {
+        const duration = header.match(/^Cache write \(([1-9]\d*) (min|hours?)\)$/);
+        if (duration === null) return [];
+        const ttl = Number(duration[1]) * (duration[2] === "min" ? 60 : 3600);
+        return Number.isSafeInteger(ttl) ? [[header, "cache_write_text", ttl] as const] : [];
+      }),
+    ];
     for (const row of table.rows) {
       const option = row[table.header.indexOf("Inference option")];
       if (!option) continue;
@@ -749,7 +803,7 @@ function modelCardRates(
         });
         continue;
       }
-      const parsed = columns.flatMap(([header, meter]): SourcePriceFact[] => {
+      const parsed = columns.flatMap(([header, meter, ttl]): SourcePriceFact[] => {
         const index = table.header.indexOf(header);
         if (index < 0) return [];
         const raw = row[index] ?? "";
@@ -773,7 +827,7 @@ function modelCardRates(
               deployment_scope: scope === "global" ? "global_cross_region" : "geo_cross_region",
               service_tier: "standard",
               ...(scope === "geo" && geography !== undefined ? { inference_geo: geography } : {}),
-              ...(meter === "cache_write_text" ? { cache_ttl_seconds: 1_800 } : {}),
+              ...(ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
             },
             source_ref: sourceId,
             derived: false,
@@ -3376,7 +3430,11 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
         input.source.id,
         input.onPricingReconciliation,
       );
-      const pricing = [...listedPricing, ...cardRates, ...cardPricing.rates];
+      const combinedRates = [...listedPricing, ...cardRates, ...cardPricing.rates];
+      const pricing =
+        id === "moonshotai.kimi-k3"
+          ? kimiK3CacheWriteRates(card, cardRates, combinedRates, prices.vocabulary)
+          : combinedRates;
       if (cardRates.length > 0)
         input.onPricingReconciliation?.({
           disposition: "normalized",

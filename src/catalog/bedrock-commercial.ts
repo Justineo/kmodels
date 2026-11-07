@@ -7,7 +7,7 @@ import type {
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
-import { bedrockModelQuantity } from "./bedrock-commercial-source.ts";
+import { bedrockCacheWriteQuantity, bedrockModelQuantity } from "./bedrock-commercial-source.ts";
 import {
   applicabilitiesOverlap,
   canonicalizeApplicability,
@@ -260,6 +260,8 @@ function modelChargeBinding(
   rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
+  if (meter.value === "cache_write_text" && variant.charge_binding !== undefined)
+    return variant.charge_binding;
   const unit = variant.price.per;
   if (isStandardUnit(unit, "token")) {
     const sonic =
@@ -516,19 +518,12 @@ function tokenBindingSpec(
       keys: batch ? [] : ["runtime.converse.cache_write_tokens"],
       includeInvocationLog: false,
     };
-  const suffix = ttl === 300 ? "5m" : ttl === 3600 ? "1h" : `${ttl}s`;
-  const key = `cache_write_${suffix}_input_tokens`;
-  addUsageSignal(
-    input,
-    key,
-    `Amazon Bedrock cache-write input tokens billed at the ${suffix} TTL rate`,
-    tokenUnit,
-    "outcome",
-  );
+  const { atom, signal } = bedrockCacheWriteQuantity(ttl);
+  addAtom(input, atom);
   return {
-    signal: providerSignal(input, key),
+    signal,
     aggregation: batch ? "job" : "attempt",
-    keys: batch ? [] : [`runtime.converse.${key}`],
+    keys: batch ? [] : [`runtime.converse.${atom.key}`],
     includeInvocationLog: false,
   };
 }

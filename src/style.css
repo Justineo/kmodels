@@ -1171,7 +1171,7 @@ button.table-status-trigger {
   text-transform: uppercase;
 }
 
-.detail-disclosure > summary {
+.detail-disclosure > :is(summary, .detail-disclosure-trigger) {
   display: grid;
   min-height: var(--control-height-default);
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1191,7 +1191,7 @@ button.table-status-trigger {
   display: none;
 }
 
-.detail-disclosure > summary small {
+.detail-disclosure > :is(summary, .detail-disclosure-trigger) small {
   overflow-wrap: anywhere;
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
@@ -1201,13 +1201,14 @@ button.table-status-trigger {
   text-transform: none;
 }
 
-.detail-disclosure > summary .ui-icon {
+.detail-disclosure > :is(summary, .detail-disclosure-trigger) .ui-icon {
   width: var(--icon-size-xs);
   height: var(--icon-size-xs);
   transition: transform var(--duration-fast) var(--easing-standard);
 }
 
-.detail-disclosure[open] > summary .ui-icon {
+.detail-disclosure[open] > summary .ui-icon,
+.detail-disclosure > .detail-disclosure-trigger[aria-expanded="true"] .ui-icon {
   transform: rotate(90deg);
 }
 

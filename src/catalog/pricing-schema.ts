@@ -658,46 +658,62 @@ export const pricingBookSchema = z.strictObject({
   source_refs: z.array(nonEmptyString).min(1),
 });
 
+const namedPricingAtomSchema = z.strictObject({
+  kind: z.enum([
+    "billing_mode",
+    "credit_denomination",
+    "unit",
+    "meter",
+    "allowance_reset",
+    "aggregation",
+    "resource_kind",
+  ]),
+  key: nonEmptyString,
+  definition: nonEmptyString,
+});
+const pricingDimensionAtomSchema = z.strictObject({
+  kind: z.literal("dimension"),
+  key: nonEmptyString,
+  definition: nonEmptyString,
+  resolution_phase: applicabilityResolutionPhaseSchema,
+});
+const usageSignalAtomSchema = z.strictObject({
+  kind: z.literal("usage_signal"),
+  key: nonEmptyString,
+  definition: nonEmptyString,
+  unit: unitExpressionSchema,
+  resolution_phase: applicabilityResolutionPhaseSchema,
+});
+const categoricalValueAtomSchema = z.strictObject({
+  kind: z.literal("categorical_value"),
+  key: nonEmptyString,
+  dimension: priceDimensionSchema,
+  definition: nonEmptyString,
+  label: nonEmptyString.optional(),
+  schedule: recurringTimeScheduleSchema.optional(),
+});
+
 export const providerAtomRegistryEntrySchema = z.union([
-  z.strictObject({
-    kind: z.enum([
-      "billing_mode",
-      "credit_denomination",
-      "unit",
-      "meter",
-      "allowance_reset",
-      "aggregation",
-      "resource_kind",
-    ]),
-    key: nonEmptyString,
-    definition: nonEmptyString,
-  }),
-  z.strictObject({
-    kind: z.literal("dimension"),
-    key: nonEmptyString,
-    definition: nonEmptyString,
-    resolution_phase: applicabilityResolutionPhaseSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("usage_signal"),
-    key: nonEmptyString,
-    definition: nonEmptyString,
-    unit: unitExpressionSchema,
-    resolution_phase: applicabilityResolutionPhaseSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("categorical_value"),
-    key: nonEmptyString,
-    dimension: priceDimensionSchema,
-    definition: nonEmptyString,
-    label: nonEmptyString.optional(),
-    schedule: recurringTimeScheduleSchema.optional(),
-  }),
+  namedPricingAtomSchema,
+  pricingDimensionAtomSchema,
+  usageSignalAtomSchema.extend({ label: nonEmptyString.optional() }),
+  categoricalValueAtomSchema,
 ]);
 
 export const providerPricingVocabularySchema = z.strictObject({
   provider_id: nonEmptyString,
   atoms: z.array(providerAtomRegistryEntrySchema),
+});
+
+export const calculationProviderVocabularySchema = providerPricingVocabularySchema.extend({
+  atoms: z.array(
+    z.union([
+      namedPricingAtomSchema,
+      pricingDimensionAtomSchema,
+      usageSignalAtomSchema,
+      categoricalValueAtomSchema,
+    ]),
+  ),
 });
 
 const providerPricingSnapshotBase = {

@@ -20,10 +20,13 @@ and rates to that offer; it does not select a protocol or provide account config
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
 chunks remain the price source. Interactive conditions execute the same matching function as the
-public lookup, updating status, missing conditions and visible price rows together. Show every
-returned candidate, fixed ID conditions and compact mapping evidence without claiming a complete
-request quote. Unknown mappings preserve ordinary catalog prices with an explicit unverified-ID
-notice; known exclusions do not fall back to unfiltered rates. Snapshots without mappings retain the
+public lookup, updating status, missing conditions and visible price rows together. Prompt for the
+required pricing plan and conditions before showing rates. Once those inputs are complete, show
+applicable rates or explain unresolved evidence such as imprecise validity or conflicting prices.
+Show fixed ID conditions without claiming a complete request quote. Mapping evidence uses the
+shared detail disclosure and evidence link list. Unknown mappings preserve ordinary catalog prices
+with an explicit unverified-ID notice; known exclusions do not fall back to unfiltered rates.
+Snapshots without mappings retain the
 catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
 messages and rate annotations; namespace-qualified machine identifiers remain in structured data.
 See [Inference model ID pricing](inference-pricing.md) for producer limits.
@@ -241,6 +244,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   kind, context controls, current/upcoming timeline, rate grid, notes and charge definitions. Resource
   scope affects applicability and the card's context, never a second service browser or provider-specific
   presentation path. Provider services remain explicitly independent of model compatibility.
+  A button uses the detail disclosure styling and exposes the controlled panel's expanded state.
   Opening the disclosure loads provider resource metadata and the first 12 visible offer bodies.
   Pagination reveals another 12; a search can load remaining metadata chunks but hydrates only visible
   matches. Small lists omit search and paging controls. Offers already available through the model

@@ -309,7 +309,12 @@ describe("model pricing details", () => {
 
     expect(html).not.toContain("Base model");
     expect(html).toContain("$2");
-    expect(html).toContain('<details class="additional-costs"');
+    const panelId = html.match(
+      /<button[^>]*class="detail-disclosure-trigger"[^>]*aria-expanded="false"[^>]*aria-controls="([^"]+)"/,
+    )?.[1];
+    if (panelId === undefined) throw new Error("Missing other charges disclosure button");
+    expect(html).toContain(`id="${panelId}"`);
+    expect(html).toContain("#ui-chevron-right");
     expect(html).toContain("Other charges &amp; services");
     expect(html).toContain("Service charge");
     expect(html).toContain("Web Search");
@@ -344,7 +349,7 @@ describe("model pricing details", () => {
       detail: { offers: [mechanism, service] },
     });
     expect(html.match(/Other charges &amp; services/g)).toHaveLength(1);
-    expect(html.match(/class="additional-costs"/g)).toHaveLength(1);
+    expect(html.match(/class="detail-disclosure additional-costs"/g)).toHaveLength(1);
     expect(html).toContain("Web Search");
     expect(html).not.toContain("Test services");
     expect(html).not.toContain('class="provider-services"');

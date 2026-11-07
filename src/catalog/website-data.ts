@@ -890,6 +890,7 @@ function websiteOffer(
     ...scopeFields(state, labels),
   }));
   const rates: WebsitePricingOffer["rates"] = [];
+  const quantityLabels = new Map<string, string>();
   const allowances: WebsitePricingOffer["allowances"] = [];
   const contributions: WebsitePricingOffer["contributions"] = [];
   const unnormalized: WebsitePricingOffer["unnormalized"] = [];
@@ -900,8 +901,15 @@ function websiteOffer(
         const price = displayUnitPrice(variant.price, variant.observations, {
           tokenDisplay: "source",
         });
+        const key = `${term.id}:rate:${index}`;
+        const signal = variant.charge_binding?.signal;
+        const quantityLabel =
+          signal?.namespace === "provider"
+            ? usageSignalDetails(signal, atoms).publishedLabel
+            : undefined;
+        if (quantityLabel !== undefined) quantityLabels.set(key, quantityLabel);
         rates.push({
-          key: `${term.id}:rate:${index}`,
+          key,
           term_ref: term.id,
           label: meterLabel(term.meter, atoms),
           amount: price.amount,
@@ -963,9 +971,12 @@ function websiteOffer(
     labels.add(rate.driver.label);
     driverLabels.set(rate.label, labels);
   }
-  for (const rate of rates)
-    if (rate.driver !== undefined && (driverLabels.get(rate.label)?.size ?? 0) > 1)
+  for (const rate of rates) {
+    const quantityLabel = quantityLabels.get(rate.key);
+    if (quantityLabel !== undefined) rate.label = quantityLabel;
+    else if (rate.driver !== undefined && (driverLabels.get(rate.label)?.size ?? 0) > 1)
       rate.label = rate.driver.label;
+  }
 
   return {
     id: offer.id,
@@ -1617,11 +1628,13 @@ function quantitySemanticsKey(binding: ChargeBinding): string | undefined {
 }
 
 function usageSignalDetails(signal: UsageSignal, atoms: ProviderAtomIndex) {
-  if (signal.namespace === "kmodels") return standardUsageSignalDetails[signal.value];
+  if (signal.namespace === "kmodels")
+    return { ...standardUsageSignalDetails[signal.value], publishedLabel: undefined };
   const atom = providerAtom(atoms, signal.provider_id, "usage_signal", signal.value);
   if (atom.kind !== "usage_signal") throw new Error(`Invalid usage signal ${signal.value}`);
   return {
-    label: formatSentenceCase(signal.value),
+    label: atom.label ?? formatSentenceCase(signal.value),
+    publishedLabel: atom.label,
     definition: atom.definition,
     resolution_phase: atom.resolution_phase,
   };

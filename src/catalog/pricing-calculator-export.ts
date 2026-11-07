@@ -92,7 +92,14 @@ function exportProvider(
             publication: snapshot.publication,
             refresh_failure: snapshot.refresh_failure,
           },
-    vocabulary,
+    vocabulary: {
+      ...vocabulary,
+      atoms: vocabulary.atoms.map((atom) => {
+        if (atom.kind !== "usage_signal" || atom.label === undefined) return atom;
+        const { label: _, ...quantity } = atom;
+        return quantity;
+      }),
+    },
     books: books.map(exportBook),
     models: models.map((model) => ({
       model_ref: model.uid,

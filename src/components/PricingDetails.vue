@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, ref, watch } from "vue";
+import { computed, ref, useId, watch } from "vue";
 import { compareUtf8 } from "../catalog/canonical-value.ts";
 import type {
   WebsiteModel,
@@ -13,6 +13,7 @@ import InferencePrices from "./InferencePrices.vue";
 import PricingServiceOffer from "./PricingServiceOffer.vue";
 import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
+import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
@@ -29,6 +30,7 @@ const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
+const otherChargesId = useId();
 const otherChargesOpen = ref(false);
 const offers = computed(() => props.detail?.offers ?? []);
 const modelInferencePrices = computed(() =>
@@ -133,10 +135,14 @@ function offerState(offer: WebsitePricingOffer | undefined): string | undefined 
     : offer.state_summary;
 }
 
-function toggleOtherCharges(event: Event): void {
-  if (event.currentTarget instanceof HTMLDetailsElement)
-    otherChargesOpen.value = event.currentTarget.open;
-}
+const hasOtherCharges = computed(
+  () =>
+    supplementaryOffers.value.length > 0 ||
+    (props.provider?.pricing_coverage.standalone_resources ?? 0) > 0,
+);
+watch(hasOtherCharges, (available) => {
+  if (!available) otherChargesOpen.value = false;
+});
 </script>
 
 <template>
@@ -288,19 +294,20 @@ function toggleOtherCharges(event: Event): void {
         </div>
       </template>
     </template>
-    <details
-      v-if="
-        supplementaryOffers.length > 0 || (provider?.pricing_coverage.standalone_resources ?? 0) > 0
-      "
-      class="additional-costs"
-      @toggle="toggleOtherCharges"
-    >
-      <summary>
-        <strong>Other charges & services</strong>
+    <div v-if="hasOtherCharges" class="detail-disclosure additional-costs">
+      <button
+        type="button"
+        class="detail-disclosure-trigger"
+        :aria-expanded="otherChargesOpen"
+        :aria-controls="otherChargesId"
+        @click="otherChargesOpen = !otherChargesOpen"
+      >
+        <span>Other charges & services</span>
         <small>Separate from the rates above</small>
-      </summary>
+        <UiIcon name="chevron-right" />
+      </button>
 
-      <div class="supplementary-list">
+      <div v-show="otherChargesOpen" :id="otherChargesId" class="supplementary-list">
         <PricingServiceOffer
           v-for="offer in supplementaryOffers"
           :key="offer.id"
@@ -316,7 +323,7 @@ function toggleOtherCharges(event: Event): void {
           :excluded-offer-ids="offers.map(({ id }) => id)"
         />
       </div>
-    </details>
+    </div>
   </section>
 </template>
 
@@ -435,21 +442,18 @@ function toggleOtherCharges(event: Event): void {
   background: var(--color-surface-subtle);
 }
 
-.additional-costs > summary {
+.additional-costs > .detail-disclosure-trigger {
+  width: 100%;
   min-height: var(--control-height-comfortable);
   padding: var(--space-2-5) var(--space-3);
-  cursor: pointer;
+  text-align: left;
 }
 
-.additional-costs > summary small {
-  display: block;
-  margin-top: var(--space-0-5);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-regular);
+.additional-costs > .detail-disclosure-trigger:focus-visible {
+  outline-offset: calc(-1 * var(--stroke-focus));
 }
 
-.additional-costs[open] > summary {
+.additional-costs > .detail-disclosure-trigger[aria-expanded="true"] {
   border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 

@@ -557,7 +557,7 @@ it("never revives a withdrawn mapping from a similar catalog ID", () => {
   });
 });
 
-it("returns all commercial offers when the ID alone does not choose one", () => {
+it("retains all commercial offers in lookup and prompts the inspector for a plan", async () => {
   const data = structuredClone(typesafe);
   const book = data.providers[0]?.books[0];
   const original = book?.offers[0];
@@ -581,6 +581,25 @@ it("returns all commercial offers when the ID alone does not choose one", () => 
   expect(result.candidates.map(({ offer }) => offer.id).sort()).toEqual(
     [original.id, alternative.id].sort(),
   );
+  const pair = fixturePairs.get("typesafe");
+  if (pair === undefined) throw new Error("Missing TypeSafe fixture pair");
+  const website = websitePublication(pair.catalog, pair.envelope.data, "a".repeat(64));
+  const offer = website.offers.flatMap(({ offers }) => offers).find(({ id }) => id === original.id);
+  if (offer === undefined) throw new Error("Missing original website offer");
+  const price = {
+    ...websiteInferencePrice(result, new Map()),
+    matching: inferenceMatchData(createPricingSnapshot(data), [association]),
+  };
+  expect(queryWebsiteInferencePrice(price, [], at).requires_offer_choice).toBe(true);
+  expect(queryWebsiteInferencePrice(price, [], at, original.id).requires_offer_choice).toBe(false);
+  const html = await renderComponent(InferencePrices, {
+    modelRef: association.model_ref,
+    prices: [price],
+    offers: [offer, { ...offer, id: alternative.id, title: "Alternative plan" }],
+  });
+  expect(html).toContain('id="inference-price-plan"');
+  expect(html).toContain("Select pricing options");
+  expect(html).not.toContain('class="exact-rate"');
 });
 
 it("does not turn an expired tariff into a matched price", () => {
@@ -606,7 +625,7 @@ it("does not turn an expired tariff into a matched price", () => {
   );
 });
 
-it("returns published date-only rates as candidates without resolving their effective time", () => {
+it("keeps date-only rates visible as evidence without prompting for a pricing input", async () => {
   const data = structuredClone(typesafe);
   const association = typesafeRule();
   const offer = data.providers[0]?.books
@@ -644,6 +663,18 @@ it("returns published date-only rates as candidates without resolving their effe
       }),
     ],
   });
+  const pair = fixturePairs.get("typesafe");
+  if (pair === undefined) throw new Error("Missing TypeSafe fixture pair");
+  const website = websitePublication(pair.catalog, pair.envelope.data, "a".repeat(64));
+  const html = await renderComponent(InferencePrices, {
+    modelRef: association.model_ref,
+    prices: [projected],
+    offers: website.offers.flatMap(({ offers }) => offers),
+  });
+  expect(html).toContain("Price evidence incomplete");
+  expect(html).toContain("Price validity is not fully established");
+  expect(html).toContain('class="exact-rate"');
+  expect(html).not.toContain("Select pricing options");
 });
 
 it("isolates reusable lookup inputs and results from caller mutation", () => {
@@ -861,10 +892,14 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(html).toContain('aria-label="Copy inference model ID us.openai.gpt-6-astra"');
   expect(html).toContain("#ui-copy");
   expect(html).not.toContain(">Copy<");
-  expect(html).toContain("Candidate prices");
-  expect(html).toContain("$66");
-  expect(html).toContain("Geo cross region");
+  expect(html).toContain("Select pricing options");
+  expect(html).toContain("Remaining conditions");
+  expect(html).not.toContain("$66");
+  expect(html).not.toContain('class="exact-rate"');
+  expect(html).toContain('class="detail-disclosure"');
   expect(html).toContain("Mapping evidence");
+  expect(html).toContain("#ui-chevron-right");
+  expect(html).toContain('class="detail-disclosure-body evidence-list"');
   expect(html).not.toContain("Inspect target");
   expect(html).not.toContain("Task and documented scope");
 });
@@ -892,7 +927,7 @@ it("shares pricing across equivalent inference IDs and keeps different fixed sco
   expect(equivalent).not.toContain('id="inference-model-id"');
   expect(equivalent).toContain(`Copy inference model ID ${us.model_id}`);
   expect(equivalent).toContain(`Copy inference model ID ${alias.model_id}`);
-  expect(equivalent).toContain("$66");
+  expect(equivalent).toContain("Select pricing options");
 
   const mixed = await renderComponent(InferencePrices, {
     modelRef: us.model_ref,
