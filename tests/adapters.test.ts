@@ -11504,6 +11504,32 @@ describe("DashScope adapters", () => {
     expect(findings).toEqual([]);
   });
 
+  it("reads regional release entries from the embedded article payload", async () => {
+    const content = await fixture("dashscope/release-embedded-updates.html");
+    const page = `<script>window.__ICE_PAGE_PROPS__=${JSON.stringify({
+      docDetailData: { storeData: { data: { content } } },
+    })}</script>`;
+    const body = documentBundle(source("dashscope-releases"), page, []);
+    expect(
+      parse(source("dashscope-releases"), body).map(({ model_id, release_date }) => ({
+        model_id,
+        release_date,
+      })),
+    ).toEqual([
+      { model_id: "qwen3.7-plus", release_date: "2026-05-20" },
+      { model_id: "qwen3.7-plus-2026-05-26", release_date: "2026-05-21" },
+    ]);
+    expect(
+      parse(
+        source("dashscope-releases"),
+        body.replace("region-0-2026-05-20", "region-0-August"),
+      ).map(({ model_id, release_date }) => ({ model_id, release_date })),
+    ).toEqual([
+      { model_id: "qwen3.7-plus", release_date: "2026-05-27" },
+      { model_id: "qwen3.7-plus-2026-05-26", release_date: "2026-05-21" },
+    ]);
+  });
+
   it("unions the stable international and China lifecycle tables", async () => {
     const body = JSON.stringify({
       index: {
@@ -11750,7 +11776,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-releases")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
       format: "html",
-      extractorVersion: "dashscope-releases-v4",
+      extractorVersion: "dashscope-releases-v5",
       optional: true,
       retainOmittedFacts: true,
       linkedDocuments: {

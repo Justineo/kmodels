@@ -3799,7 +3799,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-releases", minModels: 150, maxModels: 700 },
-        extractorVersion: "dashscope-releases-v4",
+        extractorVersion: "dashscope-releases-v5",
         fields: ["release_date"],
         allowedHosts: ["www.alibabacloud.com", "help.aliyun.com"],
         maxResponseBytes: mebibytes(4),

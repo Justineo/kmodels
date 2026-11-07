@@ -138,7 +138,7 @@ Production collection uses only Alibaba Cloud first-party sources:
   facts from those links;
 - the fixed
   [international](https://www.alibabacloud.com/help/en/model-studio/model-release-notes) and
-  [China](https://help.aliyun.com/zh/model-studio/newly-released-models) update tables provide
+  [China](https://help.aliyun.com/zh/model-studio/newly-released-models) update pages provide
   release dates; and
 - the documented, authenticated regional deployment inventory is an optional availability
   cross-check when `DASHSCOPE_API_KEY` is configured.
@@ -203,13 +203,22 @@ slashes within an ID remain intact. Numeric JSX row/column spans use the same ta
 as HTML attributes; full-width divider rows carry no identity. Specification tables and prose outside the reviewed model
 sections cannot create identities.
 
-Lifecycle and release pages are structured table sources. Malformed dates or rows without an exact
-model ID are skipped at row scope and reported. When a release row omits its optional deployment-
-scope cell, the parser recovers the exact model ID from the shifted labeled column without
-inferring it from prose. The lifecycle summaries may temporarily contain only dated
+Lifecycle pages are structured table sources. Malformed dates or rows without an exact model ID are
+skipped at row scope and reported. The lifecycle summaries may temporarily contain only dated
 notice links and no exact model rows; that is a valid empty non-exhaustive observation and retains
 the last accepted lifecycle facts. The collector never guesses IDs from notice titles or depends on
 unstable announcement DOM or OCR.
+
+The release pages now publish dated regional update entries rather than a table. The article body is
+embedded in the page's `window.__ICE_PAGE_PROPS__` payload at `docDetailData.storeData.data.content`,
+so the parser reads that payload, then takes each `div.rkb-update` whose `id` is
+`region-<n>-<YYYY-MM-DD>`. The entry's `h4` supplies the exact model ID and the anchor date supplies
+the release date; the earliest date per exact ID wins across regions. Monthly notice blocks share the
+`rkb-update` class but use `release-month-<n>` anchors and an `h3` notice heading, so they never
+create identities. Entries with an unparseable date or without an exact model ID are skipped at
+entry scope and reported. Legacy HTML tables with `Time`/`Date` and `Model` columns are still read
+from any reviewed document, including the shifted-column recovery used when a row omits its
+optional deployment-scope cell.
 
 The authenticated deployment response requires a complete pagination envelope, but its model rows
 and plan entries are recognized independently. Unknown response fields are ignored, an unknown plan

@@ -2916,6 +2916,30 @@ export function parseDashscopeLifecycle(input: ParseInput): SourceParseResult {
   };
 }
 
+const embeddedArticleSchema = z.object({
+  docDetailData: z.object({
+    storeData: z.object({
+      data: z.object({ content: z.string() }),
+    }),
+  }),
+});
+
+/** Alibaba Cloud help pages render their article via an embedded page-props payload. */
+function embeddedArticle(body: string): string | undefined {
+  const marker = "__ICE_PAGE_PROPS__=";
+  const start = body.indexOf(marker);
+  if (start < 0) return undefined;
+  const script = body.slice(start + marker.length);
+  const end = script.indexOf("</script>");
+  let payload: unknown;
+  try {
+    payload = JSON.parse((end < 0 ? script : script.slice(0, end)).trim().replace(/;$/, ""));
+  } catch {
+    return undefined;
+  }
+  return embeddedArticleSchema.safeParse(payload).data?.docDetailData.storeData.data.content;
+}
+
 export function parseDashscopeReleases(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-releases")
@@ -2923,6 +2947,39 @@ export function parseDashscopeReleases(input: ParseInput): SourceParseResult {
   const dates = new Map<string, string>();
   const findings: string[] = [];
   for (const [documentIndex, body] of documentBodies(input.body).entries()) {
+    const article = embeddedArticle(body);
+    if (article !== undefined) {
+      const $ = load(article);
+      for (const [entryIndex, element] of $(".rkb-update").toArray().entries()) {
+        const anchor = $(element).attr("id") ?? "";
+        // Monthly notice blocks also use rkb-update; only regional model entries publish a date.
+        if (!anchor.startsWith("region-")) continue;
+        const path = `/documents/${documentIndex}/updates/${entryIndex}`;
+        const parsedDate = z.iso
+          .date()
+          .safeParse(/^region-\d+-(\d{4}-\d{2}-\d{2})$/.exec(anchor)?.[1]);
+        const entryIds = unique(
+          $(element)
+            .find("h4")
+            .first()
+            .text()
+            .split(",")
+            .flatMap((candidate) => exactId(candidate) ?? []),
+        );
+        if (!parsedDate.success) {
+          findings.push(`${path}/release_date`);
+          continue;
+        }
+        if (entryIds.length === 0) {
+          findings.push(`${path}/model`);
+          continue;
+        }
+        for (const id of entryIds) {
+          const current = dates.get(id);
+          if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
+        }
+      }
+    }
     for (const [tableIndex, table] of tables(body).entries()) {
       const timeColumn = column(table.headers, /^(?:Time|Date|时间)$/i);
       const modelColumn = column(table.headers, /^(?:Model|Model ID|模型 ?ID)$/i);
