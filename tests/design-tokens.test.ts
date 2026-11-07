@@ -120,8 +120,16 @@ describe("design token contract", () => {
     expect(globalStyles).toMatch(
       /\.fact-grid\s*>\s*div\s*\{[^}]*border:\s*var\(--stroke-hairline\) solid var\(--color-border-subtle\);[^}]*background:\s*var\(--color-surface\);/s,
     );
-    expect(globalStyles).toMatch(
+    const desktop = globalStyles.match(/@media \(width > 580px\) \{[\s\S]*?\n\}/)?.[0];
+    expect(desktop).toMatch(
       /\.fact-grid\s*>\s*div:nth-last-child\(2\):nth-child\(even\)\s*\{[^}]*border-end-end-radius:\s*var\(--list-surface-radius\);/s,
+    );
+    expect(globalStyles.replace(desktop ?? "", "")).not.toMatch(
+      /\.fact-grid\s*>\s*div:nth-last-child\(2\)/,
+    );
+    const mobile = globalStyles.match(/@media \(width <= 580px\) \{[\s\S]*?\n\}/)?.[0];
+    expect(mobile).toMatch(
+      /\.fact-grid\s*>\s*div:last-child\s*\{[^}]*border-end-start-radius:[^}]*border-end-end-radius:/s,
     );
   });
 

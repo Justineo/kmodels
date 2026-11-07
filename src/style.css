@@ -1229,31 +1229,33 @@ button.table-status-trigger {
   background: var(--color-surface);
 }
 
-.fact-grid > div:nth-child(even) {
-  border-left: 0;
-}
+@media (width > 580px) {
+  .fact-grid > div:nth-child(even) {
+    border-left: 0;
+  }
 
-.fact-grid > div:nth-child(n + 3) {
-  border-top: 0;
-}
+  .fact-grid > div:nth-child(n + 3) {
+    border-top: 0;
+  }
 
-.fact-grid > div:first-child {
-  border-start-start-radius: var(--list-surface-radius);
-}
+  .fact-grid > div:first-child {
+    border-start-start-radius: var(--list-surface-radius);
+  }
 
-.fact-grid > div:nth-child(2),
-.fact-grid > div:only-child {
-  border-start-end-radius: var(--list-surface-radius);
-}
+  .fact-grid > div:nth-child(2),
+  .fact-grid > div:only-child {
+    border-start-end-radius: var(--list-surface-radius);
+  }
 
-.fact-grid > div:last-child,
-.fact-grid > div:nth-last-child(2):nth-child(even) {
-  border-end-end-radius: var(--list-surface-radius);
-}
+  .fact-grid > div:last-child,
+  .fact-grid > div:nth-last-child(2):nth-child(even) {
+    border-end-end-radius: var(--list-surface-radius);
+  }
 
-.fact-grid > div:last-child:nth-child(odd),
-.fact-grid > div:nth-last-child(2):nth-child(odd) {
-  border-end-start-radius: var(--list-surface-radius);
+  .fact-grid > div:last-child:nth-child(odd),
+  .fact-grid > div:nth-last-child(2):nth-child(odd) {
+    border-end-start-radius: var(--list-surface-radius);
+  }
 }
 
 .fact-grid dt {
@@ -1656,16 +1658,8 @@ button.table-status-trigger {
     grid-template-columns: 1fr;
   }
 
-  .fact-grid > div:nth-child(even) {
-    border-left: var(--stroke-hairline) solid var(--color-border-subtle);
-  }
-
   .fact-grid > div:nth-child(n + 2) {
     border-top: 0;
-  }
-
-  .fact-grid > div:nth-child(n) {
-    border-radius: var(--radius-none);
   }
 
   .fact-grid > div:first-child {
@@ -1676,10 +1670,6 @@ button.table-status-trigger {
   .fact-grid > div:last-child {
     border-end-start-radius: var(--list-surface-radius);
     border-end-end-radius: var(--list-surface-radius);
-  }
-
-  .fact-grid > div:only-child {
-    border-radius: var(--list-surface-radius);
   }
 
   .modality-flow {

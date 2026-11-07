@@ -145,6 +145,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   explains that these items are separate and expands them in that order. Each
   offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
   two-column definition-grid structure as Overview and collapse to one column on narrow screens.
+  In one column, only the first and last rows have rounded outer edges.
   Every rate occupies one column, so an unpaired final rate remains in the left column rather than
   stretching across the row. Each data item owns its own border and surface, so the unused right
   half remains outside the card instead of appearing as part of it. Rate cards omit self-evident
