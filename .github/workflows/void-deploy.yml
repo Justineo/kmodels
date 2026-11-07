@@ -28,7 +28,7 @@ jobs:
           filter: blob:none
           ref: main
           sparse-checkout-cone-mode: false
-          # Keep the full TypeScript check scope; production reads only these data projections.
+          # Keep the full TypeScript check scope and the checked-out snapshot pointer.
           sparse-checkout: |
             /*
             !/*/
@@ -37,10 +37,7 @@ jobs:
             /tests/
             !/tests/fixtures/
             /public/
-            /data/website-assets.json
-            /data/website-assets.pack
-            /data/export-assets.json
-            /data/export-assets.pack
+            /data/catalog-snapshot.json
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -53,6 +50,9 @@ jobs:
 
       - name: Install dependencies
         run: vp install --frozen-lockfile
+
+      - name: Hydrate the checked-out catalog
+        run: vp node scripts/catalog-snapshot.ts hydrate
 
       - name: Build static site
         run: vp run build

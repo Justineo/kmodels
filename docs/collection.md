@@ -398,7 +398,7 @@ Collection has four data layers:
 Only layers 2 through 4 are durable. Consumer code never reads layers 2 or 3
 during normal development, build, or browser execution.
 
-The committed generated state is:
+Git tracks only `data/catalog-snapshot.json`. The referenced archive contains the generated state:
 
 - `data/catalog.json`
 - `data/pricing.json.gz` (the gzip-compressed canonical pricing envelope)
@@ -421,17 +421,18 @@ pair identity. Recovery stores and verifies that small resource with the pair an
 are unchanged. Provider extraction of these direct mappings remains under migration; this optional
 input does not authorize generating a mapping from display aliases or refreshing durable data.
 
-Checked-in mirror recovery uses the same single semantic-validation pass instead
+Hydrated mirror recovery uses the same single semantic-validation pass instead
 of validating the decoded pricing graph twice. One projection stage compresses
 independent entries and the UI/export profiles concurrently before the accepted-pair
 pointer advances. The atomic current pointer and its immutable pair snapshot
 remain authoritative during collection and recovery; canonical and derived
 mirrors are repaired from that pointer after interruption. Once
-those mirrors are durable, superseded local snapshots are removed. Git history
-retains published pairs, while ignored crash-recovery state stays bounded to
-the only pair it can recover. The committed mirrors define the pair in a checkout. Both
-`vp run prepare:assets` and `vp run compile:pricing` read and validate those mirrors directly;
-neither restores an ignored recovery snapshot over checked-out files. `prepare:assets` regenerates
+those mirrors are durable, superseded local snapshots are removed. GitHub retains archives for
+seven days and preserves the current snapshot through an extended refresh outage.
+The checked-out pointer identifies the pair. `vp node scripts/catalog-snapshot.ts hydrate`
+verifies its archive and restores the ignored mirrors and local recovery baseline before use.
+Both `vp run prepare:assets` and `vp run compile:pricing` read and validate those mirrors directly.
+`prepare:assets` regenerates
 projections, while `compile:pricing` checks the parsed input against the checked-out catalog,
 reassembles canonical pricing, and then publishes the resulting pair and projections. An invalid
 pair or mismatched compilation input fails before publication and leaves the mirrors unchanged.

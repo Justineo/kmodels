@@ -42,7 +42,7 @@ Profiles never guess a “latest” version. Pricing is bound to the exact catal
 
 ```sh
 vp install
-vp run collect
+vp node scripts/catalog-snapshot.ts hydrate
 vp dev
 ```
 
@@ -56,4 +56,6 @@ vp dev
 | `vp test --run`          | Run fixtures, drift guards, and behavior tests                  |
 | `vp run build`           | Build the static site and materialize validated JSON exports    |
 
-GitHub Actions refreshes public sources hourly and commits only validated output. Deployment and optional source credentials are documented in [`docs/automation.md`](./docs/automation.md).
+Run hydration again after switching to a checkout with a different snapshot pointer. GitHub Actions
+refreshes public sources hourly and commits the verified snapshot pointer. Deployment and optional
+source credentials are documented in [`docs/automation.md`](./docs/automation.md).

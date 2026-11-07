@@ -348,21 +348,21 @@ Status: implemented
   synchronized. Native binaries arrive as optional platform packages, without install scripts.
   Local macOS and glibc-based Linux CI are supported; Alpine/musl is not. Editors must select
   `node_modules/typescript/lib` as the workspace TypeScript SDK to use the same bridge.
-- The scheduled refresh runs hourly with jitter and commits the validated
-  catalog, public-only parsed pricing compiler input, canonical pricing,
-  inference request ID mappings, derived UI/export asset indexes and packs, fetch state,
-  quarantine, and refresh summary using a `chore(data): ...` commit. Publication fails if
-  collection leaves non-ignored data changes outside the staged commit. Its commit records the
+- The scheduled refresh runs hourly with jitter and uploads the verified catalog snapshot
+  to the `catalog-snapshots` GitHub Release. The archive contains the eleven generated mirror
+  paths, including the public-only compiler input and fetch state. The refresh compares the
+  uploaded asset's SHA-256 and byte count before committing only `data/catalog-snapshot.json`.
+  The pointer commit records the
   producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
   out full commit/tree history with `filter: blob:none` so the website generation-time
   link can resolve the latest catalog-producing commit without downloading historical
   file contents, and prefer that run, while manually produced catalog commits fall
   back to their GitHub commit page. A non-cone sparse checkout includes root files,
-  `src/`, `scripts/`, test source files, `public/`, and only the website/export projection
-  manifests and packs from `data/`. Scripts and test sources preserve the production
-  build's full TypeScript check scope; fixtures, guides, collector state, and canonical
-  data files are unnecessary for that build. The catalog history query uses Git trees
-  even though `data/catalog.json` is absent from the working tree. After a refresh commits and
+  `src/`, `scripts/`, test source files, `public/`, and the snapshot pointer.
+  CI, repair, refresh, and deployment hydrate the snapshot from that exact pointer before
+  reading generated data. Hydration verifies the entire archive before replacing the mirrors.
+  It resets interrupted collector state when the checkout selects a different snapshot.
+  After a refresh commits and
   pushes changed data, it explicitly dispatches the dedicated deployment
   workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
   not emit another `push` workflow run. Void accepts the dispatch workflow's
@@ -376,10 +376,21 @@ Status: implemented
   remote, and failures to check the remote, still fail the job.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
-  summary and keeps the complete report as a 30-day artifact. The step log
+  summary and keeps the complete report as a seven-day artifact. The step log
   points to the summary and keeps provider warning annotations. Local reporting
   prints the full Markdown to stdout. A failure before report creation is called
   out explicitly and commits nothing.
+- The independent refresh cleanup job deletes release assets captured more than seven days ago
+  after verifying the current asset still exists with the expected digest. The current asset is
+  exempt. Assets are named by capture time and digest and are uploaded without replacement.
+  A validated upload whose Git push loses a race expires normally. Audit the published pointer
+  commits and their Actions trailers, or check out a recent pointer and hydrate it.
+  To restore a historical snapshot, hydrate and validate it in an isolated checkout, then publish
+  those verified bytes with a fresh capture time and advance the pointer from current `main`.
+  The one-time history cutover keeps the annotated `catalog-pre-cutover-audit` tag for seven days
+  after migration, allowing the audit window to span both storage layouts. Cleanup removes that
+  tag after the window. The release tag itself points at an independent root so it cannot pin
+  old generated Git history.
 - The report's provider table pairs current model, source, and pricing-coverage counts with their
   deltas. Model and source deltas show only nonzero `+`, `−`, and `~` terms; coverage deltas
   separately show changes in resolved and unknown model counts. Catalog publication and pricing

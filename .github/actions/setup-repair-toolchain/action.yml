@@ -17,3 +17,7 @@ runs:
         vp env install
         vp install --frozen-lockfile
         vp env doctor
+
+    - name: Hydrate the checked-out catalog
+      shell: bash
+      run: vp node scripts/catalog-snapshot.ts hydrate

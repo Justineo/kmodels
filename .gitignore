@@ -29,7 +29,7 @@ dist-ssr
 .env.*
 !.env.example
 
-# Generated catalog artifacts and retired raw-response storage
-/data/snapshots/
-/data/.catalog-*/
+# Generated catalog artifacts are restored from the checked-out snapshot pointer.
+/data/*
+!/data/catalog-snapshot.json
 /public/data/

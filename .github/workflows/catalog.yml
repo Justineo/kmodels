@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   collect:
+    if: github.repository == 'Justineo/kmodels' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -34,6 +35,9 @@ jobs:
 
       - name: Install dependencies
         run: vp install --frozen-lockfile
+
+      - name: Hydrate the accepted catalog
+        run: vp node scripts/catalog-snapshot.ts hydrate
 
       - name: Collect official sources
         run: vp run collect
@@ -100,24 +104,21 @@ jobs:
             ${{ runner.temp }}/refresh-report.json
             ${{ runner.temp }}/generated-verification.txt
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
 
       - name: Build generated catalog
         run: vp run build
 
-      - name: Commit validated changes
+      - name: Publish the validated catalog snapshot
         id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git add data/catalog.json data/pricing.json.gz data/pricing-inputs.json.gz data/inference-pricing.json data/website-assets.json data/website-assets.pack data/export-assets.json data/export-assets.pack data/fetch-state.json data/quarantine.json data/refresh-summary.json
-          if ! git diff --quiet -- data/ || [ -n "$(git ls-files --others --exclude-standard -- data/)" ]; then
-            echo "::error::Refresh left generated catalog changes outside the staged publication."
-            git status --short -- data/
-            exit 1
-          fi
-          if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          set -euo pipefail
+          test "$(git ls-files -- data/)" = data/catalog-snapshot.json
+          vp node scripts/catalog-snapshot.ts publish "$RUNNER_TEMP/catalog-snapshot"
+          cp "$RUNNER_TEMP/catalog-snapshot/catalog-snapshot.json" data/catalog-snapshot.json
+          git add data/catalog-snapshot.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(data): refresh provider catalog" -m "Kmodels-Refresh-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -137,5 +138,28 @@ jobs:
       - name: Deploy refreshed catalog
         if: steps.commit.outputs.changed == 'true'
         run: gh workflow run void-deploy.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  prune:
+    if: github.repository == 'Justineo/kmodels' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the current pointer
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: .node-version
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Prune expired catalog snapshots
+        run: vp node scripts/catalog-snapshot.ts prune
         env:
           GH_TOKEN: ${{ github.token }}

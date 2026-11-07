@@ -30,6 +30,7 @@ function catalogRevision(): CatalogRevision {
     "-1",
     "--format=%H%x00%(trailers:key=Kmodels-Refresh-Run,valueonly)",
     "--",
+    "data/catalog-snapshot.json",
     "data/catalog.json",
   ]);
   const separator = log?.indexOf("\0") ?? -1;

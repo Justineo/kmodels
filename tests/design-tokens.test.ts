@@ -61,7 +61,7 @@ describe("design token contract", () => {
     {
       name: "raw radii",
       pattern: /border-radius:\s*[^;]+/,
-      allowed: /^border-radius:\s*var\(/,
+      allowed: /^border-radius:\s*(?:0|var\(--[\w-]+\))(?:\s+(?:0|var\(--[\w-]+\))){0,3}$/,
     },
     {
       name: "raw shadows",

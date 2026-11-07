@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
+      - name: Hydrate the checked-out catalog
+        run: vp node scripts/catalog-snapshot.ts hydrate
+
       - name: Validate affected contracts
         id: validate
         env:
