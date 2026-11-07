@@ -3964,7 +3964,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-lifecycle", minModels: 0, maxModels: 100 },
-        extractorVersion: "cerebras-lifecycle-v3",
+        extractorVersion: "cerebras-lifecycle-v4",
         fields: [
           "model_id",
           "tasks",
@@ -3999,7 +3999,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-releases", minModels: 0, maxModels: 100 },
-        extractorVersion: "cerebras-releases-v2",
+        extractorVersion: "cerebras-releases-v3",
         fields: ["release_date"],
         allowedHosts: ["inference-docs.cerebras.ai"],
         maxResponseBytes: mebibytes(1),

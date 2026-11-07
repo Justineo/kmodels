@@ -9642,6 +9642,62 @@ describe("Cerebras adapter", () => {
     );
   });
 
+  it("parses flattened lifecycle date headings and retires removed shared-inference models", async () => {
+    const models = await lifecycle(await fixture("cerebras/lifecycle-flattened.md"));
+    expect(models).toHaveLength(7);
+    expect(models.map(({ model_id }) => model_id)).toEqual(
+      expect.arrayContaining([
+        "gemma-4-31b",
+        "llama-3.3-70b",
+        "llama3.1-70b",
+        "llama3.1-8b",
+        "qwen-3-235b-a22b-instruct-2507",
+        "qwen-3-32b",
+        "zai-glm-4.7",
+      ]),
+    );
+    expect(models.find(({ model_id }) => model_id === "gemma-4-31b")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-09-03",
+      replacement_model_ids: [],
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "gemma-4-31b")?.deprecated_at,
+    ).toBeUndefined();
+    expect(models.find(({ model_id }) => model_id === "zai-glm-4.7")).toMatchObject({
+      status: "deprecated",
+      deprecated_at: "2026-08-17",
+    });
+    expect(models.find(({ model_id }) => model_id === "qwen-3-32b")).toMatchObject({
+      deprecated_at: "2026-02-16",
+      replacement_model_ids: ["gpt-oss-120b"],
+    });
+    expect(models.find(({ model_id }) => model_id === "llama3.1-70b")).toMatchObject({
+      deprecated_at: "2025-01-17",
+      replacement_model_ids: ["llama-3.3-70b"],
+    });
+  });
+
+  it("parses flattened release date headings without treating unrelated sections as releases", async () => {
+    const models = await parse("cerebras-releases", "cerebras/releases-flattened.md");
+    expect(models).toHaveLength(5);
+    expect(models.find(({ model_id }) => model_id === "qwen-3.8-27b")?.release_date).toBe(
+      "2026-09-03",
+    );
+    expect(models.find(({ model_id }) => model_id === "gpt-oss-120b")?.release_date).toBe(
+      "2025-08-05",
+    );
+    expect(models.find(({ model_id }) => model_id === "zai-glm-4.7")?.release_date).toBe(
+      "2026-01-06",
+    );
+    expect(models.find(({ model_id }) => model_id === "qwen-3-32b")?.release_date).toBe(
+      "2025-05-14",
+    );
+    expect(models.find(({ model_id }) => model_id === "llama-3.3-70b")?.release_date).toBe(
+      "2024-12-10",
+    );
+  });
+
   it("retains every source that finds an exact model", async () => {
     const publicModels = await parse("cerebras-models", "cerebras/public.json");
     const releaseModels = await parse("cerebras-releases", "cerebras/releases.md");

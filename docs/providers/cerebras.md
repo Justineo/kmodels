@@ -143,6 +143,13 @@ calculated and the synchronous rate is not copied into Batch.
   Catalog rows accept relative links and absolute links on the exact official documentation host;
   the Markdown suffix is removed for the card join. Other hosts cannot establish a model identity.
   The model selection guide is excluded with or without the Markdown suffix.
+- Lifecycle and release notes accept both structured `<Update label="YYYY-MM-DD">` blocks and the
+  flattened Markdown export's own `**YYYY-MM-DD**` heading. A dated section establishes a
+  deprecation, retirement or release only through its exact owned wording: `Deprecated` headings and
+  the deprecation sentence, `no longer available with Cerebras Shared Inference` for retirement, and
+  the documented release phrases. Release names may be plain text or a Markdown link; the exact code
+  span after the colon remains the identity. Parameter deprecations, availability notes rendered as
+  ordinary prose and unrelated sections establish no lifecycle fact.
 - Malformed inventory rows, rate components, model cards, usage fields, and lifecycle references are
   isolated to the affected claim.
 - Missing model cards retain exact catalog identities. Missing usage companions retain numeric rates

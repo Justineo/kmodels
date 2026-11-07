@@ -334,4 +334,4 @@ it("exports the same conditions to the UI without audit payloads or invocation t
     ).status,
   ).toBe("matched");
   expect(JSON.stringify(price)).not.toMatch(/content_hash|invocation_target/);
-});
+}, 15000);

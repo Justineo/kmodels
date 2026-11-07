@@ -862,11 +862,25 @@ interface Update {
   body: string;
 }
 
+const datedHeading = /^\*\*(\d{4}-\d{2}-\d{2})\*\*$/;
+
 function updates(body: string): Update[] {
-  return [...body.matchAll(/<Update label="(\d{4}-\d{2}-\d{2})">([\s\S]*?)<\/Update>/g)].flatMap(
-    (match) =>
-      match[1] === undefined || match[2] === undefined ? [] : [{ date: match[1], body: match[2] }],
+  const structured = [
+    ...body.matchAll(/<Update label="(\d{4}-\d{2}-\d{2})">([\s\S]*?)<\/Update>/g),
+  ].flatMap((match) =>
+    match[1] === undefined || match[2] === undefined ? [] : [{ date: match[1], body: match[2] }],
   );
+  if (structured.length > 0) return structured;
+  const lines = body.split(/\r?\n/);
+  const headings: { date: string; line: number }[] = [];
+  for (const [line, value] of lines.entries()) {
+    const date = datedHeading.exec(value.trim())?.[1];
+    if (date !== undefined) headings.push({ date, line });
+  }
+  return headings.map(({ date, line }, position) => ({
+    date,
+    body: lines.slice(line + 1, headings[position + 1]?.line ?? lines.length).join("\n"),
+  }));
 }
 
 function deprecatedIds(input: Input, body: string): string[] {
@@ -877,6 +891,13 @@ function deprecatedIds(input: Input, body: string): string[] {
     );
   const sentence = body.match(/The `([^`]+)` model has been deprecated\./)?.[1];
   return validModelId(input, sentence, "deprecated_model_id_drift");
+}
+
+function retiredIds(input: Input, body: string): string[] {
+  const sentence = body.match(
+    /Starting [A-Z][a-z]+ \d{1,2}, \d{4}, `([^`]+)` is no longer available with Cerebras Shared Inference\./,
+  )?.[1];
+  return validModelId(input, sentence, "retired_model_id_drift");
 }
 
 function validModelId(input: Input, value: string | undefined, reasonCode: string): string[] {
@@ -896,14 +917,19 @@ function bind(input: Input, map: Map<string, string>, key: string, id: string): 
   map.set(key, id);
 }
 
+function releaseName(value: string): string {
+  const linked = value.match(/^\[([^\]]+)]\([^)]*\)$/)?.[1];
+  return text(linked ?? value);
+}
+
 function namedReleaseIds(input: Input, body: string): Map<string, string> {
   const result = new Map<string, string>();
   for (const match of body.matchAll(
-    /Added (?:(?:preview|production) )?support for ([^:\n]{1,160}):\s*`([^`]+)`/gi,
+    /Added (?:(?:preview|production) )?support for ([^\n]{1,200}?):\s*`([^`]+)`/gi,
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
     const [id] = validModelId(input, match[2], "release_model_id_drift");
-    if (id !== undefined) bind(input, result, text(match[1]), id);
+    if (id !== undefined) bind(input, result, releaseName(match[1]), id);
   }
   for (const match of body.matchAll(
     /\[([^\]]+)]\(\/models\/[a-z0-9-]+\)\s+\(`([^`]+)`\) is now available in preview/gi,
@@ -953,9 +979,11 @@ function replacements(
   const recommendation = body.match(/We recommend[\s\S]*?(?:\n\n|$)/)?.[0];
   if (recommendation === undefined) return [];
   const result: string[] = [];
-  for (const match of recommendation.matchAll(/\[([^\]]+)]\((\/models\/[a-z0-9-]+)\)/g)) {
+  for (const match of recommendation.matchAll(
+    /\[([^\]]+)]\((?:https:\/\/inference-docs\.cerebras\.ai)?(\/models\/[a-z0-9.-]+)\)/g,
+  )) {
     if (match[1] === undefined || match[2] === undefined) continue;
-    const path = match[2];
+    const path = match[2].replace(/\.md$/, "");
     const pathId = references.paths.get(path);
     const nameId = references.names.get(text(match[1]));
     if (pathId !== undefined && nameId !== undefined && pathId !== nameId) {
@@ -986,23 +1014,28 @@ export function parseCerebrasLifecycle(input: Input): SourceParseResult {
     document(input, bundle, "/support/change-log.md"),
   );
   const models = updates(bundle.index.body).flatMap((update): ProviderModel[] => {
-    const ids = deprecatedIds(input, update.body);
-    if (ids.length === 0) return [];
+    const deprecated = deprecatedIds(input, update.body);
+    const retired = retiredIds(input, update.body);
+    if (deprecated.length === 0 && retired.length === 0) return [];
+    const ids = [...new Set([...deprecated, ...retired])];
     const replacementIds = replacements(input, update.body, ids, references);
-    return ids.map((id): ProviderModel => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id,
-        name: id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      tasks: ["text_generation"],
-      modalities: { input: ["text"], output: ["text"] },
-      deprecated_at: update.date,
-      status: "deprecated",
-      replacement_model_ids: replacementIds,
-    }));
+    return ids.map((id): ProviderModel => {
+      const isRetired = retired.includes(id);
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        tasks: ["text_generation"],
+        modalities: { input: ["text"], output: ["text"] },
+        ...(isRetired ? { retired_at: update.date } : { deprecated_at: update.date }),
+        status: isRetired ? "retired" : "deprecated",
+        replacement_model_ids: replacementIds,
+      };
+    });
   });
   const known = new Set([...models.map(({ model_id }) => model_id), ...references.paths.values()]);
   for (const model of models)
@@ -1017,6 +1050,13 @@ export function parseCerebrasLifecycle(input: Input): SourceParseResult {
 function releaseIds(input: Input, body: string): string[] {
   const ids = [...body.matchAll(/\(`([^`]+)`\) is now available in preview/gi)].flatMap((match) =>
     validModelId(input, match[1], "release_model_id_drift"),
+  );
+  ids.push(
+    ...[
+      ...body.matchAll(
+        /\[`([^`]+)`]\(https:\/\/inference-docs\.cerebras\.ai\/models\/[a-z0-9.-]+\) is now available on Cerebras public endpoints/gi,
+      ),
+    ].flatMap((match) => validModelId(input, match[1], "release_model_id_drift")),
   );
   ids.push(...namedReleaseIds(input, body).values());
   return [...new Set(ids)];
