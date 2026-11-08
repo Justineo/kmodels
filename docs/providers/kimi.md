@@ -136,8 +136,18 @@ public rate pages. Offers therefore carry no inferred account-settlement declara
 Topology admission requires resources, offer relations and charge bindings; settlement is not an
 adopted source contract.
 
-The catalog marks K2.5 and every Moonshot V1 variant as retired on August 31, 2026. Their former
-price pages no longer publish rate tables, so they have no current offers.
+The catalog publishes exactly one current table (`多模态模型` / `Multi-modal Model`) and one
+`已下线模型` / `Deprecated Models` table, each with `模型名称`/`描述` or `Model Name`/`Description`
+columns. Rows in the second table own their lifecycle state: a description stating that existing
+users can continue using the model (`仍可继续使用` / `can continue using`) is `deprecated`, and a row
+without that statement is `retired`. Document-level `>` retirement blockquotes are optional; when a
+bundle still carries them their date and replacement link apply to the matching row, and a `>` line
+naming a model with a discontinuation the parser cannot read fails the source instead of being
+skipped. K2.6, K2.7 Code and K2.7 Code HighSpeed are therefore `deprecated` — closed to new
+registrations, still served to earlier users, with a full shutdown announced only as an expectation
+(December 2026) that is not recorded as a date. K2.5 and every Moonshot V1 variant are `retired`, and
+the catalog no longer publishes their shutdown date. Their former price pages no longer publish rate
+tables, so they have no current offers, while deprecated models still bind their published rates.
 
 The rendered regional WebSearch price pages publish separate Responses and Formula rates of
 CNY 0.03 / USD 0.005 per billable execution. The Responses tool charges for executed searches

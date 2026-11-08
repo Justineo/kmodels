@@ -1,42 +1,43 @@
+> ## Documentation Index
+>
+> Fetch the complete documentation index at: https://platform.kimi.ai/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
 # Model List
 
-<Warning>
-  The `kimi-k2.5` and `moonshot-v1` series were officially retired on August 31, 2026. Calls to these models now return a 404 (model not found) error. Please migrate to [kimi-k3](/docs/guide/kimi-k3-quickstart) or other latest models.
-</Warning>
+> Review currently available Kimi multimodal and coding models, plus migration guidance for discontinued models.
+
+Click [here](https://platform.kimi.ai/docs/pricing/chat.md) to see more details of model price.
 
 ## Multi-modal Model
 
-| Model Name                 | Description                                                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `kimi-k3`                  | Native visual understanding and a 1M-token context window, designed for deep reasoning.                               |
-| `kimi-k2.7-code`           | Coding model. Context 256k                                                                                            |
-| `kimi-k2.7-code-highspeed` | High-Speed version with output speed of approximately 180 Tokens/s and up to 260 Tokens/s in short context scenarios. |
-| `kimi-k2.6`                | Supports visual and text input, thinking and non-thinking modes. Context 256k                                         |
+| Model Name                | Description                                                                                                                                                                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kimi-k3.1-pro`           | The first model of the new K3.1 series and Kimi's most capable flagship to date: a 3T-class model with native visual understanding and a 1M-token context window, delivering substantial improvements in coding, 3D creation, and financial research and modeling.                            |
+| `kimi-k3.1-pro-highspeed` | The high-speed variant of Kimi K3.1 Pro — same intelligence, about 2-3× the speed.                                                                                                                                                                                                            |
+| `kimi-k3`                 | Kimi's previous-generation flagship and the world's first open-source 3T-class model (2.8 trillion parameters); with native visual understanding and a 1M-token context window, designed for frontier intelligence scenarios such as long-horizon coding, knowledge work, and deep reasoning. |
 
 ## Deprecated Models
 
-> `kimi-k2.5` was officially discontinued on **August 31, 2026** and is no longer maintained or supported. Please use the latest Kimi model [kimi-k3](/docs/guide/kimi-k3-quickstart).
+| Model Name                        | Description                                                                                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kimi-k2.7-code`                  | No longer available to newly registered users; users registered before November 1 can continue using it. Deprecation expected in late December 2026. |
+| `kimi-k2.7-code-highspeed`        | No longer available to newly registered users; users registered before November 1 can continue using it. Deprecation expected in late December 2026. |
+| `kimi-k2.6`                       | No longer available to newly registered users; users registered before November 1 can continue using it. Deprecation expected in late December 2026. |
+| `kimi-k2.5`                       | Deprecated                                                                                                                                           |
+| `moonshot-v1-8k`                  | Deprecated                                                                                                                                           |
+| `moonshot-v1-32k`                 | Deprecated                                                                                                                                           |
+| `moonshot-v1-128k`                | Deprecated                                                                                                                                           |
+| `moonshot-v1-auto`                | Deprecated                                                                                                                                           |
+| `moonshot-v1-8k-vision-preview`   | Deprecated                                                                                                                                           |
+| `moonshot-v1-32k-vision-preview`  | Deprecated                                                                                                                                           |
+| `moonshot-v1-128k-vision-preview` | Deprecated                                                                                                                                           |
+| `kimi-k2-0905-preview`            | Deprecated                                                                                                                                           |
+| `kimi-k2-0711-preview`            | Deprecated                                                                                                                                           |
+| `kimi-k2-turbo-preview`           | Deprecated                                                                                                                                           |
+| `kimi-k2-thinking`                | Deprecated                                                                                                                                           |
+| `kimi-k2-thinking-turbo`          | Deprecated                                                                                                                                           |
+| `kimi-latest`                     | Deprecated                                                                                                                                           |
+| `kimi-thinking-preview`           | Deprecated                                                                                                                                           |
 
-> The `moonshot-v1` series models (including `moonshot-v1-auto` and the `-vision-preview` variants) were officially discontinued on **August 31, 2026** and are no longer maintained or supported. Please use the latest Kimi model [kimi-k3](/docs/guide/kimi-k3-quickstart).
-
-> The `kimi-k2` series models were officially discontinued on **May 25, 2026** and are no longer maintained or supported. Please use the latest Kimi model [kimi-k3](/docs/guide/kimi-k3-quickstart).
-
-| Model Name                        | Description |
-| --------------------------------- | ----------- |
-| `kimi-k2.5`                       | Deprecated  |
-| `moonshot-v1-8k`                  | Deprecated  |
-| `moonshot-v1-32k`                 | Deprecated  |
-| `moonshot-v1-128k`                | Deprecated  |
-| `moonshot-v1-auto`                | Deprecated  |
-| `moonshot-v1-8k-vision-preview`   | Deprecated  |
-| `moonshot-v1-32k-vision-preview`  | Deprecated  |
-| `moonshot-v1-128k-vision-preview` | Deprecated  |
-| `kimi-k2-0905-preview`            | Deprecated  |
-| `kimi-k2-0711-preview`            | Deprecated  |
-| `kimi-k2-turbo-preview`           | Deprecated  |
-| `kimi-k2-thinking`                | Deprecated  |
-| `kimi-k2-thinking-turbo`          | Deprecated  |
-
-> `kimi-latest` was officially discontinued on **January 28, 2026** and is no longer maintained or supported. Please use the latest Kimi model [kimi-k3](/docs/guide/kimi-k3-quickstart).
-
-> `kimi-thinking-preview` was officially discontinued on **November 11, 2025** and is no longer maintained or supported. We recommend upgrading to the latest model [kimi-k3](/docs/guide/kimi-k3-quickstart).
+For further assistance, please [contact sales](https://platform.kimi.ai/contact-sales).

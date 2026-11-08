@@ -623,9 +623,10 @@ function retirementNotices(body: string): RetirementNotice[] {
   const notices = body.split(/\r?\n/).flatMap((line) => {
     if (!line.startsWith(">")) return [];
     const notice = retirementNotice(line, false) ?? retirementNotice(line, true);
+    if (notice === undefined && /`[^`]+`[^\n]*(?:下线|discontinued)/i.test(line))
+      throw new Error(`Kimi retirement notice format changed: ${line.slice(0, 120)}`);
     return notice === undefined ? [] : [notice];
   });
-  if (notices.length === 0) throw new Error("Kimi retirement notices are missing");
   if (new Set(notices.map(({ id, series }) => `${id}:${series}`)).size !== notices.length)
     throw new Error("Kimi retirement notices contain duplicate model IDs");
   return notices;
@@ -641,6 +642,10 @@ function modelRetirement(
   );
 }
 
+const activeCatalogSections = ["多模态模型", "Multi-modal Model"];
+const retiredCatalogSections = ["已下线模型", "Deprecated Models"];
+const continuedAvailability = /仍可继续使用|can continue using/i;
+
 export function parseKimiCatalog(input: Input): ProviderModel[] {
   const tables = markdownTables(input.body).filter(
     (table) =>
@@ -648,26 +653,34 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
       (table.headers[0] === "Model Name" && table.headers[1] === "Description"),
   );
   if (tables.length !== 2) throw new Error("Kimi model catalog table structure changed");
+  const activeTables = tables.filter((table) =>
+    activeCatalogSections.includes(table.section ?? ""),
+  );
+  const retiredTables = tables.filter((table) =>
+    retiredCatalogSections.includes(table.section ?? ""),
+  );
+  if (activeTables.length !== 1 || retiredTables.length !== 1)
+    throw new Error("Kimi model catalog sections changed");
   const notices = retirementNotices(input.body);
-  const models = tables.flatMap((table) =>
-    table.rows.map((row) => {
+  const models = tables.flatMap((table) => {
+    const retired = retiredCatalogSections.includes(table.section ?? "");
+    return table.rows.map((row) => {
       const id = exactCode(row[0] ?? "");
       const description = row[1]?.trim() || undefined;
-      const retired = table.section === "已下线模型" || table.section === "Deprecated Models";
-      const retirement = modelRetirement(id, notices);
-      if (retired && retirement === undefined)
-        throw new Error(`Kimi retired table has no retirement notice for ${id}`);
+      const continues =
+        retired && description !== undefined && continuedAvailability.test(description);
+      const retirement = retired ? modelRetirement(id, notices) : undefined;
       return catalogModel(
         input,
         id,
         description,
-        retired ? "retired" : "active",
-        retirement?.date,
+        retired ? (continues ? "deprecated" : "retired") : "active",
+        continues ? undefined : retirement?.date,
         retirement === undefined ? [] : [retirement.replacement],
         id.includes("preview") ? "preview" : "unknown",
       );
-    }),
-  );
+    });
+  });
   for (const retired of notices.filter(({ series }) => !series)) {
     if (models.some(({ model_id }) => model_id === retired.id)) continue;
     models.push(

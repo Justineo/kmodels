@@ -11890,7 +11890,7 @@ describe("Kimi adapters", () => {
     });
     expect(source("kimi-international-catalog")).toMatchObject({
       url: "https://platform.kimi.ai/docs/models",
-      extractorVersion: "kimi-catalog-v5",
+      extractorVersion: "kimi-catalog-v6",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat",
@@ -12578,54 +12578,81 @@ describe("Kimi adapters", () => {
     );
   });
 
-  it("retains callable and retired IDs only from labeled catalog fields", async () => {
+  it("retains callable, deprecated and retired IDs only from labeled catalog fields", async () => {
     const body = await fixture("kimi/models.md");
     const models = parse(source("kimi-catalog"), body);
-    expect(models).toHaveLength(19);
+    expect(models).toHaveLength(21);
     expect(models.find(({ model_id }) => model_id === "kimi-k3")).toMatchObject({
+      status: "active",
       limits: { context_tokens: 1_000_000 },
       modalities: { input: ["text", "image"], output: ["text"] },
     });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.6")).toMatchObject({
+      status: "deprecated",
+      replacement_model_ids: [],
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.6")?.retired_at).toBeUndefined();
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.7-code")).toMatchObject({
+      status: "deprecated",
+    });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
       status: "retired",
-      retired_at: "2026-08-31",
-      replacement_model_ids: ["kimi-k3"],
+      replacement_model_ids: [],
     });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")?.retired_at).toBeUndefined();
     expect(
       models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits.context_tokens,
     ).toBeUndefined();
     expect(models.find(({ model_id }) => model_id === "kimi-thinking-preview")).toMatchObject({
       status: "retired",
-      retired_at: "2025-11-11",
-      replacement_model_ids: ["kimi-k3"],
+      replacement_model_ids: [],
     });
     expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
       status: "retired",
-      retired_at: "2026-08-31",
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2-thinking")).toMatchObject({
       status: "retired",
-      retired_at: "2026-05-25",
     });
-    const changedReplacement = parse(
-      source("kimi-catalog"),
-      body.replaceAll("[kimi-k3]", "[kimi-k2.6]"),
-    );
-    expect(
-      changedReplacement.find(({ model_id }) => model_id === "kimi-k2-thinking")
-        ?.replacement_model_ids,
-    ).toEqual(["kimi-k2.6"]);
+    const notice =
+      "> `kimi-k2.5` 已于 **2026 年 8 月 31 日下线**，不再维护和支持。请使用最新模型 [kimi-k3](/docs/guide/kimi-k3-quickstart) 。";
+    const withNotice = parse(source("kimi-catalog"), `${body}\n${notice}`);
+    expect(withNotice.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-08-31",
+      replacement_model_ids: ["kimi-k3"],
+    });
     expect(() =>
-      parse(source("kimi-catalog"), body.replace("2026 年 5 月 25 日", "2026 年 2 月 30 日")),
+      parse(
+        source("kimi-catalog"),
+        `${body}\n${notice.replace("2026 年 8 月 31 日", "2026 年 2 月 30 日")}`,
+      ),
     ).toThrow("date");
-    const international = parse(
+    expect(() =>
+      parse(
+        source("kimi-catalog"),
+        `${body}\n> \`kimi-k2.5\` 已于 2026 年 8 月 31 日下线，不再维护和支持。`,
+      ),
+    ).toThrow("notice format changed");
+    const globalBody = await fixture("kimi/models-global.md");
+    const englishNotice =
+      "> `kimi-k2.5` was officially discontinued on **August 31, 2026** and is no longer maintained or supported. Please use the latest Kimi model [kimi-k3](/docs/guide/kimi-k3-quickstart).";
+    const internationalWithNotice = parse(
       source("kimi-international-catalog"),
-      await fixture("kimi/models-global.md"),
+      `${globalBody}\n${englishNotice}`,
     );
+    expect(internationalWithNotice.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-08-31",
+      replacement_model_ids: ["kimi-k3"],
+    });
+    const international = parse(source("kimi-international-catalog"), globalBody);
     expect(international.map(({ model_id }) => model_id)).toEqual(
       models.map(({ model_id }) => model_id),
     );
     expect(international.find(({ model_id }) => model_id === "kimi-k2.5")?.status).toBe("retired");
+    expect(international.find(({ model_id }) => model_id === "kimi-k2.6")?.status).toBe(
+      "deprecated",
+    );
     expect(
       international.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits
         .context_tokens,
@@ -12637,14 +12664,12 @@ describe("Kimi adapters", () => {
     ["kimi-international-catalog", "models-global.md"],
   ])("accepts compact Markdown tables for %s", async (sourceId, file) => {
     const body = await fixture(`kimi/${file}`);
+    const withDelimiter = (delimiter: string): string =>
+      body.replace(/^\|(?:\s*:?-+:?\s*\|)+$/gm, (row) => row.replace(/:?-+:?/g, delimiter));
     const expectedModels = parse(source(sourceId), body);
     for (const delimiter of ["-", "--", ":-", "-:", ":-:"])
-      expect(parse(source(sourceId), body.replace(/:?-{3,}:?/g, delimiter))).toEqual(
-        expectedModels,
-      );
-    expect(() => parse(source(sourceId), body.replace(/:?-{3,}:?/g, ":"))).toThrow(
-      "table structure",
-    );
+      expect(parse(source(sourceId), withDelimiter(delimiter))).toEqual(expectedModels);
+    expect(() => parse(source(sourceId), withDelimiter(":"))).toThrow("table structure");
   });
 
   it("keeps model rates separate from provider services", async () => {

@@ -4345,7 +4345,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v5",
+        extractorVersion: "kimi-catalog-v6",
         fields: [
           "model_id",
           "description",
@@ -4372,7 +4372,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v5",
+        extractorVersion: "kimi-catalog-v6",
         fields: [
           "model_id",
           "description",
