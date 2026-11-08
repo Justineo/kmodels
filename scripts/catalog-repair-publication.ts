@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -84,7 +85,7 @@ export function assertRepairChanges(raw: string, patch: string): void {
       path === undefined ||
       path.split("").some((character) => character.charCodeAt(0) < 32 || character === "\\") ||
       path.split("/").some((part) => part === "" || part === ".." || part.startsWith(".")) ||
-      !/^(?:src\/catalog\/[^/]+\.ts|tests\/[^/]+\.test\.ts|tests\/fixtures\/.+|docs\/providers\/[^/]+\.md|docs\/semantic-audit-decisions\.json)$/.test(
+      !/^(?:src\/catalog\/[^/]+\.ts|tests\/[^/]+(?:\.test|-fixtures?)\.ts|tests\/fixtures\/.+|docs\/providers\/[^/]+\.md|docs\/semantic-audit-decisions\.json)$/.test(
         path,
       ) ||
       /^(?:src\/catalog|tests)\/(?:catalog-repair|public-evidence)(?:[.-]|$)/.test(path)
@@ -139,11 +140,11 @@ function environment(name: string): string {
   return value;
 }
 
-function git(arguments_: string[]): string {
+function git(arguments_: string[], overrides?: NodeJS.ProcessEnv): string {
   const result = spawnSync("git", arguments_, {
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, ...overrides, GIT_TERMINAL_PROMPT: "0" },
   });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0)
@@ -157,24 +158,53 @@ function baseSha(): string {
   return sha;
 }
 
-function stagedPatch(base: string): string {
-  return git([
-    "diff",
-    "--no-ext-diff",
-    "--no-textconv",
-    "--binary",
-    "--full-index",
-    "--no-renames",
-    "--cached",
-    base,
-  ]);
+function stagedPatch(base: string, overrides?: NodeJS.ProcessEnv): string {
+  return git(
+    [
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--binary",
+      "--full-index",
+      "--no-renames",
+      "--cached",
+      base,
+    ],
+    overrides,
+  );
 }
 
-function admitStagedPatch(base: string, patch: string): void {
+function admitStagedPatch(base: string, patch: string, overrides?: NodeJS.ProcessEnv): void {
   assertRepairChanges(
-    git(["diff", "--raw", "--no-abbrev", "--no-renames", "-z", "--cached", base]),
+    git(["diff", "--raw", "--no-abbrev", "--no-renames", "-z", "--cached", base], overrides),
     patch,
   );
+}
+
+export async function workingTreePatchHash(): Promise<string> {
+  const base = process.env.REPAIR_BASE_SHA === undefined ? "HEAD" : baseSha();
+  const directory = await mkdtemp(join(tmpdir(), "kmodels-repair-check-"));
+  try {
+    const objects = join(directory, "objects");
+    await mkdir(objects);
+    const overrides = {
+      GIT_INDEX_FILE: join(directory, "index"),
+      GIT_OBJECT_DIRECTORY: objects,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: git([
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-path",
+        "objects",
+      ]).trim(),
+    };
+    git(["read-tree", base], overrides);
+    git(["add", "--all"], overrides);
+    const patch = stagedPatch(base, overrides);
+    admitStagedPatch(base, patch, overrides);
+    return repairPatchHash(patch);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 async function output(name: string, value: string): Promise<void> {
@@ -200,6 +230,10 @@ async function publication() {
 
 export async function runRepairPublication(operation: string | undefined): Promise<void> {
   switch (operation) {
+    case "check-patch": {
+      await workingTreePatchHash();
+      break;
+    }
     case "validate": {
       validateRepair();
       break;
@@ -336,7 +370,9 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     default:
-      throw new Error("Expected validate, capture, verify, apply, retry-apply, commit, or push");
+      throw new Error(
+        "Expected check-patch, validate, capture, verify, apply, retry-apply, commit, or push",
+      );
   }
 }
 

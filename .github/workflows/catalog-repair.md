@@ -385,6 +385,7 @@ post-steps:
     run: |
       set -euo pipefail
       git show "$REPAIR_BASE_SHA:scripts/catalog-repair-review.ts" > "$RUNNER_TEMP/catalog-repair-review.ts"
+      git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
       vp node "$RUNNER_TEMP/catalog-repair-review.ts" terminal
   - name: Capture and admit the repair outcome
     id: repair_outcome
@@ -546,7 +547,10 @@ Use exactly one status per candidate:
 
 For a repair, run `vp node scripts/catalog-repair-review.ts check-repair` as soon as the patch and
 focused evidence are ready. It requires at least one evidenced repair and an explicit record for
-every candidate. For a no-op use `check-no-defect`. For interrupted work without a repair use
+every candidate, and runs the publication patch policy against the actual working tree. Correct any
+rejected paths, modes, or manifest limits before submitting. Record `probe regression after` only
+after the final edit and formatting pass. If any patch file changes, rerun that probe and update
+its reference in the review. For a no-op use `check-no-defect`. For interrupted work without a repair use
 `check-incomplete` and then `report_incomplete`. No number of passing fallback tests replaces
 these checks.
 These checks verify coverage and saved receipts, not the truth of a semantic conclusion. You must
@@ -718,7 +722,8 @@ one coherent root cause, repair that cause:
    candidate, report the specific source inspected, parser result, and repair/no-repair/unresolved rationale;
    grouping all remaining candidates as "localized drift" is not adequate investigation.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
-   `src/catalog/*.ts` and `tests/*.test.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
+   `src/catalog/*.ts`, `tests/*.test.ts`, and provider fixture helpers `tests/*-fixture.ts` and
+   `tests/*-fixtures.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
    Workflow, script, dependency, generated-data, executable, symlink, and submodule changes are rejected.
    A public redirect to a host already listed in this workflow's network policy can be a normal

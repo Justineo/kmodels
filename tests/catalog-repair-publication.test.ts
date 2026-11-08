@@ -23,6 +23,7 @@ vi.mock("node:fs/promises", () => ({
     files.set(path, (files.get(path) ?? "") + value);
   },
   mkdir: async () => {},
+  mkdtemp: async () => "/tmp/repair-check",
   readdir: async (directory: string) =>
     [...files.keys()].flatMap((path) => {
       const name = path.slice(directory.length + 1);
@@ -133,6 +134,8 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
   for (const path of [
     "src/catalog/cohere-accounting.ts",
     "tests/source-drift.test.ts",
+    "tests/deepseek-fixture.ts",
+    "tests/bedrock-sonic-fixtures.ts",
     "tests/fixtures/cohere/embed.md",
     "docs/providers/cohere.md",
     "docs/semantic-audit-decisions.json",
@@ -149,6 +152,8 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
     "src/catalog/catalog-repair.ts",
     "tests/catalog-repair-workflow.test.ts",
     "tests/setup.ts",
+    "tests/catalog-repair-fixture.ts",
+    "tests/public-evidence-fixtures.ts",
     "tests/fixtures/../setup.ts",
     "tests/fixtures/.hidden",
     "tests/fixtures/a\npath.md",
@@ -162,6 +167,33 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
   expect(() =>
     assertRepairChanges(diff("tests/fixtures/cohere/embed.md", "100644", "000000", "D"), "patch"),
   ).not.toThrow();
+});
+
+it("checks the same patch policy before submission using only temporary Git state", async () => {
+  let path = "tests/deepseek-fixture.ts";
+  git.mockImplementation((_command: string, args: string[]) => {
+    if (args[0] === "rev-parse") return success("/checkout/.git/objects\n");
+    if (args.includes("--raw")) return success(diff(path));
+    return success(args[0] === "diff" ? "patch" : "");
+  });
+  await expect(runRepairPublication("check-patch")).resolves.toBeUndefined();
+  expect(git.mock.calls.slice(1).map(([, args]) => args[0])).toEqual([
+    "read-tree",
+    "add",
+    "diff",
+    "diff",
+  ]);
+  for (const [, , options] of git.mock.calls.slice(1))
+    expect(options.env).toMatchObject({
+      GIT_INDEX_FILE: "/tmp/repair-check/index",
+      GIT_OBJECT_DIRECTORY: "/tmp/repair-check/objects",
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: "/checkout/.git/objects",
+    });
+
+  path = "tests/setup.ts";
+  await expect(runRepairPublication("check-patch")).rejects.toThrow(
+    "Catalog repair cannot modify tests/setup.ts",
+  );
 });
 
 it("rejects executable, symlink, submodule, malformed, and oversized patches", () => {

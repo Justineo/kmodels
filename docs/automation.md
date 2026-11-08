@@ -135,11 +135,16 @@ Status: implemented
   log distinguishes an investigated source blocker from an unexplained engine failure.
   A `commit_repair` intent submits a focused, evidence-backed repair for trusted validation.
   The actual working-tree patch is bounded to 100 files and
-  4 MiB and admitted only for catalog TypeScript, unit-test files, reviewed fixtures, provider
+  4 MiB and admitted only for catalog TypeScript, unit-test files, provider fixture helpers
+  named `*-fixture.ts` or `*-fixtures.ts`, reviewed fixtures, provider
   guides, and the manual semantic-disposition file. Repair infrastructure (including the public
   evidence helper and its tests), scripts, dependencies,
   workflows, generated data, executables, symlinks, and submodules cannot enter automatic repairs.
   New source hosts that require a network-policy change remain incomplete.
+  Before submitting, `check-repair` checks the actual working tree against the same policy using
+  a temporary Git index and object directory. The regression-after receipt binds to those patch
+  bytes, so an edit after a passing regression requires a new receipt. The trusted runner checks
+  the same binding before admitting the final patch.
   Safe outputs run only after the complete agent job succeeds. Empty patches fail instead of
   being ignored. A trusted publication script is restored from the workflow's original commit;
   the candidate cannot edit that script. It binds the admitted artifact to its base commit and

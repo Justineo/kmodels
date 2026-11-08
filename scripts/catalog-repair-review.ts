@@ -58,6 +58,7 @@ export async function validateRepairReview(
     allowPending?: boolean;
     requireRepair?: boolean;
     requireNoDefect?: boolean;
+    patchHash?: string;
     now?: number;
   } = {},
 ): Promise<ReviewSummary> {
@@ -150,12 +151,13 @@ export async function validateRepairReview(
     for (const ref of evidence) await proof(ref);
     const checks: Record<string, unknown>[] = [];
     for (const check of records(row.checks)) checks.push(await checkProof(check));
-    const has = (kind: string, phase?: string, success = false) =>
+    const has = (kind: string, phase?: string, success = false, patchHash?: string) =>
       checks.some(
         (check) =>
           check.kind === kind &&
           (phase === undefined || check.phase === phase) &&
           (!success || check.exit_code === 0) &&
+          (patchHash === undefined || check.patch_sha256 === patchHash) &&
           (phase !== "after" ||
             retryStarted === undefined ||
             (typeof check.started_at === "string" && Date.parse(check.started_at) >= retryStarted)),
@@ -202,6 +204,8 @@ export async function validateRepairReview(
             `Repair needs before/after parser results and a passing regression: ${id}` +
               (retryStarted === undefined ? "" : " (after checks must be from this retry)"),
           );
+        if (!has("regression", "after", true, options.patchHash))
+          throw new Error(`Repeat the regression after the final patch edit: ${id}`);
         counts.repaired += 1;
         break;
       case "not_a_defect":
@@ -349,6 +353,8 @@ async function main(): Promise<void> {
     )
       throw new Error("Expected probe KIND PHASE -- VP_ARGUMENTS");
     const command = ["vp", ...args].map((arg) => JSON.stringify(arg)).join(" ");
+    const patchHash =
+      kind === "regression" && phase === "after" ? await checkedPatchHash() : undefined;
     const started = new Date().toISOString();
     const result = spawnSync("vp", args, {
       encoding: "utf8",
@@ -361,6 +367,7 @@ async function main(): Promise<void> {
       phase,
       command,
       exit_code: result.status,
+      patch_sha256: patchHash,
       started_at: started,
       finished_at: new Date().toISOString(),
       stdout: result.stdout ?? "",
@@ -394,12 +401,15 @@ async function main(): Promise<void> {
       : [];
   const admissionText = await readFile(admission, "utf8");
   const reviewText = await readReviewEvidence(reviewPath);
+  const requireRepair = operation === "check-repair" || types.includes("commit_repair");
+  const patchHash = requireRepair ? await checkedPatchHash() : undefined;
   const summary = await validateRepairReview(admissionText, reviewText, readReviewEvidence, {
     allowPending:
       operation === "check-incomplete" ||
       types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
-    requireRepair: operation === "check-repair" || types.includes("commit_repair"),
+    requireRepair,
     requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
+    ...(patchHash === undefined ? {} : { patchHash }),
   });
   console.log(
     `Repair investigation evidence checked: ${JSON.stringify(summary)}. This checks evidence coverage, not semantic correctness.`,
@@ -409,6 +419,11 @@ async function main(): Promise<void> {
       process.env.GITHUB_STEP_SUMMARY,
       repairScopeSummary(admissionText, reviewText),
     );
+}
+
+async function checkedPatchHash(): Promise<string> {
+  const { workingTreePatchHash } = await import("./catalog-repair-publication.ts");
+  return workingTreePatchHash();
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))

@@ -29,6 +29,7 @@ function scenario() {
     exit = 0,
     commandOverride?: string,
     started_at = "2026-10-18T04:10:00Z",
+    patch_sha256?: string,
   ) => {
     number += 1;
     const command = commandOverride ?? `vp node /tmp/replay-${number}.mjs`;
@@ -39,6 +40,7 @@ function scenario() {
       command,
       exit_code: exit,
       started_at,
+      patch_sha256,
       stdout: "Observed result",
     };
     return {
@@ -347,6 +349,22 @@ it("requires before/after results and a passing regression for a claimed repair"
   await expect(validateRepairReview(s.admission, s.report([premature]), s.read)).rejects.toThrow(
     "passing regression",
   );
+});
+
+it("rejects a passing regression receipt after the submitted patch changes", async () => {
+  const s = scenario();
+  const row = s.repaired();
+  const patchHash = "1".repeat(64);
+  row.checks.push(s.check("regression", "after", 0, undefined, undefined, patchHash));
+  await expect(
+    validateRepairReview(s.admission, s.report([row]), s.read, { requireRepair: true, patchHash }),
+  ).resolves.toMatchObject({ repaired: 1 });
+  await expect(
+    validateRepairReview(s.admission, s.report([row]), s.read, {
+      requireRepair: true,
+      patchHash: "2".repeat(64),
+    }),
+  ).rejects.toThrow("Repeat the regression after the final patch edit");
 });
 
 it("checks artifact hashes and command receipt status rather than accepting a claimed pass", async () => {
