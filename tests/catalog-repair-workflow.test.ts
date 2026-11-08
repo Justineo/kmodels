@@ -277,6 +277,8 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(agent).toContain("admitted-catalog-repair");
   expect(agent).toContain('catalog-repair-publication.ts" verify');
   expect(commit).toContain("admitted-catalog-repair");
+  expect(commit.split("\n    steps:")[0]).not.toContain("${{ runner.");
+  expect(commit).toContain('export REPAIR_ARTIFACT_DIR="$RUNNER_TEMP/catalog-repair-validation"');
   expect(intent).toContain("needs.safe_outputs.result == 'success'");
   expect(intent).toContain("needs.detection.outputs.detection_success == 'true'");
   expect(commit).toContain("needs.commit_repair.result == 'success'");

@@ -213,7 +213,6 @@ jobs:
       actions: write
     env:
       REPAIR_BASE_SHA: ${{ github.sha }}
-      REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
     steps:
       - name: Download the admitted repair
         uses: actions/download-artifact@v8
@@ -235,6 +234,8 @@ jobs:
           REPAIR_BASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          export REPAIR_ARTIFACT_DIR="$RUNNER_TEMP/catalog-repair-validation"
+          echo "REPAIR_ARTIFACT_DIR=$REPAIR_ARTIFACT_DIR" >> "$GITHUB_ENV"
           git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
           vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
       - name: Validate against latest main
