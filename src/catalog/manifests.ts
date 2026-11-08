@@ -66,6 +66,7 @@ export type Extractor =
       maxModels: number;
       minModelDocuments: number;
       maxModelDocuments: number;
+      managedInventory?: true;
     }
   | { kind: "vertex-pricing" }
   | { kind: "vertex-api" }
@@ -2711,10 +2712,11 @@ export const manifests = [
           kind: "vertex-catalog",
           minModels: 15,
           maxModels: 60,
-          minModelDocuments: 15,
+          minModelDocuments: 0,
           maxModelDocuments: 40,
+          managedInventory: true,
         },
-        extractorVersion: "vertex-catalog-v9",
+        extractorVersion: "vertex-catalog-v11",
         fields: [
           "model_id",
           "name",
@@ -2740,8 +2742,8 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           indexFormat: "html",
-          path: /^\/gemini-enterprise-agent-platform\/models\/maas\/[a-z0-9-]+\/[a-z0-9-]+$/,
-          minDocuments: 15,
+          path: /^\/gemini-enterprise-agent-platform\/models\/maas\/(?!capabilities\/)[a-z0-9-]+\/[a-z0-9-]+$/,
+          minDocuments: 0,
           maxDocuments: 40,
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
@@ -2750,18 +2752,24 @@ export const manifests = [
               "open-api",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
               2,
+              undefined,
+              true,
+              true,
             ],
             [
               "text-embedding-api",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
               2,
+              undefined,
+              true,
+              true,
             ],
             [
               "deprecations",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/open-models",
               2,
             ],
-          ]).map((document) => ({ ...document, optional: true, claimLocal: true })),
+          ]),
         },
       },
       {
@@ -3418,7 +3426,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "meta-model-api", minModels: 1, maxModels: 30 },
-        extractorVersion: "meta-model-api-v2",
+        extractorVersion: "meta-model-api-v3",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: ["model_id", "name", "description", "status", "pricing"],
         allowedHosts: ["dev.meta.ai"],
@@ -3433,6 +3441,8 @@ export const manifests = [
           maxDocuments: 0,
           concurrency: 1,
           documents: fixedDocuments([
+            ["muse-wonder", "https://dev.meta.ai/docs/muse-wonder", 2, "html"],
+            ["muse-spark", "https://dev.meta.ai/docs/muse-spark", 2, "html"],
             ["pricing", "https://dev.meta.ai/docs/pricing-rate-limits", 2, "html"],
           ]),
         },

@@ -44,6 +44,13 @@ Model discovery and pricing remain independent:
 - the Discovery schema and fixed first-party Batch, grounding, Claude, Grok Responses,
   OpenAI-compatible, Imagen, and Veo documents establish calculation inputs and selectors.
 
+The managed-open index's Model Garden links establish exact IDs from its hosted inventory.
+Public model cards add details where Google publishes them. The crawl excludes capability guides
+and bounds the number and size of cards without assuming that the live inventory has a fixed
+number of detail pages. The open-model deprecation table is required and owns retirement even
+after an older card or inventory row disappears. Where two inventory rows share a link, the
+open index cannot distinguish them. The partner Llama card supplies each exact Model ID.
+
 For Imagen and Veo cards with several exact Model ID tables, the owned Generate, Fast Generate,
 Lite Generate, and Ultra Generate headings identify display variants within the page's named
 model family. Display names omit the procedural Generate suffix and its revision ordinal; literal

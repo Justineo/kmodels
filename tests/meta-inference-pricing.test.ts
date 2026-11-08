@@ -34,11 +34,26 @@ const source = configured?.sources.find(({ id }) => id === "meta-model-api");
 if (!configured || !source) throw new Error("Missing Meta Model API source");
 const manifest: ProviderManifest = configured;
 async function fixture(): Promise<LinkedBundle> {
-  return linkedBundleSchema.parse(
+  const bundle = linkedBundleSchema.parse(
     JSON.parse(
       await readFile(new URL("./fixtures/meta/model-api-current.json", import.meta.url), "utf8"),
     ),
   );
+  const $ = load(bundle.index.body);
+  for (const family of ["muse-wonder", "muse-spark"]) {
+    const table = $(`[role="main"] #${family}-availability`).nextUntil("h2,h3");
+    bundle.documents.push({
+      url: `https://dev.meta.ai/docs/${family}`,
+      body: `<main role="main"><h2 id="availability">Availability</h2>${table
+        .toArray()
+        .map((node) => $.html(node))
+        .join("")}</main>`,
+    });
+    table.remove();
+    $(`[role="main"] #${family}-availability`).remove();
+  }
+  bundle.index.body = $.html();
+  return bundle;
 }
 async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
   const bundle = await fixture();
@@ -220,6 +235,16 @@ it("detects commercial drift instead of silently swapping modes or losing media 
       parseSource({ provider, source, body: JSON.stringify(bundle), observedAt: at }),
     ).toThrow();
   }
+});
+
+it("requires each model page to establish its exact hosted availability", async () => {
+  const bundle = await fixture();
+  const provider = baseline.catalog.providers[0];
+  if (!provider || !source) throw new Error("Missing provider");
+  bundle.documents = bundle.documents.filter(({ url }) => !url.endsWith("/muse-spark"));
+  expect(() =>
+    parseSource({ provider, source, body: JSON.stringify(bundle), observedAt: at }),
+  ).toThrow("Missing Meta model page /docs/muse-spark");
 });
 
 it("exports the same direct ID lookup to the website without protocol or audit payloads", async () => {

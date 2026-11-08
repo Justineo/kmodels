@@ -11,7 +11,7 @@ const modelsUrl = "https://dev.meta.ai/docs/models";
 const pricingUrl = "https://dev.meta.ai/docs/pricing-rate-limits";
 
 function section($: CheerioAPI, id: string): CheerioAPI {
-  const heading = $(`[role="main"] #${id}`);
+  const heading = $(`[role="main"] h2#${id},[role="main"] h3#${id}`);
   if (heading.length !== 1) throw new Error(`Missing Meta section ${id}`);
   return load(
     heading
@@ -62,6 +62,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     linkedDocumentBody(bundle, "/docs/pricing-rate-limits", "Missing Meta prices"),
   );
   const models: ParsedProviderModel[] = [];
+  const availabilityLocators = new Map<string, string>();
   const tokenNotes = section(pricing, "token-pricing-notes");
   requireText(tokenNotes, "you pay the cached-input rate for those tokens");
   requireText(
@@ -123,7 +124,9 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
   }
 
   for (const family of ["muse-wonder", "muse-spark"] as const) {
-    const listing = section(catalog, `${family}-availability`);
+    const path = `/docs/${family}`;
+    const modelPage = load(linkedDocumentBody(bundle, path, `Missing Meta model page ${path}`));
+    const listing = section(modelPage, "availability");
     const prices = section(pricing, `${family}-pricing`);
     const rows = table(listing, [
       family === "muse-wonder" ? "Variant" : "Version",
@@ -151,6 +154,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       const match = identity?.match(/^(.+) \(([^()]+)\)$/);
       if (!match?.[1] || !match[2]) throw new Error("Meta hosted model identity changed");
       const item = model(match[2], match[1]);
+      availabilityLocators.set(item.model_id, `https://dev.meta.ai${path}#availability`);
       const column =
         mode === "Contributor mode"
           ? 2
@@ -380,7 +384,10 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
         evidence: [
           {
             source_ref: input.source.id,
-            locator: { kind: "fragment", value: `${modelsUrl}#models` },
+            locator: {
+              kind: "fragment",
+              value: availabilityLocators.get(item.model_id) ?? `${modelsUrl}#models`,
+            },
           },
           {
             source_ref: input.source.id,

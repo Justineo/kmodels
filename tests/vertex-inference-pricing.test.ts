@@ -5,7 +5,7 @@ import type { LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { load } from "cheerio";
-import { fetchSource } from "../src/catalog/fetch.ts";
+import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { composeCatalogPair, coreCatalogVersion } from "../src/catalog/pricing-pair-transition.ts";
@@ -320,7 +320,9 @@ it("keeps base associations when optional protocol guides disappear and withdraw
       const bundle = bundles.get(id);
       const source = manifest.sources.find((source) => source.id === id);
       if (!bundle || !source) throw new Error(id);
-      const optional = new Set(source.linkedDocuments?.documents?.map(({ url }) => url));
+      const optional = new Set(
+        source.linkedDocuments?.documents?.filter(({ optional }) => optional).map(({ url }) => url),
+      );
       bundle.documents = bundle.documents.filter(({ url }) => !optional.has(url));
     }
   }, baseline);
@@ -350,6 +352,54 @@ it("keeps base associations when optional protocol guides disappear and withdraw
     }).status,
   ).toBe("matched");
 }, 15000);
+
+it("validates the MaaS inventory and retirements when only current model cards remain", async () => {
+  const open = manifest.sources.find(({ id }) => id === "vertex-open-models");
+  const bundle = (await vertexInferenceFixture()).get("vertex-open-models");
+  if (!open || !bundle) throw new Error("Missing managed open model fixture");
+  const retired = bundle.documents.find(({ url }) => url.endsWith("/deprecations/open-models"));
+  if (!retired) throw new Error("Missing managed open model lifecycle fixture");
+  const $ = load(bundle.index.body);
+  const cards = new Set(["deepseek-v41-flash", "gemma-4-26b-a4b-it", "glm-52", "gpt-oss-120b"]);
+  for (const { url } of bundle.documents) {
+    const path = new URL(url).pathname;
+    if (cards.has(path.split("/").at(-1) ?? "") || path.includes("/maas/capabilities/"))
+      $("body").prepend($("<a>").attr("href", url));
+  }
+  $(".devsite-article-body table").slice(1).remove();
+  const index = { ...bundle.index, body: $.html() };
+  const discovered = linkedDocumentUrls(index.body, open).map(({ href }) => href);
+  expect(discovered).toHaveLength(4);
+  const documents = bundle.documents.filter(
+    ({ url }) => discovered.includes(url) || url === retired.url,
+  );
+  const parse = (body: LinkedBundle) =>
+    parseSource({
+      provider: { ...manifest.provider, source_ids: [open.id] },
+      source: open,
+      observedAt: at,
+      body: JSON.stringify(body),
+    });
+  const result = parse({ index, documents });
+  expect(result.models).toHaveLength(20);
+  expect(result.models).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ model_id: "deepseek-v4.1-flash-maas", status: "active" }),
+      expect.objectContaining({
+        model_id: "deepseek-v3.2-maas",
+        status: "retired",
+        retired_at: "2026-10-21",
+      }),
+    ]),
+  );
+  expect(() =>
+    parse({ index, documents: documents.filter((document) => document !== retired) }),
+  ).toThrow("managed open model lifecycle table is missing or unreadable");
+  $(".devsite-article-body table tbody a").first().removeAttr("href");
+  expect(() => parse({ index: { ...index, body: $.html() }, documents })).toThrow(
+    "managed open model rows need one exact Model Garden link each",
+  );
+});
 
 it("withdraws a qualified spelling whose request evidence disappears while retaining the native ID", async () => {
   const current = await collect((bundles) => {

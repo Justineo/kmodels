@@ -830,9 +830,22 @@ function add(models: Map<string, Evidence>, evidence: Evidence): void {
   models.set(evidence.model.model_id, mergeEvidence(models.get(evidence.model.model_id), evidence));
 }
 
-function parseIndexInventory(models: Map<string, Evidence>, input: Input, body: string): void {
+function parseIndexInventory(
+  models: Map<string, Evidence>,
+  input: Input,
+  body: string,
+  managedInventory: boolean,
+): void {
   if (input.source.id === "vertex-google-models") return;
   const $ = load(body);
+  const managedTables = $(".devsite-article-body table").filter(
+    (_index, table) =>
+      tableHeaders($, $(table)).join("|") === "Model name|Modality|Description|Quickstart",
+  );
+  const managedRows = managedTables.find("tr").slice(1).toArray();
+  const exactLinks = new Map<Selection[number], number>(managedRows.map((row) => [row, 0]));
+  if (managedInventory && (managedTables.length !== 1 || managedRows.length === 0))
+    throw new Error("Agent Platform managed open model inventory is missing or ambiguous");
   const rows = new Map<
     string,
     { publisher: string; name: string; cells: string[]; headers: string[] }[]
@@ -849,10 +862,25 @@ function parseIndexInventory(models: Map<string, Evidence>, input: Input, body: 
     const name = cells[0];
     if (name === undefined || name === "") return;
     const headers = tableHeaders($, row.closest("table"));
+    if (managedInventory) {
+      const cell = $(element).closest("td");
+      const rowElement = row.get(0);
+      if (
+        rowElement === undefined ||
+        !id.endsWith("-maas") ||
+        headers[cell.index()] !== "Quickstart"
+      )
+        return;
+      const links = exactLinks.get(rowElement);
+      if (links !== undefined) exactLinks.set(rowElement, links + 1);
+      else if (!headers.includes("Output dimensions")) return;
+    }
     const current = rows.get(id) ?? [];
     current.push({ publisher, name, cells, headers });
     rows.set(id, current);
   });
+  if (managedInventory && [...exactLinks.values()].some((count) => count !== 1))
+    throw new Error("Agent Platform managed open model rows need one exact Model Garden link each");
   for (const [id, candidates] of rows) {
     const identities = unique(candidates.map(({ publisher, name }) => `${publisher}\0${name}`));
     if (identities.length !== 1) continue;
@@ -1033,8 +1061,9 @@ function ensure(
   return evidence;
 }
 
-function applyLifecycle(models: Map<string, Evidence>, input: Input, body: string): void {
+function applyLifecycle(models: Map<string, Evidence>, input: Input, body: string): boolean {
   const $ = load(body);
+  let observedDates = false;
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
     const headers = tableHeaders($, table);
@@ -1063,6 +1092,8 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
         const retired = modelDate(retirementText);
         const deprecated =
           deprecatedIndex < 0 ? undefined : modelDate(text(cells.eq(deprecatedIndex).text()));
+        observedDates ||=
+          released !== undefined || retired !== undefined || deprecated !== undefined;
         const replacements =
           replacementIndex < 0
             ? []
@@ -1086,6 +1117,7 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
         }
       });
   });
+  return observedDates;
 }
 
 function priceName(value: string): string {
@@ -2794,18 +2826,24 @@ export function parseVertexCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const endpointEvidence = reviewedEndpointReferences(input.source.id, bundle.documents);
   const models = new Map<string, Evidence>();
-  parseIndexInventory(models, input, bundle.index.body);
+  parseIndexInventory(models, input, bundle.index.body, extractor.managedInventory === true);
   const configured = new Set(
     input.source.linkedDocuments?.documents?.map(({ url }) => new URL(url).href) ?? [],
   );
   let modelDocuments = 0;
+  let managedLifecycleRead = false;
   for (const document of bundle.documents) {
     const path = new URL(document.url).pathname;
     if (path.endsWith("/generative-ai/pricing")) continue;
     const hasModelCard = parseModelTables(models, input, path, document.body, endpointEvidence);
     if (!configured.has(new URL(document.url).href) && hasModelCard) modelDocuments += 1;
-    if (/model-versions|\/deprecations\//.test(path)) applyLifecycle(models, input, document.body);
+    if (/model-versions|\/deprecations\//.test(path)) {
+      const observedDates = applyLifecycle(models, input, document.body);
+      if (path.endsWith("/deprecations/open-models")) managedLifecycleRead = observedDates;
+    }
   }
+  if (extractor.managedInventory && !managedLifecycleRead)
+    throw new Error("Agent Platform managed open model lifecycle table is missing or unreadable");
   if (
     input.source.id === "vertex-open-models" &&
     endpointEvidence.has("/gemini-enterprise-agent-platform/models/maas/call-open-model-apis")

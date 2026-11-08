@@ -11,10 +11,12 @@ belong to the providers that operate them.
 
 ## Hosted pricing
 
-The public [Models](https://dev.meta.ai/docs/models) and
-[Pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits) pages establish exact hosted
-IDs and current tariffs. The `meta-model-api` source reads these two public HTML pages without
-authentication.
+The public [Models](https://dev.meta.ai/docs/models) overview establishes hosted media IDs.
+The [Muse Wonder](https://dev.meta.ai/docs/muse-wonder#availability) and
+[Muse Spark](https://dev.meta.ai/docs/muse-spark#availability) model pages own the exact hosted
+reasoning IDs and modes. The [Pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits)
+page independently owns tariffs. The `meta-model-api` source reads these four public HTML
+documents without authentication.
 
 - Muse Wonder and Muse Spark publish cached input, uncached input and output token prices.
   Standard and Contributor are distinct literal request IDs. The model availability row and the
@@ -36,8 +38,8 @@ come from the current tables; no rate is inferred from a related family, partner
 The website and portable lookup share these associations. An absent price declaration withdraws
 that ID's association while preserving the independent catalog identity. An unknown pricing mode,
 unit, duplicate media meter, new unreviewed hosted line or changed accounting rule rejects the
-source for review. Association evidence links to the Models and Model pricing headings. The rate
-observations link to their individual pricing sections.
+source for review. Association evidence links to the owning availability or overview section
+and the Model pricing heading. The rate observations link to their individual pricing sections.
 
 The price book binds caller-supplied billable quantities. It does not currently publish extraction
 formulas for all Model API response protocols. In particular, callers must supply uncached and
