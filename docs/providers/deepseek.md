@@ -35,7 +35,7 @@ The fetch bundle contains only companions that contribute a current catalog or r
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
   current-inventory witness and typed, exact token-limit evidence; and
 - the [Search & Fetch guide](https://api-docs.deepseek.com/guides/search/) for successful-request
-  qualification and the server-tool billing transition. The English and Chinese price pages own
+  qualification and the server-tool billing scope. The English and Chinese price pages own
   amounts; the guide's repeated prices do not replace them.
 
 The [change log](https://api-docs.deepseek.com/zh-cn/updates) supplies exact-ID release and update
@@ -117,11 +117,13 @@ not pricing or catalog identity.
 
 Search and Fetch have independent provider-service books, with no inferred model compatibility.
 Each has a standalone API offer and a separate offer for provider-side tool calls made through
-DeepSeek Harness, Claude Code or Codex. The latter is free until the source's published transition,
-then uses the request tariff. The English price page, Chinese price page and guide must establish
-the same eligibility and Beijing-time instant. The current declaration starts billing on
-2026-11-01 at 00:00 Beijing time: the free interval ends exclusively and the paid interval starts
-inclusively at 2026-10-31T16:00:00Z. These service rates do not inherit model Peak/Off-peak periods.
+DeepSeek Harness, Claude Code or Codex. Both offers currently publish one request tariff per
+currency: the guide states those server-side tool calls are also billed per successful request, and
+neither price page declares a free interval or a scheduled change. The parser requires that exact
+guide sentence, so a reintroduced free period, a different client scope or any rounding of the
+qualification is rejected as contract drift instead of being silently priced. The guide's repeated
+amounts never replace the price pages' cells. These service rates do not inherit model Peak/Off-peak
+periods.
 
 Both services charge per successful request, independently of the number of search results.
 Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.
@@ -244,7 +246,7 @@ temporary empty page cannot erase release evidence or freeze otherwise valid pri
 
 Service quotes use the same local raw fallback for unreadable amounts or units. Unreviewed service
 rows report a source pricing diagnostic. Missing or conflicting billing qualification, eligibility
-or transition evidence signals the responsible commercial dependency: collection retains the
+or validity evidence signals the responsible commercial dependency: collection retains the
 complete accepted provider pricing and replay input while valid catalog metadata may advance.
 Current topology admission requires the reviewed service resources as well as charge bindings.
 
@@ -280,7 +282,8 @@ definitions preserve the holiday rule. They do not
 show balance, concurrency, settlement, routing, provisioning, training or storage. Provider details
 show the independent Search and Fetch offers under the same `Other charges & services` disclosure
 and offer-card layout used for other providers' model-associated services. Both invocation mechanisms
-retain their own currency choices and current/upcoming validity timeline.
+retain their own currency choices and validity timeline; the current declaration publishes no
+upcoming change.
 This is provider context, not an assertion of model compatibility. Identical USD/CNY policy notes
 appear once when their scopes cover the complete offer; distinct rates retain their currency
 selector. The website presents rates rather than calculating a total or deciding the

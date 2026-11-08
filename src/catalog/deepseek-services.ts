@@ -1,12 +1,7 @@
 import { load } from "cheerio";
 import type { LinkedBundle } from "./bundle.ts";
 import { htmlTables, htmlText } from "./html.ts";
-import {
-  deepseekEnglishInstant,
-  deepseekPrice,
-  type DeepseekCurrency,
-} from "./deepseek-pricing-policy.ts";
-import { canonicalizeInstant } from "./pricing-time.ts";
+import { deepseekPrice, type DeepseekCurrency } from "./deepseek-pricing-policy.ts";
 import { commercialResource, publishedRate, rawPricingFact } from "./pricing.ts";
 import type { SourceCommercialPricingFact, SourcePricingFacts } from "./pricing-source.ts";
 import type { ProviderAtomRegistryEntry, RawPriceObservation } from "./pricing-schema.ts";
@@ -46,47 +41,17 @@ function document(bundle: LinkedBundle, url: string): string | undefined {
   return matches.length === 1 ? matches[0]?.body : undefined;
 }
 
-function transition(body: string, currency: DeepseekCurrency): { at: string; fragment: string } {
+const serverToolBillingRule =
+  "Search and Fetch calls triggered by server-side tools when using the DeepSeek API through DeepSeek Harness, Claude Code, or Codex are also billed per successful request.";
+
+function serverToolPolicy(body: string): string {
   const $ = load(body);
   const notes = $("p")
     .toArray()
     .map((node) => htmlText($(node).text()))
-    .filter((text) =>
-      currency === "USD"
-        ? text.includes("server-side tool calls")
-        : text.includes("Server 端工具调用"),
-    );
+    .filter((text) => text === serverToolBillingRule);
   if (notes.length !== 1) throw new Error("Missing or ambiguous server-tool billing policy");
-  const text = notes[0] ?? "";
-  if (currency === "USD") {
-    const match =
-      /when you use the DeepSeek API through DeepSeek Harness, Claude Code, or Codex, server-side tool calls already hit the Search and Fetch APIs\. These calls are currently free of charge; per-request billing starts at (\d{2}:\d{2}) Beijing time on ([A-Za-z]+) (\d{1,2}), (\d{4})\./.exec(
-        text,
-      );
-    const time = match?.[1],
-      month = match?.[2],
-      day = match?.[3],
-      year = match?.[4];
-    if (time === undefined || month === undefined || day === undefined || year === undefined)
-      throw new Error("Unproved server-tool eligibility or effective time");
-    return { at: deepseekEnglishInstant(year, month, day, time, "+08:00"), fragment: text };
-  }
-  const match =
-    /当前用户在 DeepSeek Harness\/Claude Code\/Codex 中使用 DeepSeek API 时，已经会通过 Server 端工具调用访问到 Search\/Fetch 接口，这部分 Search\/Fetch 接口调用目前未计费，并将于北京时间\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(\d{2}:\d{2})\s*起按次收取调用费用/.exec(
-      text,
-    );
-  const year = match?.[1],
-    month = match?.[2],
-    day = match?.[3],
-    time = match?.[4];
-  if (time === undefined || month === undefined || day === undefined || year === undefined)
-    throw new Error("Unproved CNY server-tool eligibility or effective time");
-  return {
-    at: canonicalizeInstant(
-      `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${time}:00+08:00`,
-    ),
-    fragment: text,
-  };
+  return notes[0] ?? "";
 }
 
 interface ServiceQuote {
@@ -179,33 +144,17 @@ export function deepseekServicePricing(
     const rule =
       "A request is billable only when it returns HTTP 200 and produces a result (Search must return a non-empty results array, and Fetch must return page content). Failed requests, empty search results, and timeouts are not billed. count only controls how many results are returned and does not affect the per-request price.";
     if (!prose.includes(rule)) throw new Error("Service request qualification changed");
-    dependencyUrl = bundle.index.url;
-    const usdPolicy = transition(usd, "USD");
-    const effective = usdPolicy.at;
-    dependencyUrl = cnyUrl;
-    const cnyPolicy = transition(cny, "CNY");
-    if (cnyPolicy.at !== effective)
-      throw new Error("CNY service transition disagrees with the price page");
-    dependencyUrl = guideUrl;
-    const guidePolicy = transition(billing, "USD");
-    if (guidePolicy.at !== effective)
-      throw new Error("Guide service transition disagrees with the price page");
+    const serverTools = serverToolPolicy(billing);
     const evidence: RawPriceObservation = {
       source_ref: input.source.id,
       locator: { kind: "fragment", value: guideUrl + "#billing" },
       raw: { fragment: rule },
     };
-    const policyEvidence: RawPriceObservation[] = (
-      [
-        [bundle.index.url, usdPolicy],
-        [cnyUrl, cnyPolicy],
-        [guideUrl, guidePolicy],
-      ] as const
-    ).map(([url, policy]) => ({
+    const policyEvidence: RawPriceObservation = {
       source_ref: input.source.id,
-      locator: { kind: "fragment", value: policy.fragment },
-      raw: { label: url, fragment: policy.fragment },
-    }));
+      locator: { kind: "fragment", value: guideUrl + "#billing" },
+      raw: { label: guideUrl, fragment: serverTools },
+    };
     dependencyUrl = bundle.index.url;
     const quotes = serviceQuotes(input, usd, "USD", bundle.index.url);
     dependencyUrl = cnyUrl;
@@ -226,7 +175,7 @@ export function deepseekServicePricing(
         const binding = {
           signal,
           aggregation: "request" as const,
-          observations: offer === "server_tools" ? [evidence, ...policyEvidence] : [evidence],
+          observations: offer === "server_tools" ? [evidence, policyEvidence] : [evidence],
         };
         const fact: SourceCommercialPricingFact = {
           ...commercialResource(
@@ -248,10 +197,7 @@ export function deepseekServicePricing(
           raw_price_facts: [],
         };
         for (const quote of quotes.filter((quote) => quote.api === service.api)) {
-          const conditions = {
-            billing_currency: quote.currency,
-            ...(offer === "server_tools" ? { effective_from: effective } : {}),
-          };
+          const conditions = { billing_currency: quote.currency };
           if (quote.unit === quote.expectedUnit && quote.amount !== undefined)
             fact.price_facts.push({
               ...publishedRate(
@@ -282,24 +228,6 @@ export function deepseekServicePricing(
                 conditions,
               ),
             );
-          if (offer === "server_tools")
-            fact.price_facts.push({
-              ...publishedRate(
-                service.meter,
-                "0",
-                "thousand_requests",
-                input.source.id,
-                quote.expectedUnit,
-                { billing_currency: quote.currency, effective_until: effective },
-              ),
-              currency: quote.currency,
-              raw_price: "Free",
-              source_locator: {
-                kind: "fragment",
-                value: quote.currency === "USD" ? usdPolicy.fragment : cnyPolicy.fragment,
-              },
-              charge_binding: binding,
-            });
         }
         facts.push(fact);
       }
@@ -322,8 +250,8 @@ export function deepseekServicePricing(
     });
     input.onPricingReconciliation?.({
       disposition: "normalized",
-      reason_code: "service_transition_verified",
-      sample: effective,
+      reason_code: "service_server_tool_rule_verified",
+      sample: serverTools,
     });
     return { commercial_facts: facts, vocabulary };
   } catch (error) {

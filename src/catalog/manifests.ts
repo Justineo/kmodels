@@ -4185,7 +4185,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v25",
+        extractorVersion: "deepseek-catalog-v26",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

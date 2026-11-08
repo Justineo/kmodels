@@ -29,7 +29,6 @@ function configuration() {
 }
 const { source, provider } = configuration();
 const observedAt = "2026-10-19T13:17:34.240Z";
-const transition = "2026-10-31T16:00:00.000Z";
 async function nativeBundle() {
   return {
     index: { url: source.url, body: await fixture("services-catalog") },
@@ -193,7 +192,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
     ).toEqual(detached);
   });
 
-  it("presents standalone services and their next change through the shared website timeline", async () => {
+  it("presents both service offers at their current request tariff through the shared website timeline", async () => {
     const { core, pricing } = await compiled();
     const website = websitePublication(core, pricing, "b".repeat(64));
     expect(website.catalog.providers[0]?.pricing_coverage.standalone_resources).toBe(2);
@@ -213,9 +212,8 @@ describe("DeepSeek native Search and Fetch charges", () => {
       if (detail === undefined) throw new Error("Missing deferred service offer");
       const timeline = projectWebsitePricingTimeline(detail, observedAt);
       expect(timeline.current.rates).toHaveLength(2);
-      expect(timeline.next_change_at).toBe(transition);
-      expect(timeline.upcoming?.effective_at).toBe(transition);
-      expect(timeline.upcoming?.offer.rates).toHaveLength(2);
+      expect(timeline.next_change_at).toBeUndefined();
+      expect(timeline.upcoming).toBeUndefined();
     }
   });
 
@@ -230,7 +228,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
       result.commercial_facts?.every((fact) =>
         fact.price_facts
           .filter((rate) => rate.currency === "USD")
-          .every((rate) => rate.price === "0" || rate.price === "0.75"),
+          .every((rate) => rate.price === "0.75"),
       ),
     ).toBe(true);
     expect(
@@ -239,7 +237,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
   });
 
   it.each(["search", "fetch"] as const)(
-    "calculates %s per successful request across currency and the exact server-tool boundary",
+    "calculates %s per successful request across currency and the server-tool scope",
     async (api) => {
       const { calculate } = await compiled();
       for (const [currency, numerator, denominator] of [
@@ -248,23 +246,17 @@ describe("DeepSeek native Search and Fetch charges", () => {
       ]) {
         if (currency === undefined || numerator === undefined || denominator === undefined)
           throw new Error("Invalid native quote case");
-        for (const [offer, at, expected] of [
-          ["standalone", observedAt, numerator],
-          ["server_tools", "2026-10-31T15:59:59.999Z", "0"],
-          ["server_tools", transition, numerator],
-        ]) {
-          if (offer === undefined || at === undefined || expected === undefined)
-            throw new Error("Invalid native schedule case");
-          const result = calculate(api, offer, currency, at, "2");
+        for (const offer of ["standalone", "server_tools"]) {
+          const result = calculate(api, offer, currency, observedAt, "2");
           expect(result.status).toBe("calculated");
           expect(result.totals).toEqual([
             {
               denomination: { kind: "fiat", currency },
-              amount: { numerator: expected, denominator: expected === "0" ? "1" : denominator },
+              amount: { numerator, denominator },
             },
           ]);
         }
-        const unknown = calculate(api, "server_tools", currency, transition);
+        const unknown = calculate(api, "server_tools", currency, observedAt);
         expect(unknown.status).toBe("unknown");
         expect(unknown.totals).toBeUndefined();
         expect(
@@ -274,25 +266,24 @@ describe("DeepSeek native Search and Fetch charges", () => {
     },
   );
 
-  it.each(["time", "predicate", "quoted"])(
+  it.each(["policy", "predicate", "quoted"])(
     "withholds unproved %s billing scope and signals the pricing dependency",
     async (failure) => {
       const { result, failures } = await parsed((bundle) => {
-        const doc = bundle.documents.find((doc) =>
-          doc.url.includes(failure === "time" ? "/zh-cn/" : "/guides/search/"),
-        );
+        const doc = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
         if (doc === undefined) throw new Error("Missing native companion");
-        if (failure === "time")
-          doc.body = doc.body.replace("11 月 1 日", "11 月 2 日").replace("11月1日", "11月2日");
+        if (failure === "policy")
+          doc.body = doc.body.replace(
+            "are also billed per successful request",
+            "are currently free of charge",
+          );
         else if (failure === "predicate") doc.body = doc.body.replace("non-empty", "empty");
         else doc.body = "<blockquote>" + doc.body + "</blockquote>";
       });
       expect(result.models).toHaveLength(4);
       expect(result.models.every((model) => model.price_facts.length === 12)).toBe(true);
       expect(result.commercial_facts ?? []).toEqual([]);
-      expect(failures.length).toBeGreaterThan(0);
-      if (failure === "time")
-        expect(failures).toEqual(["https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"]);
+      expect(failures).toEqual(["https://api-docs.deepseek.com/guides/search/"]);
     },
   );
 

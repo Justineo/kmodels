@@ -101,7 +101,7 @@ describe("DeepSeek commercial dependency isolation", () => {
     "currency disagreement",
     "unbound column",
     "missing CNY",
-    "service time",
+    "service scope",
     "service guide",
   ])(
     "retains accepted pricing/replay and compatible catalog facts after %s drift",
@@ -155,7 +155,14 @@ describe("DeepSeek commercial dependency isolation", () => {
         );
       if (failure === "missing CNY")
         bundle.documents = bundle.documents.filter((document) => document !== cny);
-      if (failure === "service time") cny.body = cny.body.replace("11 月 1 日", "11 月 2 日");
+      if (failure === "service scope") {
+        const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
+        if (guide === undefined) throw new Error("Missing service guide");
+        guide.body = guide.body.replace(
+          "are also billed per successful request",
+          "are currently free of charge",
+        );
+      }
       if (failure === "service guide") {
         const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
         if (guide === undefined) throw new Error("Missing service guide");
