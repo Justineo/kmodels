@@ -6,6 +6,7 @@ import {
   expiredAssets,
   packSnapshot,
   restoreSnapshot,
+  snapshotFingerprint,
   snapshotFiles,
 } from "../scripts/catalog-snapshot.ts";
 
@@ -28,6 +29,15 @@ it("restores the exact archive and removes a stale optional mirror", async () =>
       if (name !== optional) expect(await readFile(join(directory, name), "utf8")).toBe(name);
     }
     await expect(readFile(join(directory, optional))).rejects.toMatchObject({ code: "ENOENT" });
+    await writeFile(join(directory, "catalog-snapshot.json"), JSON.stringify(pointer));
+    const fingerprint = await snapshotFingerprint(directory);
+    await writeFile(join(directory, optional), "changed");
+    expect(await snapshotFingerprint(directory)).not.toBe(fingerprint);
+    await writeFile(
+      join(directory, "catalog-snapshot.json"),
+      JSON.stringify({ ...pointer, sha256: "0".repeat(64) }),
+    );
+    await expect(snapshotFingerprint(directory)).rejects.toThrow("checked-out pointer");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

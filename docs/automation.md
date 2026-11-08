@@ -75,9 +75,9 @@ Status: implemented
   incomplete reports and threat-detection reports. Threat detection and
   the incomplete-outcome check still run. The conclusion job has no issue permission, and the
   agent outcome gate rejects issue/comment/PR requests even when accompanied by a repair intent.
-  The agent has only read permissions. A custom `commit_repair` safe-output job receives the
-  write permissions required for direct publication and deployment dispatch; it runs only after
-  successful investigation evidence checks, safe-output processing, and successful threat detection.
+  The agent has only read permissions. The `commit_repair` safe-output job accepts the intent after
+  successful investigation evidence checks, safe-output processing, and threat detection. The
+  separate `publish_repair` job has the permissions for publication and deployment dispatch.
 - Neither hourly refresh nor scheduled repair runs Jev. The [manual semantic experiment](semantic-audit.md)
   remains available, but has not demonstrated incremental production defect discovery. Follow the
   [refresh/repair evidence audit](refresh-repair-audit.md) before choosing another pilot. The local
@@ -137,8 +137,8 @@ Status: implemented
   The actual working-tree patch is bounded to 100 files and
   4 MiB and admitted only for catalog TypeScript, unit-test files, provider fixture helpers
   named `*-fixture.ts` or `*-fixtures.ts`, reviewed fixtures, provider
-  guides, and the manual semantic-disposition file. Repair infrastructure (including the public
-  evidence helper and its tests), scripts, dependencies,
+  guides, and the manual semantic-disposition file. Repair infrastructure (including the snapshot,
+  public evidence and validation test harnesses), scripts, dependencies,
   workflows, generated data, executables, symlinks, and submodules cannot enter automatic repairs.
   New source hosts that require a network-policy change remain incomplete.
   Before submitting, `check-repair` checks the actual working tree against the same policy using
@@ -152,12 +152,16 @@ Status: implemented
   receives that patch before inference. It verifies the same bytes after detection.
   The publication job checks out latest `main`, applies that exact patch with Git's three-way
   conflict check, validates the affected delta against current data, and commits only the exact
-  validated tree. Credentials are not persisted during checkout or exposed to validation steps.
+  validated Git tree and hydrated snapshot. The refresh collector and repair publisher share a
+  queued Actions concurrency group starting before checkout. Repair investigation, threat
+  detection, deployment, and archive cleanup run independently of the publication queue.
+  Credentials are not persisted during checkout or exposed to validation steps.
   Only the final push and deployment steps receive the workflow token. A normal, non-force push
   rejects any concurrent update after validation. On the first non-fast-forward rejection,
   publication fetches current main into its clean disposable checkout, reapplies the same admitted
-  patch, reinstalls frozen dependencies, and repeats affected validation and exact-tree commit checks
-  before retrying once. Validation never receives the push credential. Conflicts, validation
+  patch, runs the same pinned bootstrap and snapshot hydration as the initial attempt, and
+  repeats affected validation and input-identity checks before retrying once. Validation never
+  receives the push credential. Conflicts, validation
   failures, other push failures, or a second race fail the run and retry from current evidence on
   the next six-hour schedule. Repair commits record the Actions run
   in a `Kmodels-Repair-Run` trailer and explicitly dispatch `void-deploy.yml`, since the workflow
@@ -223,8 +227,10 @@ Status: implemented
   staging command or a second full test pass inside the model's time budget. The trusted publication
   job runs the affected validation planner, including changes from the repair base to latest main.
   Publication caps Vitest at two workers and isolates the planner from the step output file.
-  If a first-attempt publication check fails, the runner preserves the failed command and a
-  bounded log, then queues one revision of the admitted patch. The original run records the
+  If a first-attempt publication command exits with a validation failure, the runner preserves
+  the failed command and a bounded log, then queues one revision of the admitted patch.
+  Exhausted test-body timeouts, killed processes, and snapshot identity failures remain
+  operational failures. The original run records the
   failed validation. The revision imports that run’s patch, review and source evidence, applies the
   patch to its own checkout, and shows the agent the failed check. The agent submits fresh
   parser-after and regression-after receipts. The revised patch goes through the same threat
@@ -232,7 +238,8 @@ Status: implemented
   feedback for inspection. Setup, detection, apply, push and deploy failures follow their own gates.
   An operator can resume an eligible run with
   `gh workflow run catalog-repair.lock.yml -f retry_run_id=RUN_ID`. Runs that predate the feedback
-  artifact can use the bounded log of the failed validation step. The same serialized workflow
+  artifact can use the bounded log of the failed validation step. Current runs require the
+  runner's feedback artifact. The same serialized workflow
   queue holds scheduled runs and revisions.
   Repair infrastructure tests
   also run before inference so a broken harness does not consume a model run. An unavailable

@@ -63,7 +63,9 @@ it("exercises the same isolated repair bootstrap in CI, preparation, and publica
   const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const setup = "uses: ./.github/actions/setup-repair-toolchain";
   expect(job(workflow, "agent")).toContain(setup);
-  expect(job(workflow, "commit_repair")).toContain(setup);
+  expect(
+    job(workflow, "publish_repair").match(/uses: \.\/\.github\/actions\/setup-repair-toolchain/g),
+  ).toHaveLength(2);
   const smoke = job(ci, "repair-toolchain");
   expect(smoke).toContain("VP_HOME: /tmp/kmodels-vite-plus");
   expect(smoke).toContain(setup);
@@ -167,7 +169,7 @@ it("checks candidate coverage using trusted code before admitting an outcome and
 it("keeps trusted publication validation without a redundant post-execution test pass", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
-  const publication = job(workflow, "commit_repair");
+  const publication = job(workflow, "publish_repair");
   expect(agent).toContain('catalog-repair-publication.ts" capture');
   expect(agent).toContain('catalog-repair-publication.ts" verify');
   expect(agent).not.toContain('catalog-repair-publication.ts" validate');
@@ -204,7 +206,7 @@ it("feeds threat detection the immutable publication artifact before the detecto
 it("queues one retry only after the publication checks reject an admitted patch", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
-  const publication = job(workflow, "commit_repair");
+  const publication = job(workflow, "publish_repair");
   expect(agent).toContain("vp node scripts/catalog-repair-retry.ts");
   const queue = publication
     .split(/\n      - /)
@@ -215,6 +217,8 @@ it("queues one retry only after the publication checks reject an admitted patch"
   expect(queue).toContain("steps.validation_feedback.outcome == 'success'");
   expect(publication).toContain("steps.validate_repair.outcome == 'failure'");
   expect(publication).toContain("steps.revalidate_repair.outcome == 'failure'");
+  expect(publication).toContain("steps.validate_repair.outputs.retry_with_agent == 'true'");
+  expect(publication).toContain("steps.revalidate_repair.outputs.retry_with_agent == 'true'");
   expect(queue).toContain('retry_run_id="$GITHUB_RUN_ID"');
 });
 
@@ -259,7 +263,8 @@ it("gates automatic publication on exact-patch validation and threat detection",
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
   const publish = job(workflow, "safe_outputs");
-  const commit = job(workflow, "commit_repair");
+  const commit = job(workflow, "publish_repair");
+  const intent = job(workflow, "commit_repair");
   const delivery = job(workflow, "verify_delivery");
   expect(agent).toContain("scripts/catalog-repair-publication.ts");
   expect(agent).toContain('git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts"');
@@ -272,18 +277,27 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(agent).toContain("admitted-catalog-repair");
   expect(agent).toContain('catalog-repair-publication.ts" verify');
   expect(commit).toContain("admitted-catalog-repair");
-  expect(commit).toContain("needs.safe_outputs.result == 'success'");
-  expect(commit).toContain("needs.detection.outputs.detection_success == 'true'");
+  expect(intent).toContain("needs.safe_outputs.result == 'success'");
+  expect(intent).toContain("needs.detection.outputs.detection_success == 'true'");
+  expect(commit).toContain("needs.commit_repair.result == 'success'");
   expect(commit).toContain("persist-credentials: false");
   expect(commit).toContain("ref: main");
   expect(commit).toContain('catalog-repair-publication.ts" apply');
   expect(commit).toContain('catalog-repair-publication.ts" commit');
   expect(commit).toContain("${{ steps.apply_repair.outputs.tree_sha }}");
+  expect(commit).toContain("${{ steps.validate_repair.outputs.snapshot_sha }}");
   expect(commit).toContain('catalog-repair-publication.ts" push');
   expect(commit).toContain('catalog-repair-publication.ts" retry-apply');
   expect(commit).toContain("${{ steps.retry_repair.outputs.tree_sha }}");
+  expect(commit).toContain("${{ steps.revalidate_repair.outputs.snapshot_sha }}");
   expect(commit.match(/REPAIR_RETRY_ON_RACE:/g)).toHaveLength(1);
   const retry = commit.slice(commit.indexOf("- name: Reapply after a concurrent main update"));
+  expect(retry.indexOf("uses: ./.github/actions/setup-repair-toolchain")).toBeGreaterThan(
+    retry.indexOf('catalog-repair-publication.ts" retry-apply'),
+  );
+  expect(retry.indexOf('catalog-repair-publication.ts" validate')).toBeGreaterThan(
+    retry.indexOf("uses: ./.github/actions/setup-repair-toolchain"),
+  );
   expect(retry.indexOf('catalog-repair-publication.ts" validate')).toBeLessThan(
     retry.indexOf('catalog-repair-publication.ts" commit'),
   );
@@ -298,7 +312,22 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(publish).toContain("needs.agent.result == 'success'");
   expect(delivery).toContain("always() && needs.agent.result == 'success'");
   expect(delivery).toContain("${{ needs.safe_outputs.result }}");
-  expect(delivery).toContain("${{ needs.commit_repair.result }}");
+  expect(delivery).toContain("${{ needs.publish_repair.result }}");
   expect(delivery).toContain("${{ needs.agent.outputs.output_types }}");
   expect(agent).toContain("output_types: ${{ steps.collect_output.outputs.output_types }}");
+});
+
+it("queues the refresh and repair writers together while inference uses a separate queue", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const refresh = await readFile(
+    new URL("../.github/workflows/catalog.yml", import.meta.url),
+    "utf8",
+  );
+  for (const writer of [job(workflow, "publish_repair"), job(refresh, "collect")]) {
+    expect(writer).toMatch(
+      /concurrency:\n(?:      [^\n]+\n)*?      group: catalog-main-publication\n      queue: max/,
+    );
+  }
+  expect(job(workflow, "agent")).not.toContain("catalog-main-publication");
+  expect(job(workflow, "commit_repair")).not.toMatch(/^\s+(?:contents|actions): write$/m);
 });

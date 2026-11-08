@@ -88,7 +88,9 @@ export function assertRepairChanges(raw: string, patch: string): void {
       !/^(?:src\/catalog\/[^/]+\.ts|tests\/[^/]+(?:\.test|-fixtures?)\.ts|tests\/fixtures\/.+|docs\/providers\/[^/]+\.md|docs\/semantic-audit-decisions\.json)$/.test(
         path,
       ) ||
-      /^(?:src\/catalog|tests)\/(?:catalog-repair|public-evidence)(?:[.-]|$)/.test(path)
+      /^(?:src\/catalog|tests)\/(?:catalog-repair|catalog-snapshot|public-evidence|test-architecture|validate-tests|validation-plan)(?:[.-]|$)/.test(
+        path,
+      )
     )
       throw new Error(`Catalog repair cannot modify ${path ?? "an invalid path"}`);
   }
@@ -119,6 +121,8 @@ export function repairPatchHash(patch: string): string {
   return createHash("sha256").update(patch).digest("hex");
 }
 
+class RepairValidationFailure extends Error {}
+
 export function validateRepair(): void {
   // The validation child must not write publication step outputs.
   const { GITHUB_OUTPUT: _output, ...env } = process.env;
@@ -130,8 +134,21 @@ export function validateRepair(): void {
     },
   });
   if (result.error !== undefined) throw result.error;
-  if (result.status !== 0)
-    throw new Error(`Affected repair checks failed (${result.signal ?? result.status})`);
+  if (result.status !== 0) {
+    const message = `Affected repair checks failed (${result.signal ?? result.status})`;
+    throw result.status === 1 ? new RepairValidationFailure(message) : new Error(message);
+  }
+}
+
+function snapshotFingerprint(): string {
+  const result = spawnSync("vp", ["node", "scripts/catalog-snapshot.ts", "fingerprint"], {
+    encoding: "utf8",
+  });
+  if (result.error !== undefined) throw result.error;
+  const hash = result.stdout.trim();
+  if (result.status !== 0 || !/^[a-f0-9]{64}$/.test(hash))
+    throw new Error(result.stderr.trim() || "Could not verify catalog publication inputs");
+  return hash;
 }
 
 function environment(name: string): string {
@@ -235,7 +252,16 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     case "validate": {
-      validateRepair();
+      const snapshot = snapshotFingerprint();
+      try {
+        validateRepair();
+      } catch (error) {
+        if (error instanceof RepairValidationFailure) await output("retry_with_agent", "true");
+        throw error;
+      }
+      if (snapshotFingerprint() !== snapshot)
+        throw new Error("Hydrated catalog changed during repair validation");
+      await output("snapshot_sha", snapshot);
       break;
     }
     case "capture": {
@@ -312,6 +338,8 @@ export async function runRepairPublication(operation: string | undefined): Promi
     }
     case "commit": {
       const { outcome } = await publication();
+      if (snapshotFingerprint() !== environment("REPAIR_SNAPSHOT_SHA"))
+        throw new Error("Hydrated catalog changed after repair validation");
       git(["add", "--all"]);
       if (git(["write-tree"]).trim() !== environment("REPAIR_TREE_SHA"))
         throw new Error("Catalog repair publication tree changed during validation");

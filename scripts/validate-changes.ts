@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { moduleDependencies } from "./module-dependencies.ts";
 import { generatedDataTests } from "../tests/generated-data-tests.ts";
+import { validateTests, ValidationTestTimeout } from "./validate-tests.ts";
 
 export interface ValidationInputs {
   full: boolean;
@@ -33,7 +34,7 @@ export function validationPlan(paths: readonly string[], inputs: ValidationInput
   const build =
     full ||
     changed(
-      /^(?:data\/(?:catalog\.json|pricing\.json\.gz|(?:website|export)-assets\.)|public\/|src\/.*\.css$)/,
+      /^(?:data\/(?:catalog(?:-snapshot)?\.json|pricing\.json\.gz|(?:website|export)-assets\.)|public\/|src\/.*\.css$)/,
     ) ||
     affects(inputs.build);
   const portable = full || changed(/^packages\/pricing\//) || affects(inputs.package);
@@ -160,12 +161,16 @@ export async function validateChanges(base: string | undefined, planOnly = false
   if (process.env.GITHUB_OUTPUT !== undefined)
     await appendFile(
       process.env.GITHUB_OUTPUT,
-      `repair_toolchain=${full || paths.some((path) => /^(?:\.github\/|scripts\/(?:catalog-repair|validate-changes|module-dependencies)|package\.json$|pnpm-lock\.yaml$|\.node-version$)/.test(path))}\n`,
+      `repair_toolchain=${full || paths.some((path) => /^(?:\.github\/|scripts\/(?:catalog-repair|catalog-snapshot|validate-changes|validate-tests|test-timeout-reporter|module-dependencies)|package\.json$|pnpm-lock\.yaml$|\.node-version$)/.test(path))}\n`,
     );
   if (planOnly) return;
   for (const args of commands) {
     const command = `vp ${args.join(" ")}`;
     console.log(`Validation: ${command}`);
+    if (inActions && args[0] === "test") {
+      await validateTests(args.slice(1));
+      continue;
+    }
     const packageBefore = args[1] === "package:build" ? await packageSourceHash() : undefined;
     const result = spawnSync("vp", args, { stdio: "inherit" });
     if (result.error !== undefined || result.status !== 0) {
@@ -182,5 +187,11 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
   const bases = args.filter((arg) => arg !== "--plan");
   if (bases.length > 1) throw new Error("Expected [BASE_SHA | HEAD] [--plan]");
   const base = bases[0];
-  await validateChanges(base, args.includes("--plan"));
+  try {
+    await validateChanges(base, args.includes("--plan"));
+  } catch (error) {
+    if (!(error instanceof ValidationTestTimeout)) throw error;
+    console.error(error.message);
+    process.exitCode = 75;
+  }
 }

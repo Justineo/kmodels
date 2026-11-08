@@ -1,9 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import type { Reporter } from "vite-plus/test/node";
 
-export default class GeneratedVerificationReporter implements Reporter {
+export default class TestTimeoutReporter implements Reporter {
   onTestRunEnd: NonNullable<Reporter["onTestRunEnd"]> = async (modules, unhandled, reason) => {
-    const path = process.env.KMODELS_GENERATED_VERIFICATION_PATH;
+    const path = process.env.KMODELS_TEST_VERIFICATION_PATH;
     if (path === undefined || reason !== "failed" || unhandled.length > 0) return;
 
     let sawTimeout = false;

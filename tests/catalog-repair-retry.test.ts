@@ -63,6 +63,9 @@ it("loads both artifacts only for a main repair that passed admission and failed
   await expect(load()).rejects.toThrow("rejected by publication validation");
   expect(calls.some((args) => args[1] === "download")).toBe(false);
   detection.conclusion = "success";
+  publication.name = "publish_repair";
+  await expect(load()).rejects.toThrow("runner-classified publication feedback");
+  publication.name = "commit_repair";
   publication.steps = [{ name: "Deploy the repaired site", conclusion: "failure", ...window }];
   await expect(load()).rejects.toThrow("rejected by publication validation");
   run.head_branch = "untrusted";

@@ -17,6 +17,9 @@ jobs:
   collect:
     if: github.repository == 'Justineo/kmodels' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: catalog-main-publication
+      queue: max
     timeout-minutes: 40
     steps:
       - name: Checkout
@@ -75,25 +78,8 @@ jobs:
 
       - name: Verify generated catalog
         env:
-          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification-attempt.txt
-        run: |
-          set -euo pipefail
-          rm -f "$RUNNER_TEMP/generated-verification.txt"
-          for attempt in 1 2; do
-            rm -f "$KMODELS_GENERATED_VERIFICATION_PATH"
-            status=0
-            vp run test:data --reporter=minimal --reporter=github-actions --silent=passed-only --reporter=./scripts/generated-verification-reporter.ts || status=$?
-            if [[ "$status" != 1 || ! -f "$KMODELS_GENERATED_VERIFICATION_PATH" ||
-                  $(<"$KMODELS_GENERATED_VERIFICATION_PATH") != test_timeout ]]; then
-              exit "$status"
-            fi
-            if [[ "$attempt" == 1 ]]; then
-              echo "::warning::Generated catalog verification hit a test timeout. Retrying once with the same candidate."
-            fi
-          done
-          mv "$KMODELS_GENERATED_VERIFICATION_PATH" "$RUNNER_TEMP/generated-verification.txt"
-          echo "::error::Generated catalog verification timed out again on the retry."
-          exit 1
+          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification.txt
+        run: vp node scripts/validate-tests.ts --run --project generated --reporter=minimal --reporter=github-actions --silent=passed-only
 
       - name: Upload refresh evidence
         if: always()

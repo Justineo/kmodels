@@ -47,6 +47,7 @@ beforeEach(() => {
       RUNNER_TEMP: "/tmp/repair-runner",
       REPAIR_ARTIFACT_DIR: "/tmp/repair-test",
       REPAIR_TREE_SHA: "2".repeat(40),
+      REPAIR_SNAPSHOT_SHA: "4".repeat(64),
       GH_AW_SAFE_OUTPUTS: "/tmp/repair-output.jsonl",
       GITHUB_OUTPUT: "/tmp/repair-test-output",
       GITHUB_SERVER_URL: "https://github.com",
@@ -151,6 +152,10 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
     "pnpm-lock.yaml",
     "src/catalog/catalog-repair.ts",
     "tests/catalog-repair-workflow.test.ts",
+    "tests/catalog-snapshot.test.ts",
+    "tests/test-architecture.test.ts",
+    "tests/validate-tests.test.ts",
+    "tests/validation-plan.test.ts",
     "tests/setup.ts",
     "tests/catalog-repair-fixture.ts",
     "tests/public-evidence-fixtures.ts",
@@ -286,11 +291,44 @@ it("captures the same exact patch for detection and publication without agent st
 
 it("refuses to commit a tree changed by validation", async () => {
   artifact();
-  git.mockReturnValueOnce(success("")).mockReturnValueOnce(success("3".repeat(40)));
+  git
+    .mockReturnValueOnce(success("4".repeat(64)))
+    .mockReturnValueOnce(success(""))
+    .mockReturnValueOnce(success("3".repeat(40)));
   await expect(runRepairPublication("commit")).rejects.toThrow("tree changed");
   expect(git.mock.calls.some(([, args]) => Array.isArray(args) && args.includes("commit"))).toBe(
     false,
   );
+});
+
+it("binds validation and commit to the exact hydrated catalog inputs", async () => {
+  const snapshot = "4".repeat(64);
+  const changed = "5".repeat(64);
+  git
+    .mockReturnValueOnce(success(snapshot))
+    .mockReturnValueOnce(success(""))
+    .mockReturnValueOnce(success(snapshot));
+  await runRepairPublication("validate");
+  expect(files.get("/tmp/repair-test-output")).toBe(`snapshot_sha=${snapshot}\n`);
+  files.clear();
+  git
+    .mockReturnValueOnce(success(snapshot))
+    .mockReturnValueOnce(success(""))
+    .mockReturnValueOnce(success(changed));
+  await expect(runRepairPublication("validate")).rejects.toThrow("catalog changed during");
+  expect(files.has("/tmp/repair-test-output")).toBe(false);
+  artifact();
+  git.mockReturnValueOnce(success(changed));
+  await expect(runRepairPublication("commit")).rejects.toThrow("catalog changed after");
+});
+
+it("returns candidate failures to the agent and keeps exhausted timeouts operational", async () => {
+  git.mockReturnValueOnce(success("4".repeat(64))).mockReturnValueOnce({ status: 75 });
+  await expect(runRepairPublication("validate")).rejects.toThrow("(75)");
+  expect(files.has("/tmp/repair-test-output")).toBe(false);
+  git.mockReturnValueOnce(success("4".repeat(64))).mockReturnValueOnce({ status: 1 });
+  await expect(runRepairPublication("validate")).rejects.toThrow("(1)");
+  expect(files.get("/tmp/repair-test-output")).toBe("retry_with_agent=true\n");
 });
 
 it("applies through three-way conflict checks and never overwrites concurrent main updates", async () => {

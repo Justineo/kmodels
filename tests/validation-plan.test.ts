@@ -30,6 +30,10 @@ it("limits documentation and collector changes to their affected checks", () => 
 });
 
 it("checks generated data and materialized consumers without rerunning code-only tests or packages", () => {
+  expect(validationPlan(["data/catalog-snapshot.json"], inputs)).toEqual([
+    ["test", "--run", "--project", "generated"],
+    ["run", "build"],
+  ]);
   expect(validationPlan(["data/catalog.json", "data/export-assets.pack"], inputs)).toEqual([
     ["test", "--run", "--project", "generated"],
     ["run", "build"],

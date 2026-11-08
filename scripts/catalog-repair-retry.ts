@@ -80,7 +80,9 @@ export async function loadRepairRetry(
   const { jobs } = z
     .object({ jobs: z.array(jobSchema) })
     .parse(JSON.parse(await gh([...view, "--json", "jobs"])));
-  const publication = jobs.find((job) => job.name === "commit_repair");
+  const publication =
+    jobs.find((job) => job.name === "publish_repair") ??
+    jobs.find((job) => job.name === "commit_repair");
   const failed = publication?.steps.find(
     (step) => step.conclusion === "failure" && validationSteps.includes(step.name),
   );
@@ -105,7 +107,10 @@ export async function loadRepairRetry(
     );
     return target;
   };
-  const feedback = artifacts.some(({ name, expired }) => name === feedbackArtifact && !expired)
+  const hasFeedback = artifacts.some(({ name, expired }) => name === feedbackArtifact && !expired);
+  if (publication.name === "publish_repair" && !hasFeedback)
+    throw new Error("Retry requires runner-classified publication feedback");
+  const feedback = hasFeedback
     ? stripVTControlCharacters(
         await readFile(
           join(await download(feedbackArtifact), "publication-validation.log"),

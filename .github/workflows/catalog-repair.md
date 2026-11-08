@@ -182,14 +182,8 @@ safe-outputs:
       description: Submit the working-tree repair for trusted validation and publication. Call once after focused regression and check-repair succeed. Do not commit or push from the agent.
       needs: [safe_outputs]
       if: needs.agent.result == 'success' && needs.safe_outputs.result == 'success' && needs.detection.result == 'success' && needs.detection.outputs.detection_success == 'true'
-      runs-on: ubuntu-latest
-      permissions:
-        contents: write
-        actions: write
+      runs-on: ubuntu-slim
       max: 1
-      env:
-        REPAIR_BASE_SHA: ${{ github.sha }}
-        REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
       inputs:
         title:
           description: One-line conventional commit title for the repair.
@@ -200,102 +194,124 @@ safe-outputs:
           required: true
           type: string
       steps:
-        - name: Download the admitted repair
-          uses: actions/download-artifact@v8
-          with:
-            name: admitted-catalog-repair
-            path: ${{ runner.temp }}/catalog-repair-validation
-        - name: Checkout latest main
-          uses: actions/checkout@v7
-          with:
-            ref: main
-            fetch-depth: 0
-            filter: blob:none
-            persist-credentials: false
-        - name: Install the pinned toolchain
-          uses: ./.github/actions/setup-repair-toolchain
-        - name: Apply the validated repair
-          id: apply_repair
-          env:
-            REPAIR_BASE_SHA: ${{ github.sha }}
+        - name: Accept the repair intent
           run: |
             set -euo pipefail
-            git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
-            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
-        - name: Validate against latest main
-          id: validate_repair
-          run: |
-            set -euo pipefail
-            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
-        - name: Commit the exact validated tree
-          env:
-            REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
-        - name: Publish without overwriting concurrent changes
-          id: publish_repair
-          env:
-            GH_TOKEN: ${{ github.token }}
-            REPAIR_RETRY_ON_RACE: "true"
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
-        - name: Reapply after a concurrent main update
-          id: retry_repair
-          if: steps.publish_repair.outputs.retry == 'true'
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" retry-apply
-        - name: Install the updated toolchain
-          if: steps.publish_repair.outputs.retry == 'true'
-          run: |
-            vp env install
-            vp install --frozen-lockfile
-        - name: Revalidate against the updated main
-          id: revalidate_repair
-          if: steps.publish_repair.outputs.retry == 'true'
-          run: |
-            set -euo pipefail
-            vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
-        - name: Commit the revalidated tree
-          if: steps.publish_repair.outputs.retry == 'true'
-          env:
-            REPAIR_TREE_SHA: ${{ steps.retry_repair.outputs.tree_sha }}
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
-        - name: Publish the revalidated repair
-          if: steps.publish_repair.outputs.retry == 'true'
-          env:
-            GH_TOKEN: ${{ github.token }}
-          run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
-        - name: Deploy the repaired site
-          env:
-            GH_TOKEN: ${{ github.token }}
-          run: gh workflow run void-deploy.yml --ref main
-        - name: Preserve failed publication validation feedback
-          id: prepare_feedback
-          if: failure() && (steps.validate_repair.outcome == 'failure' || steps.revalidate_repair.outcome == 'failure')
-          run: |
-            set -euo pipefail
-            log="$RUNNER_TEMP/repair-validation.log"
-            {
-              sed -n '/^Validation: /p' "$log" | tail -1
-              tail -c 32768 "$log"
-            } > "$RUNNER_TEMP/publication-validation.log"
-        - name: Upload failed publication validation feedback
-          id: validation_feedback
-          if: failure() && steps.prepare_feedback.outcome == 'success'
-          uses: actions/upload-artifact@v7
-          with:
-            name: catalog-repair-validation-feedback
-            path: ${{ runner.temp }}/publication-validation.log
-            if-no-files-found: error
-            retention-days: 30
-        - name: Queue one revision after failed publication validation
-          if: >-
-            failure() && github.ref == 'refs/heads/main' && github.run_attempt == 1 &&
-            inputs.retry_run_id == '' && steps.validation_feedback.outcome == 'success'
-          env:
-            GH_TOKEN: ${{ github.token }}
-          run: |
-            gh workflow run catalog-repair.lock.yml --ref main -f retry_run_id="$GITHUB_RUN_ID"
-            echo 'Queued one Catalog repair revision with this run’s validation feedback.' >> "$GITHUB_STEP_SUMMARY"
+            test "${GH_AW_SAFE_OUTPUTS_STAGED:-false}" != true
 
 jobs:
+  publish_repair:
+    needs: [agent, commit_repair]
+    if: github.ref == 'refs/heads/main' && needs.commit_repair.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: catalog-main-publication
+      queue: max
+    permissions:
+      contents: write
+      actions: write
+    env:
+      REPAIR_BASE_SHA: ${{ github.sha }}
+      REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
+    steps:
+      - name: Download the admitted repair
+        uses: actions/download-artifact@v8
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/catalog-repair-validation
+      - name: Checkout latest main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        uses: ./.github/actions/setup-repair-toolchain
+      - name: Apply the validated repair
+        id: apply_repair
+        env:
+          REPAIR_BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git show "$REPAIR_BASE_SHA:scripts/catalog-repair-publication.ts" > "$RUNNER_TEMP/catalog-repair-publication.ts"
+          vp node "$RUNNER_TEMP/catalog-repair-publication.ts" apply
+      - name: Validate against latest main
+        id: validate_repair
+        run: |
+          set -euo pipefail
+          vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
+      - name: Commit the exact validated tree
+        env:
+          REPAIR_TREE_SHA: ${{ steps.apply_repair.outputs.tree_sha }}
+          REPAIR_SNAPSHOT_SHA: ${{ steps.validate_repair.outputs.snapshot_sha }}
+        run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
+      - name: Publish without overwriting concurrent changes
+        id: publish_repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_RETRY_ON_RACE: "true"
+        run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
+      - name: Reapply after a concurrent main update
+        id: retry_repair
+        if: steps.publish_repair.outputs.retry == 'true'
+        run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" retry-apply
+      - name: Install the updated toolchain
+        if: steps.publish_repair.outputs.retry == 'true'
+        uses: ./.github/actions/setup-repair-toolchain
+      - name: Revalidate against the updated main
+        id: revalidate_repair
+        if: steps.publish_repair.outputs.retry == 'true'
+        run: |
+          set -euo pipefail
+          vp node "$RUNNER_TEMP/catalog-repair-publication.ts" validate 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
+      - name: Commit the revalidated tree
+        if: steps.publish_repair.outputs.retry == 'true'
+        env:
+          REPAIR_TREE_SHA: ${{ steps.retry_repair.outputs.tree_sha }}
+          REPAIR_SNAPSHOT_SHA: ${{ steps.revalidate_repair.outputs.snapshot_sha }}
+        run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" commit
+      - name: Publish the revalidated repair
+        if: steps.publish_repair.outputs.retry == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
+      - name: Deploy the repaired site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run void-deploy.yml --ref main
+      - name: Preserve failed publication validation feedback
+        id: prepare_feedback
+        if: >-
+          failure() &&
+          ((steps.validate_repair.outcome == 'failure' && steps.validate_repair.outputs.retry_with_agent == 'true') ||
+           (steps.revalidate_repair.outcome == 'failure' && steps.revalidate_repair.outputs.retry_with_agent == 'true'))
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/repair-validation.log"
+          {
+            sed -n '/^Validation: /p' "$log" | tail -1
+            tail -c 32768 "$log"
+          } > "$RUNNER_TEMP/publication-validation.log"
+      - name: Upload failed publication validation feedback
+        id: validation_feedback
+        if: failure() && steps.prepare_feedback.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-repair-validation-feedback
+          path: ${{ runner.temp }}/publication-validation.log
+          if-no-files-found: error
+          retention-days: 30
+      - name: Queue one revision after failed publication validation
+        if: >-
+          failure() && github.ref == 'refs/heads/main' && github.run_attempt == 1 &&
+          inputs.retry_run_id == '' && steps.validation_feedback.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run catalog-repair.lock.yml --ref main -f retry_run_id="$GITHUB_RUN_ID"
+          echo 'Queued one Catalog repair revision with this run’s validation feedback.' >> "$GITHUB_STEP_SUMMARY"
   agent:
     timeout-minutes: 60
   safe_outputs:
@@ -304,7 +320,7 @@ jobs:
     permissions:
       issues: none
   verify_delivery:
-    needs: [agent, safe_outputs, commit_repair]
+    needs: [agent, safe_outputs, publish_repair]
     if: always() && needs.agent.result == 'success'
     runs-on: ubuntu-slim
     permissions:
@@ -314,7 +330,7 @@ jobs:
         env:
           REPAIR_OUTCOME: ${{ needs.agent.outputs.output_types }}
           DELIVERY_RESULT: ${{ needs.safe_outputs.result }}
-          PUBLICATION_RESULT: ${{ needs.commit_repair.result }}
+          PUBLICATION_RESULT: ${{ needs.publish_repair.result }}
         run: |
           set -euo pipefail
           if [ "$DELIVERY_RESULT" != 'success' ]; then
@@ -723,7 +739,7 @@ one coherent root cause, repair that cause:
    grouping all remaining candidates as "localized drift" is not adequate investigation.
 3. Make the smallest source-manifest or parser change. Automatic repairs may change only
    `src/catalog/*.ts`, `tests/*.test.ts`, and provider fixture helpers `tests/*-fixture.ts` and
-   `tests/*-fixtures.ts` (excluding `catalog-repair*` and `public-evidence*` repair infrastructure),
+   `tests/*-fixtures.ts` (excluding the repair, snapshot, public evidence and validation infrastructure),
    reviewed `tests/fixtures/`, `docs/providers/*.md`, and `docs/semantic-audit-decisions.json`.
    Workflow, script, dependency, generated-data, executable, symlink, and submodule changes are rejected.
    A public redirect to a host already listed in this workflow's network policy can be a normal

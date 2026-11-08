@@ -132,6 +132,7 @@ or the PR base. Trusted repair publication uses the same planner against latest 
 - Code changes run formatting/lint/type checks and Vitest's related unit tests. The test-boundary
   guard is included; workflow changes also select the harness workflow checks.
 - Generated data or changes in its consumer dependency closure select the generated project.
+  A changed snapshot pointer also selects the static build because it can replace the projections.
   Site and package checks run only when their source/resource dependency closures change;
   generated catalog/projection assets also select the production build.
 - Filesystem-loaded fixtures cannot be fully traced by Vitest's import graph. Their change uses
@@ -148,9 +149,10 @@ or the PR base. Trusted repair publication uses the same planner against latest 
   result; a different checkout or trust boundary needs its own relevant proof.
 
 The scheduled refresh checks the generated project and production build because code-only
-behavior was already verified in CI. It retries the generated project once on the same candidate
-when every reported failure is a test-body timeout. Both attempts are logged. Assertion, hook,
-collection, and unhandled failures block publication immediately. The repair agent demonstrates
+behavior was already verified in CI. Refresh and the Actions validation planner use the same
+test runner. It retries the identical command once when every reported failure is a test-body
+timeout. Both attempts are logged. Assertion, hook, collection, and unhandled failures stop
+that check immediately. A second timeout remains an operational failure. The repair agent demonstrates
 the defect and runs focused regressions. Trusted post-execution checking admits the exact patch and
 evidence, and threat detection and publication use that same artifact. Publication checks the
 affected delta against latest `main` before commit. Ordinary CI and repair publication cap Vitest at
@@ -162,8 +164,9 @@ When a publication check rejects the patch, the revision uses the saved failed c
 diagnostics, fresh after-repair receipts, and the same complete trusted validation. Tests cover
 eligibility, retry bounds and stale proof rejection.
 Publication tests cover output completeness, forbidden paths and file modes, artifact identity,
-validation mutation, and concurrent-update rejection. The commit must preserve the validated tree;
-a successful test process alone does not authorize publishing a different patch.
+snapshot hydration and identity, validation mutation, and concurrent-update rejection. Both
+publication attempts use the same bootstrap, and each commit checks the validated Git tree
+and snapshot inputs.
 Investigation-review tests separately exercise candidate coverage and saved evidence consistency:
 missing/stale candidates, the Veo rejected-URL early stop, fallback-only conclusions, missing second
 passes, unsupported source-blocker labels, failed acquisition, before/after parser checks, evidence

@@ -119,6 +119,22 @@ async function readPointer(path: string): Promise<Pointer> {
   return pointerSchema.parse(JSON.parse(await readFile(path, "utf8")));
 }
 
+export async function snapshotFingerprint(directory: string): Promise<string> {
+  const pointer = await readPointer(join(directory, pointerFile));
+  const marker = await optionalRead(join(directory, markerFile));
+  if (marker?.toString() !== pointer.sha256)
+    throw new Error("Hydrated catalog snapshot does not match the checked-out pointer");
+  const members = await Promise.all(
+    snapshotFiles.map(async (name) => {
+      const contents = await optionalRead(join(directory, name));
+      if (contents === undefined && name !== optionalFile)
+        throw new Error(`Hydrated catalog snapshot is missing ${name}`);
+      return contents === undefined ? null : sha256(contents);
+    }),
+  );
+  return sha256(JSON.stringify([pointer, members]));
+}
+
 async function downloadSnapshot(pointer: Pointer): Promise<Buffer> {
   const url = `https://github.com/${repository}/releases/download/${releaseTag}/${assetName(pointer)}`;
   const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
@@ -222,6 +238,10 @@ async function main() {
   const [command, argument, capture, source] = process.argv.slice(2);
   const directory = resolve("data");
   const now = Math.floor(Date.now() / 1000);
+  if (command === "fingerprint") {
+    console.log(await snapshotFingerprint(directory));
+    return;
+  }
   if (command === "hydrate") {
     const pointer = await readPointer(join(directory, pointerFile));
     const marker = await optionalRead(join(directory, markerFile));
@@ -273,7 +293,7 @@ async function main() {
     return;
   }
   throw new Error(
-    "Usage: catalog-snapshot hydrate [--force | archive] | publish OUTPUT [EPOCH [DATA_DIR]] | prune",
+    "Usage: catalog-snapshot hydrate [--force | archive] | fingerprint | publish OUTPUT [EPOCH [DATA_DIR]] | prune",
   );
 }
 
