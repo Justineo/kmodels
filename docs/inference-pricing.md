@@ -163,8 +163,10 @@ published categorical or exact decimal value for a required condition when it ag
 remaining candidates' fixed selectors. The applied value appears beside the rates as context.
 The inspector prompts for any remaining choices before displaying rates and explains unresolved
 evidence after those choices are complete. Unknown mappings are labeled unknown. Condition controls
-update after every selection. An unfilled condition disappears when the shared matcher no longer
-requires it for the remaining prices. Explicit user selections remain visible and editable.
+offer published values that the shared matcher can still consider for the selected ID, pricing
+plan, and time. An unfilled condition disappears when the matcher no longer requires it for
+the remaining prices. Explicit user selections remain visible and editable. If a combination
+excludes every price, the controls remain available so the viewer can revise their inputs.
 Switching a tier can reveal its newly required conditions without a separate invocation
 configuration step.
 When a model has no verified ID association, preserve its ordinary catalog prices and explicitly

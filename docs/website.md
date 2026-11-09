@@ -20,8 +20,9 @@ and rates to that offer; it does not select a protocol or provide account config
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
 chunks remain the price source. Interactive conditions execute the same matching function as the
-public lookup, updating status, missing conditions and visible price rows together. Prompt for the
-required pricing plan and conditions before showing rates. Once those inputs are complete, show
+public lookup, updating status, missing conditions and visible price rows together. Scope published
+menu values to the selected inference ID, pricing plan, and evaluation time. Prompt for the required
+pricing plan and conditions before showing rates. Once those inputs are complete, show
 applicable rates or explain unresolved evidence such as imprecise validity or conflicting prices.
 Show fixed ID conditions without claiming a complete request quote. Mapping evidence uses the
 shared detail disclosure and evidence link list. Unknown mappings preserve ordinary catalog prices

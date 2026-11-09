@@ -881,12 +881,23 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
     .find(({ model_ref }) => model_ref === "amazon-bedrock/openai.gpt-6-astra");
   if (detail?.inference_prices === undefined) throw new Error("Missing stored inference prices");
   expect(restoreInferencePrices(detail.inference_prices)).toEqual(rows);
-  if (!regional) throw new Error("Missing regional result");
+  const globalPrice = rows?.find(({ model_id }) => model_id === "global.openai.gpt-6-astra");
+  if (!regional || !globalPrice)
+    throw new Error("Missing inference prices for one of the profiles");
+  const offers = website.offers.flatMap(({ offers }) => offers);
+  const globalHtml = await renderComponent(InferencePrices, {
+    modelRef: "amazon-bedrock/openai.gpt-6-astra",
+    prices: [globalPrice],
+    offers,
+  });
+  expect(globalHtml).toContain(">eu-west-1</span>");
   const html = await renderComponent(InferencePrices, {
     modelRef: "amazon-bedrock/openai.gpt-6-astra",
     prices: [regional],
-    offers: website.offers.flatMap(({ offers }) => offers),
+    offers,
   });
+  expect(html).toContain(">us-east-1</span>");
+  expect(html).not.toContain(">eu-west-1</span>");
   expect(html).toContain("us.openai.gpt-6-astra");
   expect(html).toContain("Inference model ID");
   expect(html).toContain('aria-label="Copy inference model ID us.openai.gpt-6-astra"');
