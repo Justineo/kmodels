@@ -16,6 +16,10 @@ interface Contract {
   availability: SourcePricingInputFact["availability"];
   absent_value?: SourcePricingInputFact["absent_value"];
   requirements: readonly Requirement[];
+  // The published API specification may omit a response field that first-party usage guides
+  // document with an exact JSON path. Confirmations record that omission as evidence without
+  // discarding the documented accounting input.
+  confirmations?: readonly Requirement[];
 }
 
 type Requirement =
@@ -158,6 +162,15 @@ export function extractMistralPricingInputs(
       );
       return [];
     }
+    const unconfirmed = (contract.confirmations ?? []).filter(
+      (requirement) => !requirementPresent(bodies, schemaReaders, requirement),
+    );
+    if (unconfirmed.length > 0)
+      onFinding?.(
+        contractExtensionEvidence([
+          `/documents${unconfirmed.map(({ document }) => document).join("+")}/${contract.key}`,
+        ]),
+      );
     return [
       {
         key: contract.key,
@@ -214,7 +227,6 @@ function completionCachedUsage(responseKind: "response" | "stream"): Contract {
     absent_value: "zero",
     availability: streaming ? "terminal_only" : "success_only",
     requirements: [
-      ...completionFields(streaming, ["prompt_tokens_details", "cached_tokens"]),
       {
         document: promptCachingPath,
         markers: [
@@ -225,6 +237,9 @@ function completionCachedUsage(responseKind: "response" | "stream"): Contract {
         ],
       },
     ],
+    // The published API specification defines the completion usage object without the prompt
+    // token details, while the prompt-caching guide documents the exact response path.
+    confirmations: completionFields(streaming, ["prompt_tokens_details", "cached_tokens"]),
   };
 }
 

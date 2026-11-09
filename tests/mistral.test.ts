@@ -1917,12 +1917,19 @@ describe("Mistral adapters", () => {
       "renamed_cached_tokens",
     );
     const openapiItems: PricingReconciliationItem[] = [];
-    const result = await mistralSource({ openapi }, (item) => openapiItems.push(item));
+    const openapiFindings: SourceContractEvidence[] = [];
+    const result = await mistralSource(
+      { openapi },
+      (item) => openapiItems.push(item),
+      (finding) => openapiFindings.push(finding),
+    );
     const retained = result.models;
     expect(retained).toHaveLength(7);
     const retainedInputs = result.pricing_inputs ?? [];
-    expect(retainedInputs).toHaveLength(18);
-    expect(retainedInputs.some(({ key }) => key.endsWith(".cached_tokens"))).toBe(false);
+    // The prompt-caching guide documents the cached-token response path, so an API specification
+    // that omits or renames the field is recorded as evidence without dropping the input.
+    expect(retainedInputs).toHaveLength(20);
+    expect(retainedInputs.some(({ key }) => key.endsWith(".cached_tokens"))).toBe(true);
     expect(retainedInputs.some(({ key }) => key === "completion.response.prompt_tokens")).toBe(
       true,
     );
@@ -1935,9 +1942,19 @@ describe("Mistral adapters", () => {
     ).toBe(false);
     expect(openapiItems).toContainEqual(
       expect.objectContaining({
-        disposition: "unbound",
-        reason_code: "pricing_input_contract_partial",
-        sample: "18/20 Mistral pricing inputs",
+        disposition: "normalized",
+        reason_code: "pricing_input_contract_bound",
+        sample: "20/20 Mistral pricing inputs",
+      }),
+    );
+    expect(openapiFindings).toContainEqual(
+      expect.objectContaining({
+        disposition: "accept_with_signal",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            path: expect.stringContaining("/completion.response.cached_tokens"),
+          }),
+        ]),
       }),
     );
     const value = manifest("mistral");
@@ -1974,7 +1991,13 @@ describe("Mistral adapters", () => {
     );
     expect(
       cacheCalculation?.input_sources?.some(({ signal }) => signal.value === "cached_input_tokens"),
-    ).toBe(false);
+    ).toBe(true);
+    const cachedRate = medium?.offers
+      .find(({ offer_key }) => offer_key === "sync")
+      ?.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "cache_read_text" ? term.variants : [],
+      )[0];
+    expect(cachedRate?.charge_binding?.quantity_methods).not.toEqual([]);
 
     const modelList = (await fixture("mistral/openapi.yaml")).replace(
       "list_models_v1_models_get",
@@ -1984,6 +2007,67 @@ describe("Mistral adapters", () => {
 
     const misleadingUsage = `${openapi}\n    UnrelatedCacheShape:\n      properties:\n        cached_tokens:\n          type: integer`;
     await expect(mistralCatalog({ openapi: misleadingUsage })).resolves.toHaveLength(7);
+  });
+
+  it("binds documented prompt-cache tokens the API specification omits", async () => {
+    const openapi = (await fixture("mistral/openapi.yaml")).replace(
+      '\n        prompt_tokens_details:\n          $ref: "#/components/schemas/PromptTokensDetails"',
+      "",
+    );
+    const items: PricingReconciliationItem[] = [];
+    const findings: SourceContractEvidence[] = [];
+    const result = await mistralSource(
+      { openapi },
+      (item) => items.push(item),
+      (finding) => findings.push(finding),
+    );
+    const inputs = result.pricing_inputs ?? [];
+    expect(inputs).toHaveLength(20);
+    expect(inputs.map(({ key }) => key)).toEqual(
+      expect.arrayContaining([
+        "completion.response.cached_tokens",
+        "completion.stream.cached_tokens",
+      ]),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        disposition: "normalized",
+        reason_code: "pricing_input_contract_bound",
+        sample: "20/20 Mistral pricing inputs",
+      }),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        disposition: "accept_with_signal",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            path: expect.stringContaining("completion.response.cached_tokens"),
+          }),
+        ]),
+      }),
+    );
+
+    const value = manifest("mistral");
+    const pricingSource = value.sources.find(({ id }) => id === "mistral-pricing");
+    if (pricingSource === undefined) throw new Error("Missing Mistral pricing source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source: pricingSource, ...result }],
+      result.models,
+      value.pricingCategoricalLabels,
+    );
+    const offer = partition?.books
+      .find(({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04")
+      ?.offers.find(({ offer_key }) => offer_key === "sync");
+    const rates = offer?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])) ?? [];
+    expect(
+      rates.some(({ charge_binding }) =>
+        charge_binding?.quantity_methods?.some(({ input_sources }) =>
+          input_sources?.some(({ signal }) => signal.value === "cached_input_tokens"),
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("isolates feature, endpoint, and pricing drift", async () => {
@@ -2224,7 +2308,7 @@ describe("Mistral adapters", () => {
             }),
             expect.objectContaining({
               id: "batch-processing",
-              url: expect.stringMatching(/\/studio\/batch-processing\.md$/),
+              url: expect.stringMatching(/\/inference\/batch-processing\.md$/),
             }),
           ]),
         },

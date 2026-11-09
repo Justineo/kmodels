@@ -37,7 +37,7 @@ async function bundle() {
         body: "# Shieldstral 1.0\n\nOpen weights with no API names.",
       },
       {
-        url: "https://docs.mistral.ai/studio/batch-processing.md",
+        url: "https://docs.mistral.ai/inference/batch-processing.md",
         body: await fixture("batch-processing.md"),
       },
       {

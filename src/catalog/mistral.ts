@@ -1410,23 +1410,17 @@ export function parseMistralCatalog(input: Input): SourceParseResult {
         document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
         signal,
       );
-  const companion = (path: string): string =>
-    (
-      optionalDocument(
-        markdown
-          ? path
-              .replace("/mistralai/platform-docs-public/main/src/content/en/docs", "")
-              .replace(/\/page\.mdx$/, ".md")
-          : path,
-      ) ?? ""
-    ).replace(/\s+/g, " ");
+  const companion = (path: string, markdownPath: string): string =>
+    (optionalDocument(markdown ? markdownPath : path) ?? "").replace(/\s+/g, " ");
   const discounts = {
     cache: companion(
       "/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+      "/studio/conversations/advanced/prompt-caching.md",
     ).includes("Cached prompt tokens are billed at 10% of the standard input token price"),
     batch: /50% discount/i.test(
       companion(
         "/mistralai/platform-docs-public/main/src/content/en/docs/studio/batch-processing/page.mdx",
+        "/inference/batch-processing.md",
       ),
     ),
   };

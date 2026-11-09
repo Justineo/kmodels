@@ -293,7 +293,14 @@ describe("Mistral accounting ownership and types", () => {
       const duplicate = items.find((item) => item.url === url);
       if (duplicate === undefined) throw new Error("Missing companion fixture");
       const facts = extractMistralPricingInputs([...items, duplicate], "mistral-pricing");
-      expect(facts).toHaveLength(file === "openapi.yaml" ? 0 : 19);
+      // Prompt-cache inputs bind from the reviewed guide path, so an ambiguous API specification
+      // withholds every schema-confirmed input without discarding the documented cached tokens.
+      expect(facts.map(({ key }) => key)).toHaveLength(file === "openapi.yaml" ? 2 : 19);
+      if (file === "openapi.yaml")
+        expect(facts.map(({ key }) => key)).toEqual([
+          "completion.response.cached_tokens",
+          "completion.stream.cached_tokens",
+        ]);
     },
   );
 });

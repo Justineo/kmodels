@@ -71,7 +71,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 - Prompt-caching and Batch guides are claim-local catalog companions. The central price page and
   its optional OpenAPI, built-in-tool, currency and Priority companions form a separate pricing overlay. This
   lets catalog identity advance when pricing acquisition fails. The public documentation OpenAPI
-  and Markdown guides replace the unavailable repository companions. Priority carries numeric
+  and Markdown guides replace the unavailable repository companions. The current Batch guide lives
+  at `/inference/batch-processing.md`; the former `/studio/batch-processing.md` path returns 404, so
+  the Markdown parser reads the relocated path while historical repository bundles keep resolving
+  their `/studio/batch-processing/page.mdx` document. Priority carries numeric
   price policy and remains a non-claim-local companion. EUR conversion is read from the pricing
   page's linked JavaScript chunks, bounded to the same documentation host and static chunk path.
   Downloaded JavaScript is parsed, never executed. An uninterpretable currency policy produces
@@ -221,13 +224,15 @@ offers and service offers contain no enrollment or settlement topology.
   input characters, three connector counters, and completed image outputs. Every contract records
   its request/response/result channel, JSON Pointer or provider-owned derived field, availability,
   absence-as-zero semantics where documented, and source reference.
-- The OpenAPI `UsageInfo` bound to Chat Completions, FIM and completion chunks currently omits
-  `prompt_tokens_details` even though the prompt-caching guide still documents
-  `usage.prompt_tokens_details.cached_tokens`. The two cache-input contracts therefore remain
-  unbound and the overlay reports `pricing_input_contract_partial` for 18 of 20 inputs. The
-  documented field is not accepted from the guide example alone: the response-owning schema must
-  declare it again, or an API reference page linked from the reviewed bundle must publish the same
-  pointer.
+- The OpenAPI `UsageInfo` bound to Chat Completions, FIM and completion chunks omits
+  `prompt_tokens_details`, while the prompt-caching guide documents
+  `usage.prompt_tokens_details.cached_tokens` and defines billable uncached input as
+  `prompt_tokens - cached_tokens`. The two cache-input contracts bind from the guide's documented
+  pointer, and the omitted schema field is recorded as `contractExtensionEvidence`
+  (`accept_with_signal`) instead of withholding the fact. `requirements` therefore mean fields a
+  contract cannot exist without; `confirmations` are fields whose absence is reported and never
+  silently dropped. The overlay reports `pricing_input_contract_bound` for all 20 inputs while
+  this schema omission stands.
 - Chat/FIM text input with caching uses an explicit `prompt_tokens - cached_tokens`, floored at zero.
   Cache absence is zero because Mistral documents that `cached_tokens` is zero or omitted. Output and
   cache-read terms consume their direct counters.

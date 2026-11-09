@@ -3230,7 +3230,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v20",
+        extractorVersion: "mistral-catalog-v21",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -3275,7 +3275,7 @@ export const manifests = [
             ],
             [
               "batch-processing",
-              "https://docs.mistral.ai/studio/batch-processing.md",
+              "https://docs.mistral.ai/inference/batch-processing.md",
               1,
               undefined,
               true,
