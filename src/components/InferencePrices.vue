@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
 import type {
   WebsiteInferencePrice,
   WebsitePricingOffer,
@@ -75,7 +75,7 @@ const offerOptions = computed(() => {
     .map(({ id, title }) => ({ value: id, label: title }));
 });
 function matchConditions(selections: readonly PricingSelection[]) {
-  const matching = selectedPrice.value?.matching;
+  const matching = toRaw(selectedPrice.value?.matching);
   if (matching === undefined) return;
   return matchInferencePrices(
     matching,
@@ -158,7 +158,7 @@ const selected = computed(() =>
   selectedPrice.value === undefined
     ? undefined
     : queryWebsiteInferencePrice(
-        selectedPrice.value,
+        toRaw(selectedPrice.value),
         selections.value,
         evaluatedAt.value,
         selectedOffer.value || undefined,

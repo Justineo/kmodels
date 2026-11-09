@@ -194,6 +194,8 @@ matching function. Conditions, validity, term relationships and local semantic-e
 are sufficient for that decision; the website receives no copied prices, accounting formulas or
 audit evidence. Existing offer projections supply every displayed amount. Selected variant indexes
 identify their corresponding rows, preserving conflicts even when formatted amounts look equal.
+The inspector evaluates its immutable matching data directly. Value probes reuse canonical
+dimension keys, and conflict detection uses the applicability results already collected for each row.
 The UI recomputes status, missing conditions and visible rows together as conditions change, and
 reevaluates at precise validity boundaries. A decimal bucket selects the published range; it does
 not invent a representative token count. Public query inputs retain exact decimal selectors.

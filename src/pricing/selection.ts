@@ -1,4 +1,8 @@
-import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
+import {
+  canonicalJson,
+  canonicalJsonKey,
+  uniqueCanonicalValues,
+} from "../catalog/canonical-value.ts";
 import {
   applicabilityContainedIn,
   unionApplicabilities,
@@ -77,7 +81,7 @@ export function validateSelectors(
     }
     suppliedDimensions.add(dimensionKey);
     for (const condition of conditions) {
-      if (canonicalJson(condition.dimension) !== dimensionKey) continue;
+      if (canonicalJsonKey(condition.dimension) !== dimensionKey) continue;
       if (!selectorMatchesConditionType(selector, condition)) {
         throw new PricingError(
           "INVALID_REQUEST",

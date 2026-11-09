@@ -7,13 +7,7 @@ import type {
   InferenceMatchOffer,
   InferenceMatchTerm,
 } from "./inference-matching-schema.ts";
-import {
-  selectVariants,
-  validateSelectors,
-  validityGap,
-  type Gap,
-  type Qualified,
-} from "./selection.ts";
+import { validateSelectors, validityGap, type Gap, type Qualified } from "./selection.ts";
 
 export interface InferenceTermSelection {
   id: string;
@@ -198,10 +192,13 @@ function selectOffer(
       variants.map(({ applicability }) => applicability),
     );
     let outsideValidity = false;
+    let matchedCount = 0;
+    let firstSemantics: number | undefined;
+    let competingSemantics = false;
     const indexes: number[] = [];
-    const possible = variants.filter((variant, index) => {
+    for (const [index, variant] of variants.entries()) {
       const match = evaluateApplicability(variant.applicability, selectors);
-      if (match.state === "false") return false;
+      if (match.state === "false") continue;
       const gap = validityGap(variant, evaluatedAt, data.observed_at);
       if (gap !== undefined) {
         if (gap === "outside_validity") outsideValidity = true;
@@ -210,18 +207,17 @@ function selectOffer(
           candidate.missing_conditions.push(...match.missing_dimensions);
           indexes.push(index);
         }
-        return false;
+        continue;
       }
+      if (match.state === "true") matchedCount += 1;
+      firstSemantics ??= variant.semantics;
+      competingSemantics ||= variant.semantics !== firstSemantics;
       candidate.missing_conditions.push(...match.missing_dimensions);
       indexes.push(index);
-      return true;
-    });
+    }
     if (indexes.length === 0 && outsideValidity)
       candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: "outside_validity" });
-    if (
-      selectVariants(possible, selectors, ({ semantics }) => semantics).gap ===
-      "conflicting_variants"
-    )
+    if (matchedCount > 1 && competingSemantics)
       candidate.gaps.push({
         offerRef,
         ...(termRef ? { termRef } : {}),
