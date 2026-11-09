@@ -56,12 +56,24 @@ export function queryWebsiteInferencePrice(
   evaluatedAt: string,
   offerRef?: string,
 ): WebsiteInferenceQuery {
-  if (price.matching === undefined)
+  const matching = price.matching;
+  return presentWebsiteInferencePrice(
+    price,
+    matching === undefined
+      ? undefined
+      : matchInferencePrices(matching, selectors, evaluatedAt, offerRef),
+  );
+}
+
+export function presentWebsiteInferencePrice(
+  price: WebsiteInferencePrice,
+  result: InferenceMatchResult | undefined,
+): WebsiteInferenceQuery {
+  if (result === undefined)
     return {
       ...price,
       requires_offer_choice: new Set(price.candidates.map(({ offer_ref }) => offer_ref)).size > 1,
     };
-  const result = matchInferencePrices(price.matching, selectors, evaluatedAt, offerRef);
   const { reason: _reason, ...base } = price;
   return {
     ...base,

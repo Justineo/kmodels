@@ -41,28 +41,19 @@ export function inferencePriceOptions(
     const { reason } = matchInferencePrices(data, [selection], evaluatedAt, offerRef);
     return reason !== "incompatible_conditions" && reason !== "no_applicable_price";
   };
-  return required.flatMap<WebsitePricingSelector>((option) => {
-    const retain = (value: string) => {
-      const selection = pricingSelection(option, value);
-      return selection !== undefined && isAvailable(selection);
-    };
-    switch (option.kind) {
-      case "categorical": {
-        const values = option.values.filter(({ key }) => retain(key));
-        return values.length === 0 ? [] : [{ ...option, values }];
-      }
-      case "decimal_values": {
-        const values = option.values.filter(retain);
-        return values.length === 0 ? [] : [{ ...option, values }];
-      }
-      case "decimal_buckets": {
-        const values = option.values.filter(({ key }) => retain(key));
-        return values.length === 0 ? [] : [{ ...option, values }];
-      }
-      default:
-        return [option];
-    }
+  return required.flatMap<WebsitePricingSelector>((option) =>
+    "values" in option ? retainAvailableValues(option, isAvailable) : [option],
+  );
+}
+
+function retainAvailableValues<
+  Option extends Extract<WebsitePricingSelector, { values: unknown[] }>,
+>(option: Option, isAvailable: (selection: PricingSelection) => boolean): Option[] {
+  const values = option.values.filter((value) => {
+    const selection = pricingSelection(option, typeof value === "string" ? value : value.key);
+    return selection !== undefined && isAvailable(selection);
   });
+  return values.length === 0 ? [] : [{ ...option, values }];
 }
 
 function indexCurrentChoices(

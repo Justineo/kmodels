@@ -8,7 +8,7 @@ import PricingConditions from "./PricingConditions.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
 import type { PricingSelection } from "../catalog/pricing-applicability.ts";
-import { queryWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
+import { presentWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
 import { inferencePriceOptions } from "../catalog/inference-price-options.ts";
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
 import {
@@ -133,18 +133,16 @@ const selections = computed(() => {
     }),
   ];
 });
-const selected = computed(() =>
-  selectedPrice.value === undefined
-    ? undefined
-    : queryWebsiteInferencePrice(
-        toRaw(selectedPrice.value),
-        selections.value,
-        evaluatedAt.value,
-        selectedOffer.value || undefined,
-      ),
-);
+const activeMatch = computed(() => {
+  const values = selections.value;
+  return values.length === 0 ? initialMatch.value : matchConditions(values);
+});
+const selected = computed(() => {
+  const price = toRaw(selectedPrice.value);
+  return price === undefined ? undefined : presentWebsiteInferencePrice(price, activeMatch.value);
+});
 const conditionOptions = computed(() => {
-  const result = matchConditions(selections.value);
+  const result = activeMatch.value;
   const active = excludesPrices(result) ? initialMatch.value : result;
   const missing = new Set(active?.missing_conditions.map(canonicalJson));
   return configurableConditionOptions.value.filter(

@@ -200,7 +200,7 @@ dimensions that need those choices. Categorical options use set membership, whil
 reuse the exact predicates. A compatible clause that omits a dimension admits all its published
 options. The inspector checks individual options with the shared matcher when validity gaps or
 repeated predicates require the full evaluation.
-The UI recomputes status, missing conditions and visible rows together as conditions change, and
+The UI derives status, missing conditions and visible rows from the same match result, and
 reevaluates at precise validity boundaries. A decimal bucket selects the published range; it does
 not invent a representative token count. Public query inputs retain exact decimal selectors.
 
