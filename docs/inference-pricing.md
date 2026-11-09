@@ -158,13 +158,15 @@ If the mapping is unknown, show that status and keep the catalog ID in the heade
 owned by another catalog record is excluded even when its literal value matches the current
 record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.
 
-The matcher retains candidate rates for programmatic resolution. The inspector prompts for required
-choices before displaying rates and explains remaining evidence gaps after those choices are complete.
-Unknown mappings are labeled unknown. Condition controls update after every selection. An unfilled
-condition disappears when the shared
-matcher no longer requires it for the remaining prices; explicit user selections remain visible
-and editable. Switching a tier can reveal its newly required conditions without a separate
-invocation configuration step.
+The matcher retains candidate rates for programmatic resolution. The inspector uses the sole
+published categorical or exact decimal value for a required condition when it agrees with the
+remaining candidates' fixed selectors. The applied value appears beside the rates as context.
+The inspector prompts for any remaining choices before displaying rates and explains unresolved
+evidence after those choices are complete. Unknown mappings are labeled unknown. Condition controls
+update after every selection. An unfilled condition disappears when the shared matcher no longer
+requires it for the remaining prices. Explicit user selections remain visible and editable.
+Switching a tier can reveal its newly required conditions without a separate invocation
+configuration step.
 When a model has no verified ID association, preserve its ordinary catalog prices and explicitly
 state that those prices are not verified for the requested inference ID.
 Known associations with no applicable price do not fall back to unfiltered catalog rates.

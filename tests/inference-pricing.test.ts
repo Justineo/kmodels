@@ -904,6 +904,61 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(html).not.toContain("Task and documented scope");
 });
 
+it("uses single-value Bedrock conditions without asking the viewer", async () => {
+  const pair = fixturePairs.get("amazon-bedrock");
+  if (!pair) throw new Error("Missing Bedrock fixture pair");
+  const regional = profileRule("us");
+  const modelRef = regional.model_ref;
+  const mapped = mapping(bedrock, [regional]);
+  const results = websiteInferencePrices(pair.catalog, pair.envelope, mapped);
+  const price = results.get(modelRef)?.find(({ model_id }) => model_id === regional.model_id);
+  const operation = price?.pricing_options?.find(
+    ({ dimension }) => dimension.value === "operation",
+  );
+  if (!price || operation?.kind !== "categorical") throw new Error("Missing Bedrock operation");
+  expect(operation.values.map(({ value }) => value.value)).toEqual(["responses"]);
+  const offers = websitePublication(
+    pair.catalog,
+    pair.envelope.data,
+    "a".repeat(64),
+  ).offers.flatMap(({ offers }) => offers);
+  const pending = await renderComponent(InferencePrices, { modelRef, prices: [price], offers });
+  expect(pending).toContain("Select pricing options");
+  expect(pending).toMatch(/<label[^>]*>Service tier/);
+  expect(pending).not.toContain("Operation");
+  expect(pending).not.toContain("Cache TTL");
+  expect(pending).not.toContain('class="exact-rate"');
+
+  const scopedPrice = {
+    ...price,
+    matching: inferenceMatchData(createPricingSnapshot(bedrock), [
+      {
+        ...regional,
+        fixed_selectors: [
+          ...regional.fixed_selectors,
+          ...regionalSelectors().filter(
+            ({ dimension }) => !["operation", "cache_ttl_seconds"].includes(dimension.value),
+          ),
+        ],
+      },
+    ]),
+  };
+  expect(queryWebsiteInferencePrice(scopedPrice, [], at).missing_conditions.toSorted()).toEqual([
+    "Cache TTL",
+    "Operation",
+  ]);
+  const resolved = await renderComponent(InferencePrices, {
+    modelRef,
+    prices: [scopedPrice],
+    offers,
+  });
+  expect(resolved).toContain("Applicable prices");
+  expect(resolved).toContain("Operation: Responses");
+  expect(resolved).toContain("Cache TTL: 1800 second");
+  expect(resolved).toContain("$66");
+  expect(resolved).not.toContain('aria-label="Pricing options"');
+});
+
 it("shares pricing across equivalent inference IDs and keeps different fixed scopes selectable", async () => {
   const pair = fixturePairs.get("amazon-bedrock");
   if (!pair) throw new Error("Missing Bedrock fixture pair");

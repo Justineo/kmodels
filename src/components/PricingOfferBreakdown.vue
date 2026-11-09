@@ -30,7 +30,7 @@ import type {
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 import UiIcon from "./UiIcon.vue";
 import PricingConditions from "./PricingConditions.vue";
-import { pricingSelection } from "../catalog/pricing-selector-input.ts";
+import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer;
@@ -67,12 +67,14 @@ const selectors = computed(() => {
     ({ dimension }) => !bound.has(canonicalJson(dimension)),
   );
 });
-type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
-const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
-  selectors.value.filter((selector) => !isFixedSelector(selector)),
+const configurableSelectors = computed(() =>
+  selectors.value.filter((selector) => fixedPricingSelection(selector) === undefined),
 );
 const fixedSelectionValues = computed(() => [
-  ...selectors.value.filter(isFixedSelector).map(fixedSelection),
+  ...selectors.value.flatMap((selector) => {
+    const fixed = fixedPricingSelection(selector);
+    return fixed === undefined ? [] : [fixed];
+  }),
   ...(props.boundSelectors ?? []),
 ]);
 const selectionValues = computed(() => [
@@ -356,28 +358,6 @@ function validityNote(validity: WebsitePublishedValidity | undefined): string | 
 
 function formatBoundary(boundary: NonNullable<WebsitePublishedValidity["from"]>): string {
   return boundary.precision === "datetime" ? formatLocalDateTime(boundary.value) : boundary.value;
-}
-
-function isFixedSelector(selector: WebsitePricingSelector): selector is FixedSelector {
-  return (
-    (selector.kind === "categorical" || selector.kind === "decimal_values") &&
-    selector.values.length === 1
-  );
-}
-
-function fixedSelection(selector: FixedSelector): PricingSelection {
-  return selector.kind === "categorical"
-    ? {
-        dimension: selector.dimension,
-        kind: "categorical",
-        value: selector.values[0]!.value,
-      }
-    : {
-        dimension: selector.dimension,
-        kind: "decimal",
-        value: selector.values[0]!,
-        unit: selector.unit,
-      };
 }
 
 function setInput(key: string, value: string): void {

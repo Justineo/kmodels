@@ -4,6 +4,16 @@ import { evaluateApplicability, type PricingSelection } from "./pricing-applicab
 import type { WebsitePricingSelector } from "./website-schema.ts";
 type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
 
+export function fixedPricingSelection(
+  selector: WebsitePricingSelector,
+): PricingSelection | undefined {
+  if (selector.kind === "categorical" && selector.values.length === 1)
+    return pricingSelection(selector, selector.values[0]?.key ?? "");
+  if (selector.kind === "decimal_values" && selector.values.length === 1)
+    return pricingSelection(selector, selector.values[0] ?? "");
+  return undefined;
+}
+
 export function pricingSelection(
   selector: WebsitePricingSelector,
   value: string,

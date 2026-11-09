@@ -6,10 +6,16 @@ import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 import PricingConditions from "./PricingConditions.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
-import { pricingSelection } from "../catalog/pricing-selector-input.ts";
+import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
+import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import { queryWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
 import { matchInferencePrices } from "../pricing/inference-matching.ts";
-import { formatCategoricalValue, formatDimension } from "../catalog/pricing-presentation.ts";
+import {
+  formatCategoricalValue,
+  formatDimension,
+  formatRecurringTimeSchedule,
+  formatUnitExpression,
+} from "../catalog/pricing-presentation.ts";
 
 const props = defineProps<{
   modelRef: string;
@@ -64,26 +70,59 @@ const offerOptions = computed(() => {
     .filter(({ id }) => refs.has(id))
     .map(({ id, title }) => ({ value: id, label: title }));
 });
-const availableConditionOptions = computed(() => {
-  const price = selectedPrice.value;
-  if (price?.matching === undefined) return [];
-  const initial = matchInferencePrices(
-    price.matching,
-    [],
+function matchConditions(selections: readonly PricingSelection[]) {
+  const matching = selectedPrice.value?.matching;
+  if (matching === undefined) return;
+  return matchInferencePrices(
+    matching,
+    selections,
     evaluatedAt.value,
     selectedOffer.value || undefined,
   );
-  const dimensions = new Set(initial.missing_conditions.map(canonicalJson));
-  return (price.pricing_options ?? []).filter(({ dimension }) =>
-    dimensions.has(canonicalJson(dimension)),
-  );
+}
+const initialMatch = computed(() => matchConditions([]));
+const availableConditionOptions = computed(() => {
+  const dimensions = new Set(initialMatch.value?.missing_conditions.map(canonicalJson));
+  return (selectedPrice.value?.pricing_options ?? [])
+    .filter(({ dimension }) => dimensions.has(canonicalJson(dimension)))
+    .map((option) => ({ option, fixed: fixedPricingSelection(option) }));
 });
-const selections = computed(() =>
-  availableConditionOptions.value.flatMap((option) => {
+const configurableConditionOptions = computed(() =>
+  availableConditionOptions.value.flatMap(({ option, fixed }) =>
+    fixed === undefined ? [option] : [],
+  ),
+);
+const chosenSelections = computed(() =>
+  configurableConditionOptions.value.flatMap((option) => {
     const value = pricingSelection(option, inputs.value[option.key] ?? "");
     return value === undefined ? [] : [value];
   }),
 );
+const selections = computed(() => {
+  const chosen = chosenSelections.value;
+  const fixed = availableConditionOptions.value.flatMap(({ fixed }) =>
+    fixed === undefined ? [] : [fixed],
+  );
+  if (fixed.length === 0) return chosen;
+  const pending = chosen.length === 0 ? initialMatch.value : matchConditions(chosen);
+  if (pending === undefined) return chosen;
+  const missing = new Set(pending.missing_conditions.map(canonicalJson));
+  const bound = pending.candidates.flatMap(({ selectors }) => selectors);
+  return [
+    ...chosen,
+    ...fixed.filter((selection) => {
+      const key = canonicalJson(selection.dimension);
+      return (
+        missing.has(key) &&
+        bound.every(
+          (value) =>
+            canonicalJson(value.dimension) !== key ||
+            canonicalJson(value) === canonicalJson(selection),
+        )
+      );
+    }),
+  ];
+});
 const selected = computed(() =>
   selectedPrice.value === undefined
     ? undefined
@@ -95,16 +134,8 @@ const selected = computed(() =>
       ),
 );
 const conditionOptions = computed(() => {
-  const matching = selectedPrice.value?.matching;
-  if (matching === undefined) return [];
-  const result = matchInferencePrices(
-    matching,
-    selections.value,
-    evaluatedAt.value,
-    selectedOffer.value || undefined,
-  );
-  const missing = new Set(result.missing_conditions.map(canonicalJson));
-  return availableConditionOptions.value.filter(
+  const missing = new Set(matchConditions(selections.value)?.missing_conditions.map(canonicalJson));
+  return configurableConditionOptions.value.filter(
     (option) =>
       (inputs.value[option.key] ?? "") !== "" || missing.has(canonicalJson(option.dimension)),
   );
@@ -153,6 +184,22 @@ watch(selectedPrice, scheduleClock);
 onBeforeUnmount(() => {
   if (clock !== undefined) clearTimeout(clock);
 });
+function conditionLabel(selector: Exclude<PricingSelection, { kind: "decimal_range" }>): string {
+  const label = formatDimension(selector.dimension);
+  if (selector.kind === "decimal")
+    return `${label}: ${selector.value} ${formatUnitExpression(selector.unit)}`;
+  if (selector.kind === "boolean") return `${label}: ${selector.value}`;
+
+  const fixed = availableConditionOptions.value.find(
+    ({ fixed }) => fixed !== undefined && canonicalJson(fixed) === canonicalJson(selector),
+  )?.option;
+  const value = fixed?.kind === "categorical" ? fixed.values[0] : undefined;
+  const schedule = value?.schedule;
+  const name = value?.label ?? formatCategoricalValue(selector.value);
+  return schedule === undefined
+    ? `${label}: ${name}`
+    : `${label}: ${name} (${formatRecurringTimeSchedule(schedule)} · ${schedule.time_zone})`;
+}
 const candidates = computed(() => {
   if (needsPricingSelection.value) return [];
   return (
@@ -162,16 +209,12 @@ const candidates = computed(() => {
         .filter(
           ({ dimension }) =>
             !(dimension.namespace === "kmodels" && dimension.value === "model") &&
-            !selections.value.some(
+            !chosenSelections.value.some(
               (selection) => canonicalJson(selection.dimension) === canonicalJson(dimension),
             ),
         )
         .flatMap((selector) =>
-          selector.kind === "decimal_range"
-            ? []
-            : [
-                `${formatDimension(selector.dimension)}: ${selector.kind === "categorical" ? formatCategoricalValue(selector.value) : String(selector.value)}`,
-              ],
+          selector.kind === "decimal_range" ? [] : [conditionLabel(selector)],
         ),
       offer: props.offers.find(({ id }) => id === candidate.offer_ref),
     })) ?? []
@@ -386,7 +429,7 @@ async function copyId(id: string): Promise<void> {
   min-width: var(--control-height-comfortable);
   border: 0;
   border-inline-start: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-radius: var(--radius-none) var(--radius-md) var(--radius-md) var(--radius-none);
 }
 .match-status {
   margin-block: var(--space-2);
