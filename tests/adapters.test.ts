@@ -11732,7 +11732,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v27",
+      extractorVersion: "dashscope-pricing-v28",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),

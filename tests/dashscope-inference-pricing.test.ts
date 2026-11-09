@@ -264,6 +264,61 @@ it("publishes literal Beijing IDs and CNY rates from the mainland price book", a
   );
 }, 20_000);
 
+it("reads mainland annotation headers, cache annotations and flat-rate token cells", async () => {
+  const candidate = await collect((bundles) => {
+    const bundle = bundles.get("dashscope-pricing");
+    if (!bundle) throw new Error("Missing fixture");
+    bundle.documents.push({
+      url: "https://help.aliyun.com/en/model-studio/model-pricing",
+      body: `<section><h4>China (Beijing)</h4><table><thead><tr>
+        <th>Model ID</th><th>Mode</th><th>Input price (per 1 million tokens)</th>
+        <th>Output price (per 1 million tokens) Chain of thought and answer</th>
+        </tr></thead><tbody><tr>
+        <td><p>qwen-beijing-cache</p><blockquote><a>Context Cache</a> context caching discount</blockquote></td>
+        <td>Thinking mode only</td><td>CNY 8</td><td>CNY 28</td>
+        </tr><tr>
+        <td><p>qwen-beijing-session-cache</p><blockquote>Session Cache discount</blockquote></td>
+        <td>Thinking mode only</td><td>CNY 8</td><td>CNY 28</td>
+        </tr></tbody></table>
+        <table><thead><tr><th>Model ID</th><th>Mode</th><th>Input tokens per request</th>
+        <th>Input price (per 1 million tokens)</th>
+        <th>Output price (per 1 million tokens)Chain of thought and answer</th>
+        </tr></thead><tbody><tr>
+        <td>qwen-beijing-flat-rate</td><td>Non-Thinking and Thinking modes</td>
+        <td>flat-rate pricing</td><td>CNY 20</td><td>CNY 100</td>
+        </tr></tbody></table></section>`,
+    });
+  });
+  const query = lookup(candidate);
+  const args = { provider_id: "dashscope", model_id: "qwen-beijing-cache" };
+  const cached = query({
+    ...args,
+    selectors: [
+      condition("region", "China (Beijing)"),
+      condition("operation", "thinking_mode_only"),
+    ],
+  });
+  expect(cached.status).toBe("matched");
+  expect(inputPrices(cached)).toEqual([{ numerator: "1", denominator: "125000" }]);
+  expect(JSON.stringify(cached.candidates)).toContain('"currency":"CNY"');
+  const flat = query({
+    ...args,
+    model_id: "qwen-beijing-flat-rate",
+    selectors: [condition("region", "China (Beijing)")],
+  });
+  expect(flat.candidates.length).toBeGreaterThan(0);
+  expect(inputPrices(flat)).toEqual(
+    expect.arrayContaining([{ numerator: "1", denominator: "50000" }]),
+  );
+  expect(
+    query({
+      ...args,
+      model_id: "qwen-beijing-session-cache",
+      selectors: [condition("region", "China (Beijing)")],
+    }).reason,
+  ).toBe("unreviewed_id");
+}, 20_000);
+
 it("does not require protocol or accounting documents for literal price-table mappings", async () => {
   const bundles = await dashscopeInferenceFixture();
   const bundle = bundles.get("dashscope-pricing");

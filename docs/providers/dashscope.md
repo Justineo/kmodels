@@ -57,7 +57,13 @@ lists do not establish a base inference tariff.
 The optional Alibaba Cloud mainland price book contributes Beijing input and output token
 rates from exact model rows with explicit CNY amounts. The same rate extraction and request mapping
 apply to flat rates, recognized thinking modes and bounded input-token bands. Preserve the explicit
-Batch discount when the row states it. Duplicate scopes,
+Batch discount when the row states it. The output column accepts its published annotations next to
+the base label — `Chain of thought + answer`, `Chain of thought and answer` and the
+`/ Non-Thinking mode` and `/ Thinking mode (chain of thought + answer)` variants — with or without
+the separating space, so a published annotation never drops the row. The token-scope column accepts
+`No tiered pricing`, `flat-rate pricing` and `Token≤` bands. A row may carry the `Context Cache`
+`context caching discount` annotation; other commercial qualifiers, including `Session Cache`
+discounts and `Currently equivalent to` aliases, remain excluded. Duplicate scopes,
 unreviewed commercial qualifiers and overlaps with primary prices are excluded at row scope.
 Missing or malformed companion evidence leaves the primary book usable.
 

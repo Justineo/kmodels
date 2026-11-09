@@ -2436,7 +2436,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const region = "China (Beijing)";
   const regionalInputHeader = /^Input price \(per 1 million tokens\)$/;
   const regionalOutputHeader =
-    /^Output price \(per 1 million tokens\)(?: Chain of thought \+ answer| \/ Non-Thinking mode| \/ Thinking mode \(chain of thought \+ answer\))?$/;
+    /^Output price \(per 1 million tokens\)(?:\s*\/?\s*(?:Chain of thought (?:and|\+) answer|Non-Thinking mode|Thinking mode \(chain of thought \+ answer\)))?$/;
   const regionalPriceHeader = (header: string) =>
     regionalInputHeader.test(header) || regionalOutputHeader.test(header);
   const regionalTables =
@@ -2465,7 +2465,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
               const id = cellIds(row[0])[0];
               return (
                 id !== undefined &&
-                /^(?: 50% batch inference discount)?(?: context caching discount)?$/.test(
+                /^\s*(?:50% batch inference discount)?\s*(?:Context Cache)?\s*(?:context caching discount)?$/.test(
                   row[0]?.text.startsWith(id) === true ? row[0].text.slice(id.length) : "?",
                 ) &&
                 table.headers.every((header, index) => {
@@ -2475,7 +2475,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
                       value,
                     );
                   if (header === "Input tokens per request")
-                    return /^(?:No tiered pricing|(?:\d+(?:\.\d+)?[KM]?<)?Token≤\d+(?:\.\d+)?[KM]?)$/i.test(
+                    return /^(?:No tiered pricing|flat-rate pricing|(?:\d+(?:\.\d+)?[KM]?<)?Token≤\d+(?:\.\d+)?[KM]?)$/i.test(
                       value.replaceAll(",", ""),
                     );
                   return !regionalPriceHeader(header) || cnyPrice(value) !== undefined;
