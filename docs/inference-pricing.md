@@ -149,7 +149,9 @@ display names. For an ID, show matching prices, the conditions that affect them,
 Use existing rate units and commercial offer groups. Group IDs with identical matching rules and
 pricing inputs and retain the group's mapping evidence. When all IDs share one group, show each
 as a copyable value. When prices or conditions differ, show one picker with each exact ID as an
-option and a copy button for the selected ID. Switching within a group keeps the pricing inputs.
+option and a copy button for the selected ID. When switching IDs, retain a selected offer that
+still has candidates. Switching IDs or offers retains inputs whose exact value and unit remain
+available in the destination conditions. Decimal buckets retain their exact bounds.
 
 The header labels the catalog's primary identifier `Catalog ID`. Pricing uses explicit associations
 for that record. A single inference ID equal to the catalog ID is labeled `Same as Catalog ID`, with

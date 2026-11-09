@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import PricingDetails from "../src/components/PricingDetails.vue";
+import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
+import { pricingSelection, retainPricingInputs } from "../src/catalog/pricing-selector-input.ts";
+import { inferencePricingContext } from "../src/catalog/website-pricing-context.ts";
 import type {
   WebsiteModel,
   WebsitePriceApplicability,
@@ -131,6 +134,105 @@ async function render(offers: WebsitePricingOffer[]): Promise<string> {
     detail,
   });
 }
+
+it("retains exact compatible inputs and drops values outside the destination options", () => {
+  const original = offer([]).selectors;
+  const regional = offer([], {
+    selector: { dimension: "region", values: [{ value: "us", label: "United States" }] },
+  }).selectors;
+  const selector = original[0];
+  if (selector?.kind !== "categorical") throw new Error("Missing Region fixture");
+  const [eu, us] = selector.values;
+  if (eu === undefined || us === undefined) throw new Error("Missing Region values");
+  expect(retainPricingInputs(original, regional, { [selector.key]: us.key })).toEqual({
+    [selector.key]: us.key,
+  });
+  expect(retainPricingInputs(original, regional, { [selector.key]: eu.key })).toEqual({});
+});
+
+it("shares only selectors on which all inference candidates agree", () => {
+  const [selector] = offer([]).selectors;
+  if (selector?.kind !== "categorical") throw new Error("Missing Region fixture");
+  const [eu, us] = selector.values.map(({ key }) => pricingSelection(selector, key));
+  if (eu === undefined || us === undefined) throw new Error("Missing Region values");
+  const shared = inferencePricingContext(
+    model.uid,
+    [
+      { offer_ref: "first", selectors: [us] },
+      { offer_ref: "second", selectors: [us] },
+    ],
+    [],
+  );
+  expect(shared).toEqual({ modelRef: model.uid, offerRefs: ["first", "second"], selections: [us] });
+  expect(
+    inferencePricingContext(
+      model.uid,
+      [
+        { offer_ref: "first", selectors: [us] },
+        { offer_ref: "second", selectors: [eu] },
+      ],
+      [],
+    ).selections,
+  ).toEqual([]);
+});
+
+it("offers a supported Pricing Region as a local service preference", async () => {
+  const service = offer([
+    { amount: "$2", scope: region("us") },
+    { amount: "$3", scope: region("eu") },
+  ]);
+  const [selector] = service.selectors;
+  if (selector?.kind !== "categorical") throw new Error("Missing Region fixture");
+  const us = selector.values[1];
+  if (us === undefined) throw new Error("Missing US fixture");
+  const preferredRegion = { dimension: selector.dimension, kind: "categorical", value: us.value };
+  const html = await renderComponent(PricingServiceOffer, { offer: service, preferredRegion });
+  expect(html).toContain("Pricing region · US");
+  expect(html).toContain("$2");
+  expect(html).not.toContain("$3");
+  const unavailable = await renderComponent(PricingServiceOffer, {
+    offer: service,
+    preferredRegion: { ...preferredRegion, value: { ...us.value, value: "unavailable" } },
+  });
+  expect(unavailable).not.toContain("Pricing region");
+  expect(unavailable).not.toContain('class="exact-rate"');
+});
+
+it("binds a reviewed condition only for one current compatible plan", async () => {
+  const plan = "c".repeat(64);
+  const service = offer([
+    { amount: "$2", scope: region("us") },
+    { amount: "$3", scope: region("eu") },
+  ]);
+  const [selector] = service.selectors;
+  if (selector?.kind !== "categorical") throw new Error("Missing Region fixture");
+  const us = selector.values[1];
+  if (us === undefined) throw new Error("Missing US fixture");
+  const selection = pricingSelection(selector, us.key);
+  if (selection === undefined) throw new Error("Missing US selection");
+  const context = { modelRef: model.uid, offerRefs: [plan], selections: [selection] };
+  service.mechanism_links = [
+    {
+      offer_ref: plan,
+      kind: "compatible_with",
+      applicability: allContexts,
+      shared_dimensions: [selector.dimension],
+    },
+  ];
+  const linked = await renderComponent(PricingServiceOffer, {
+    offer: service,
+    pricingContext: context,
+  });
+  expect(linked).toContain("From Pricing");
+  expect(linked).toContain("$2");
+  expect(linked).not.toContain("$3");
+  const unresolved = await renderComponent(PricingServiceOffer, {
+    offer: service,
+    pricingContext: { ...context, offerRefs: [plan, "d".repeat(64)] },
+  });
+  expect(unresolved).not.toContain("From Pricing");
+  expect(unresolved).not.toContain('class="exact-rate"');
+});
 
 describe("model pricing details", () => {
   it("does not fall back to unfiltered catalog prices for known price exclusions", async () => {

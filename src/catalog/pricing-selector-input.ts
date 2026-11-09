@@ -1,4 +1,5 @@
 import { isPricingDecimal } from "./pricing-constants.ts";
+import { canonicalJsonKey } from "./canonical-value.ts";
 import { isWholeNumberDimension } from "./pricing-presentation.ts";
 import { evaluateApplicability, type PricingSelection } from "./pricing-applicability.ts";
 import type { WebsitePricingSelector } from "./website-schema.ts";
@@ -47,6 +48,30 @@ export function pricingSelection(
   )
     return undefined;
   return { dimension: selector.dimension, kind: "decimal", value, unit: selector.unit };
+}
+
+export function retainPricingInputs(
+  previous: readonly WebsitePricingSelector[],
+  next: readonly WebsitePricingSelector[],
+  inputs: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const oldByDimension = new Map(
+    previous.map((selector) => [canonicalJsonKey(selector.dimension), selector]),
+  );
+  return Object.fromEntries(
+    next.flatMap((selector) => {
+      const old = oldByDimension.get(canonicalJsonKey(selector.dimension));
+      if (old === undefined) return [];
+      const input = inputs[old.key] ?? "";
+      const before = pricingSelection(old, input);
+      const after = pricingSelection(selector, input);
+      return before !== undefined &&
+        after !== undefined &&
+        canonicalJsonKey(before) === canonicalJsonKey(after)
+        ? [[selector.key, input]]
+        : [];
+    }),
+  );
 }
 
 export function isIntegerSelector(selector: WebsitePricingSelector): boolean {

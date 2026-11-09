@@ -31,6 +31,12 @@ import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 import UiIcon from "./UiIcon.vue";
 import PricingConditions from "./PricingConditions.vue";
 import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
+import {
+  linkedPricingSelections,
+  serviceRegionPreference,
+  type PricingRegion,
+  type WebsitePricingContext,
+} from "../catalog/website-pricing-context.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer;
@@ -40,7 +46,11 @@ const props = defineProps<{
   showCandidateRates?: boolean;
   matchedRows?: readonly string[] | undefined;
   hideConditions?: boolean;
+  shareContext?: boolean;
+  pricingContext?: WebsitePricingContext | undefined;
+  preferredRegion?: PricingRegion | undefined;
 }>();
+const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 
 interface ScopeCopy {
   primary: string;
@@ -58,11 +68,19 @@ const displayOffer = computed(() =>
       ? timeline.value.upcoming.offer
       : timeline.value.current,
 );
+const inherited = computed(() =>
+  linkedPricingSelections(
+    displayOffer.value,
+    props.pricingContext,
+    viewingUpcoming.value
+      ? (timeline.value.upcoming?.effective_at ?? liveNow.value)
+      : liveNow.value,
+  ),
+);
+const boundSelections = computed(() => [...(props.boundSelectors ?? []), ...inherited.value]);
 const selectors = computed(() => {
   if (props.hideConditions) return [];
-  const bound = new Set(
-    (props.boundSelectors ?? []).map(({ dimension }) => canonicalJson(dimension)),
-  );
+  const bound = new Set(boundSelections.value.map(({ dimension }) => canonicalJson(dimension)));
   return displayOffer.value.selectors.filter(
     ({ dimension }) => !bound.has(canonicalJson(dimension)),
   );
@@ -75,8 +93,17 @@ const fixedSelectionValues = computed(() => [
     const fixed = fixedPricingSelection(selector);
     return fixed === undefined ? [] : [fixed];
   }),
-  ...(props.boundSelectors ?? []),
+  ...boundSelections.value,
 ]);
+const followedRegion = computed(() =>
+  serviceRegionPreference(
+    displayOffer.value,
+    configurableSelectors.value,
+    props.preferredRegion,
+    props.modelRef,
+    fixedSelectionValues.value,
+  ),
+);
 const selectionValues = computed(() => [
   ...configurableSelectors.value.flatMap((selector) => {
     const value = selection(selector);
@@ -179,13 +206,25 @@ const showPublishedStatus = computed(
     displayOffer.value.state_summary !== "Included",
 );
 
+watch([() => props.offer.id, () => props.modelRef], () => {
+  inputs.value = {};
+  viewingUpcoming.value = false;
+  scheduleClockRefresh();
+});
+
 watch(
-  () => props.offer.id,
-  () => {
-    inputs.value = {};
-    viewingUpcoming.value = false;
-    scheduleClockRefresh();
+  () =>
+    props.shareContext && props.modelRef !== undefined
+      ? {
+          modelRef: props.modelRef,
+          offerRefs: [props.offer.id],
+          selections: selectionValues.value,
+        }
+      : undefined,
+  (context) => {
+    if (context !== undefined) emit("pricingContext", context);
   },
+  { immediate: true },
 );
 
 watch(viewingUpcoming, () => {
@@ -366,7 +405,11 @@ function setInput(key: string, value: string): void {
 }
 
 function selection(selector: WebsitePricingSelector): PricingSelection | undefined {
-  return pricingSelection(selector, inputs.value[selector.key] ?? "");
+  const preferred = followedRegion.value;
+  return pricingSelection(
+    selector,
+    inputs.value[selector.key] ?? (preferred?.key === selector.key ? preferred.value : ""),
+  );
 }
 
 function noteExplanation(reason: string, impact: string): string {
@@ -405,8 +448,21 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :prefix="offer.id"
       :selectors="rateSelectors"
       :inputs="inputs"
+      :follow-region="followedRegion"
       @input="setInput"
     />
+    <p v-if="inherited.length" class="context-prompt">
+      From Pricing ·
+      {{
+        inherited
+          .map((selection) =>
+            selection.kind === "categorical"
+              ? `${formatDimension(selection.dimension)} · ${formatCategoricalValue(selection.value)}`
+              : formatDimension(selection.dimension),
+          )
+          .join(", ")
+      }}
+    </p>
 
     <section
       v-if="

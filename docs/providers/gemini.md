@@ -127,6 +127,9 @@ A table without a processing heading stays unqualified; shared assembly cannot i
 Search and Maps are shared provider-service books. Each exact compatible model has an offer with a
 `compatible_with` relation to its online inference offer; the relation expresses composition, not
 entitlement or settlement.
+Search and Maps grounding use the account eligibility of the same Gemini API project as their
+linked inference request. The website can apply that shared condition when the exact online
+offer is established. Each grounding offer retains its own operation and pricing tier.
 
 `Free Tier` and `Paid Tier` are account-eligibility dimensions. Only an exact official `Free of
 charge` cell becomes a zero rate. Standard/Flex/Priority and Batch remain execution dimensions. An

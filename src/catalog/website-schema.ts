@@ -397,6 +397,18 @@ const websitePricingOfferSchema = z.strictObject({
   ]),
   capacity_choice: z.strictObject({ group_key: hash, label: nonEmpty }).optional(),
   mechanism_refs: z.array(hash).min(1).optional(),
+  mechanism_links: z
+    .array(
+      z.strictObject({
+        offer_ref: hash,
+        kind: z.enum(["requires", "incurs", "compatible_with", "exclusive_with"]),
+        applicability: priceApplicabilitySchema,
+        validity: publishedValiditySchema.optional(),
+        shared_dimensions: z.array(priceDimensionSchema).min(1).optional(),
+      }),
+    )
+    .min(1)
+    .optional(),
   billing_mode: websiteBillingModeSchema,
   composition: z.string().min(1).optional(),
   state_summary: z.string().min(1),

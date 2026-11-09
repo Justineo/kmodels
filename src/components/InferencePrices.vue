@@ -6,10 +6,18 @@ import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 import PricingConditions from "./PricingConditions.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
-import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
+import {
+  fixedPricingSelection,
+  pricingSelection,
+  retainPricingInputs,
+} from "../catalog/pricing-selector-input.ts";
 import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import { presentWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
 import { inferencePriceOptions } from "../catalog/inference-price-options.ts";
+import {
+  inferencePricingContext,
+  type WebsitePricingContext,
+} from "../catalog/website-pricing-context.ts";
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
 import {
   formatCategoricalValue,
@@ -24,6 +32,7 @@ const props = defineProps<{
   prices: WebsiteInferencePrice[];
   offers: WebsitePricingOffer[];
 }>();
+const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 const selectedId = ref("");
 const selectedOffer = ref("");
 const copiedId = ref("");
@@ -141,6 +150,16 @@ const selected = computed(() => {
   const price = toRaw(selectedPrice.value);
   return price === undefined ? undefined : presentWebsiteInferencePrice(price, activeMatch.value);
 });
+watch(
+  () =>
+    inferencePricingContext(
+      props.modelRef,
+      excludesPrices(activeMatch.value) ? [] : (selected.value?.candidates ?? []),
+      chosenSelections.value,
+    ),
+  (context) => emit("pricingContext", context),
+  { immediate: true },
+);
 const conditionOptions = computed(() => {
   const result = activeMatch.value;
   const active = excludesPrices(result) ? initialMatch.value : result;
@@ -190,7 +209,7 @@ function scheduleClock(): void {
     clock = setTimeout(scheduleClock, Math.min(Math.min(...changes) - now + 1, 2_147_483_647));
 }
 onMounted(scheduleClock);
-watch(selectedPrice, scheduleClock);
+watch(() => props.prices, scheduleClock);
 onBeforeUnmount(() => {
   if (clock !== undefined) clearTimeout(clock);
 });
@@ -240,17 +259,31 @@ watch(
   },
 );
 function selectId(id: string): void {
-  const samePricing = selectedGroup.value?.some(({ model_id }) => model_id === id);
+  if (id === selectedPrice.value?.model_id) return;
+  const previous = availableConditionOptions.value.map(({ option }) => option);
   selectedId.value = id;
   copiedId.value = "";
-  if (!samePricing) {
+  scheduleClock();
+  if (
+    selectedOffer.value !== "" &&
+    (!offerOptions.value.some(({ value }) => value === selectedOffer.value) ||
+      excludesPrices(initialMatch.value))
+  )
     selectedOffer.value = "";
-    inputs.value = {};
-  }
+  retainInputs(previous);
 }
 function selectOffer(offer: string): void {
+  const previous = availableConditionOptions.value.map(({ option }) => option);
   selectedOffer.value = offer;
-  inputs.value = {};
+  retainInputs(previous);
+}
+function retainInputs(previous: ReturnType<typeof inferencePriceOptions>): void {
+  if (Object.values(inputs.value).some((value) => value !== ""))
+    inputs.value = retainPricingInputs(
+      previous,
+      availableConditionOptions.value.map(({ option }) => option),
+      inputs.value,
+    );
 }
 async function copyId(id: string): Promise<void> {
   try {

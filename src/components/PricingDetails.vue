@@ -1,6 +1,10 @@
 <script setup lang="ts" vapor>
 import { computed, ref, useId, watch } from "vue";
 import { compareUtf8 } from "../catalog/canonical-value.ts";
+import {
+  preferredPricingRegion,
+  type WebsitePricingContext,
+} from "../catalog/website-pricing-context.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
@@ -30,6 +34,8 @@ const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
+const inferenceContext = ref<WebsitePricingContext>();
+const catalogContext = ref<WebsitePricingContext>();
 const otherChargesId = useId();
 const otherChargesOpen = ref(false);
 const offers = computed(() => props.detail?.offers ?? []);
@@ -91,15 +97,27 @@ const activeMechanism = computed(
     modelMechanisms.value.find(({ id }) => id === selectedMechanismId.value) ??
     modelMechanisms.value[0],
 );
+const pricingContext = computed(() => {
+  if (props.model.pricing.outcome !== "offers" || props.loading || props.error !== undefined)
+    return;
+  const context = hasKnownMapping.value ? inferenceContext.value : catalogContext.value;
+  return context?.modelRef === props.model.uid ? context : undefined;
+});
+const preferredRegion = computed(() =>
+  preferredPricingRegion(pricingContext.value, props.model.provider_id),
+);
 const supplementaryOffers = computed(() =>
   offers.value.filter(
     (offer) =>
       offer.group !== "model_mechanism" &&
       offer.group !== "capacity" &&
       offer.group !== "plan" &&
-      (activeMechanism.value === undefined ||
-        offer.mechanism_refs === undefined ||
-        offer.mechanism_refs.includes(activeMechanism.value.id)),
+      (offer.mechanism_refs === undefined ||
+        (hasKnownMapping.value
+          ? !pricingContext.value?.offerRefs.length ||
+            pricingContext.value.offerRefs.some((ref) => offer.mechanism_refs?.includes(ref))
+          : activeMechanism.value === undefined ||
+            offer.mechanism_refs.includes(activeMechanism.value.id))),
   ),
 );
 
@@ -108,6 +126,8 @@ watch(
   () => {
     selectedMechanismId.value = "";
     selectedCapacityIds.value = {};
+    inferenceContext.value = undefined;
+    catalogContext.value = undefined;
   },
 );
 
@@ -202,6 +222,7 @@ watch(hasOtherCharges, (available) => {
         :catalog-id="model.model_id"
         :prices="modelInferencePrices"
         :offers="offers"
+        @pricing-context="inferenceContext = $event"
       />
       <template v-if="!hasKnownMapping">
         <div v-if="inferencePrices?.length" class="pricing-outcome" role="status">
@@ -283,7 +304,12 @@ watch(hasOtherCharges, (available) => {
               Run mode · {{ activeMechanism.title }}
             </small>
           </header>
-          <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
+          <PricingOfferBreakdown
+            :offer="activeMechanism"
+            :model-ref="model.uid"
+            share-context
+            @pricing-context="catalogContext = $event"
+          />
         </section>
 
         <div
@@ -313,6 +339,8 @@ watch(hasOtherCharges, (available) => {
           :key="offer.id"
           :offer
           :model-ref="model.uid"
+          :preferred-region="otherChargesOpen ? preferredRegion : undefined"
+          :pricing-context="otherChargesOpen ? pricingContext : undefined"
         />
         <ProviderServices
           v-if="provider && provider.pricing_coverage.standalone_resources > 0"
@@ -321,6 +349,7 @@ watch(hasOtherCharges, (available) => {
           :data-version
           :active="otherChargesOpen"
           :excluded-offer-ids="offers.map(({ id }) => id)"
+          :preferred-region="otherChargesOpen ? preferredRegion : undefined"
         />
       </div>
     </div>

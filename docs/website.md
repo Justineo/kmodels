@@ -8,15 +8,16 @@ When the accepted snapshot includes inference ID mappings, model pricing identif
 **Inference model ID**. Group IDs with identical matching rules and pricing conditions and use
 the same compact ID and copy icon control as in the header when all IDs share one group. With
 multiple groups, show a single picker with an option for each exact ID and an adjacent copy icon
-for the selection. Preserve the pricing inputs when switching between IDs within a group. When the
+for the selection. Preserve the pricing inputs that remain applicable after changing the ID or
+pricing plan. When the
 only inference ID equals the header's catalog ID, show **Same as Catalog ID** and keep the raw
 value in the header.
 Use associations for the selected catalog entry. When mapping is unknown,
 keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
 when its pricing association is independently evidenced.
 When an ID has multiple commercial offers, a **Pricing plan** selector uses their
-existing names. Selecting an offer clears old condition inputs and limits the displayed conditions
-and rates to that offer; it does not select a protocol or provide account configuration. Publication runs the
+existing names. Selecting an offer limits the displayed conditions and rates to that offer.
+Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
 chunks remain the price source. Interactive conditions execute the same matching function as the
@@ -170,8 +171,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   snapshot contained no pricing; it never implies that the model previously had
   a price or that model-level validation failed.
   Selecting another Run mode resets only the outgoing mechanism's child context, and context
-  filtering never hides or reorders the choices above it. Each related offer owns independent child
-  context. Categorical conditions with multiple values use the shared customizable-select
+  filtering never hides or reorders the choices above it. Each related offer owns its local
+  conditions and overrides. Categorical conditions with multiple values use the shared customizable-select
   component, with an empty choice and labels from reviewed vocabulary or projection data.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A categorical dimension or exact decimal selector with one possible value
@@ -243,6 +244,14 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   kind, context controls, current/upcoming timeline, rate grid, notes and charge definitions. Resource
   scope affects applicability and the card's context, never a second service browser or provider-specific
   presentation path. Provider services remain explicitly independent of model compatibility.
+  When inference pricing is active, its surviving plan references scope model-associated cards.
+  The cards share only conditions established across the surviving candidates. An exact, current
+  composition link may bind a condition whose shared meaning is reviewed in the provider guide.
+  A model association alone provides browsing context. When a service publishes prices for the
+  same provider-qualified Region, its Region picker follows the main Pricing choice until the
+  viewer makes a local override. The empty option resumes following. Services retain their own
+  operation, execution scope, and other local conditions. The disclosure evaluates the inherited
+  context when open and continues loading independent offer bodies lazily.
   A button uses the detail disclosure styling and exposes the controlled panel's expanded state.
   Opening the disclosure loads provider resource metadata and the first 12 visible offer bodies.
   Pagination reveals another 12; a search can load remaining metadata chunks but hydrates only visible

@@ -3,12 +3,14 @@ import { ref, watch } from "vue";
 import { loadWebsiteProviderPricing } from "../catalog/website-loader.ts";
 import type { WebsiteProvider, WebsiteProviderPricingDetail } from "../catalog/website-schema.ts";
 import ProviderPricingDetails from "./ProviderPricingDetails.vue";
+import type { PricingRegion } from "../catalog/website-pricing-context.ts";
 
 const props = defineProps<{
   provider: WebsiteProvider;
   dataVersion: string;
   active: boolean;
   excludedOfferIds: string[];
+  preferredRegion?: PricingRegion | undefined;
 }>();
 const detail = ref<WebsiteProviderPricingDetail>();
 const loading = ref(false);
@@ -55,6 +57,7 @@ async function load(): Promise<void> {
     :error
     :active
     :excluded-offer-ids
+    :preferred-region
     @retry="load"
   />
 </template>

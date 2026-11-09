@@ -12,6 +12,7 @@ import type {
 } from "../catalog/website-schema.ts";
 import PricingServiceOffer from "./PricingServiceOffer.vue";
 import RelativeTime from "./RelativeTime.vue";
+import type { PricingRegion } from "../catalog/website-pricing-context.ts";
 
 const PAGE_SIZE = 12;
 const props = defineProps<{
@@ -21,6 +22,7 @@ const props = defineProps<{
   error: string | undefined;
   active: boolean;
   excludedOfferIds: readonly string[];
+  preferredRegion?: PricingRegion | undefined;
 }>();
 const emit = defineEmits<{ retry: [] }>();
 const resources = ref<WebsiteProviderPricingDetail["resources"]>([]);
@@ -179,6 +181,7 @@ async function fillVisibleEntries(): Promise<void> {
         :offer="offerLoads.get(entry.summary.id)?.offer ?? entry.summary"
         :resource-title="entry.resourceTitle"
         :error="offerLoads.get(entry.summary.id)?.error"
+        :preferred-region
         @retry="retryOffer(entry.summary)"
       />
       <p v-if="chunkError" class="service-status" role="alert">

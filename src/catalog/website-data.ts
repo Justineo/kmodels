@@ -742,13 +742,57 @@ function websitePricingDetail(
       atoms,
       mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs },
     );
+    const links =
+      mechanismRefs === undefined ? [] : websiteMechanismLinks(view, offer, projected.selectors);
     const choice = group === "capacity" ? capacityChoice(offer, projected) : undefined;
-    return choice === undefined ? projected : { ...projected, capacity_choice: choice };
+    return {
+      ...projected,
+      ...(links.length === 0 ? {} : { mechanism_links: links }),
+      ...(choice === undefined ? {} : { capacity_choice: choice }),
+    };
   });
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
   });
+}
+
+function websiteMechanismLinks(
+  view: ModelPricingView,
+  service: PricingOffer,
+  selectors: readonly WebsitePricingSelector[],
+): NonNullable<WebsitePricingOffer["mechanism_links"]> {
+  const account = { namespace: "kmodels", value: "account_eligibility" } as const;
+  const accountKey = canonicalJsonKey(account);
+  const isGeminiGrounding =
+    selectors.some(({ key }) => key === accountKey) &&
+    view.books.some(
+      (book) =>
+        book.provider_id === "gemini" &&
+        book.scope.kind === "provider_resource" &&
+        ["google-search", "google-maps"].includes(book.scope.resource_key) &&
+        book.offers.some(({ id }) => id === service.id),
+    );
+  return uniqueCanonicalValues(
+    view.modelMechanisms.flatMap((mechanism) =>
+      [
+        ...service.relations.filter(({ target }) => target.offer_refs.includes(mechanism.id)),
+        ...mechanism.relations.filter(({ target }) => target.offer_refs.includes(service.id)),
+      ].map(({ kind, applicability, validity }) => ({
+        offer_ref: mechanism.id,
+        kind,
+        applicability,
+        ...(validity === undefined ? {} : { validity }),
+        ...(isGeminiGrounding &&
+        kind === "compatible_with" &&
+        [...offerConditions(mechanism)].some(
+          ({ dimension }) => canonicalJsonKey(dimension) === accountKey,
+        )
+          ? { shared_dimensions: [account] }
+          : {}),
+      })),
+    ),
+  );
 }
 
 function capacityChoice(

@@ -141,7 +141,7 @@ function isVisibleAt(row: TimedRow, instant: string): boolean {
 
 function nextChangeAt(offer: WebsitePricingOffer, currentInstant: string): string | undefined {
   const currentTime = Date.parse(currentInstant);
-  return timedRows(offer)
+  return [...timedRows(offer), ...(offer.mechanism_links ?? [])]
     .flatMap(({ validity }) => [validity?.from, validity?.until])
     .flatMap((boundary) =>
       boundary?.precision === "datetime" && Date.parse(boundary.value) > currentTime

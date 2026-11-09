@@ -16,6 +16,7 @@ const props = defineProps<{
   prefix: string;
   selectors: readonly WebsitePricingSelector[];
   inputs: Readonly<Record<string, string>>;
+  followRegion?: { key: string; label: string } | undefined;
 }>();
 const emit = defineEmits<{ input: [key: string, value: string] }>();
 const booleanOptions = [
@@ -72,7 +73,11 @@ function scheduleRows(selector: WebsitePricingSelector) {
                 label: option.label,
               }))
             "
-            placeholder="Choose…"
+            :placeholder="
+              followRegion?.key === selector.key
+                ? `Pricing region · ${followRegion.label}`
+                : 'Choose…'
+            "
             @update:model-value="setInput(selector.key, $event)"
           />
           <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
