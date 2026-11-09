@@ -20,7 +20,6 @@ import {
   sagemakerRows,
 } from "./sagemaker.ts";
 import { sagemakerOpenSpecs } from "./sagemaker-sdk.ts";
-import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
 import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -76,11 +75,6 @@ const azureTokenSchema = z.object({ access_token: z.string().min(1) });
 const azureArmPageSchema = z.object({
   value: z.array(z.unknown()),
   nextLink: z.string().nullable().optional(),
-});
-const azureCommercialInventorySchema = z.object({
-  model: z.object({
-    skus: z.array(azureArmSkuSchema).optional(),
-  }),
 });
 const azurePricesPageSchema = z.object({
   Items: z.array(z.unknown()),
@@ -221,8 +215,10 @@ class TransientFetchError extends SourceFetchError {
   }
 }
 
+const sourceRetryBudgetMs = 5 * 60_000;
+
 async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
-  const deadline = Date.now() + 5 * 60_000;
+  const deadline = Date.now() + sourceRetryBudgetMs;
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -429,8 +425,10 @@ async function cloudJson(
   url: URL,
   maxResponseBytes: number,
   headers: string[],
-  form: { name: string; value: string }[] = [],
-  purpose: "catalog" | "authentication" = "catalog",
+  options: {
+    form?: { name: string; value: string }[];
+    onSuccess?: (response: Response) => void;
+  } = {},
 ): Promise<unknown> {
   const args = [
     "--silent",
@@ -449,7 +447,8 @@ async function cloudJson(
     "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
   ];
   for (const header of headers) args.push("--header", header);
-  for (const field of form) args.push("--data-urlencode", `${field.name}=${field.value}`);
+  for (const field of options.form ?? [])
+    args.push("--data-urlencode", `${field.name}=${field.value}`);
   args.push(url.href);
   return retryTransient(async () => {
     let response: Response;
@@ -487,15 +486,18 @@ async function cloudJson(
         response.status,
       );
     }
+    let parsed: unknown;
     try {
-      return JSON.parse(body);
+      parsed = JSON.parse(body);
     } catch {
       if (/^Too many requests\b/i.test(body.trim()))
         throw new TransientFetchError(`${label} was throttled`, retryDelay(response));
-      if (purpose === "authentication")
+      if (options.form !== undefined)
         throw new Error("Authentication service returned invalid JSON");
       throw new SourceContractError(label, invalidJsonContractEvidence());
     }
+    options.onSuccess?.(response);
+    return parsed;
   });
 }
 
@@ -556,31 +558,63 @@ function retailPageUrl(raw: string): URL {
   return url;
 }
 
-async function fetchAzureRetailPages(
-  source: SourceManifest,
-  label: string,
-  first: URL,
-  limits: { items: number; pages: number },
-): Promise<unknown[]> {
+async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
+  const label = "Azure Retail Prices";
+  const first = new URL(source.url);
+  first.searchParams.set("api-version", "2023-01-01-preview");
+  first.searchParams.set("currencyCode", "USD");
+  first.searchParams.set(
+    "$filter",
+    "serviceName eq 'Foundry Models' and priceType eq 'Consumption'",
+  );
   const prices: unknown[] = [];
   let next: URL | undefined = first;
-  for (let pageCount = 0; next !== undefined && pageCount < limits.pages; pageCount += 1) {
+  for (let pageNumber = 1; next !== undefined; pageNumber += 1) {
+    let cooldown = 0;
+    const payload = await cloudJson(
+      label,
+      next,
+      source.maxResponseBytes,
+      ["Accept: application/json"],
+      {
+        onSuccess(response) {
+          if (
+            response.headers.get("x-ms-ratelimit-remaining-retailprices-requests")?.trim() === "0"
+          )
+            cooldown = retryDelay(response) || 60_000;
+        },
+      },
+    ).catch((error: unknown) => {
+      if (error instanceof SourceFetchError && error.status === 429)
+        throw new Error(`${error.message} on page ${pageNumber}`, { cause: error });
+      throw error;
+    });
     const page: z.infer<typeof azurePricesPageSchema> = recognizeValue(
       label,
       azurePricesPageSchema,
-      await cloudJson(label, next, source.maxResponseBytes, ["Accept: application/json"]),
+      payload,
     );
     prices.push(...page.Items);
-    if (prices.length > limits.items)
-      throw new Error("Azure Retail Prices API exceeded item limit");
+    if (prices.length > 50_000) throw new Error("Azure Retail Prices API exceeded item limit");
     next =
       page.NextPageLink === undefined || page.NextPageLink === null
         ? undefined
         : retailPageUrl(page.NextPageLink);
-    if (pageCount === limits.pages - 1 && next !== undefined)
-      throw new Error("Azure Retail Prices API exceeded page limit");
+    if (next === undefined) break;
+    if (pageNumber === 50) throw new Error("Azure Retail Prices API exceeded page limit");
+    if (cooldown > 0) {
+      if (cooldown > sourceRetryBudgetMs)
+        throw new Error(
+          `Azure Retail Prices cooldown exceeded the budget after page ${pageNumber}`,
+        );
+      await wait(cooldown);
+    }
   }
-  return prices;
+  assertItemCount("Azure Retail Prices API", prices.length, 1);
+  const body = JSON.stringify({ prices });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Azure Retail Prices bundle exceeded byte limit");
+  return body;
 }
 
 async function fetchAzureModels(
@@ -600,19 +634,14 @@ async function fetchAzureModels(
 
   const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
   const token = azureTokenSchema.parse(
-    await cloudJson(
-      "Azure",
-      tokenUrl,
-      1024 * 1024,
-      ["Accept: application/json"],
-      [
+    await cloudJson("Azure", tokenUrl, 1024 * 1024, ["Accept: application/json"], {
+      form: [
         { name: "client_id", value: client },
         { name: "client_secret", value: secret },
         { name: "grant_type", value: "client_credentials" },
         { name: "scope", value: "https://management.azure.com/.default" },
       ],
-      "authentication",
-    ),
+    }),
   );
   const authorizationHeaders = [
     "Accept: application/json",
@@ -663,54 +692,9 @@ async function fetchAzureModels(
   if (modelCount > transport.maxModels)
     throw new Error("Azure Models API exceeded total item limit");
 
-  const commercialCosts = regions.flatMap(({ models }) =>
-    models.flatMap((item) => {
-      const parsed = azureCommercialInventorySchema.safeParse(item);
-      return parsed.success ? (parsed.data.model.skus ?? []).flatMap(({ costs }) => costs) : [];
-    }),
-  );
-  const meterIds = unique(
-    commercialCosts.flatMap((cost) => {
-      const meterId = armCostMeterId(cost);
-      return meterId === undefined ? [] : [meterId];
-    }),
-  );
-  const prices: unknown[] = [];
-  for (let start = 0; start < meterIds.length; start += 20) {
-    const ids = meterIds.slice(start, start + 20);
-    const filter = `serviceName eq 'Foundry Models' and (${ids
-      .map((id) => `meterId eq '${id.replaceAll("'", "''")}'`)
-      .join(" or ")})`;
-    const url = new URL("https://prices.azure.com/api/retail/prices");
-    url.searchParams.set("api-version", "2023-01-01-preview");
-    url.searchParams.set("currencyCode", "USD");
-    url.searchParams.set("$filter", filter);
-    prices.push(
-      ...(await fetchAzureRetailPages(source, "Azure", url, {
-        items: 20_000 - prices.length,
-        pages: 20,
-      })),
-    );
-  }
-  const body = JSON.stringify({ regions, prices });
+  const body = JSON.stringify({ regions });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure inventory bundle exceeded byte limit");
-  return body;
-}
-
-async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
-  const url = new URL(source.url);
-  url.searchParams.set("api-version", "2023-01-01-preview");
-  url.searchParams.set("currencyCode", "USD");
-  url.searchParams.set("$filter", "serviceName eq 'Foundry Models' and priceType eq 'Consumption'");
-  const prices = await fetchAzureRetailPages(source, "Azure Retail Prices", url, {
-    items: 50_000,
-    pages: 50,
-  });
-  assertItemCount("Azure Retail Prices API", prices.length, 1);
-  const body = JSON.stringify({ prices });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Azure Retail Prices bundle exceeded byte limit");
   return body;
 }
 
@@ -897,11 +881,12 @@ async function googleAccessToken(
       new URL(account.token_uri),
       1024 * 1024,
       ["Accept: application/json"],
-      [
-        { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
-        { name: "assertion", value: assertion },
-      ],
-      "authentication",
+      {
+        form: [
+          { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
+          { name: "assertion", value: assertion },
+        ],
+      },
     ),
   );
   return { token: token.access_token, project: account.project_id };
@@ -979,10 +964,6 @@ async function fetchGoogleModelGarden(
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Agent Platform Model Garden inventory exceeded byte limit");
   return body;
-}
-
-function unique<T>(values: T[]): T[] {
-  return [...new Set(values)];
 }
 
 async function request(source: SourceManifest, json?: string): Promise<Response> {

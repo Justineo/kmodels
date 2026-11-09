@@ -27,7 +27,7 @@ the catalog merely because they appear in a broad marketplace or pricing page.
 | [Azure OpenAI pricing](https://azure.microsoft.com/pricing/details/azure-openai/) and the [Foundry Models pricing index](https://azure.microsoft.com/pricing/details/ai-foundry-models/microsoft/)                                                                                                                                                                                                                                                                                                                                                                                                                                          | Public model-family list prices and request-attributable built-in tool rates. Discovered family pages are optional and parsed independently.                                                                                                                          |
 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing.md), delegated by [Microsoft's Claude billing contract](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models-billing)                                                                                                                                                                                                                                                                                                                                                                                                         | Claude token/cache rates in Foundry. Microsoft states that each call is first priced with Anthropic's published per-model token rates. CCU conversion, Marketplace discounts, and invoice settlement are outside scope.                                               |
 | [Azure OpenAI Chat](https://learn.microsoft.com/rest/api/aifoundry/azureopenai/chat), [Responses](https://learn.microsoft.com/rest/api/aifoundry/azureopenai/responses), [Batch](https://learn.microsoft.com/rest/api/aifoundry/azureopenai/batch), [Embeddings](https://learn.microsoft.com/rest/api/aifoundry/azureopenai/embeddings), [media](https://learn.microsoft.com/azure/foundry/openai/reference-preview-latest), [Realtime](https://learn.microsoft.com/en-us/azure/foundry-classic/openai/realtime-audio-reference-ga), and [prompt caching](https://learn.microsoft.com/azure/foundry/openai/how-to/prompt-caching) contracts | Optional first-party accounting supplement. It establishes exact response, terminal stream-event, completed-job, and media-result fields from which a downstream request calculator can acquire quantities. It publishes no price and no runtime lifecycle.           |
-| Authenticated Azure Location Models and exact ARM meter inventory                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Optional account-scoped confirmation of public model/version availability and exact meter IDs. It may enrich an existing public tuple but does not publish subscription resources, principals, deployment names, private prices, or account-only identities.          |
+| Authenticated Azure Location Models                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Optional account-scoped confirmation of public model/version availability and capabilities. It may enrich an existing public tuple but does not publish subscription resources, principals, deployment names, private prices, or account-only identities.             |
 
 The required public index and its fixed companions use Microsoft Learn's
 `?accept=text/markdown` representation. The published page's canonical URL, source metadata,
@@ -284,14 +284,14 @@ For an exact overlapping claim, authority is:
 
 Exact-version pricing takes precedence over a base-model fallback for that version. There is no
 additional automatic winner between two conflicting price books at the same authority and binding
-scope. Authenticated ARM joins can confirm an exact public tuple and meter meaning, but the
-account-scoped inventory is outside the public canonical pricing dependency set. It cannot raise
-the authority of a public rate or introduce account-only pricing into offline replay.
+scope. The account-scoped ARM inventory collects model and availability facts without querying
+Retail Prices. Its meter joins remain readable in historical bundles and sit outside the public
+canonical pricing dependency set.
 
 Different region, deployment mechanism, seller, tier, or validity is not a conflict. A conflict with
 no deterministic winner withholds only the disputed rate and emits reconciliation evidence; valid
 sibling rates survive.
-Public-page and direct ARM parsing preserve unequal observations for the same price scope instead
+Public-page and historical ARM parsing preserve unequal observations for the same price scope instead
 of discarding them or keeping the last amount. Canonical public assembly retains a bounded raw
 conflict with both amounts while preserving disjoint regional prices and readable meters.
 Price amounts accept nonnegative decimal strings or finite nonnegative JSON numbers. Shared Azure
@@ -302,9 +302,11 @@ placeholders such as `Pending` before they can enter a numeric fact.
 
 - Retail Prices retries honor both `Retry-After` and
   `x-ms-ratelimit-retailPrices-retry-after`, taking the longer valid wait when both are present.
-  These cooldowns also apply to the reviewed `Too many requests` response body returned with
-  HTTP 200. A cooldown that exceeds the shared request retry budget fails the refresh rather
-  than causing an early retry; the accepted pricing partition remains stale.
+  A successful page that reports zero remaining requests also delays its continuation, using
+  the same headers or the observed one-minute window when a wait is unspecified. Only the public
+  pricing source spends this quota. A throttled page is retried in place, including the reviewed
+  `Too many requests` body returned with HTTP 200. A cooldown beyond the shared request budget
+  leaves the previous price partition in place. No partial page walk enters price assembly.
 - A pricing `source_unavailable` outcome can also wrap a parser rejection after a successful
   fetch. Inspect the underlying warning and replay the Retail parser before diagnosing transport.
   The public feed includes model SKUs absent from the documented catalog and versionless rows

@@ -348,6 +348,39 @@ function retailResponse(status: number, headers = ""): string {
 }
 
 describe("source retry cooldown", () => {
+  it("waits for the reported Retail Prices quota reset before requesting the next page", async () => {
+    vi.useFakeTimers();
+    const second = "https://prices.azure.com/api/retail/prices?$skip=1000";
+    const third = "https://prices.azure.com/api/retail/prices?$skip=2000";
+    transport.responses.set("prices.azure.com", [
+      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 1\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\n\r\n${JSON.stringify({ Items: [1], NextPageLink: second })}`,
+      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\nRetry-After: 90\r\n\r\n${JSON.stringify({ Items: [2], NextPageLink: third })}`,
+      'HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\n\r\n{"Items":[3],"NextPageLink":null}',
+    ]);
+    const result = fetchSource(retailSource());
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(transport.calls.slice(1)).toEqual([second]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(JSON.parse((await result).body)).toEqual({ prices: [1, 2, 3] });
+    expect(transport.calls.slice(1)).toEqual([second, third]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports the throttled page without returning prices from an incomplete crawl", async () => {
+    const next = "https://prices.azure.com/api/retail/prices?$skip=1000";
+    transport.responses.set("prices.azure.com", [
+      `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ Items: [1], NextPageLink: next })}`,
+      retailResponse(429, "Retry-After: 301\r\n"),
+    ]);
+    const error: unknown = await fetchSource(retailSource()).catch((failure: unknown) => failure);
+    expect(sourceFailure(error)).toEqual({
+      outcome: "fetch_failed",
+      message: "Azure Retail Prices HTTP 429 on page 2",
+      http_status: 429,
+    });
+    expect(transport.calls).toHaveLength(2);
+  });
+
   it.each([
     { headers: "Retry-After: 60\r\n", delay: 60_000 },
     { headers: "Retry-After: Tue, 29 Sep 2026 00:01:30 GMT\r\n", delay: 90_000 },
@@ -459,6 +492,35 @@ describe("source retry cooldown", () => {
       expect(transport.calls).toHaveLength(2);
     },
   );
+});
+
+it("fetches ARM model inventory without spending the public Retail Prices quota", async () => {
+  const source = manifests
+    .find(({ provider }) => provider.id === "azure")
+    ?.sources.find(({ id }) => id === "azure-api");
+  if (source === undefined) throw new Error("Missing Azure account inventory");
+  const id = "00000000-0000-0000-0000-000000000001";
+  for (const name of ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_SUBSCRIPTION_ID"])
+    vi.stubEnv(name, id);
+  vi.stubEnv("AZURE_CLIENT_SECRET", "test-secret");
+  const model = {
+    model: { name: "test-model", skus: [{ name: "Standard", costs: [{ meterId: id }] }] },
+  };
+  const json = (body: unknown) => `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify(body)}`;
+  transport.responses.set("login.microsoftonline.com", [json({ access_token: "test-token" })]);
+  transport.responses.set("management.azure.com", [
+    json({ value: [{ name: "eastus2", displayName: "East US 2", type: "Region" }] }),
+    json({ value: [{ resourceType: "accounts", locations: ["East US 2"] }] }),
+    json({ value: [model] }),
+  ]);
+  const result = await fetchSource(source);
+  expect(JSON.parse(result.body)).toEqual({ regions: [{ location: "eastus2", models: [model] }] });
+  expect(transport.calls.map((url) => new URL(url).hostname)).toEqual([
+    "login.microsoftonline.com",
+    "management.azure.com",
+    "management.azure.com",
+    "management.azure.com",
+  ]);
 });
 
 describe("linked source fetch", () => {

@@ -184,7 +184,7 @@ const azureApiBundleSchema = z.object({
         locations.add(region.location);
       }
     }),
-  prices: z.array(z.unknown()),
+  prices: z.array(z.unknown()).optional(),
 });
 
 const azureRetailBundleSchema = z.object({
@@ -2874,7 +2874,7 @@ export function parseAzureApi(input: Input): SourceParseResult {
   const bundle = azureApiBundleSchema.parse(JSON.parse(input.body));
   const prices = recognizeItems({
     label: "Azure API retail price",
-    items: bundle.prices,
+    items: bundle.prices ?? [],
     schema: retailPriceSchema,
     skipInvalidItems: true,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
@@ -2917,14 +2917,17 @@ export function parseAzureApi(input: Input): SourceParseResult {
       if (retirement !== undefined && retiredAt === undefined)
         input.onContractFinding?.(contractExtensionEvidence(["/model/deprecation/inference"]));
       const status = apiStatus(item.model.lifecycleStatus, retiredAt, input.observedAt);
-      const rates = pricesFor(
-        item,
-        pricesByMeter,
-        location,
-        input.source.id,
-        modelTasksValue,
-        input.onPricingReconciliation,
-      );
+      const rates =
+        bundle.prices === undefined
+          ? []
+          : pricesFor(
+              item,
+              pricesByMeter,
+              location,
+              input.source.id,
+              modelTasksValue,
+              input.onPricingReconciliation,
+            );
       return {
         ...base(input, item.model.name, item.model.version),
         description: item.description,

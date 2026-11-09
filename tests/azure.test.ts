@@ -2300,6 +2300,20 @@ describe("Azure adapters", () => {
     });
   });
 
+  it("keeps ARM model availability and skips pricing diagnostics for current inventory bundles", async () => {
+    const body = await fixture("azure/api.json");
+    const { regions } = JSON.parse(body);
+    const diagnostics: PricingReconciliationItem[] = [];
+    const legacy = azureApiModels(body);
+    const models = azureApiModels(JSON.stringify({ regions }), diagnostics);
+    expect(legacy[0]?.price_facts.length).toBeGreaterThan(0);
+    expect(models.map(({ uid, availability }) => ({ uid, availability }))).toEqual(
+      legacy.map(({ uid, availability }) => ({ uid, availability })),
+    );
+    expect(models[0]?.price_facts).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
+
   it("treats an effective inference retirement date as retired despite stale lifecycle labels", async () => {
     const value = manifest("azure");
     const source = value.sources.find((candidate) => candidate.id === "azure-api");
