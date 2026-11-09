@@ -5,7 +5,6 @@ import type {
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
-import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import type { PricingRegion, WebsitePricingContext } from "../catalog/website-pricing-context.ts";
 
 const props = defineProps<{
@@ -13,7 +12,6 @@ const props = defineProps<{
   modelRef?: string | undefined;
   resourceTitle?: string;
   error?: string | undefined;
-  boundSelectors?: readonly PricingSelection[] | undefined;
   preferredRegion?: PricingRegion | undefined;
   pricingContext?: WebsitePricingContext | undefined;
 }>();
@@ -47,7 +45,6 @@ const state = computed(() =>
       v-if="pricing"
       :offer="pricing"
       :model-ref
-      :bound-selectors
       :preferred-region
       :pricing-context
       explain-charges

@@ -103,23 +103,26 @@ const pricingContext = computed(() => {
   const context = hasKnownMapping.value ? inferenceContext.value : catalogContext.value;
   return context?.modelRef === props.model.uid ? context : undefined;
 });
+const chargesContext = computed(() => (otherChargesOpen.value ? pricingContext.value : undefined));
 const preferredRegion = computed(() =>
-  preferredPricingRegion(pricingContext.value, props.model.provider_id),
+  preferredPricingRegion(chargesContext.value, props.model.provider_id),
 );
-const supplementaryOffers = computed(() =>
-  offers.value.filter(
-    (offer) =>
-      offer.group !== "model_mechanism" &&
-      offer.group !== "capacity" &&
-      offer.group !== "plan" &&
-      (offer.mechanism_refs === undefined ||
-        (hasKnownMapping.value
-          ? !pricingContext.value?.offerRefs.length ||
-            pricingContext.value.offerRefs.some((ref) => offer.mechanism_refs?.includes(ref))
-          : activeMechanism.value === undefined ||
-            offer.mechanism_refs.includes(activeMechanism.value.id))),
-  ),
-);
+const supplementaryOffers = computed(() => {
+  const knownMapping = hasKnownMapping.value;
+  const mechanism = knownMapping ? undefined : activeMechanism.value;
+  const refs = new Set(
+    knownMapping ? pricingContext.value?.offerRefs : mechanism === undefined ? [] : [mechanism.id],
+  );
+  return offers.value.filter(
+    ({ group, mechanism_refs }) =>
+      group !== "model_mechanism" &&
+      group !== "capacity" &&
+      group !== "plan" &&
+      (refs.size === 0 ||
+        mechanism_refs === undefined ||
+        mechanism_refs.some((ref) => refs.has(ref))),
+  );
+});
 
 watch(
   () => props.model.uid,
@@ -339,8 +342,8 @@ watch(hasOtherCharges, (available) => {
           :key="offer.id"
           :offer
           :model-ref="model.uid"
-          :preferred-region="otherChargesOpen ? preferredRegion : undefined"
-          :pricing-context="otherChargesOpen ? pricingContext : undefined"
+          :preferred-region
+          :pricing-context="chargesContext"
         />
         <ProviderServices
           v-if="provider && provider.pricing_coverage.standalone_resources > 0"
@@ -349,7 +352,7 @@ watch(hasOtherCharges, (available) => {
           :data-version
           :active="otherChargesOpen"
           :excluded-offer-ids="offers.map(({ id }) => id)"
-          :preferred-region="otherChargesOpen ? preferredRegion : undefined"
+          :preferred-region
         />
       </div>
     </div>

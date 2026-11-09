@@ -68,15 +68,17 @@ const displayOffer = computed(() =>
       ? timeline.value.upcoming.offer
       : timeline.value.current,
 );
-const inherited = computed(() =>
-  linkedPricingSelections(
-    displayOffer.value,
-    props.pricingContext,
+const inherited = computed(() => {
+  const context = props.pricingContext;
+  if (context === undefined) return [];
+  return linkedPricingSelections(
+    props.offer,
+    context,
     viewingUpcoming.value
       ? (timeline.value.upcoming?.effective_at ?? liveNow.value)
       : liveNow.value,
-  ),
-);
+  );
+});
 const boundSelections = computed(() => [...(props.boundSelectors ?? []), ...inherited.value]);
 const selectors = computed(() => {
   if (props.hideConditions) return [];
@@ -95,15 +97,17 @@ const fixedSelectionValues = computed(() => [
   }),
   ...boundSelections.value,
 ]);
-const followedRegion = computed(() =>
-  serviceRegionPreference(
+const followedRegion = computed(() => {
+  const region = props.preferredRegion;
+  if (region === undefined) return;
+  return serviceRegionPreference(
     displayOffer.value,
     configurableSelectors.value,
-    props.preferredRegion,
+    region,
     props.modelRef,
     fixedSelectionValues.value,
-  ),
-);
+  );
+});
 const selectionValues = computed(() => [
   ...configurableSelectors.value.flatMap((selector) => {
     const value = selection(selector);
