@@ -48,7 +48,10 @@ export function evaluateApplicability(
     let clauseFalse = false;
     const clauseDimensions: PriceDimension[] = [];
     for (const condition of clause.all_of) {
-      const result = evaluateCondition(condition, context);
+      const result = evaluatePricingCondition(
+        condition,
+        context.get(canonicalJsonKey(condition.dimension)),
+      );
       if (result === "false") {
         clauseFalse = true;
         break;
@@ -126,11 +129,10 @@ function selectionMap(selections: readonly PricingSelection[]): Map<string, Pric
   return result;
 }
 
-function evaluateCondition(
+export function evaluatePricingCondition(
   condition: PriceCondition,
-  context: ReadonlyMap<string, PricingSelection>,
+  selected: PricingSelection | undefined,
 ): "true" | "false" | "missing" {
-  const selected = context.get(canonicalJsonKey(condition.dimension));
   if (selected === undefined) return "missing";
   if (condition.kind === "categorical")
     return selected.kind === "categorical" &&

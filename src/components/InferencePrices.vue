@@ -1,10 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
-import type {
-  WebsiteInferencePrice,
-  WebsitePricingOffer,
-  WebsitePricingSelector,
-} from "../catalog/website-schema.ts";
+import type { WebsiteInferencePrice, WebsitePricingOffer } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
@@ -13,6 +9,7 @@ import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value
 import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
 import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import { queryWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
+import { inferencePriceOptions } from "../catalog/inference-price-options.ts";
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
 import {
   formatCategoricalValue,
@@ -87,36 +84,18 @@ function matchConditions(selections: readonly PricingSelection[]) {
 function excludesPrices(result: InferenceMatchResult | undefined): boolean {
   return result?.reason === "no_applicable_price" || result?.reason === "incompatible_conditions";
 }
-function scopeConditionOption(option: WebsitePricingSelector): WebsitePricingSelector | undefined {
-  function isAvailable(value: string): boolean {
-    const selection = pricingSelection(option, value);
-    return selection !== undefined && !excludesPrices(matchConditions([selection]));
-  }
-  switch (option.kind) {
-    case "categorical": {
-      const values = option.values.filter(({ key }) => isAvailable(key));
-      return values.length === 0 ? undefined : { ...option, values };
-    }
-    case "decimal_values": {
-      const values = option.values.filter(isAvailable);
-      return values.length === 0 ? undefined : { ...option, values };
-    }
-    case "decimal_buckets": {
-      const values = option.values.filter(({ key }) => isAvailable(key));
-      return values.length === 0 ? undefined : { ...option, values };
-    }
-    default:
-      return option;
-  }
-}
 const initialMatch = computed(() => matchConditions([]));
 const availableConditionOptions = computed(() => {
-  const dimensions = new Set(initialMatch.value?.missing_conditions.map(canonicalJson));
-  return (selectedPrice.value?.pricing_options ?? []).flatMap((option) => {
-    if (!dimensions.has(canonicalJson(option.dimension))) return [];
-    const scoped = scopeConditionOption(option);
-    return scoped === undefined ? [] : [{ option: scoped, fixed: fixedPricingSelection(scoped) }];
-  });
+  const price = toRaw(selectedPrice.value);
+  const initial = initialMatch.value;
+  if (price?.matching === undefined || initial === undefined) return [];
+  return inferencePriceOptions(
+    price.matching,
+    initial,
+    price.pricing_options ?? [],
+    evaluatedAt.value,
+    selectedOffer.value || undefined,
+  ).map((option) => ({ option, fixed: fixedPricingSelection(option) }));
 });
 const configurableConditionOptions = computed(() =>
   availableConditionOptions.value.flatMap(({ option, fixed }) =>
