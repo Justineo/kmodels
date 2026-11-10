@@ -107,13 +107,21 @@ pricing joins remain required.
   column order, including the optional row qualifier and one-hour cache-write column; discard
   hourly compute tables. A token table may publish only an Input column, as in the Jev row;
   that establishes an input rate without inventing an output rate. Comma-separated version labels expand to exact catalog matches.
+  A variant that resolves exactly takes precedence over broader name matching, so a combined row
+  does not also bind a sibling whose catalog display name carries a provider suffix such as
+  `(legacy)`; the resulting model keeps no invented rate.
   The capacity heading may qualify DBU per hour with an explicit number of model units; that
   remains excluded capacity pricing and must not invalidate neighboring token tables.
 - Token cells normalize with their complete published applicability. Regional-processing markers
   expand into mutually exclusive regional and non-regional variants with the documented DBU
-  uplift. Promotion markers bind only to the matching note in their table section; inclusive end
+  uplift. Promotion markers bind only to the applicable note in their table section; inclusive end
   dates and subsequent list prices remain separate variants. Input/cache and output increases are
-  applied separately with exact decimal arithmetic.
+  applied separately with exact decimal arithmetic. A row marker selects its exact-marker notes
+  first; only when none of those names the row does the parser also accept a longer marker. The
+  provider publishes Gemini 3.6/3.7/3.8 Flash rows as `**` while the note that names them is
+  `***`, so the uniquely naming note stays authoritative instead of being dropped as unmatched.
+  A longer marker never overrides an applicable exact-marker note, and a note only applies when it
+  names the row's model within that table section.
 - Short/long context rows retain the provider's named tier when the page gives no numeric threshold.
   The legacy combined layout's numeric split is admitted only where the same model has an explicit
   `Long (>200k tokens)` row; a named tier alone cannot establish that threshold.

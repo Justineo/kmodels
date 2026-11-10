@@ -5038,7 +5038,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v20");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v21");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),

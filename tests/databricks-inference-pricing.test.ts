@@ -248,6 +248,95 @@ it("withdraws a price association when its exact price row disappears", async ()
     }).status,
   ).toBe("matched");
 }, 15000);
+it("binds a promotion note whose marker is longer than the row marker", async () => {
+  const parsed = parseSource({
+    provider: { ...manifest.provider, source_ids: [source.id] },
+    source,
+    observedAt: at,
+    body: JSON.stringify(await databricksInferenceFixture()),
+  });
+  function inputFacts(model_id: string) {
+    const model = parsed.models.find(({ model_id: id }) => id === model_id);
+    if (!model) throw new Error(`Missing model ${model_id}`);
+    return {
+      raw: model.raw_price_facts,
+      standard: model.price_facts
+        .filter(
+          (fact) =>
+            fact.meter === "input_text" &&
+            fact.conditions.service_tier === "standard" &&
+            fact.conditions.context_tier !== "long" &&
+            fact.conditions.deployment_scope !== "regional_processing",
+        )
+        .map(({ price, conditions }) => ({ price, conditions }))
+        .sort((left, right) => Number(left.price) - Number(right.price)),
+    };
+  }
+  for (const model_id of [
+    "databricks-gemini-3-6-flash",
+    "databricks-gemini-3-7-flash",
+    "databricks-gemini-3-8-flash",
+  ])
+    expect(inputFacts(model_id)).toEqual({
+      raw: [],
+      standard: [
+        {
+          price: "10.714",
+          conditions: expect.objectContaining({
+            effective_until: "2026-12-31",
+            promotion: true,
+          }),
+        },
+        { price: "21.428", conditions: expect.objectContaining({ effective_from: "2027-01-01" }) },
+      ],
+    });
+  // A longer marker must not let a row adopt another model's promotion window.
+  expect(inputFacts("databricks-gemini-4-argon").standard).toEqual([
+    {
+      price: "35.714",
+      conditions: expect.objectContaining({ effective_until: "2026-11-30", promotion: true }),
+    },
+    { price: "71.428", conditions: expect.objectContaining({ effective_from: "2026-12-01" }) },
+  ]);
+  // The exact-marker 20% note still wins for rows that carry its marker.
+  expect(inputFacts("databricks-gemini-3-1-pro").standard).toEqual([
+    {
+      price: "28.5712",
+      conditions: expect.objectContaining({ effective_until: "2027-01-31", promotion: true }),
+    },
+    { price: "35.714", conditions: expect.objectContaining({ effective_from: "2027-02-01" }) },
+  ]);
+  const gemini = lookup()({
+    provider_id: "databricks",
+    model_id: "databricks-gemini-3-6-flash",
+    selectors: [standard],
+  });
+  expect(gemini.status).toBe("candidates");
+  expect(gemini.missing_conditions).toContainEqual({ namespace: "kmodels", value: "promotion" });
+  expect(prices(gemini, "input_text")).toHaveLength(2);
+  expect(prices(gemini, "input_text")).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ value: { numerator: "5357", denominator: "250000000" } }),
+      expect.objectContaining({ value: { numerator: "5357", denominator: "500000000" } }),
+    ]),
+  );
+  expect(JSON.stringify(prices(gemini, "input_text"))).not.toContain("USD");
+  for (const model_id of ["databricks-gemini-3-7-flash", "databricks-gemini-3-8-flash"]) {
+    const result = lookup()({
+      provider_id: "databricks",
+      model_id,
+      selectors: [standard, condition("deployment_scope", "non_regional_processing")],
+    });
+    expect(result.status).toBe("candidates");
+    expect(result.missing_conditions).toEqual([{ namespace: "kmodels", value: "promotion" }]);
+    expect(prices(result, "input_text")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: { numerator: "5357", denominator: "250000000" } }),
+        expect.objectContaining({ value: { numerator: "5357", denominator: "500000000" } }),
+      ]),
+    );
+  }
+}, 15000);
 it("projects the same direct lookup into static exports and compact UI data", async () => {
   const projection = await projectCatalogPair(baseline);
   expect(

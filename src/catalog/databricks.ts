@@ -597,9 +597,8 @@ function tieredVariants(
   let variants = [{ ...value, conditions }];
   const marker = label.match(/\*+/)?.[0];
   if (marker !== undefined) {
-    const candidates = notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
     // A family note is local to its table section; a named note must match this row.
-    const note = candidates.filter((note) => {
+    const applies = (note: string): boolean => {
       const family = note.match(/DBU rates for these (.+?) models/)?.[1];
       if (family !== undefined)
         return identity(family).every((part) => identity(label).includes(part));
@@ -612,7 +611,14 @@ function tieredVariants(
           identity(name).every((part) => identity(label).includes(part)),
         )
       );
-    });
+    };
+    const exact = notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
+    // A published row marker can be a prefix of the note that names it: one table marks
+    // Gemini 3.6/3.7/3.8 Flash rows `**` while their promotion note is `***`.
+    const candidates = exact.some(applies)
+      ? exact
+      : notes.filter((note) => note.match(/^\*+/)?.[0]?.startsWith(marker) === true);
+    const note = candidates.filter(applies);
     const selected = note.length === 1 ? note[0] : undefined;
     if (selected === undefined) return;
     const discount = selected.match(

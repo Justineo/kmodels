@@ -1694,7 +1694,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v20",
+        extractorVersion: "databricks-catalog-v21",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
