@@ -386,6 +386,8 @@ peer in the page and changelog must agree on the minimum and effective date. Mis
 contradictory claims keep the native rules raw without affecting unrelated services or models.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
+The native `Fine-tuning` section heading (also accepted as the earlier `Finetuning`) selects this
+table in either published column order of `Model | Training | Input | Output | Cached input`.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary
 model books. Within each mechanism, the unqualified published row uses
 `account_eligibility=default` and the discounted row uses `account_eligibility=data_sharing`; this

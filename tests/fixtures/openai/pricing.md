@@ -90,23 +90,23 @@ Standard
 | Search     | gpt-5-search-api       | $1.25 | $0.125       | $10.00 |
 | Moderation | omni-moderation-latest | Free  | -            | -      |
 
-Finetuning
+Fine-tuning
 
 Standard
 
 ### Pricing Table data
 
-| Model                             | Training       | Input | Cached input | Output |
-| --------------------------------- | -------------- | ----- | ------------ | ------ |
-| gpt-4.1-2025-04-14                | $25.00         | $3.00 | $0.75        | $12.00 |
-| o4-mini-2025-04-16                | $100.00 / hour | $4.00 | $1.00        | $16.00 |
-| o4-mini-2025-04-16 (data sharing) | $100.00 / hour | $2.00 | $0.50        | $8.00  |
+| Model                             | Training       | Input | Output | Cached input |
+| --------------------------------- | -------------- | ----- | ------ | ------------ |
+| gpt-4.1-2025-04-14                | $25.00         | $3.00 | $12.00 | $0.75        |
+| o4-mini-2025-04-16                | $100.00 / hour | $4.00 | $16.00 | $1.00        |
+| o4-mini-2025-04-16 (data sharing) | $100.00 / hour | $2.00 | $8.00  | $0.50        |
 
 Batch
 
 ### Pricing Table data
 
-| Model                             | Training       | Input | Cached input | Output |
-| --------------------------------- | -------------- | ----- | ------------ | ------ |
-| o4-mini-2025-04-16                | $100.00 / hour | $2.00 | $0.50        | $8.00  |
-| o4-mini-2025-04-16 (data sharing) | $100.00 / hour | $1.00 | $0.25        | $4.00  |
+| Model                             | Training       | Input | Output | Cached input |
+| --------------------------------- | -------------- | ----- | ------ | ------------ |
+| o4-mini-2025-04-16                | $100.00 / hour | $2.00 | $8.00  | $0.50        |
+| o4-mini-2025-04-16 (data sharing) | $100.00 / hour | $1.00 | $4.00  | $0.25        |

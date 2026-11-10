@@ -410,19 +410,20 @@ function openAiPricing(
   return result;
 }
 
-const openAiPricingSections = new Set([
-  "Flagship models",
-  "Cyber models",
-  "Life sciences models",
-  "Legal model configurations",
-  "GPT-Live sessions",
-  "Realtime and audio generation models",
-  "Image generation models",
-  "Video generation models",
-  "Transcription models",
-  "Tools",
-  "Specialized models",
-  "Finetuning",
+const openAiPricingSections = new Map([
+  ["Flagship models", "Flagship models"],
+  ["Cyber models", "Cyber models"],
+  ["Life sciences models", "Life sciences models"],
+  ["Legal model configurations", "Legal model configurations"],
+  ["GPT-Live sessions", "GPT-Live sessions"],
+  ["Realtime and audio generation models", "Realtime and audio generation models"],
+  ["Image generation models", "Image generation models"],
+  ["Video generation models", "Video generation models"],
+  ["Transcription models", "Transcription models"],
+  ["Tools", "Tools"],
+  ["Specialized models", "Specialized models"],
+  ["Finetuning", "Finetuning"],
+  ["Fine-tuning", "Finetuning"],
 ]);
 
 const openAiPricingTiers = new Map<string, OpenAiPricingTier>([
@@ -653,8 +654,9 @@ function openAiPricingTables(
   let reviewedTier = true;
   for (let index = 0; index < lines.length - 1; index += 1) {
     const line = normalizedText(lines[index] ?? "");
-    if (openAiPricingSections.has(line)) {
-      section = line;
+    const observedSection = openAiPricingSections.get(line);
+    if (observedSection !== undefined) {
+      section = observedSection;
       tier = undefined;
       reviewedTier = true;
       continue;

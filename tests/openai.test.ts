@@ -1343,6 +1343,109 @@ describe("OpenAI adapters", () => {
     expect(() => sourcePricingReconciliation(models, reconciliation, true)).not.toThrow();
   });
 
+  it("recognizes the native Fine-tuning heading and column order", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const reconciliation: PricingReconciliationItem[] = [];
+    const parsed = parseSource({
+      provider: provider(value),
+      source,
+      body: [
+        "Fine-tuning",
+        "Standard",
+        "| Model | Training | Input | Output | Cached input |",
+        "| --- | --- | --- | --- | --- |",
+        "| gpt-4.1-2025-04-14 | $25.00 | $3.00 | $12.00 | $0.75 |",
+        "Batch",
+        "| Model | Training | Input | Output | Cached input |",
+        "| --- | --- | --- | --- | --- |",
+        "| gpt-4.1-2025-04-14 | $25.00 | $1.50 | $6.00 | $0.50 |",
+      ].join("\n"),
+      observedAt,
+      catalogModels: [openAiModel("gpt-4.1-2025-04-14", ["text_generation"])],
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(
+      reconciliation.some(({ reason_code }) => reason_code === "public_price_shape_unsupported"),
+    ).toBe(false);
+    expect(reconciliation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          disposition: "normalized",
+          reason_code: "fine_tuned_inference_pricing_bound",
+          sample: "gpt-4.1-2025-04-14",
+        }),
+      ]),
+    );
+    expect(parsed.models).toEqual([]);
+    const commercial = parsed.commercial_facts ?? [];
+    const fineTunedFacts = commercial
+      .filter(({ resource_key }) => resource_key === "fine-tuned-inference:gpt-4.1-2025-04-14")
+      .flatMap(({ price_facts }) => price_facts);
+    expect(fineTunedFacts).toHaveLength(6);
+    expect(fineTunedFacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "3.00",
+          conditions: expect.objectContaining({ service_tier: "standard" }),
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "12.00",
+          conditions: expect.objectContaining({ service_tier: "standard" }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.75",
+          conditions: expect.objectContaining({ service_tier: "standard" }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "1.50",
+          conditions: expect.objectContaining({ service_tier: "batch" }),
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "6.00",
+          conditions: expect.objectContaining({ service_tier: "batch" }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.50",
+          conditions: expect.objectContaining({ service_tier: "batch" }),
+        }),
+      ]),
+    );
+    expect(
+      commercial.map(
+        ({ resource_kind, resource_key, model_refs, pricing_state, raw_price_facts }) => ({
+          resource_kind,
+          resource_key,
+          model_refs,
+          pricing_state,
+          raw_price_facts,
+        }),
+      ),
+    ).toEqual([
+      {
+        resource_kind: "service",
+        resource_key: "fine-tuned-inference:gpt-4.1-2025-04-14",
+        model_refs: ["openai/gpt-4.1-2025-04-14"],
+        pricing_state: "numeric",
+        raw_price_facts: [],
+      },
+      {
+        resource_kind: "service",
+        resource_key: "fine-tuned-inference:gpt-4.1-2025-04-14",
+        model_refs: ["openai/gpt-4.1-2025-04-14"],
+        pricing_state: "numeric",
+        raw_price_facts: [],
+      },
+    ]);
+  });
+
   it("prices GPT-Live session seconds without minute rounding", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
