@@ -770,7 +770,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "typesafe-catalog", minModels: 1, maxModels: 1000 },
-        extractorVersion: "typesafe-catalog-v8",
+        extractorVersion: "typesafe-catalog-v9",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",

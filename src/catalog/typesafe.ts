@@ -9,7 +9,7 @@ import { yamlPath } from "./yaml.ts";
 import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel, SourcePricingInputFact } from "./pricing-source.ts";
-import type { Provider } from "./schema.ts";
+import type { Modality, Provider } from "./schema.ts";
 import {
   assertItemCount,
   contractExtensionEvidence,
@@ -116,6 +116,43 @@ function modelRecords(table: Table): ModelRecord[] {
 
 function signal(input: Input, path: string): void {
   input.onContractFinding?.(contractExtensionEvidence([path]));
+}
+
+const reviewedModelFields = new Set([
+  "Model ID",
+  "Price (per Btok / per Mtok)",
+  "Rate limits",
+  "Context length",
+  "Input",
+  "Question types",
+]);
+
+// The `Input` row publishes the accepted input kinds; the modality vocabulary has no separate
+// label for reading images from the request.
+const reviewedInputs = new Map<string, Modality[]>([
+  ["Text", ["text"]],
+  ["Text, images", ["text", "image"]],
+]);
+
+// `Box` publishes a box-callout answer, which has no exact canonical task family yet.
+const reviewedQuestionTypes = new Set(["Noul", "Choice", "Score", "Box"]);
+
+function inputModalities(label: string | undefined): Modality[] | undefined {
+  if (label === undefined) return undefined;
+  // Older revisions published the negative constraints inline instead of a label list.
+  if (label.startsWith("Text only.")) return ["text"];
+  return reviewedInputs.get(label);
+}
+
+function questionTypes(value: string | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const types = value
+    .split(",")
+    .map((type) => type.trim())
+    .filter((type) => type !== "");
+  return types.length > 0 && types.every((type) => reviewedQuestionTypes.has(type))
+    ? types
+    : undefined;
 }
 
 function reviewIndex(bundle: LinkedBundle): void {
@@ -299,16 +336,7 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
       const id = codeId(idCell);
       if (byId.has(id)) throw new Error("Duplicate TypeSafe model ID");
       for (const key of fields.keys()) {
-        if (
-          [
-            "Model ID",
-            "Price (per Btok / per Mtok)",
-            "Rate limits",
-            "Context length",
-            "Input",
-          ].includes(key)
-        )
-          continue;
+        if (reviewedModelFields.has(key)) continue;
         if (/price|cost|billing|discount|cache/i.test(key))
           throw new Error("Unreviewed TypeSafe price field");
         signal(input, "/models/fields/extension");
@@ -332,7 +360,15 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
       });
       model.status = "active";
       model.api_endpoints = [{ name: "System One", path: "/v1/systemone" }];
-      if (typed) {
+      const rawQuestionTypes = fields.get("Question types");
+      const types = questionTypes(rawQuestionTypes);
+      if (rawQuestionTypes !== undefined && types === undefined)
+        signal(input, "/models/question-types");
+      // A published question-type row is the most exact per-model evidence; the shared API
+      // contract remains the fallback for tables that omit the row.
+      if (types === undefined ? typed : types.some((type) => type !== "Noul"))
+        model.capabilities.structured_output = true;
+      if (types === undefined ? typed : types.includes("Choice")) {
         model.tasks = ["classification"];
         model.task_evidence = [
           {
@@ -343,12 +379,10 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
             kind: "provider_type",
           },
         ];
-        model.capabilities.structured_output = true;
       }
-      const inputLabel = fields.get("Input");
-      if (inputLabel === "Text" || inputLabel?.startsWith("Text only."))
-        model.modalities.input = ["text"];
-      else signal(input, "/models/input");
+      const modalities = inputModalities(fields.get("Input"));
+      if (modalities === undefined) signal(input, "/models/input");
+      else model.modalities.input = [...modalities];
       const context = fields.get("Context length");
       if (context !== undefined) {
         model.model_card = { context_window: context.replace(/`/g, "") };

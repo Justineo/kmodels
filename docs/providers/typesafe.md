@@ -23,7 +23,8 @@ Usage contracts are source-level facts, shared by the observed System One models
 copied into each model observation or repeated in compilation input.
 The current index links the operation-specific page instead of the former `/api.md`. Its labeled
 OpenAPI block must bind the JSON request and successful response to their owning schemas. Question
-union members and constants establish typed output; referenced integer fields on the response's
+union members and constants establish typed output as a shared fallback when the Models table omits
+its per-model `Question types` row; referenced integer fields on the response's
 direct `usage` property establish counters. Examples and unrelated operation schemas cannot supply
 missing contracts. Reviewed legacy MDX response fields remain readable for historical fixtures.
 All requests stay on the reviewed documentation host; linked content is not automatically crawled.
@@ -34,11 +35,21 @@ gateway IDs, prices and availability are not evidence for direct TypeSafe servic
 
 ## Model facts
 
-System One's Choice question selects from a defined set, establishing `classification`.
-Noul, Choice and Score return typed judgments, establishing structured output without
-asserting free-form text generation, tool calling, streaming or batch delivery. Text-only
-input is explicit; the shared modality vocabulary has no numeric-decision output, so output
-modalities remain empty. SDK asynchronous clients do not imply asynchronous inference delivery.
+The current Models page publishes a per-model `Question types` row. A model whose row lists
+`Choice` selects from a defined set, establishing `classification`. Row members `Noul`, `Choice`,
+`Score` and `Box` return typed judgments, establishing structured output without asserting
+free-form text generation, tool calling, streaming or batch delivery. `Box` answers locate a
+region inside a supplied image and have no exact canonical task family yet, so they add no task.
+A table without the row falls back to the shared API union, which still requires Noul, Choice and
+Score. Rows that omit `Choice` do not establish classification, and an unrecognized member is a
+source contract finding rather than a guess.
+
+The published `Input` row lists the accepted input kinds. `Text` maps to text input and
+`Text, images` maps to text and image input; the page states that PNG and JPEG images are read
+anywhere in the request and that audio and video are not accepted natively. Only reviewed labels
+produce modalities, and an unreviewed label records a source contract finding. The shared modality
+vocabulary has no numeric-decision output, so output modalities remain empty. SDK asynchronous
+clients do not imply asynchronous inference delivery.
 
 Every current model is served by `/v1/systemone`. The published total request context
 budget is normalized from decimal `k` tokens. The separate state-plus-longest-question
@@ -86,16 +97,19 @@ to that object across documentation-only wrappers. A same-named counter inside a
 property cannot establish `/usage/input_tokens` or `/usage/output_tokens`; nested lookalikes also
 cannot invalidate an independently declared direct counter.
 
-Rate limits describe throughput, not billable quantities. Private custom/enterprise plans,
-account credits, taxes, invoices and negotiated adjustments are outside the public invocation
-price book. No unsupported cache discount or separate per-question charge is inferred.
+Rate limits describe throughput, not billable quantities. The current table no longer publishes
+them; a `Rate limits` row stays readable for historical revisions and is excluded from the price
+book. Private custom/enterprise plans, account credits, taxes, invoices and negotiated adjustments
+are outside the public invocation price book. No unsupported cache discount or separate
+per-question charge is inferred.
 
 ## Validation
 
 `tests/fixtures/typesafe/` contains minimal reviewed excerpts of the official documents,
 including the legacy vertical and current horizontal model-table layouts, with formatting
 retained where the parser depends on it. Adapter tests cover exact identity, aliases,
-capabilities, the two context constraints, decimal pricing, commercial assembly, malformed
-input, index drift and claim-local usage omissions.
+capabilities, reviewed input labels and question types, the two context constraints, decimal
+pricing, commercial assembly, malformed input, index drift, unreviewed input and question-type
+labels, and claim-local usage omissions.
 Registering this provider does not refresh durable `data/`; collection requires a separately
 authorized live refresh.

@@ -291,12 +291,14 @@ describe("TypeSafe AI", () => {
       models: await fixture("models-horizontal.md"),
     });
     expect(
-      models.map(({ model_id, name, aliases, limits, modalities }) => ({
+      models.map(({ model_id, name, aliases, limits, modalities, tasks, capabilities }) => ({
         model_id,
         name,
         aliases,
         context_tokens: limits.context_tokens,
         input: modalities.input,
+        tasks,
+        structured_output: capabilities.structured_output,
       })),
     ).toEqual([
       {
@@ -304,18 +306,53 @@ describe("TypeSafe AI", () => {
         name: "Jev 1.13",
         aliases: ["jev-latest"],
         context_tokens: 64000,
-        input: ["text"],
+        input: ["text", "image"],
+        tasks: ["classification"],
+        structured_output: true,
       },
       {
         model_id: "jev-1.14.0",
         name: "Jev 1.14",
         aliases: ["jev-preview"],
         context_tokens: 64000,
-        input: ["text"],
+        input: ["text", "image"],
+        tasks: ["classification"],
+        structured_output: true,
       },
     ]);
     expect(findings).toEqual([]);
-    expect(reconciliation).toHaveLength(6);
+    expect(reconciliation).toHaveLength(4);
+  });
+
+  it("reviews published input labels and question types instead of inferring them", async () => {
+    const models = await fixture("models-horizontal.md");
+    const paths = (findings: SourceContractEvidence[]) =>
+      findings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path));
+    for (const [label, input, expected] of [
+      ["Text, images, audio", [], ["/models/input", "/models/input"]],
+      ["Text only.", ["text"], []],
+    ] as const) {
+      const result = await parse({ models: models.replaceAll("Text, images", label) });
+      expect(result.models.map(({ modalities }) => modalities.input)).toEqual([input, input]);
+      expect(paths(result.findings)).toEqual([...expected]);
+    }
+    const withoutChoice = await parse({
+      models: models
+        .replace("Choice, Score, Noul, Box", "Score, Noul, Box")
+        .replace("Choice, Score, Noul", "Score, Noul"),
+    });
+    expect(withoutChoice.models.map(({ tasks }) => tasks)).toEqual([[], []]);
+    expect(withoutChoice.models.map(({ capabilities }) => capabilities.structured_output)).toEqual([
+      true,
+      true,
+    ]);
+    expect(withoutChoice.findings).toEqual([]);
+    const unknownType = await parse({ models: models.replace("Noul, Box", "Noul, Mask") });
+    expect(paths(unknownType.findings)).toEqual(["/models/question-types"]);
+    expect(unknownType.models.map(({ tasks }) => tasks)).toEqual([
+      ["classification"],
+      ["classification"],
+    ]);
   });
 
   it("compiles request charges with response usage mappings", async () => {
