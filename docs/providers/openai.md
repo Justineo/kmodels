@@ -163,6 +163,10 @@ otherwise empty pricing response pass admission. Valid sibling rows remain indep
 Reviewed table columns bind by their labels, including when Output precedes Cached input;
 column order cannot discard known prices. An unsupported price cell on an exact model remains
 raw and emits `unsupported_pricing_cell_preserved`, which enters repair admission.
+The Specialized models table publishes `Category | Model | Input | Output | Cached input | 30m
+write | 12h write` with the context band on the model cell (`(short context)` or `(long context)`);
+it uses the same band, cache-write and embedding rules as the other reviewed tables. The GPT-Live
+session table is recognized under `GPT-Live` and the earlier `GPT-Live sessions` heading.
 
 The pricing page's Short and Long context columns mean at most 272,000 and more than 272,000
 input tokens respectively. The native HTML tooltips establish this definition; the Markdown

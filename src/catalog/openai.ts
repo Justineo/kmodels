@@ -416,6 +416,8 @@ const openAiPricingSections = new Map([
   ["Life sciences models", "Life sciences models"],
   ["Legal model configurations", "Legal model configurations"],
   ["GPT-Live sessions", "GPT-Live sessions"],
+  ["GPT-Live", "GPT-Live sessions"],
+  ["Realtime & Audio", "Realtime and audio generation models"],
   ["Realtime and audio generation models", "Realtime and audio generation models"],
   ["Image generation models", "Image generation models"],
   ["Video generation models", "Video generation models"],
@@ -1164,7 +1166,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     }
     for (const row of table.rows) {
       const rawId = (row[modelIndex] ?? "").replace(
-        / \((?:<272K context length|legacy|data sharing)\)$/,
+        / \((?:<272K context length|legacy|data sharing|short context|long context)\)$/,
         "",
       );
       let target = findTarget(rawId);

@@ -239,6 +239,36 @@ export function openAiModelPriceCells(
     ];
   }
   if (
+    table.section === "Specialized models" &&
+    hasColumns("Category", "Model", "Input", "Output", "Cached input", "30m write", "12h write")
+  ) {
+    const model = cell("Model");
+    const context = model.endsWith(" (short context)")
+      ? { context_max_tokens: 272000 }
+      : model.endsWith(" (long context)")
+        ? { context_min_tokens: 272001 }
+        : {};
+    const scope = { ...conditions, ...context };
+    const write = (header: string, cacheTtl: number) => ({
+      ...make(header, "cache_write_text", "million_tokens", {
+        ...scope,
+        cache_ttl_seconds: cacheTtl,
+      }),
+    });
+    return [
+      make(
+        "Input",
+        cell("Category") === "Embedding" ? "embedding" : "input_text",
+        "million_tokens",
+        scope,
+      ),
+      make("Output", "output_text", "million_tokens", scope),
+      make("Cached input", "cache_read_text", "million_tokens", scope),
+      write("30m write", 1800),
+      write("12h write", 43200),
+    ];
+  }
+  if (
     hasColumns("Category", "Model", "Input", "Cached input", "Output") ||
     hasColumns("Model", "Input", "Cached input", "Output")
   )

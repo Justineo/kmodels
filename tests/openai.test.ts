@@ -1491,6 +1491,103 @@ describe("OpenAI adapters", () => {
     ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "40" } });
   });
 
+  it("prices GPT-Live sessions under the current GPT-Live heading", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [openAiModel("gpt-live-1", ["speech_to_speech"])],
+      body: (await fixture("openai/live-session-pricing.md")).replace(
+        "GPT-Live sessions",
+        "GPT-Live",
+      ),
+    });
+    expect(result.models[0]?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "session_runtime",
+        price: "0.05",
+        unit: "minute",
+      }),
+    ]);
+  });
+
+  it("prices the specialized context and cache-write table", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const reconciliation: PricingReconciliationItem[] = [];
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [
+        openAiModel("gpt-6-cyber", ["text_generation"]),
+        openAiModel("text-embedding-3-small", ["embeddings"]),
+        openAiModel("omni-moderation-latest", ["text_generation"]),
+      ],
+      body: await fixture("openai/specialized-context-pricing.md"),
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const cyber = result.models.find(({ uid }) => uid === "openai/gpt-6-cyber");
+    if (cyber === undefined) throw new Error("Missing specialized model");
+    expect(cyber.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "20.00",
+          conditions: { service_tier: "standard", context_max_tokens: 272000 },
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "40.00",
+          conditions: { service_tier: "standard", context_min_tokens: 272001 },
+        }),
+        expect.objectContaining({
+          meter: "cache_write_text",
+          price: "25.00",
+          conditions: {
+            service_tier: "standard",
+            context_max_tokens: 272000,
+            cache_ttl_seconds: 1800,
+          },
+        }),
+        expect.objectContaining({
+          meter: "cache_write_text",
+          price: "50.00",
+          conditions: {
+            service_tier: "standard",
+            context_max_tokens: 272000,
+            cache_ttl_seconds: 43200,
+          },
+        }),
+      ]),
+    );
+    expect(
+      result.models.find(({ uid }) => uid === "openai/text-embedding-3-small")?.price_facts,
+    ).toEqual([expect.objectContaining({ meter: "embedding", price: "0.02" })]);
+    expect(
+      result.models.find(({ uid }) => uid === "openai/omni-moderation-latest")?.price_facts,
+    ).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0",
+        raw_price: "Free",
+      }),
+    ]);
+    expect(reconciliation.filter(({ disposition }) => disposition === "unsupported")).toEqual([]);
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, result.models, partition);
+  });
+
   it("publishes Fast with EU residency as unsupported and keeps the numeric region scopes disjoint", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
