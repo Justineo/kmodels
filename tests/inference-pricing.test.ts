@@ -597,7 +597,8 @@ it("retains all commercial offers in lookup and prompts the inspector for a plan
     prices: [price],
     offers: [offer, { ...offer, id: alternative.id, title: "Alternative plan" }],
   });
-  expect(html).toContain('id="inference-price-plan"');
+  expect(html).toContain('type="radio"');
+  expect(html).toContain("Alternative plan");
   expect(html).toContain("Select pricing options");
   expect(html).not.toContain('class="exact-rate"');
 });

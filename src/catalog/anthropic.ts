@@ -1071,7 +1071,7 @@ function cacheMultipliers(
     for (const clause of amount[2]?.split(/;\s*/) ?? []) {
       const override = clause.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)$/);
       if (override?.[1] === undefined || override[2] === undefined) return;
-      for (const name of override[2].split(" and ")) {
+      for (const name of override[2].split(/, (?:and )?| and /)) {
         if (!/^Claude [\w. -]+$/.test(name)) return;
         let id: string;
         try {

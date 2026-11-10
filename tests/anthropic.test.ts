@@ -1120,6 +1120,36 @@ describe("Anthropic adapters", () => {
     expect(fable?.raw_price_facts.some(({ raw }) => raw.fragment?.includes("1.5x"))).toBe(true);
   });
 
+  it("binds cache-read exceptions listed with commas and conjunctions", async () => {
+    const pricing = (await fixture("anthropic/pricing.md")).replace(
+      "0.1x base input price",
+      "0.1x base input price (0.025x on Claude Fable 5, Claude Mythos 5, and Claude Opus 4.8; 0.05x on Claude Opus 4.7)",
+    );
+    const result = await anthropicSource({
+      overrides: { "/docs/en/about-claude/pricing.md": pricing },
+    });
+    validatedPricing(result);
+    for (const [id, conditions, price] of [
+      ["claude-fable-5", { service_tier: "batch" }, "0.125"],
+      ["claude-mythos-5", { service_tier: "batch" }, "0.125"],
+      ["claude-opus-4-8", { speed: "fast" }, "0.25"],
+      ["claude-opus-4-7", { speed: "fast" }, "0.5"],
+      ["claude-sonnet-5", { service_tier: "batch" }, "0.1"],
+    ] as const) {
+      const model = result.models.find(({ model_id }) => model_id === id);
+      expect(model?.price_facts).toContainEqual(
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price,
+          conditions: expect.objectContaining({ ...conditions, inference_geo: "global" }),
+        }),
+      );
+      expect(model?.raw_price_facts).not.toContainEqual(
+        expect.objectContaining({ term_key: "unparsed:cache-policy" }),
+      );
+    }
+  });
+
   it("preserves an unreviewed cache operation as a raw tariff", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       /(\| Cache read[^\n]*)(\n)/,

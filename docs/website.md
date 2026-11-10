@@ -15,8 +15,9 @@ value in the header.
 Use associations for the selected catalog entry. When mapping is unknown,
 keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
 when its pricing association is independently evidenced.
-When an ID has multiple commercial offers, a **Pricing plan** selector uses their
-existing names. Selecting an offer limits the displayed conditions and rates to that offer.
+When an ID has multiple commercial offers, a **Pricing plan** radio group uses their
+existing names and starts unselected. Selecting an offer limits the displayed conditions and rates
+to that offer.
 Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer

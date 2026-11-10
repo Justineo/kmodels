@@ -205,7 +205,12 @@ it("uses the same selected offer in public static output and the interactive UI"
     prices: detail?.inference_prices,
     offers,
   });
-  expect(html).toContain("Pricing plan");
+  expect(html).toMatch(/<legend\b[^>]*>Pricing plan<\/legend>/);
+  const radios = [...html.matchAll(/<input\b[^>]*\btype="radio"[^>]*>/g)].map(([radio]) => radio);
+  expect(radios).toHaveLength(2);
+  for (const key of ["sync", "batch"])
+    expect(radios).toContainEqual(expect.stringContaining(`value="${offer(candidate, key)}"`));
+  expect(radios.every((radio) => !radio.includes("checked"))).toBe(true);
   expect(html).toContain("Message Batches");
   expect(html).not.toContain("Inspect target");
   expect(JSON.stringify(id)).not.toContain("content_hash");

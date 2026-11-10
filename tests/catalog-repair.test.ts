@@ -284,6 +284,12 @@ it.each([
     reason: "public_price_label_unsupported",
     sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
   },
+  {
+    provider_id: "anthropic",
+    source_id: "anthropic-models",
+    reason: "cache_multiplier_drift",
+    sample: "Prompt caching multipliers",
+  },
   ...[
     "model_card_input_price_drift",
     "model_card_output_price_drift",

@@ -246,10 +246,13 @@ list owns current compatibility; reviewed legacy explicit model bullets remain r
 Tool-overhead tables may use separate auto/none and any/tool columns. Their tokens remain
 included in returned model usage; column layout does not create an additional service charge.
 Conflicting facts are reported and the directly published row remains
-authoritative. Cache policy rows are validated independently across all reviewed policy tables;
-conflicting or unreadable operations withhold only their derived rates. Known sibling multipliers
-remain usable, and missing, malformed or unreviewed policy content remains raw at the affected
-tariff scope. Geography multipliers likewise require agreement. When a multiplier or generation
+authoritative. Cache-read multiplier exceptions bind each model in the published comma-separated
+or conjunction-separated list to a unique official ID. Cache policy rows are validated independently
+across all reviewed policy tables. Conflicting or unreadable operations withhold only their derived
+rates. Known sibling multipliers remain usable, and missing, malformed or unreviewed policy content
+remains raw at the affected tariff scope. Cache multiplier drift enters repair investigation even
+if the pricing partition was accepted and source bytes are unchanged. Geography multipliers
+likewise require agreement. When a multiplier or generation
 threshold is unresolved but global base pricing is established, affected known rates remain
 explicitly global and the possible US charge remains raw, preventing global rates from silently
 pricing US inference.

@@ -102,6 +102,7 @@ const repairableReconciliationReasons = new Set([
   "model_card_output_price_drift",
   "public_price_claim_drift",
   "cache_pricing_policy_drift",
+  "cache_multiplier_drift",
   "model_card_service_tier_scope_unresolved",
   "inference_geo_contract_drift",
   "inference_geo_multiplier_drift",

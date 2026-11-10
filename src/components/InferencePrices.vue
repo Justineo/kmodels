@@ -339,16 +339,21 @@ async function copyId(id: string): Promise<void> {
       </ul>
       <p class="visually-hidden" aria-live="polite">{{ copiedId ? `Copied ${copiedId}` : "" }}</p>
     </div>
-    <div v-if="offerOptions.length > 1" class="id-control">
-      <label for="inference-price-plan">Pricing plan</label>
-      <UiSelect
-        id="inference-price-plan"
-        placeholder="Choose pricing plan"
-        :model-value="selectedOffer"
-        :options="offerOptions"
-        @update:model-value="selectOffer"
-      />
-    </div>
+    <fieldset v-if="offerOptions.length > 1" class="plan-control">
+      <legend>Pricing plan</legend>
+      <div class="plan-options">
+        <label v-for="option in offerOptions" :key="option.value">
+          <input
+            type="radio"
+            :name="`pricing-plan-${modelRef}`"
+            :value="option.value"
+            :checked="selectedOffer === option.value"
+            @change="selectOffer(option.value)"
+          />
+          {{ option.label }}
+        </label>
+      </div>
+    </fieldset>
     <PricingConditions
       prefix="inference-price"
       :selectors="conditionOptions"
@@ -430,9 +435,37 @@ async function copyId(id: string): Promise<void> {
 }
 .id-control label,
 .id-label,
+.plan-control legend,
 .candidate h4 {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
+}
+.plan-control {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.plan-control legend {
+  padding: 0;
+}
+.plan-options {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
+  margin-top: var(--space-1);
+}
+.plan-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-compact);
+  font-size: var(--font-size-body);
+  cursor: pointer;
+}
+.plan-options input {
+  margin: 0;
+  accent-color: var(--color-accent);
 }
 .id-reference {
   margin: 0;
