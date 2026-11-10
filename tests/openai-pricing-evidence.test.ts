@@ -461,6 +461,31 @@ describe("OpenAI source pricing evidence", () => {
     );
   });
 
+  it("counts each declared container capacity when the sentence has no terminal period", () => {
+    const modelsSource = parse(
+      tokenTable("$1", "$2") +
+        "\n\nTools\n" +
+        [
+          "| Tool | Details | Pricing |",
+          "| --- | --- | --- |",
+          "| Containers | Hosted Shell and Code Interpreter | 1 GB $0.03, 4 GB $0.12, 16 GB $0.48, 64 GB $1.92 per 20-minute session per container |",
+        ].join("\n"),
+    );
+    const { report } = modelsSource;
+    expect(report.reason_counts?.unsupported_pricing_cell_preserved).toBeUndefined();
+    const container = (modelsSource.commercial_facts ?? []).find(
+      ({ resource_key }) => resource_key === "containers",
+    );
+    expect(container?.price_facts).toHaveLength(4);
+    expect(container?.price_facts.map(({ conditions }) => conditions.capacity)).toEqual([
+      "1 GiB",
+      "4 GiB",
+      "16 GiB",
+      "64 GiB",
+    ]);
+    expect(container?.raw_price_facts).toEqual([]);
+  });
+
   it("keeps malformed fine-tuned inference evidence in its service book", () => {
     const modelsSource = parse(
       [

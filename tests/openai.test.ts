@@ -4,6 +4,7 @@ import { z } from "zod";
 import { compareUtf8 } from "../src/catalog/canonical-value.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
@@ -2373,6 +2374,52 @@ describe("OpenAI fixed search content", () => {
       amount: { numerator: "27", denominator: "10000" },
     });
     expect(cost(body, "A 999,000-token fixed block.")).toEqual(cost(body));
+  });
+
+  it("reads fixed search content when model names use inline code spans", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const body = (await fixture("openai/fixed-search.md")).replace(
+      "For gpt-4o-mini and gpt-4.1-mini with the non-preview web search tool",
+      "For `gpt-4o-mini` and `gpt-4.1-mini` with the non-preview web search tool",
+    );
+    const items: PricingReconciliationItem[] = [];
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      catalogModels: [],
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, ...result }],
+      result.models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, result.models, partition);
+    if (partition !== undefined) validateAdoptedTopology(partition);
+    const term = partition?.books.find(
+      ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
+    )?.offers[0]?.terms[0];
+    expect(term?.kind).toBe("contribution");
+    if (term?.kind !== "contribution") throw new Error("Missing fixed-content term");
+    expect(term.variants).toHaveLength(1);
+    expect(term.raw_variants).toEqual([]);
+    expect(term.variants[0]?.observations).toEqual([
+      expect.objectContaining({
+        raw: expect.objectContaining({
+          fragment:
+            "For `gpt-4o-mini` and `gpt-4.1-mini` with the non-preview web search tool, search content tokens are billed as a fixed block of 8,000 input tokens per call.",
+        }),
+      }),
+    ]);
+    expect(
+      items.filter(({ reason_code }) => reason_code === "fixed_search_content_rule"),
+    ).toHaveLength(1);
   });
 
   it.each(["missing", "unreadable", "conflicting", "equal", "outside-tools"] as const)(

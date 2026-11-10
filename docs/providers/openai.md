@@ -370,7 +370,9 @@ search call fee remains independently payable. No block is inferred for another 
 preview tool. An unresolved target input rate leaves the fixed-block rule raw. The source parser
 reads the block size as data from this reviewed sentence in the Tools section. Unknown wording keeps
 a scoped raw rule; unequal declarations downgrade the conflicting contribution locally. Equal
-quantities with different source formatting merge their native observations.
+quantities with different source formatting merge their native observations. The reviewed sentence
+may render the two model identifiers as inline code spans; that Markdown emphasis does not change
+the rule, and the preserved observation keeps the published fragment verbatim.
 
 The fixed-content charge takes the number of billable calls whose content blocks are excluded
 from separately priced model input usage. Consumers either exclude these blocks from ordinary
@@ -378,7 +380,10 @@ input usage and add this charge, or supply final billable input tokens including
 do not add the fixed-content charge again. A runtime locator is not required to publish or evaluate
 this exact price rule; Kmodels does not assume an aggregate usage field supplies that partition.
 
-Container prices remain a separate code-execution service with memory as applicability. The pricing
+Container prices remain a separate code-execution service with memory as applicability. The Tools
+pricing cell lists one capacity entry per memory size and closes with
+`per 20-minute session per container`; the terminal sentence period is optional published
+punctuation, not part of the unit. The pricing
 bundle includes the official changelog, whose June 2, 2026 announcement explicitly preserves the
 underlying per-minute price while introducing a five-minute minimum for eligible sessions. When
 both claims agree, the published 20-minute price divides by 20 and a session-level minimum applies

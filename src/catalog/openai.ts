@@ -853,9 +853,10 @@ function openAiToolCommercialFacts(
   }
 
   if (tool === "Containers" && details === "Hosted Shell and Code Interpreter") {
-    const sessionUnit = " per 20-minute session per container.";
-    const knownUnit = published.endsWith(sessionUnit);
-    const claims = (knownUnit ? published.slice(0, -sessionUnit.length) : published)
+    const sessionUnit = " per 20-minute session per container";
+    const unpunctated = published.replace(/\.$/, "");
+    const knownUnit = unpunctated.endsWith(sessionUnit);
+    const claims = (knownUnit ? unpunctated.slice(0, -sessionUnit.length) : unpunctated)
       .split(", ")
       .map((entry): OpenAiPricingClaim => {
         const match = entry.match(/^([1-9]\d*) GB (.+)$/);
@@ -1451,7 +1452,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     .sort((left, right) => left.uid.localeCompare(right.uid));
   const fixedSearchContent = [
     ...toolsText.matchAll(
-      /For gpt-4o-mini and gpt-4\.1-mini with the non-preview web search tool, search content tokens[^.]*\./g,
+      /For `?gpt-4o-mini`? and `?gpt-4\.1-mini`? with the non-preview web search tool, search content tokens[^.]*\./g,
     ),
   ].map(([fragment]) => fragment);
   if (fixedSearchContent.length > 0) {

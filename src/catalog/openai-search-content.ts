@@ -59,7 +59,7 @@ export function openAiSearchContent(
       raw: { label: "Fixed search content block", fragment },
     };
     const amount = fragment.match(
-      /^For gpt-4o-mini and gpt-4\.1-mini with the non-preview web search tool, search content tokens are billed as a fixed block of ([1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+) input tokens per call\.$/,
+      /^For `?gpt-4o-mini`? and `?gpt-4\.1-mini`? with the non-preview web search tool, search content tokens are billed as a fixed block of ([1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+) input tokens per call\.$/,
     )?.[1];
     items.push({
       disposition: modelIds.length === 0 ? "unbound" : amount === undefined ? "raw" : "normalized",
