@@ -1,0 +1,16 @@
+{
+  "index": {
+    "url": "https://ai-gateway.vercel.sh/v1/models",
+    "body": "{\"object\":\"list\",\"data\":[{\"id\":\"parallel/parallel-decisions-fast\",\"object\":\"model\",\"created\":1755815280,\"released\":1755815280,\"owned_by\":\"parallel\",\"name\":\"Parallel Decisions Fast\",\"description\":\"Fast decision model billed per request.\",\"type\":\"evaluation\",\"modalities\":{\"input\":[\"text\"],\"output\":[\"text\"]},\"supported_specifications\":[\"v2\"],\"pricing\":{\"request\":\"0.001\"}},{\"id\":\"acme/omitted-request\",\"object\":\"model\",\"created\":1755815280,\"released\":1755815280,\"owned_by\":\"acme\",\"name\":\"Acme Omitting Request\",\"description\":\"Token priced endpoint that omits the per-request amount.\",\"type\":\"language\",\"modalities\":{\"input\":[\"text\"],\"output\":[\"text\"]},\"supported_specifications\":[\"v2\"],\"pricing\":{\"input\":\"0.0000004\",\"output\":\"0.0000012\"}}]}"
+  },
+  "documents": [
+    {
+      "url": "https://ai-gateway.vercel.sh/v1/models/parallel/parallel-decisions-fast/endpoints",
+      "body": "{\"data\":{\"id\":\"parallel/parallel-decisions-fast\",\"name\":\"Parallel Decisions Fast\",\"created\":1755815280,\"released\":1755815280,\"description\":\"Fast decision model billed per request.\",\"architecture\":{\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]},\"endpoints\":[{\"name\":\"parallel | parallel/parallel-decisions-fast\",\"model_name\":\"Parallel Decisions Fast\",\"pricing\":{\"prompt\":\"0\",\"completion\":\"0\",\"request\":\"0.001\",\"image\":\"0\",\"image_output\":\"0\",\"web_search\":\"0\",\"internal_reasoning\":\"0\",\"discount\":0},\"provider_name\":\"parallel\",\"status\":0,\"supports_implicit_caching\":false}]}}"
+    },
+    {
+      "url": "https://ai-gateway.vercel.sh/v1/models/acme/omitted-request/endpoints",
+      "body": "{\"data\":{\"id\":\"acme/omitted-request\",\"name\":\"Acme Omitting Request\",\"created\":1755815280,\"released\":1755815280,\"description\":\"Token priced endpoint that omits the per-request amount.\",\"architecture\":{\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]},\"endpoints\":[{\"name\":\"acme | acme/omitted-request\",\"model_name\":\"Acme Omitting Request\",\"pricing\":{\"prompt\":\"0.0000004\",\"completion\":\"0.0000012\",\"image\":\"0\",\"image_output\":\"0\",\"web_search\":\"0\",\"internal_reasoning\":\"0\",\"discount\":0},\"provider_name\":\"acme\",\"status\":0,\"supports_implicit_caching\":true}]}}"
+    }
+  ]
+}

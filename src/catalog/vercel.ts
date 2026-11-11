@@ -139,6 +139,9 @@ const pricingSchema = tokenPriceSchema
     realtime_session_duration_cost_per_second: decimal.optional(),
     web_search: decimal.optional(),
     maps_search: decimal.optional(),
+    // The catalog omits this per-request amount for most models and publishes it without a
+    // reviewed denominator, so it is preserved as raw evidence instead of a rate.
+    request: decimal.optional(),
     varies_by_provider: z.boolean().optional(),
     peak_pricing: z.unknown().optional(),
   })
@@ -246,7 +249,9 @@ const endpointServiceTierSchema = endpointServicePriceSchema.extend({
 
 const endpointPricingSchema = endpointTokenPriceSchema
   .extend({
-    request: z.literal("0"),
+    // Endpoints omit this per-request amount unless the route bills per call, and the published
+    // value has no reviewed denominator. A strict literal rejected every endpoint document.
+    request: decimal.optional(),
     image: z.literal("0"),
     image_output: z.literal("0"),
     web_search: decimal,
@@ -913,11 +918,13 @@ function peakPricingFacts(
 }
 
 function endpointRawPrices(endpoint: Endpoint, sourceId: string): SourceRawPricingFact[] {
+  const request = endpoint.pricing.request;
   const values = [
     [
       "web_search",
       decimalsEqual(endpoint.pricing.web_search, "0") ? undefined : endpoint.pricing.web_search,
     ],
+    ["request", request === undefined || decimalsEqual(request, "0") ? undefined : request],
     ["x_search_post", endpoint.pricing.x_search_post],
     ["x_search_user", endpoint.pricing.x_search_user],
   ] as const;
@@ -943,6 +950,27 @@ function endpointRawPrices(endpoint: Endpoint, sourceId: string): SourceRawPrici
       ),
     ];
   });
+}
+
+function catalogRawPrices(item: Item, sourceId: string): SourceRawPricingFact[] {
+  const request = item.pricing.request;
+  if (request === undefined || decimalsEqual(request, "0")) return [];
+  return [
+    rawPricingFact(
+      sourceId,
+      "catalog_request",
+      "base_price",
+      "unknown_unit",
+      {
+        amount: request,
+        denomination: "USD",
+        unit: "pricing.request",
+        meter: "request",
+        fragment: "The catalog publishes a request amount without a reviewed denominator.",
+      },
+      { operation: "request" },
+    ),
+  ];
 }
 
 function endpointXSearchPrices(
@@ -1385,6 +1413,9 @@ function model(
           contracts,
         );
   const catalogRates = [...catalogPricing.rates, ...videoInputRates(videoInputs, input.source.id)];
+  const catalogRequestRaw =
+    item.pricing.varies_by_provider === true ? [] : catalogRawPrices(item, input.source.id);
+  const catalogRawFacts = [...catalogPricing.raw, ...catalogRequestRaw];
   const routeRateGroups = endpointValues.map((endpoint) => {
     const facts = peakPricingFacts(
       endpointRates(item, endpoint, input.source.id, fastSlug),
@@ -1421,8 +1452,14 @@ function model(
   input.onPricingReconciliation?.(
     item.pricing.varies_by_provider === true
       ? { disposition: "normalized", reason_code: "catalog_route_prices", sample: item.id }
-      : catalogPricing.raw.length > 0
-        ? { disposition: "raw", reason_code: "pricing_policy_unavailable", sample: item.id }
+      : catalogRawFacts.length > 0
+        ? {
+            disposition: "raw",
+            reason_code: catalogRawFacts.some((fact) => fact.reason === "unknown_unit")
+              ? "pricing_unit_unsupported"
+              : "pricing_policy_unavailable",
+            sample: item.id,
+          }
         : catalogRates.length === 0
           ? {
               disposition: catalogFree ? "explicit_non_numeric" : "unbound",
@@ -1543,7 +1580,7 @@ function model(
     pricing_state: rates.length > 0 ? "numeric" : explicitlyFree ? "free" : "unknown",
     price_facts: rates,
     raw_price_facts: [
-      ...catalogPricing.raw,
+      ...catalogRawFacts,
       ...routeRateGroups.flatMap(({ raw }) => raw),
       ...pagePricing.raw,
     ],

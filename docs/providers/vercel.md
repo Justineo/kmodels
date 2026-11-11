@@ -112,6 +112,20 @@ with an unreviewed denominator stays raw in its native-search service book, pres
 token rates in the inference book. A missing or unfamiliar companion field is local; a contradictory
 model/route identity or duplicate route owner raises a structured constraint failure so a refresh
 cannot silently replace the accepted partition with misbound or incomplete route prices.
+
+Both payloads publish a `pricing.request` amount. The source omits it for almost every endpoint and
+publishes a nonzero amount for one per-request model, so both an absent field and any published
+decimal are accepted; a literal reviewed value would discard the entire endpoint document and with it
+every route, route price, and video-input amount. No first-party page defines what one request unit
+contains, so a nonzero amount becomes an `unknown_unit` raw fact with the `request` meter under the
+`operation=request` scope instead of a denominator invented from token or search meters. The field
+never becomes a `request` rate, and a model that publishes only this amount retains
+`pricing_unit_unsupported` while its routes and any sibling rates stay published. The
+`regional-inference` companion now states the unpinned-region default as a missing or `global`-scope
+`inferenceEndpoint` field; the `gateway.served_region` absent marker follows the published
+"don't pin a region … matching the `global` default" sentence instead of demanding one particular
+`null` or missing-field phrasing.
+
 The current model-detail payload publishes exact model/route search amounts, while its linked pricing
 component labels X posts and profiles fetched per 1K items. Both owned contracts are required: a
 canonical page and one matching backing model establish amounts; the reviewed component establishes

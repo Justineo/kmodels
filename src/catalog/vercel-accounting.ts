@@ -70,9 +70,7 @@ const contracts: readonly Contract[] = [
         "providerMetadata.gateway.routing.modelAttempts[successful].providerAttempts[successful].inferenceEndpoint.geoRegion",
     },
     selectorAbsentValue: "default",
-    selectorAbsentMarkers: [
-      /When you don['’]t pin a region,\s*`inferenceEndpoint` is `null`, matching the `global`\s+default/i,
-    ],
+    selectorAbsentMarkers: [/When you don['’]t pin a region,/i, /matching the `global` default/i],
     availability: "terminal_only",
   },
   {
