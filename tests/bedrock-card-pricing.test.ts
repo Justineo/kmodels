@@ -104,6 +104,71 @@ describe("native Bedrock card tariffs", () => {
     ]);
   });
 
+  it("applies the Grok 4.6 Priority and Flex multipliers to every published Standard rate", async () => {
+    const bundle = await nativeBundle();
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.md",
+      body: await readFile(
+        new URL("./fixtures/bedrock/model-card-grok-4-6.md", import.meta.url),
+        "utf8",
+      ),
+    });
+    const findings: PricingReconciliationItem[] = [];
+    const grok = parse(bundle, findings).models.find(({ model_id }) => model_id === "xai.grok-4.6");
+    if (grok === undefined) throw new Error("Missing Grok 4.6 model");
+    const input = grok.price_facts.filter(({ meter }) => meter === "input_text");
+    const amounts = (tier: string) =>
+      [
+        ...new Set(
+          input
+            .filter(({ conditions }) => conditions.service_tier === tier)
+            .map(({ price }) => Number(price)),
+        ),
+      ].sort((left, right) => left - right);
+    expect(amounts("standard")).toEqual([2, 2.2]);
+    expect(amounts("priority")).toEqual([3.5, 3.85]);
+    expect(amounts("flex")).toEqual([1, 1.1]);
+    expect(
+      input
+        .filter(({ conditions }) => conditions.service_tier !== "standard")
+        .every(({ conditions }) => conditions.operation === undefined),
+    ).toBe(true);
+    expect(
+      findings.filter(
+        ({ reason_code }) => reason_code === "model_card_service_tier_scope_unresolved",
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps an unrecognized Grok multiplier clause unresolved instead of guessing its scope", async () => {
+    const bundle = await nativeBundle();
+    const body = await readFile(
+      new URL("./fixtures/bedrock/model-card-grok-4-6.md", import.meta.url),
+      "utf8",
+    );
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.md",
+      body: body.replace(
+        "apply these multipliers to the Standard rates shown above.",
+        "see the service tier page for details.",
+      ),
+    });
+    const findings: PricingReconciliationItem[] = [];
+    const grok = parse(bundle, findings).models.find(({ model_id }) => model_id === "xai.grok-4.6");
+    if (grok === undefined) throw new Error("Missing Grok 4.6 model");
+    expect(
+      grok.price_facts.some(
+        ({ conditions }) =>
+          conditions.service_tier === "priority" || conditions.service_tier === "flex",
+      ),
+    ).toBe(false);
+    expect(
+      findings.filter(
+        ({ reason_code }) => reason_code === "model_card_service_tier_scope_unresolved",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("keeps Mantle-only regional tables out of the runtime cross-region tariff parser", async () => {
     const bundle = await nativeBundle(true);
     const before = astra(parse(bundle));

@@ -866,6 +866,9 @@ function modelCardRates(
   const apiScoped = prose.match(
     /Priority is billed at (\d+(?:\.\d+)?)x the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?)x the Standard rate \([^)]*\); apply these multipliers to whichever Standard base rate \(Global or US CRIS\) applies to your request\./,
   );
+  const premiumScoped = prose.match(
+    /Priority is billed at (\d+(?:\.\d+)?)x the Standard per-token rate \([^)]*\) and Flex at (\d+(?:\.\d+)?)x the Standard rate \([^)]*\); apply these multipliers to the Standard rates shown above\./,
+  );
   const tierProse = card.serviceTierSection?.replace(/\s+/g, " ");
   const restrictedApis =
     tierProse?.includes(
@@ -888,7 +891,8 @@ function modelCardRates(
       : ["responses", "chat_completions", "converse", "invoke_model"];
   else if (!invokeWithoutConverse && !restrictedApis && apiScoped === null)
     operations = [undefined];
-  const multipliers = operations === undefined ? null : (apiScoped ?? unrestricted);
+  const multipliers =
+    operations === undefined ? null : (apiScoped ?? premiumScoped ?? unrestricted);
   if (multipliers === null && prose.includes("Priority is billed at"))
     onPricingReconciliation?.({
       disposition: "unsupported",

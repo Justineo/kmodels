@@ -106,6 +106,14 @@ Completions restriction and the current declaration supporting those APIs plus C
 produce their respective exact operation selectors. Missing or contradictory declarations retain
 Standard rates and report tier scope drift. An API selector does not authorize borrowing another
 operation's usage counters.
+[Grok 4.6](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-6.html)
+states its multipliers as a percentage premium and discount followed by `apply these multipliers to
+the Standard rates shown above`. That wording is the same unrestricted declaration as the
+`times the Standard rate` form: every published Standard amount, including In-Region, Geo CRIS and
+Global CRIS, receives the derived tier rate, and the card's Service Tiers section must still supply
+the API scope. Neither multiplier sentence authorizes an operation selector on its own, so an
+unrestricted card publishes tier rates without an operation condition. Only prose that keeps
+`Priority is billed at` while matching neither reviewed wording remains tier scope drift.
 The same reader accepts cards without a cache-write column, including
 [Grok 4.7](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html).
 Its Geo CRIS geography must resolve uniquely from the card's inference-profile aliases; it is
