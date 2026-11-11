@@ -153,9 +153,9 @@ option and a copy button for the selected ID. When switching IDs, retain a selec
 still has candidates. Switching IDs or offers retains inputs whose exact value and unit remain
 available in the destination conditions. Decimal buckets retain their exact bounds.
 
-The header labels the catalog's primary identifier `Catalog ID`. Pricing uses explicit associations
-for that record. A single inference ID equal to the catalog ID is labeled `Same as Catalog ID`, with
-the copyable value in the header.
+The header shows the catalog's primary identifier as a copyable value without a separate visible
+label. Pricing uses explicit associations for that record and shows each inference ID as a copyable
+value even when it equals the catalog ID.
 If the mapping is unknown, show that status and keep the catalog ID in the header. An ID mapping
 owned by another catalog record is excluded even when its literal value matches the current
 record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.

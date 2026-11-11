@@ -233,7 +233,6 @@ onUnmounted(() => {
           </p>
           <h2 id="details-title">{{ model.name }}</h2>
           <div class="model-identifier-line">
-            <span>Catalog ID</span>
             <button
               class="identifier-copy"
               type="button"

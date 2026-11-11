@@ -222,7 +222,6 @@ watch(hasOtherCharges, (available) => {
       <InferencePrices
         v-if="modelInferencePrices?.length"
         :model-ref="model.uid"
-        :catalog-id="model.model_id"
         :prices="modelInferencePrices"
         :offers="offers"
         @pricing-context="inferenceContext = $event"
@@ -507,64 +506,11 @@ watch(hasOtherCharges, (available) => {
   font-weight: var(--font-weight-semibold);
 }
 
-.offer-choice small {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
-}
-
 .run-mode-options {
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-.offer-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.offer-choice {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-width: min(100%, 12rem);
-  min-height: var(--control-height-comfortable);
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-2-5);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--easing-standard),
-    background var(--duration-fast) var(--easing-standard);
-}
-
-.offer-choice:hover {
-  border-color: var(--color-border-interactive);
-  background: var(--color-surface-hover);
-}
-
-.offer-choice:has(input:checked) {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.offer-choice:has(input:focus-visible) {
-  outline: var(--stroke-focus) solid var(--color-accent);
-  outline-offset: var(--stroke-focus);
-}
-
-.offer-choice input {
-  margin: 0;
-  accent-color: var(--color-accent);
-}
-
-.offer-choice input:focus-visible {
-  outline: 0;
 }
 
 .offer-state {
@@ -584,15 +530,5 @@ watch(hasOtherCharges, (available) => {
 
 .no-base-offer {
   margin-top: var(--space-4);
-}
-
-@media (max-width: 640px) {
-  .offer-list {
-    display: grid;
-  }
-
-  .offer-choice {
-    width: 100%;
-  }
 }
 </style>

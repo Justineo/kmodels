@@ -10,13 +10,13 @@ the same compact ID and copy icon control as in the header when all IDs share on
 multiple groups, show a single picker with an option for each exact ID and an adjacent copy icon
 for the selection. Preserve the pricing inputs that remain applicable after changing the ID or
 pricing plan. When the
-only inference ID equals the header's catalog ID, show **Same as Catalog ID** and keep the raw
-value in the header.
+only inference ID equals the header's catalog ID, show that exact value with the same copy control
+in Pricing.
 Use associations for the selected catalog entry. When mapping is unknown,
 keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
 when its pricing association is independently evidenced.
 When an ID has multiple commercial offers, a **Pricing plan** radio group uses their
-existing names and starts unselected. Selecting an offer limits the displayed conditions and rates
+existing names, shares Run mode's bordered choice cards and starts unselected. Selecting an offer limits the displayed conditions and rates
 to that offer.
 Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
@@ -56,7 +56,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 ## Table and details
 
 - Give each inspector fact one home. The header owns provider, display name, and the original catalog
-  identifier, labeled `Catalog ID`. Primary lifecycle/release status and catalog scope begin the content in one compact
+  identifier without a separate visible label. Primary lifecycle/release status and catalog scope begin the content in one compact
   metadata line; Overview does not repeat those fields. Keep the exact model ID as a compact copy
   control even when it repeats the display name, and show a distinct version beside it without
   including that separate field in the copied ID.

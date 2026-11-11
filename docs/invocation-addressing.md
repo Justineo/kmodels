@@ -49,13 +49,13 @@ provider evidence described in each provider guide.
 
 ## UI projection
 
-The UI keeps the original identifier directly copyable as `Catalog ID` in the inspector header.
+The UI keeps the original catalog identifier directly copyable without a separate visible label in the inspector header.
 Pricing displays evidenced inference IDs with the same copy control. The inspector summarizes
 positive deployment/region tuples as `Availability details`. It explains that listed regions are documented facts,
 not an exhaustive support matrix.
 
 Pricing uses independently evidenced request IDs for the selected catalog row. When the only
-request ID equals the catalog ID, Pricing references the copyable ID in the header. When mapping
+request ID equals the catalog ID, Pricing still shows that value with its own copy control. When mapping
 is unknown, Pricing shows that status and ordinary catalog prices. A catalog alias can also be a
 request ID when provider evidence establishes that role.
 

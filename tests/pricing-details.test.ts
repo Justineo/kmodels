@@ -252,8 +252,9 @@ describe("model pricing details", () => {
       ],
     });
     expect(html).toContain("No applicable prices");
-    expect(html).toContain("Same as Catalog ID");
-    expect(html).not.toContain("Copy inference model ID");
+    expect(html).not.toContain("Same as Catalog ID");
+    expect(html).toContain("Copy inference model ID model");
+    expect(html).toMatch(/<code\b[^>]*>model<\/code>/);
     expect(html).not.toContain("$2");
     expect(html).not.toContain("The catalog prices below");
   });

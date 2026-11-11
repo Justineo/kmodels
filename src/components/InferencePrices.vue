@@ -28,7 +28,6 @@ import {
 
 const props = defineProps<{
   modelRef: string;
-  catalogId?: string;
   prices: WebsiteInferencePrice[];
   offers: WebsitePricingOffer[];
 }>();
@@ -69,9 +68,6 @@ const idOptions = computed(() =>
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
 ]);
-const usesCatalogId = computed(
-  () => props.prices.length === 1 && selectedPrice.value?.model_id === props.catalogId,
-);
 const offerOptions = computed(() => {
   const refs = new Set(
     selectedPrice.value?.matching?.rules.flatMap(({ offer_refs }) => offer_refs),
@@ -322,7 +318,6 @@ async function copyId(id: string): Promise<void> {
           <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
         </button>
       </div>
-      <p v-else-if="usesCatalogId" class="id-reference">Same as Catalog ID</p>
       <ul v-else class="identifier-list inference-ids">
         <li v-for="{ model_id } in selectedGroup" :key="model_id">
           <button
@@ -341,8 +336,8 @@ async function copyId(id: string): Promise<void> {
     </div>
     <fieldset v-if="offerOptions.length > 1" class="plan-control">
       <legend>Pricing plan</legend>
-      <div class="plan-options">
-        <label v-for="option in offerOptions" :key="option.value">
+      <div class="offer-list">
+        <label v-for="option in offerOptions" :key="option.value" class="offer-choice">
           <input
             type="radio"
             :name="`pricing-plan-${modelRef}`"
@@ -350,7 +345,7 @@ async function copyId(id: string): Promise<void> {
             :checked="selectedOffer === option.value"
             @change="selectOffer(option.value)"
           />
-          {{ option.label }}
+          <strong>{{ option.label }}</strong>
         </label>
       </div>
     </fieldset>
@@ -448,29 +443,6 @@ async function copyId(id: string): Promise<void> {
 }
 .plan-control legend {
   padding: 0;
-}
-.plan-options {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--space-4);
-  margin-top: var(--space-1);
-}
-.plan-options label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-height-compact);
-  font-size: var(--font-size-body);
-  cursor: pointer;
-}
-.plan-options input {
-  margin: 0;
-  accent-color: var(--color-accent);
-}
-.id-reference {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-body);
 }
 .inference-ids {
   margin: 0;
