@@ -192,6 +192,42 @@ describe("DeepSeek native Search and Fetch charges", () => {
     ).toEqual(detached);
   });
 
+  it("accepts the current tool-triggered client scope, including Codex Alpha Search", async () => {
+    const { result, diagnostics, failures } = await parsed();
+    expect(failures).toEqual([]);
+    expect(result.commercial_facts).toHaveLength(4);
+    expect(
+      diagnostics.find((item) => item.reason_code === "service_server_tool_rule_verified")?.sample,
+    ).toBe(
+      "Search and Fetch calls triggered by tools when using the DeepSeek API through DeepSeek Harness, Claude Code, or Codex, including Codex Alpha Search, are also billed per successful request.",
+    );
+    const serverOffers = (result.commercial_facts ?? []).filter(
+      (fact) => fact.offer_key === "server_tools",
+    );
+    expect(serverOffers).toHaveLength(2);
+    expect(serverOffers.every((fact) => fact.price_facts.length === 2)).toBe(true);
+  });
+
+  it("rejects a different client scope instead of guessing the server-tool tariff", async () => {
+    const { result, diagnostics, failures } = await parsed((bundle) => {
+      const doc = bundle.documents.find(({ url }) => url.includes("/guides/search/"));
+      if (doc === undefined) throw new Error("Missing search guide");
+      doc.body = doc.body.replace(
+        "triggered by tools when using",
+        "triggered by server-side tools when using",
+      );
+    });
+    expect(failures).toEqual(["https://api-docs.deepseek.com/guides/search/"]);
+    expect(result.commercial_facts ?? []).toEqual([]);
+    expect(
+      diagnostics.some(
+        (item) =>
+          item.disposition === "unresolved" &&
+          item.reason_code === "commercial_source_contract_drift",
+      ),
+    ).toBe(true);
+  });
+
   it("presents both service offers at their current request tariff through the shared website timeline", async () => {
     const { core, pricing } = await compiled();
     const website = websitePublication(core, pricing, "b".repeat(64));
@@ -274,7 +310,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
         if (doc === undefined) throw new Error("Missing native companion");
         if (failure === "policy")
           doc.body = doc.body.replace(
-            "are also billed per successful request",
+            /are also billed per\s+successful request/,
             "are currently free of charge",
           );
         else if (failure === "predicate") doc.body = doc.body.replace("non-empty", "empty");

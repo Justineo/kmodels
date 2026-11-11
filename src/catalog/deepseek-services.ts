@@ -42,7 +42,7 @@ function document(bundle: LinkedBundle, url: string): string | undefined {
 }
 
 const serverToolBillingRule =
-  "Search and Fetch calls triggered by server-side tools when using the DeepSeek API through DeepSeek Harness, Claude Code, or Codex are also billed per successful request.";
+  "Search and Fetch calls triggered by tools when using the DeepSeek API through DeepSeek Harness, Claude Code, or Codex, including Codex Alpha Search, are also billed per successful request.";
 
 function serverToolPolicy(body: string): string {
   const $ = load(body);

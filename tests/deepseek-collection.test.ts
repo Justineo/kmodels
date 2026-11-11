@@ -159,7 +159,7 @@ describe("DeepSeek commercial dependency isolation", () => {
         const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
         if (guide === undefined) throw new Error("Missing service guide");
         guide.body = guide.body.replace(
-          "are also billed per successful request",
+          /are also billed per\s+successful request/,
           "are currently free of charge",
         );
       }

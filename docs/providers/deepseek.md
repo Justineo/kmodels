@@ -35,7 +35,7 @@ The fetch bundle contains only companions that contribute a current catalog or r
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
   current-inventory witness and typed, exact token-limit evidence; and
 - the [Search & Fetch guide](https://api-docs.deepseek.com/guides/search/) for successful-request
-  qualification and the server-tool billing scope. The English and Chinese price pages own
+  qualification and the tool-triggered billing scope. The English and Chinese price pages own
   amounts; the guide's repeated prices do not replace them.
 
 The [change log](https://api-docs.deepseek.com/zh-cn/updates) supplies exact-ID release and update
@@ -117,9 +117,11 @@ not pricing or catalog identity.
 
 Search and Fetch have independent provider-service books, with no inferred model compatibility.
 Each has a standalone API offer and a separate offer for provider-side tool calls made through
-DeepSeek Harness, Claude Code or Codex. Both offers currently publish one request tariff per
-currency: the guide states those server-side tool calls are also billed per successful request, and
-neither price page declares a free interval or a scheduled change. The parser requires that exact
+DeepSeek Harness, Claude Code or Codex, including Codex Alpha Search. Both offers currently publish
+one request tariff per currency: the guide states those tool calls are also billed per successful
+request, and neither price page declares a free interval or a scheduled change. The linked Codex
+integration page describes the Alpha Search client feature but defers supported operations and
+billing to this guide, so it establishes no separate tariff. The parser requires that exact
 guide sentence, so a reintroduced free period, a different client scope or any rounding of the
 qualification is rejected as contract drift instead of being silently priced. The guide's repeated
 amounts never replace the price pages' cells. These service rates do not inherit model Peak/Off-peak
