@@ -317,7 +317,8 @@ The current reviewed accounting surface is:
 - Claude: input, cache-write, cache-read, output, and web-search-request counts from response usage
   for non-streaming and streaming calls;
 - Grok Responses: input, cached input, output, reasoning, traffic type, server-side tool count, and
-  source count from a response or terminal `response.completed` event;
+  source count from a response usage object, plus the same fields from a terminal
+  `response.completed` event only while that document publishes it;
 - OpenAI-compatible chat: prompt and completion tokens from a response or final stream usage chunk;
 - Imagen: actual returned `predictions` count and requested output resolution; and
 - Veo: requested duration and actual returned video count, multiplied to produce generated seconds,
@@ -337,8 +338,14 @@ The former Veo generation guide now redirects to the generic `endpoints.predict`
 type, which documents `durationSeconds`, `sampleCount`, `resolution`, and `generateAudio`.
 The fixed video companion uses that type page for request fields. Historical bundles with the
 former combined guide remain replayable. The parameter page does not establish a completed
-operation's `videos` result envelope, so that result mapping stays unavailable unless separate
-reviewed evidence supplies it; request selectors survive independently.
+operation's `videos` result envelope; the Discovery
+`GoogleCloudAiplatformV1beta1GenerateVideoResponse` schema does, so the result count binds there
+and request selectors survive independently. The expected accounting surface follows the same
+evidence: a result field the reviewed schemas do not document is not counted as a missing fact.
+
+A documented streaming usage channel requires the terminal event that restates usage. Extraction
+and the expected fact count share one marker predicate, so a provider that stops publishing the
+marker shrinks the documented contract instead of leaving a permanently partial one.
 
 Uncached Gemini input is calculated as prompt input minus cached input with a zero floor, plus tool
 execution results provided back to the model. Grok input subtracts cached input with the same zero
@@ -348,8 +355,10 @@ output modality would be double counted. Thinking is therefore included when the
 rate covers it, while the separate reasoning counter remains available as a calculation input.
 
 Grounding mappings intentionally distinguish queries from grounded prompts. Google Search and Image
-Search expose query arrays. Returned Web, Maps, and retrieved-context chunks can establish a
-qualifying grounded request. Agent Platform does not expose the actual number of Google Maps
+Search expose query arrays. Returned `GroundingChunkWeb`, `GroundingChunkMaps`, and
+`GroundingChunkRetrievedContext` chunks can establish a qualifying grounded request; each result
+contract names its own `GroundingChunk` sibling schema, so a renamed or retired detail type is
+reported instead of silently dropped. Agent Platform does not expose the actual number of Google Maps
 queries, so a Maps query-priced rate has a semantic binding but no quantity method; the deprecated
 Maps widget context token is not treated as a query count.
 

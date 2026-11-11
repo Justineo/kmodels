@@ -31,7 +31,9 @@ const claudePath = "/gemini-enterprise-agent-platform/models/partner-models/clau
 const claudeSearchPath =
   "/gemini-enterprise-agent-platform/models/partner-models/claude/web-search";
 const responsesPath = "/gemini-enterprise-agent-platform/models/partner-models/grok/responses";
+const responsesStreamMarker = "response.completed";
 const chatPath = "/gemini-enterprise-agent-platform/models/maas/call-open-model-apis";
+const chatStreamMarker = "data: [DONE]";
 const imagePath = "/vertex-ai/generative-ai/docs/image/generate-images";
 const imageResolutionPath = "/vertex-ai/generative-ai/docs/image/set-output-resolution";
 const videoPath = "/vertex-ai/generative-ai/docs/model-reference/veo-video-generation";
@@ -64,6 +66,11 @@ const discoverySchema = z.object({
 
 const modalities = ["TEXT", "IMAGE", "VIDEO", "AUDIO", "DOCUMENT"] as const;
 
+const videoResponseSchemas = [
+  "GoogleCloudAiplatformV1beta1GenerateVideoResponse",
+  "CloudAiLargeModelsVisionGenerateVideoResponse",
+] as const;
+
 export function extractVertexPricingInputs(
   documents: readonly Document[],
   sourceRef: string,
@@ -71,22 +78,23 @@ export function extractVertexPricingInputs(
   onReconciliation?: Reconcile,
 ): SourcePricingInputFact[] {
   const bodies = documentsByPath(documents);
+  const discovery = parseDiscovery(bodies.get(discoveryPath));
+  const videoResult = videoResultDocumented(discovery);
   const facts = [
-    ...discoveryInputs(bodies, sourceRef, onFinding),
+    ...discoveryInputs(bodies, discovery, sourceRef, onFinding),
     ...partnerInputs(bodies, sourceRef, onFinding),
-    ...mediaInputs(bodies, sourceRef, onFinding),
+    ...mediaInputs(bodies, sourceRef, videoResult, onFinding),
   ];
-  const expected = expectedInputCount();
+  const expected = expectedInputCount(bodies, videoResult);
   return finalizePricingInputs(facts, expected, "Agent Platform pricing inputs", onReconciliation);
 }
 
 function discoveryInputs(
   bodies: ReadonlyMap<string, string>,
+  discovery: z.infer<typeof discoverySchema> | undefined,
   sourceRef: string,
   onFinding?: Finding,
 ): SourcePricingInputFact[] {
-  const body = bodies.get(discoveryPath);
-  const discovery = parseDiscovery(body);
   if (discovery === undefined) {
     finding(onFinding, "/documents/$discovery/rest");
     return [];
@@ -219,12 +227,12 @@ function discoveryContracts(): DiscoveryContract[] {
       "GenerateContentResponse.candidates[*].groundingMetadata.imageSearchQueries[*]",
       { kind: "count_unique_non_empty_strings" },
     ),
-    groundingResult("google_search_result", "web", `${schemaPrefix}Web`, "uri"),
-    groundingResult("google_maps_result", "maps", `${schemaPrefix}Maps`, "placeId"),
+    groundingResult("google_search_result", "web", `${schemaPrefix}GroundingChunkWeb`, "uri"),
+    groundingResult("google_maps_result", "maps", `${schemaPrefix}GroundingChunkMaps`, "placeId"),
     groundingResult(
       "agent_search_result",
       "retrievedContext",
-      `${schemaPrefix}RetrievedContext`,
+      `${schemaPrefix}GroundingChunkRetrievedContext`,
       "uri",
     ),
   ];
@@ -407,7 +415,7 @@ function partnerInputs(
       continue;
     }
     facts.push(inputFact(sourceRef, key, "response", { kind: "json_pointer", value: pointer }));
-    if (responses.includes("response.completed"))
+    if (responses.includes(responsesStreamMarker))
       facts.push(
         inputFact(sourceRef, key, "stream_event", {
           kind: "provider_field",
@@ -431,7 +439,7 @@ function partnerInputs(
         value: `/usage/${field}`,
       }),
     );
-    if (chat.includes("data: [DONE]"))
+    if (chat.includes(chatStreamMarker))
       facts.push(
         inputFact(sourceRef, key, "stream_event", {
           kind: "json_pointer",
@@ -456,6 +464,7 @@ function partnerInputs(
 function mediaInputs(
   bodies: ReadonlyMap<string, string>,
   sourceRef: string,
+  videoResult: boolean,
   onFinding?: Finding,
 ): SourcePricingInputFact[] {
   const facts: SourcePricingInputFact[] = [];
@@ -500,7 +509,6 @@ function mediaInputs(
     { availability: "conditional" },
   );
 
-  const video = normalizedText(bodies.get(videoPath));
   const parametersPath = bodies.has(videoParametersPath) ? videoParametersPath : videoPath;
   const parameters = normalizedText(bodies.get(parametersPath));
   for (const [key, field] of [
@@ -521,18 +529,17 @@ function mediaInputs(
       parametersPath,
       { availability: "conditional" },
     );
-  addDocumentedFact(
-    facts,
-    sourceRef,
-    video,
-    '"videos"',
-    "video.result.videos",
-    "result",
-    { kind: "provider_field", value: "FetchPredictOperationResponse.response.videos[*]" },
-    onFinding,
-    videoPath,
-    { reduction: { kind: "array_length" }, absentValue: "zero", availability: "success_only" },
-  );
+  if (videoResult)
+    facts.push(
+      inputFact(
+        sourceRef,
+        "video.result.videos",
+        "result",
+        { kind: "provider_field", value: "GenerateVideoResponse.videos[*]" },
+        { reduction: { kind: "array_length" }, absentValue: "zero", availability: "success_only" },
+      ),
+    );
+  else finding(onFinding, "/documents/$discovery/rest/GenerateVideoResponse.videos");
   return facts;
 }
 
@@ -589,6 +596,15 @@ function documentsByPath(documents: readonly Document[]): ReadonlyMap<string, st
   return result;
 }
 
+function videoResultDocumented(discovery: z.infer<typeof discoverySchema> | undefined): boolean {
+  return (
+    discovery !== undefined &&
+    videoResponseSchemas.some(
+      (schema) => discovery.schemas[schema]?.properties.videos !== undefined,
+    )
+  );
+}
+
 function parseDiscovery(body: string | undefined): z.infer<typeof discoverySchema> | undefined {
   if (body === undefined) return;
   try {
@@ -642,15 +658,15 @@ function finding(onFinding: Finding | undefined, path: string): void {
   onFinding?.(contractExtensionEvidence([path]));
 }
 
-function expectedInputCount(): number {
+function expectedInputCount(bodies: ReadonlyMap<string, string>, videoResult: boolean): number {
   const generateContracts = discoveryContracts().length;
   const generateChannels = 3;
   const embedding = embeddingContracts().length;
   const claude = 5 * 2;
-  const responses = 7 * 2;
-  const chat = 2 * 2;
+  const responses = 7 * documentedChannels(bodies, responsesPath, responsesStreamMarker);
+  const chat = 2 * documentedChannels(bodies, chatPath, chatStreamMarker);
   const requestLocation = 1;
-  const media = 3 + 5;
+  const media = 3 + 5 - (videoResult ? 0 : 1);
   return (
     generateContracts * generateChannels +
     embedding +
@@ -660,4 +676,15 @@ function expectedInputCount(): number {
     requestLocation +
     media
   );
+}
+
+// The streaming usage channel exists only when the provider publishes the terminal event that
+// restates usage. Extraction and the expected count share one predicate, so a withdrawn marker
+// reads as a smaller documented contract instead of a permanently partial one.
+function documentedChannels(
+  bodies: ReadonlyMap<string, string>,
+  path: string,
+  streamMarker: string,
+): number {
+  return normalizedText(bodies.get(path)).includes(streamMarker) ? 2 : 1;
 }
