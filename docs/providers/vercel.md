@@ -35,6 +35,14 @@ request price book. Vercel's generation `total_cost`, `market_cost`, `gateway_co
 `surcharge_cost`, and `upstream_inference_cost` are settlement observations, not inputs used to
 reconstruct public list cost.
 
+## Gateway catalog scale
+
+Each exact gateway model ID owns its model-scoped price book, and provider-native search tools add
+shared service books. A gateway catalog therefore needs roughly one book per published model plus a
+few service books, so the provider book budget must cover the manifest's declared model ceiling
+rather than a smaller flat catalog size. The budget remains a bounded safety guard: it is not a
+pricing or coverage claim, and an adapter that exceeds it still fails assembly.
+
 ## Direct inference ID association
 
 The model-list API's literal `id` is the request identifier. Associate it with the existing

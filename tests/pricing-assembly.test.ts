@@ -16,6 +16,7 @@ import type {
   PriceApplicability,
   PricingCatalog,
 } from "../src/catalog/pricing-schema.ts";
+import { pricingLimits } from "../src/catalog/pricing-constants.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
@@ -589,5 +590,33 @@ describe("canonical pricing canonical assembly", () => {
     expect(() => assembleProviderPricing(input([rate(contradictory, "false")]))).toThrow(
       "no satisfiable clause",
     );
+  });
+});
+
+describe("provider precompaction book budget", () => {
+  function gatewaySource(modelBooks: number): AtomicProviderPricing {
+    const source = input([rate(unconditionalApplicability, "usage")]);
+    const template = source.books[0]!;
+    source.books = Array.from({ length: modelBooks }, (_, index) => {
+      const book = structuredClone(template);
+      const model = `test/model-${index}`;
+      book.book_key = `model:${model}`;
+      book.scope = { kind: "models", model_refs: [model] };
+      book.scope_observations = [];
+      return book;
+    });
+    return source;
+  }
+
+  it("admits a gateway catalog at its declared model ceiling", () => {
+    // Vercel declares 600 models in its manifest and adds five provider-resource service books.
+    const partition = assembleProviderPricing(gatewaySource(605));
+    expect(partition.books).toHaveLength(605);
+  });
+
+  it("still rejects a provider above the book budget", () => {
+    expect(() =>
+      assembleProviderPricing(gatewaySource(pricingLimits.booksPerProvider + 1)),
+    ).toThrow("Provider precompaction resource limit exceeded");
   });
 });

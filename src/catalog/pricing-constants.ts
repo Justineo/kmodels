@@ -13,7 +13,8 @@ export const pricingLimits = {
   provenanceStringBytes: 4_096,
   exactIntegerDigits: 128,
   rawFactBytes: 8_192,
-  booksPerProvider: 512,
+  // One book per published model plus service books, with headroom above the largest declared ceiling.
+  booksPerProvider: 2_048,
   offersPerProvider: 8_192,
   termsPerProvider: 65_536,
   variantsPerProvider: 262_144,
