@@ -9,6 +9,19 @@ import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { togetherNextLibraryPage } from "../src/catalog/together-metadata.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import {
+  chatId,
+  chatSlug,
+  decisionId,
+  embeddingAlias,
+  embeddingId,
+  fireworksBundle,
+  fireworksRoot,
+  index,
+  rerankerAlias,
+  rerankerId,
+  routerId,
+} from "./fireworks-fixture.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -374,149 +387,6 @@ describe("Together AI Serverless", () => {
   });
 });
 
-const fireworksRoot = "https://fireworks.ai/models";
-const fireworksDocs = "https://docs.fireworks.ai/serverless";
-const fireworksGuides = "https://docs.fireworks.ai/guides";
-const chatSlug = "publisher/example";
-const chatId = "accounts/fireworks/models/example";
-const routerId = "accounts/fireworks/routers/example-fast";
-const decisionId = "accounts/fireworks/models/decide";
-const embeddingAlias = "fireworks/example-embedding";
-const embeddingId = "accounts/fireworks/models/example-embedding";
-const library = [
-  {
-    slug: chatSlug,
-    serverless: true,
-    serverlessApi: true,
-    contextLength: "8192",
-    tags: ["Chat"],
-    supportsImageInput: true,
-  },
-  {
-    slug: "fireworks/decide",
-    serverless: true,
-    serverlessApi: true,
-    contextLength: null,
-    tags: ["Chat"],
-    supportsImageInput: false,
-  },
-  {
-    slug: embeddingAlias,
-    serverless: true,
-    serverlessApi: true,
-    contextLength: null,
-    tags: ["Embedding"],
-    supportsImageInput: false,
-  },
-  { slug: "publisher/dedicated-only", serverless: true, serverlessApi: false },
-];
-const index = {
-  url: fireworksRoot,
-  body: `<a href="/models/publisher/dedicated-only/">Dedicated</a><script>self.__next_f.push(${JSON.stringify([1, `a:${JSON.stringify(["$", "$L1", null, { models: library }])}\n`])})</script>`,
-};
-
-function card(slug: string, id: string, name: string) {
-  return {
-    url: `${fireworksRoot}/${slug}/`,
-    body: `<link rel="canonical" href="${fireworksRoot}/${slug}"><h1>${name}</h1><div><span>model path:</span><span>${id}</span><button aria-label="Copy model path"></button></div><section><h2>Available Serverless</h2><p>$1 / $0.2 / $3</p><div><p>Per 1M Tokens (input/cached input/output)</p></div></section>`,
-  };
-}
-
-const fireworkBundle = {
-  index,
-  documents: [
-    card(chatSlug, chatId, "Example"),
-    card("fireworks/decide", decisionId, "Decide"),
-    {
-      ...card(embeddingAlias, embeddingId, "Example Embedding"),
-      body: card(embeddingAlias, embeddingId, "Example Embedding").body.replace(
-        "$1 / $0.2 / $3",
-        "$0.1",
-      ),
-    },
-    {
-      url: `${fireworksDocs}/pricing.md`,
-      body: [
-        "## Text and vision models",
-        "| Model | Standard | Priority |",
-        "| - | - | - |",
-        "| [Example](https://app.fireworks.ai/models/fireworks/example) | $1 / $0.2 / $3 | $2 / $0.4 / $6 |",
-        "| [Example Fast](https://app.fireworks.ai/models/fireworks/example) | $4 / $0.8 / $12 | — |",
-        "## Decision models",
-        "| Model | Standard | Priority |",
-        "| - | - | - |",
-        "| [Decide](https://app.fireworks.ai/models/fireworks/decide) | $1 / $0.2 / $0 | — |",
-        "## Embeddings",
-        "| Base model parameter count | \\$ / 1M input tokens |",
-        "| - | - |",
-        "| up to 150M | $0.008 |",
-        "| 150M – 350M | $0.016 |",
-      ].join("\n"),
-    },
-    {
-      url: `${fireworksDocs}/serverless-modes.md`,
-      body: [
-        "## Fast",
-        "| Model | `model` ID |",
-        "| - | - |",
-        `| Example Fast | \`${routerId}\` |`,
-        "## Ultra-fast (Preview)",
-        "| Model | `model` ID |",
-        "| - | - |",
-        "| Another Model | `accounts/fireworks/routers/another-ultrafast` |",
-      ].join("\n"),
-    },
-    {
-      url: `${fireworksDocs}/us-only-serverless.md`,
-      body: "## Available models\n| Model | `model` ID |\n| - | - |\n| Another Model | `accounts/fireworks/routers/another-us` |",
-    },
-    {
-      url: `${fireworksGuides}/spot-serverless.md`,
-      body: [
-        "## Models",
-        "| Model | Spot model identifier | Standard model identifier |",
-        "| - | - | - |",
-        `| Example | \`${chatId}-spot\` | \`${chatId}\` |`,
-        "## Pricing",
-        "| Model | Tier | Cached input | Uncached input | Output |",
-        "| - | - | - | - | - |",
-        "| Example | Standard | $0.2 | $1 | $3 |",
-        "| Example | Spot | $0.14 | $0.7 | $2.1 |",
-      ].join("\n"),
-    },
-    {
-      url: `${fireworksGuides}/querying-embeddings-models.md`,
-      body: [
-        "## Generating embeddings",
-        "> [tab] Qwen3",
-        "> | Model | Model ID | Availability |",
-        "> | - | - | - |",
-        `> | [Example Embedding](https://app.fireworks.ai/models/${embeddingAlias}) | [\`${embeddingAlias}\`](https://app.fireworks.ai/models/${embeddingAlias}) | Serverless and dedicated |`,
-        "> [accordion] BERT-based models (legacy)",
-        "> | Model id | Dimensions | Parameters |",
-        "> | - | - | - |",
-        "> | `Example/Small-Embed` | 384 | 33M |",
-        "> | `Example/Large-Embed` | 1024 | 335M |",
-        "> **Retired.** `Example/Retired-Embed`.",
-      ].join("\n"),
-    },
-    {
-      url: `${fireworksGuides}/video-audio-inputs.md`,
-      body: [
-        "## Available models",
-        "| Model | Input support | Notes |",
-        "| - | - | - |",
-        "| Example | Image, video, text | Serverless |",
-        "## Choose an inference option",
-        "### Serverless",
-        "```text",
-        chatId,
-        "```",
-      ].join("\n"),
-    },
-  ],
-};
-
 describe("Fireworks AI Serverless", () => {
   it("discovers eligible cards and preserves published model and router identities", () => {
     const source = providerManifest("fireworks").sources[0];
@@ -524,13 +394,15 @@ describe("Fireworks AI Serverless", () => {
     expect(linkedDocumentUrls(index.body, source).map(({ href }) => href)).toEqual([
       `${fireworksRoot}/fireworks/decide/`,
       `${fireworksRoot}/${embeddingAlias}/`,
+      `${fireworksRoot}/${rerankerAlias}/`,
       `${fireworksRoot}/${chatSlug}/`,
     ]);
-    const { models, inference_prices } = parse("fireworks", JSON.stringify(fireworkBundle));
+    const { models, inference_prices } = parse("fireworks", JSON.stringify(fireworksBundle));
     expect(models.map(({ model_id }) => model_id)).toEqual([
       chatId,
       decisionId,
       embeddingId,
+      rerankerId,
       routerId,
       "accounts/fireworks/routers/another-ultrafast",
       "accounts/fireworks/routers/another-us",
@@ -538,7 +410,9 @@ describe("Fireworks AI Serverless", () => {
       "Example/Small-Embed",
       "Example/Large-Embed",
     ]);
-    expect(models[4]?.price_facts).toEqual([]);
+    expect(models[4]?.pricing_state).toBe("numeric");
+    expect(models[5]?.price_facts).toEqual([]);
+    expect(models[5]?.pricing_state).toBe("unknown");
     expect(models[0]?.price_facts).toContainEqual(
       expect.objectContaining({
         meter: "input_text",
@@ -551,23 +425,31 @@ describe("Fireworks AI Serverless", () => {
       "input_text",
       "cache_read_text",
     ]);
+    expect(models[3]?.price_facts).toEqual([
+      expect.objectContaining({ meter: "input_text", price: "0.2" }),
+    ]);
+    expect(models[3]?.pricing_state).toBe("numeric");
     expect(inference_prices).toContainEqual(
       expect.objectContaining({ model_id: routerId, model_ref: `fireworks/${routerId}` }),
     );
     expect(inference_prices).toContainEqual(
       expect.objectContaining({ model_id: embeddingAlias, model_ref: `fireworks/${embeddingId}` }),
     );
+    expect(inference_prices).toContainEqual(
+      expect.objectContaining({ model_id: rerankerAlias, model_ref: `fireworks/${rerankerId}` }),
+    );
     expect(models[0]?.modalities.input).toEqual(["text", "image", "video"]);
-    expect(models[6]?.price_facts.map(({ price }) => price)).toEqual(["0.7", "0.14", "2.1"]);
-    expect(models[8]).toMatchObject({
+    expect(models[7]?.price_facts.map(({ price }) => price)).toEqual(["0.7", "0.14", "2.1"]);
+    expect(models[9]).toMatchObject({
       status: "legacy",
       limits: { embedding_dimensions: [1024] },
       price_facts: [{ price: "0.016" }],
+      pricing_state: "numeric",
     });
   });
 
   it("rejects an incomplete card crawl", () => {
-    const incomplete = { ...fireworkBundle, documents: fireworkBundle.documents.slice(1) };
+    const incomplete = { ...fireworksBundle, documents: fireworksBundle.documents.slice(1) };
     expect(() => parse("fireworks", JSON.stringify(incomplete))).toThrow(
       /omitted a serverless model card/,
     );

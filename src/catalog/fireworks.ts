@@ -31,6 +31,7 @@ const publicId = modelIdSchema.refine((id) =>
 const libraryOrigin = "https://fireworks.ai";
 const chatPath = "/inference/v1/chat/completions";
 const tokenUnit = "USD per 1M tokens";
+const retrievalCardUnits = new Set(["Per 1M Tokens (input/cached input/output)", "Per 1M Tokens"]);
 const usdTriplet = z.tuple([z.string(), z.string(), z.string()]);
 
 function documentedId(value: string | undefined): string {
@@ -512,8 +513,8 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
         "Model card/Available Serverless",
       );
     } else if (
-      model.tasks.includes("embeddings") &&
-      cardUnit === "Per 1M Tokens (input/cached input/output)"
+      (model.tasks.includes("embeddings") || model.tasks.includes("reranking")) &&
+      retrievalCardUnits.has(cardUnit)
     ) {
       const amount = usdAmount(cardAmount);
       if (amount !== undefined)
@@ -561,6 +562,8 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   const retrieval = docs("querying-embeddings-models", "guides");
   addLegacyEmbeddings(input, models, retrieval, pricing);
   bindRetrievalAliases(models, retrieval);
+  for (const model of models.values())
+    if (model.price_facts.length > 0) model.pricing_state = "numeric";
   const published = [...models.values()];
   return {
     models: published,

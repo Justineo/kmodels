@@ -17,8 +17,16 @@ Fast, Ultra-fast and US-only variants with a distinct ID require an exact match 
 [US-only](https://docs.fireworks.ai/serverless/us-only-serverless) route table and keep their
 own model records even when pricing is absent. A price row without a matching card or router is a
 reconciliation finding. For other admitted cards, the labeled Serverless price panel
-supplies rates when the meter and unit are explicit. Ambiguous units or meters stay raw.
-Exact API IDs bind these offers through the shared inference-price lookup.
+supplies rates when the meter and unit are explicit. A retrieval model publishes no output
+tokens, so its card rate is the input rate whether the panel labels the unit
+`Per 1M Tokens` or `Per 1M Tokens (input/cached input/output)`; a text-generation panel with an
+unqualified per-token unit stays raw because input and output are indistinguishable there.
+Other ambiguous units or meters stay raw. Exact API IDs bind these offers through the shared
+inference-price lookup.
+
+Every model with numeric price facts reports numeric pricing. A model record whose rate is not
+published, such as a Fast, Ultra-fast or US-only route without its own price row, stays unknown
+rather than borrowing the base model's rate.
 
 The [Spot guide](https://docs.fireworks.ai/guides/spot-serverless) owns Spot identifiers and
 their token rates. A Spot ID has a separate model record and rate. A retry using the Standard
