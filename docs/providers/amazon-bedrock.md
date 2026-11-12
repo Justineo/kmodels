@@ -490,6 +490,13 @@ outside Kmodels.
 
 ## Known limits
 
+The AWS Price List feeds publish roughly 23,000 price dimensions per refresh, and the normalized
+facts expand region and service-tier selectors into about 20,500 rate variants. The atomic
+pre-compaction projection for this provider is therefore larger than its compacted partition
+(about 143 MB against about 93 MB). The working bound that admits it is 256 MiB while the
+published partition budget stays 128 MiB and the complete catalog budget stays 288 MiB, so only
+this provider's compactable input gains headroom; published bytes remain bounded as before.
+
 Public rate coverage is not account-bill parity. Kmodels does not include negotiated discounts,
 capacity amortization, Marketplace private offers, taxes, credits, or free-tier balance. A model with
 no uniquely bound current public rate remains pricing-unknown rather than borrowing a similar

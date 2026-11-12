@@ -594,6 +594,17 @@ describe("canonical pricing canonical assembly", () => {
 });
 
 describe("provider precompaction book budget", () => {
+  it("keeps pre-compaction headroom above the publication byte budget", () => {
+    // Atomic input repeats per-variant applicability and observations; a provider whose compacted
+    // partition fits the publication budget must not be rejected before compaction.
+    expect(pricingLimits.providerPrecompactionBytes).toBeGreaterThan(
+      pricingLimits.providerPricingBytes,
+    );
+    expect(pricingLimits.providerPrecompactionBytes).toBeLessThanOrEqual(
+      pricingLimits.pricingCatalogBytes,
+    );
+  });
+
   function gatewaySource(modelBooks: number): AtomicProviderPricing {
     const source = input([rate(unconditionalApplicability, "usage")]);
     const template = source.books[0]!;

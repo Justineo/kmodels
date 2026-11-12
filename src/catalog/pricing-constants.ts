@@ -21,7 +21,11 @@ export const pricingLimits = {
   observationsPerProvider: 524_288,
   coreInputBytes: 134_217_728,
   pricingInputBytes: 335_544_320,
-  providerPrecompactionBytes: 134_217_728,
+  // The atomic pre-compaction projection repeats each variant's applicability and observation, so a
+  // large provider's input is routinely bigger than its compacted partition. It still needs a bound
+  // of its own, but must leave room above the publication budget so compactable input is assembled
+  // rather than rejected before compaction. It stays below the complete catalog budget.
+  providerPrecompactionBytes: 268_435_456,
   providerPricingBytes: 134_217_728,
   pricingCatalogBytes: 301_989_888,
 } as const;
