@@ -83,7 +83,14 @@ export const calculationTermSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...termBase, kind: z.literal("raw"), variants: rawVariants.min(1) }),
 ]);
 export const calculationOfferSchema = pricingOfferSchema
-  .omit({ states: true, enrollment: true, terms: true, relations: true, settlement: true })
+  .omit({
+    states: true,
+    enrollment: true,
+    terms: true,
+    relations: true,
+    settlement: true,
+    selection: true,
+  })
   .extend({
     states: z.array(priceStateVariantSchema.omit({ observations: true }).extend({ evidence })),
     enrollment: z

@@ -69,6 +69,7 @@ export interface AtomicPricingOffer {
   name?: string;
   model_refs?: string[];
   billing_mode: BillingMode;
+  selection?: PricingOffer["selection"];
   states: AtomicPriceState[];
   enrollment?: PricingOffer["enrollment"];
   terms: AtomicPricingTerm[];
@@ -297,6 +298,7 @@ function assembleOffer(prepared: PreparedOffer, bookModelRefs: readonly string[]
         : modelRefs,
     ),
     billing_mode: input.billing_mode,
+    ...optional("selection", input.selection),
     states: sortStates(states),
     enrollment: sortByCanonicalKey(input.enrollment ?? [], (variant) => variant),
     terms,
@@ -1204,6 +1206,7 @@ function precompactionProjection(prepared: PreparedProvider) {
               : sortUniqueStrings(offer.input.model_refs),
           ),
           billing_mode: offer.input.billing_mode,
+          ...optional("selection", offer.input.selection),
           source_refs: sortUniqueStrings(offer.input.source_refs),
           relations: offer.input.relations.map(canonicalRelation),
         })),

@@ -40,6 +40,14 @@ export function applyTypesafeCommercialTopology(
   };
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const typesafe_commercialSelectionPolicy = {
+  offers: {
+    systemone: ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 function tokenBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,

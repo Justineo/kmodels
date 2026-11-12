@@ -10,7 +10,7 @@ import type {
 import { canonicalJsonKey } from "./canonical-value.ts";
 import { evaluatePricingCondition, type PricingSelection } from "./pricing-applicability.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
-import type { PriceCondition, PublishedValidity } from "./pricing-schema.ts";
+import type { CommercialChoice, PriceCondition, PublishedValidity } from "./pricing-schema.ts";
 import { pricingSelection } from "./pricing-selector-input.ts";
 import { publishedValidityStatus } from "./pricing-time.ts";
 import type { WebsitePricingSelector } from "./website-schema.ts";
@@ -28,6 +28,7 @@ export function inferencePriceOptions(
   options: readonly WebsitePricingSelector[],
   evaluatedAt: string,
   offerRef?: string,
+  choices: readonly CommercialChoice[] = [],
 ): WebsitePricingSelector[] {
   const missing = new Set(initial.missing_conditions.map(canonicalJsonKey));
   const required = options.filter(({ dimension }) => missing.has(canonicalJsonKey(dimension)));
@@ -38,7 +39,14 @@ export function inferencePriceOptions(
   const indexes = indexCurrentChoices(data, initial, dimensions, evaluatedAt);
   const isAvailable = (selection: PricingSelection) => {
     if (indexes !== undefined) return indexes.some((matches) => matches(selection));
-    const { reason } = matchInferencePrices(data, [selection], evaluatedAt, offerRef);
+    const { reason } = matchInferencePrices(
+      data,
+      [selection],
+      evaluatedAt,
+      offerRef,
+      undefined,
+      choices,
+    );
     return reason !== "incompatible_conditions" && reason !== "no_applicable_price";
   };
   return required.flatMap<WebsitePricingSelector>((option) =>

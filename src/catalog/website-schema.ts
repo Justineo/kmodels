@@ -6,6 +6,7 @@ import {
   priceDecimalBoundSchema,
   unitExpressionSchema as canonicalUnitExpressionSchema,
   publishedValiditySchema as canonicalValiditySchema,
+  commercialSelectionScopeSchema,
 } from "./pricing-schema.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 
@@ -386,6 +387,9 @@ const websiteBillingModeSchema = z.strictObject({
 
 const websitePricingOfferSchema = z.strictObject({
   id: hash,
+  commercial_selection: z
+    .strictObject({ observed_at: z.string(), claims: z.array(commercialSelectionScopeSchema) })
+    .optional(),
   title: z.string().min(1),
   group: z.enum([
     "model_mechanism",

@@ -44,6 +44,7 @@ export function websiteInferencePrices(
           const matching = inferenceMatchData(
             snapshot,
             rules.filter((rule) => rule.model_id === model_id),
+            mapping.offer_selections,
           );
           const pricing_options = inferencePricingOptions(
             [...new Set(matching.rules.flatMap(({ offer_refs }) => offer_refs))].flatMap((ref) => {

@@ -1,10 +1,18 @@
 export { createCalculator } from "./calculator.ts";
 export { createInferencePriceLookup } from "./inference.ts";
+export { createCommercialPriceLookup, commercialPriceQuerySchema } from "./commercial.ts";
+export type { CommercialPriceQuery } from "./commercial.ts";
+export type { CommercialChoice, CommercialSelection } from "../catalog/pricing-schema.ts";
+export { commercialDimensionSchema, commercialDefinitions } from "./commercial-vocabulary.ts";
+export type { CommercialDimension } from "./commercial-vocabulary.ts";
 export { inferencePriceMappingSchema } from "./inference-schema.ts";
+export { executionModeSchema } from "./execution-mode.ts";
+export type { ExecutionMode } from "./execution-mode.ts";
 export type {
   InferencePriceMapping,
   InferencePriceRule,
   InferencePriceQuery,
+  ExecutionChoice,
 } from "./inference-schema.ts";
 export type { InferencePriceCandidate, InferencePriceResult } from "./inference.ts";
 export { validatePriceData } from "./validation.ts";

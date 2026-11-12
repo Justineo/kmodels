@@ -22,6 +22,7 @@ import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-c
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 
 const pricingDetailsContext = {
@@ -344,6 +345,31 @@ describe("SageMaker price books", () => {
       calculationExport(pair.catalog, pair.pricing),
       pair.inference?.mapping,
     );
+    const commercial = createCommercialPriceLookup(
+      calculationExport(pair.catalog, pair.pricing),
+      pair.inference?.mapping,
+    );
+    const capacity = pair.pricing.data.books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" &&
+        scope.resource_kind.namespace === "kmodels" &&
+        scope.resource_kind.value === "capacity",
+    );
+    if (!capacity) throw new Error("Missing capacity contract");
+    const subject = { kind: "resource" as const, provider_id: provider.id, book_ref: capacity.id };
+    const native = commercial({ subject });
+    const canonical = commercial({
+      subject,
+      choices: [{ dimension: "resource_kind", value: { namespace: "kmodels", value: "capacity" } }],
+    });
+    expect(canonical.candidates).toEqual(native.candidates);
+    expect(canonical.candidates.length).toBeGreaterThan(0);
+    expect(
+      commercial({
+        subject,
+        choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "request" } }],
+      }),
+    ).toMatchObject({ status: "unknown", reason: "no_applicable_price", candidates: [] });
     for (const model_id of [
       openModelId,
       "fixture-speech",

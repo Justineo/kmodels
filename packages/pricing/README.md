@@ -7,8 +7,26 @@ these existing prices. Supply the optional `/pricing/inference.json` mapping fro
 and price snapshot. The lookup returns applicable candidates, missing pricing conditions, evidence,
 and a `matched`, `candidates`, or `unknown` status; it does not infer price identity from names.
 Usage quantities and exact cost calculation remain separate.
-Pass the candidate's `offer.id` as `offer_ref` to select a commercial offer, such as Messages or Batch.
-Without it, multiple offers remain candidates with `requires_offer_choice: true`.
+Use canonical `choices`, for example:
+
+```ts
+choices: [
+  { dimension: "execution", value: { namespace: "kmodels", value: "request" } },
+  { dimension: "served_service_tier", value: { namespace: "kmodels", value: "standard" } },
+];
+```
+
+The result exposes `available_choices`, `missing_choices` and `unresolved_choices`. The selected
+values resolve to exact native predicates, including provider aliases such as xAI Default → Standard.
+Requested tiers never imply served tiers. Unknown coverage is distinct from unsupported choices.
+`execution_mode` remains a compatibility alias. If several offers remain, use an exact `offer_ref`;
+normalization does not merge their identities.
+
+`createCommercialPriceLookup(priceData, mappingData)` accepts the same choices with a `subject`:
+`{ kind: "model", provider_id, model_id }` or `{ kind: "resource", provider_id, book_ref }`.
+Resource books identify independently charged services or capacity; their required/incurred offers
+remain separate calculation components. Both APIs preserve their existing relationships.
+
 Each candidate identifies its owning `book_ref` and contains applicable offer terms/variants.
 Its `selectors` combine ID-fixed pricing conditions with your runtime conditions; conflicting
 values reject the association. Use those complete selectors for calculation, including conditions
@@ -35,6 +53,7 @@ const current = runtime;
 const resolution = current.lookup({
   provider_id: "provider",
   model_id: "exact-request-id",
+  choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "request" } }],
   selectors: runtimeSelectors,
   evaluated_at: evaluatedAt,
   // If needed, supply offer_ref after choosing an offer from an earlier result.

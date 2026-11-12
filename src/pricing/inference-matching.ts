@@ -1,7 +1,19 @@
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import { evaluateApplicability, type PricingSelection } from "../catalog/pricing-applicability.ts";
-import type { PriceDimension } from "../catalog/pricing-schema.ts";
+import type {
+  CommercialChoice,
+  PriceApplicability,
+  PriceDimension,
+} from "../catalog/pricing-schema.ts";
+import {
+  resolveCommercialChoices,
+  type AvailableCommercialChoice,
+  type UnresolvedCommercialChoice,
+} from "./commercial-matching.ts";
+import { PricingError } from "./errors.ts";
+import { unconditionalApplicability } from "../catalog/pricing-canonical.ts";
 import type { InferencePriceReason } from "./inference-schema.ts";
+import type { ExecutionMode } from "./execution-mode.ts";
 import type {
   InferenceMatchData,
   InferenceMatchOffer,
@@ -16,7 +28,7 @@ export interface InferenceTermSelection {
 }
 export interface InferenceMatchCandidate {
   rule_indexes: number[];
-  model_ref: string;
+  model_ref?: string;
   offer_ref: string;
   selectors: PricingSelection[];
   states: number[];
@@ -32,6 +44,11 @@ export interface InferenceMatchResult {
   candidates: InferenceMatchCandidate[];
   missing_conditions: PriceDimension[];
   requires_offer_choice: boolean;
+  execution_modes: ExecutionMode[];
+  requires_execution_mode_choice: boolean;
+  available_choices: AvailableCommercialChoice[];
+  missing_choices: CommercialChoice["dimension"][];
+  unresolved_choices: UnresolvedCommercialChoice[];
 }
 
 /** The same decision is used by portable lookup and interactive UI; no evidence or price copies. */
@@ -40,18 +57,36 @@ export function matchInferencePrices(
   supplied: readonly PricingSelection[] = [],
   evaluatedAt = data.generated_at,
   offerRef?: string,
+  executionMode?: ExecutionMode,
+  commercialChoices: readonly CommercialChoice[] = [],
 ): InferenceMatchResult {
   validateSelectors(supplied, []);
+  const requested = [...commercialChoices];
+  if (executionMode !== undefined) {
+    const existing = requested.find(({ dimension }) => dimension === "execution");
+    const value = { namespace: "kmodels" as const, value: executionMode };
+    if (existing && canonicalJson(existing.value) !== canonicalJson(value))
+      throw new PricingError("INVALID_REQUEST", "Conflicting execution choices");
+    if (!existing) requested.push({ dimension: "execution", value });
+  }
+  if (new Set(requested.map(({ dimension }) => dimension)).size !== requested.length)
+    throw new PricingError("INVALID_REQUEST", "Repeated commercial dimension");
   const result: InferenceMatchResult = {
     status: "unknown",
     candidates: [],
     missing_conditions: [],
     requires_offer_choice: false,
+    execution_modes: [],
+    requires_execution_mode_choice: false,
+    available_choices: [],
+    missing_choices: [],
+    unresolved_choices: [],
   };
   if (data.rules.length === 0) return { ...result, reason: "unreviewed_id" };
   if (new Set(data.rules.map(({ model_ref }) => model_ref)).size > 1)
     return { ...result, reason: "ambiguous_identity" };
   let compatible = false;
+  const modes = new Set<ExecutionMode>();
   const selected = new Map<string, InferenceMatchCandidate>();
   for (const [rule_index, rule] of data.rules.entries()) {
     const selectors = inferenceSelectors(rule, supplied);
@@ -61,22 +96,81 @@ export function matchInferencePrices(
       if (offerRef !== undefined && ref !== offerRef) continue;
       const offer = data.offers.find(({ id }) => id === ref);
       if (offer === undefined) throw new Error(`Missing mapped offer ${ref}`);
-      const candidate = selectOffer(
-        data,
+      if (
+        selectOffer(data, offer, rule_index, rule.model_ref, selectors, evaluatedAt) === undefined
+      )
+        continue;
+      const resolution = resolveCommercialChoices(
         offer,
-        rule_index,
-        rule.model_ref,
         selectors,
+        requested,
         evaluatedAt,
+        data.observed_at,
       );
-      if (candidate !== undefined) {
+      result.unresolved_choices.push(...resolution.unresolved);
+      for (const branch of resolution.branches) {
+        const candidate = selectOffer(
+          data,
+          offer,
+          rule_index,
+          rule.model_ref,
+          branch.selectors,
+          evaluatedAt,
+          branch.scope,
+        );
+        if (candidate === undefined) continue;
         const { rule_indexes: _indexes, ...selection } = candidate;
         const key = canonicalJson(selection);
         const prior = selected.get(key);
         if (prior === undefined) {
           selected.set(key, candidate);
           result.candidates.push(candidate);
-        } else prior.rule_indexes.push(rule_index);
+        } else if (!prior.rule_indexes.includes(rule_index)) prior.rule_indexes.push(rule_index);
+      }
+      // Each dimension is discovered under the other choices, retaining correlated scopes.
+      for (const choice of uniqueCanonicalValues(
+        (offer.selection ?? []).flatMap((claim) =>
+          claim.alternatives.map(({ value }) => ({ dimension: claim.dimension, value })),
+        ),
+      )) {
+        const others = requested.filter(({ dimension }) => dimension !== choice.dimension);
+        const probe = resolveCommercialChoices(
+          offer,
+          selectors,
+          [...others, choice],
+          evaluatedAt,
+          data.observed_at,
+        );
+        if (
+          !probe.branches.some(
+            (branch) =>
+              selectOffer(
+                data,
+                offer,
+                rule_index,
+                rule.model_ref,
+                branch.selectors,
+                evaluatedAt,
+                branch.scope,
+              ) !== undefined,
+          )
+        )
+          continue;
+        const previous = result.available_choices.find(
+          (item) =>
+            item.dimension === choice.dimension &&
+            canonicalJson(item.value) === canonicalJson(choice.value),
+        );
+        if (previous === undefined) result.available_choices.push({ ...choice, offer_refs: [ref] });
+        else if (!previous.offer_refs.includes(ref)) previous.offer_refs.push(ref);
+        if (
+          choice.dimension === "execution" &&
+          choice.value.namespace === "kmodels" &&
+          (choice.value.value === "request" ||
+            choice.value.value === "batch" ||
+            choice.value.value === "realtime")
+        )
+          modes.add(choice.value.value);
       }
     }
   }
@@ -104,7 +198,30 @@ export function matchInferencePrices(
   );
   result.requires_offer_choice =
     new Set(result.candidates.map(({ offer_ref }) => offer_ref)).size > 1;
+  result.execution_modes = [...modes].sort();
+  result.unresolved_choices = uniqueCanonicalValues(result.unresolved_choices);
+  result.missing_choices = [
+    ...new Set(result.available_choices.map(({ dimension }) => dimension)),
+  ].filter(
+    (dimension) =>
+      !requested.some((choice) => choice.dimension === dimension) &&
+      (result.available_choices.filter((choice) => choice.dimension === dimension).length > 1 ||
+        result.missing_conditions.some(
+          (condition) => condition.namespace === "kmodels" && condition.value === dimension,
+        )),
+  );
+  result.requires_execution_mode_choice = result.missing_choices.includes("execution");
   if (!compatible) return { ...result, reason: "incompatible_conditions" };
+  if (
+    requested.length > 0 &&
+    result.candidates.length === 0 &&
+    result.unresolved_choices.length > 0
+  )
+    return {
+      ...result,
+      reason:
+        executionMode === undefined ? "unreviewed_commercial_choice" : "unreviewed_execution_mode",
+    };
   if (result.candidates.length === 0) return { ...result, reason: "no_applicable_price" };
   const usable = result.candidates.some((candidate) => {
     const offer = data.offers.find(({ id }) => id === candidate.offer_ref);
@@ -133,6 +250,8 @@ export function matchInferencePrices(
   result.status =
     result.missing_conditions.length > 0 ||
     result.requires_offer_choice ||
+    result.missing_choices.length > 0 ||
+    result.unresolved_choices.length > 0 ||
     result.candidates.some(({ gaps }) => gaps.length > 0)
       ? "candidates"
       : "matched";
@@ -145,11 +264,15 @@ export function inferenceSelectors(
 ): PricingSelection[] | undefined {
   const fixed: PricingSelection[] = [
     ...rule.fixed_selectors,
-    {
-      dimension: { namespace: "kmodels", value: "model" },
-      kind: "categorical",
-      value: { namespace: "kmodels", value: rule.model_ref },
-    },
+    ...(rule.model_ref === undefined
+      ? []
+      : [
+          {
+            dimension: { namespace: "kmodels", value: "model" },
+            kind: "categorical",
+            value: { namespace: "kmodels", value: rule.model_ref },
+          } satisfies PricingSelection,
+        ]),
   ];
   const selectors = new Map(supplied.map((value) => [canonicalJson(value.dimension), value]));
   for (const value of fixed) {
@@ -165,21 +288,24 @@ function selectOffer(
   data: InferenceMatchData,
   offer: InferenceMatchOffer,
   rule_index: number,
-  model_ref: string,
+  model_ref: string | undefined,
   selectors: PricingSelection[],
   evaluatedAt: string,
+  scope: PriceApplicability = unconditionalApplicability,
 ): InferenceMatchCandidate | undefined {
+  const commercialScope = evaluateApplicability(scope, selectors);
+  if (commercialScope.state === "false") return;
   const offerRef = offer.id;
   const candidate: InferenceMatchCandidate = {
     rule_indexes: [rule_index],
-    model_ref,
+    ...(model_ref === undefined ? {} : { model_ref }),
     offer_ref: offerRef,
     selectors,
     states: [],
     relations: [],
     terms: [],
     referenced_rates: [],
-    missing_conditions: [],
+    missing_conditions: commercialScope.missing_dimensions,
     gaps: [],
   };
   const applicable = <T extends Qualified & { semantics: number }>(
@@ -231,11 +357,15 @@ function selectOffer(
   );
   function selectTerm(term: InferenceMatchTerm): InferenceTermSelection[] {
     const raw_variants = term.raw_variants.flatMap((variant, index) => {
-      const scope = variant.possible_scope ?? { any_of: [{ all_of: [] }] };
-      validateSelectors(selectors, [scope]);
-      const match = evaluateApplicability(scope, selectors);
+      const rawScope = variant.possible_scope ?? unconditionalApplicability;
+      validateSelectors(selectors, [rawScope]);
+      const match = evaluateApplicability(rawScope, selectors);
       if (match.state === "false") return [];
-      const gap = validityGap({ applicability: scope, ...variant }, evaluatedAt, data.observed_at);
+      const gap = validityGap(
+        { applicability: rawScope, ...variant },
+        evaluatedAt,
+        data.observed_at,
+      );
       if (gap === "outside_validity") return [];
       if (variant.impact !== "informational") {
         candidate.missing_conditions.push(...match.missing_dimensions);

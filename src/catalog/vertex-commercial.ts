@@ -1039,3 +1039,21 @@ function bindServiceRelations(
 function title(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const vertex_commercialSelectionPolicy = {
+  excluded_execution: { sync: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: {
+      request: ["generate.", "claude.", "chat.", "responses."],
+      realtime: ["live."],
+    },
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["standard", "priority", "flex"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

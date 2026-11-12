@@ -333,3 +333,13 @@ function selectorSources(
     })
     .sort(compareCanonicalValues);
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const databricks_commercialSelectionPolicy = {
+  offers: {
+    "pay-per-token": ["request"],
+  },
+  values: {
+    served_service_tier: ["standard", "priority"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

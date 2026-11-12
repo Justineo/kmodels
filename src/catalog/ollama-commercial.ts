@@ -95,6 +95,14 @@ function bindTerm(
   );
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const ollama_commercialSelectionPolicy = {
+  offers: {
+    "cloud-inference": ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 function binding(
   meter: PriceMeter,
   variant: AtomicRateVariant,

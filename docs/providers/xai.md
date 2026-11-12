@@ -161,6 +161,9 @@ refresh mechanically while preserving their exact applicability.
   their context bands and independent of a Priority quote. The provider contract equates `default`
   with Standard processing. Commercial topology partitions Batch and projects the served-tier
   dimension; it cannot add a missing default predicate or an unobserved vocabulary value.
+  The commercial selection projection normalizes this evidenced native `default` value to
+  canonical `standard`, returning the original native selector for exact calculation. Priority
+  remains a distinct observed class; this does not create a global Fast/Priority alias.
 - Image and video books use direct and, when supported, Batch offers. Output resolution,
   quality, and duration select rate variants; input media components remain additive. The
   unqualified summary is a consistency check against the explicit resolution rates, not an

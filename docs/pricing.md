@@ -442,11 +442,12 @@ sibling versions.
 
 ### Offers
 
-An offer represents one selectable billing mechanism. It has:
+An offer represents one identified commercial contract. It has:
 
 - a stable key and derived ID within its book;
 - an optional exact model subset when it is narrower than the book;
 - one exact billing mode;
+- optional evidenced `selection` claims with scoped alternatives and explicit coverage;
 - applicability-qualified states;
 - logical pricing terms;
 - zero or more evidence-backed relations to exact offers owned by the same
@@ -459,6 +460,15 @@ mechanisms respectively. Targets are exact offer sets; unsupported broad
 wording is not normalized. Relations are applicability-qualified, and their
 observations must exactly establish their targets. Provider-resource offers
 therefore appear in their own UI groups without becoming pseudo-models.
+
+The [offer/condition decision rules](commercial-topology.md#offers-and-dimensions) define this
+boundary. [Commercial selection](offer-semantics-design.md) combines offer-scoped facts and native
+rate qualifiers in one consumer interface. It supports several execution alternatives on one offer,
+and several offers with the same semantics. Billing basis, resource kind, execution, requested/served
+tier and speed remain independent dimensions; compatible combinations retain their exact scopes.
+A descriptor change does not change identity. Only a reviewed contract split or merge changes IDs.
+The canonical-to-native projection crosses the inference mapping boundary; the frozen calculation
+schema and its native predicates remain unchanged.
 
 The standard billing modes mean:
 
@@ -842,7 +852,9 @@ member ordering changes byte order, not UTF-8 byte count. Canonical
 serialization remains authoritative for hashes and published bytes. Catalog and
 provider byte budgets count complete books and their separators independently,
 without allocating a second complete serialized catalog just to measure it.
-The complete catalog budget is 288 MiB, including conservative retained-state metadata.
+The complete catalog budget is 320 MiB, including conservative retained-state metadata and scoped
+commercial selection evidence. The accepted catalog with selection exceeds the former 288 MiB bound;
+provider, applicability and precompaction limits remain independent.
 It leaves 32 MiB below the pricing mirror's decoded-input limit for the published envelope.
 The provider budgets apply to each partition. A rejected catalog reports its measured byte
 count and the limit.

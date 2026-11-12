@@ -79,6 +79,34 @@ function admittedBook(book: AtomicPricingBook): boolean {
   );
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const openai_commercialSelectionPolicy = {
+  excluded_execution: { sync: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: {
+      request: [
+        "responses.",
+        "chat.",
+        "images.",
+        "embeddings.",
+        "audio.",
+        "transcription.",
+        "translation.",
+        "speech.",
+        "video.",
+      ],
+      realtime: ["realtime."],
+    },
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["standard", "fast", "ultrafast"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 function splitModelBook(
   book: AtomicPricingBook,
   models: ReadonlyMap<string, PublishedModel>,

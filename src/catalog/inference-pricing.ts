@@ -9,7 +9,7 @@ import {
 } from "../pricing/inference-schema.ts";
 
 export const inferencePricingPath = "pricing/inference.json";
-export const inferencePricingMaxBytes = 16 * 1024 * 1024;
+export const inferencePricingMaxBytes = 32 * 1024 * 1024;
 
 /** The additive mapping resource references the existing catalog and price snapshot. */
 export function inferencePricingPublication(
@@ -49,6 +49,31 @@ export function inferencePricingPublication(
     rules: uniqueCanonicalValues(parsed.rules),
     sources: uniqueCanonicalValues(parsed.sources),
   };
+  const offers = new Map(
+    pricing.data.books.flatMap(({ offers }) => offers.map((offer) => [offer.id, offer] as const)),
+  );
+  for (const projection of mapping.offer_selections ?? []) {
+    if (!offers.has(projection.offer_ref))
+      throw new Error("Commercial selection references an absent offer");
+    const expected = offers
+      .get(projection.offer_ref)
+      ?.selection?.map(({ observations, ...claim }) => ({
+        ...claim,
+        evidence: observations.map(({ source_ref, locator }) => ({ source_ref, locator })),
+      }));
+    if (canonicalJson(expected ?? []) !== canonicalJson(projection.selection))
+      throw new Error("Commercial selection disagrees with its canonical offer");
+  }
+  if (mapping.offer_selections !== undefined) {
+    const references = new Set(mapping.offer_selections.map(({ offer_ref }) => offer_ref));
+    if (
+      references.size !== mapping.offer_selections.length ||
+      [...offers.values()].some(
+        (offer) => offer.selection !== undefined && !references.has(offer.id),
+      )
+    )
+      throw new Error("Commercial selection projection is incomplete or repeats an offer");
+  }
   for (const providerId of new Set(mapping.rules.map(({ provider_id }) => provider_id))) {
     createInferencePriceLookup(calculationExport(catalog, pricing, [providerId]), {
       ...mapping,

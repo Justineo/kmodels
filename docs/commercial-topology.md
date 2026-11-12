@@ -126,10 +126,54 @@ book, one or more invocation offers, rate terms, and applicability variants.
 
 ### Offers and dimensions
 
-Use separate offers when the caller selects a different API mechanism or separately billed service.
-Use variants when the same mechanism changes rate by Region, context, tier, cache class, modality,
-quality, or another request/outcome dimension. Batch is an offer when it is a distinct asynchronous
-mechanism; a price-table column is not by itself an offer.
+An offer owns a coherent commercial contract for model inference, a service or running capacity. Terms within that offer describe charges that may
+apply together; applicability-qualified variants select the applicable version of each charge.
+Offer identity and price applicability serve different purposes even when a caller selects both
+through enum inputs.
+
+Classify a source distinction using its commercial contract:
+
+1. Separate tariff scope, enrollment, allocation, accounting or explicit composition evidence can
+   establish separate contracts. A single contract can span several execution mechanisms; preserve
+   that contract and its scoped alternatives. A different mechanism alone does not force a split.
+2. An independently charged service with its own invocation trigger or commercial relationships
+   has its own service offer. Search and inference may both charge; they are not alternatives in
+   a single mode enum. Use existing exact relations when composition requires them.
+3. Region, served service tier, context band, cache TTL, modality, quality and resolution qualify
+   rates within a mechanism. A condition may affect several terms or make a term inapplicable;
+   that alone does not create a new offer. Priority/Flex remain conditions under the reviewed
+   contracts, including when the provider gives them separate price-table columns.
+4. An API path, model task, product brand, billing unit, amount difference, streaming flag, or table
+   heading alone does not establish an independent offer. Ordinary streamed responses remain
+   ordinary requests. A single video-generation job can return asynchronously without being Batch.
+5. Preserve source uncertainty. Do not manufacture an offer, rate, mechanism, or default Standard
+   tier from a missing column or an unsupported capability. New mechanisms need exact source proof.
+
+Keep a source operation as a condition when it distinguishes rate variants inside the same
+service, such as image quality operations or search-result categories. Promote it to an offer when
+the reviewed source establishes an independent mechanism. Vercel and Together Batch are such
+promotions: retain source-native operation labels in raw evidence, but move their rates, states,
+validity and accounting boundaries into a separate `batch` offer. Do not copy unrelated rates or
+synchronous acquisition paths into Batch. Unscoped raw uncertainty remains conservatively visible.
+
+Offers publish evidenced `selection` claims using the contract in
+[Canonical commercial selection](offer-semantics-design.md). Each claim has a dimension, coverage,
+applicability, optional validity, alternatives bound to exact native predicates, and observations.
+Execution is one dimension, alongside billing basis, resource kind and scoped tier/speed choices.
+A single offer can support several alternatives; equal descriptors never merge distinct offers.
+
+Provider-owned commercial policies establish the mappings. For mixed request/session families,
+the policy must find reviewed accounting locators on every priced variant before asserting a
+whole-offer mechanism. Model tasks, API endpoints and transport tags do not establish a tariff.
+Missing or mixed accounting proof remains partial. Provider-resource offers retain their own
+billing basis and resource kind; execution is marked not applicable rather than inferred from a
+product name such as SageMaker Realtime Inference.
+
+Tier/speed conditions stay on their native rate variants. Canonical choices project those exact
+conditions without moving their ownership. Requested and served classes remain independent.
+The common resolver preserves correlated scopes, retains provider-specific residual values,
+and returns exact calculator selectors. The old `execution_mode` query is a compatibility alias
+for a canonical execution choice; it is no longer a stored offer field.
 
 Do not materialize every possible Cartesian product. Store each official rate with only the
 conditions that qualify it. The UI resolves compatible variants from the dimensions relevant to

@@ -373,6 +373,23 @@ function modelBinding(
   }
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const xai_commercialSelectionPolicy = {
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  aliases: { served_service_tier: { default: "standard" } },
+  offers: {
+    sync: ["request"],
+    direct: ["request"],
+    realtime: ["realtime"],
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["priority"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 function uncachedTextMethods(
   mechanism: Mechanism,
   model: PublishedPricingModel | undefined,

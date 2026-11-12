@@ -60,9 +60,13 @@ Canonical and packaged evaluation share rational arithmetic, quantity graphs, ap
 
 `createInferencePriceLookup(priceData, mappingData)` is an additive export. It accepts the same
 portable calculation snapshot and a separately supplied ID mapping. The returned function takes
-`provider_id`, the exact request `model_id`, optional `selectors`, optional `offer_ref`, and optional
-`evaluated_at`. The offer reference selects an existing candidate, such as Messages or Batch;
-omission preserves all candidates and their `requires_offer_choice` result.
+`provider_id`, the exact request `model_id`, optional native `selectors`, canonical `choices`,
+`offer_ref`, and `evaluated_at`. `choices` use the shared commercial vocabulary and resolve to
+exact native selectors. `execution_mode` remains an alias for an execution choice. Results expose
+available, missing and unresolved commercial choices without guessing defaults or merging offers.
+The separately bound mapping carries this metadata; the frozen calculation schema remains unchanged.
+`createCommercialPriceLookup` adds exact model/resource subjects to the same resolver. Services and
+capacity retain their own charge families and relationships, with independently supplied quantities.
 It returns `matched`, `candidates`, or `unknown`, together with all applicable candidate offers,
 their owning `book_ref`, referenced contribution rates, missing conditions, evidence, freshness and
 the calculation snapshot identity and canonical `evaluated_at`. Evaluation time accepts the same

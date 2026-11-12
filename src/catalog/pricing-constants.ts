@@ -27,7 +27,8 @@ export const pricingLimits = {
   // rather than rejected before compaction. It stays below the complete catalog budget.
   providerPrecompactionBytes: 268_435_456,
   providerPricingBytes: 134_217_728,
-  pricingCatalogBytes: 301_989_888,
+  // Scoped commercial claims add evidence and native bindings to the accepted price catalog.
+  pricingCatalogBytes: 335_544_320,
 } as const;
 
 export const pricingDecimalPattern = /^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/;

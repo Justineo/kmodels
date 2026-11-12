@@ -5,6 +5,8 @@ import {
   type InferencePriceSource,
 } from "./inference-pricing-source.ts";
 import { withInferencePriceMapping, type CatalogPairCandidate } from "./pricing-publication.ts";
+import { projectCommercialSelections } from "./commercial-selection-compilation.ts";
+import { batchInferenceAssociations } from "./batch-model-offers.ts";
 
 type Source = InferencePriceSource["record"];
 
@@ -51,7 +53,16 @@ export function compileInferencePriceMapping(
     if (current === undefined || !sameRevision(record, current)) continue;
     if (replaced.has(record.id)) throw new Error(`Duplicate inference price source ${record.id}`);
     replaced.add(record.id);
-    for (const fact of facts) {
+    for (const fact of facts.flatMap((fact) =>
+      offers.some(
+        ({ provider_id, offer, model_refs }) =>
+          provider_id === record.provider_id &&
+          offer.offer_key === "batch" &&
+          model_refs.includes(fact.model_ref),
+      )
+        ? batchInferenceAssociations(record.provider_id, fact)
+        : [fact],
+    )) {
       if (models.get(fact.model_ref) !== record.provider_id) continue;
       const offer_refs = offers
         .filter(
@@ -117,7 +128,10 @@ export function compileInferencePriceMapping(
     sources: [...sources.values()],
     rules: uniqueCanonicalValues(rules),
   };
-  return withInferencePriceMapping(candidate, mapping);
+  return withInferencePriceMapping(
+    candidate,
+    projectCommercialSelections(candidate.pricing, mapping),
+  );
 }
 
 function sameRevision(left: Source, right: Source): boolean {

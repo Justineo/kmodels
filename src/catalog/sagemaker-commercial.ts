@@ -121,6 +121,14 @@ function linkHostingModels(
   };
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const sagemaker_commercialSelectionPolicy = {
+  offers: {
+    "realtime-inference": ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 export function applySagemakerCommercialTopology(
   input: AtomicProviderPricing,
   publishedModels: readonly PublishedPricingModel[],

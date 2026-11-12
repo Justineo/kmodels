@@ -129,6 +129,8 @@ it("publishes direct ID/alias prices and distinguishes Messages from Batch witho
   });
   expect(ambiguousPlan.status).toBe("candidates");
   expect(ambiguousPlan.requires_offer_choice).toBe(true);
+  expect(ambiguousPlan.execution_modes).toEqual(["batch", "request"]);
+  expect(ambiguousPlan.requires_execution_mode_choice).toBe(true);
   expect(new Set(ambiguousPlan.candidates.map(({ offer }) => offer.offer_key))).toEqual(
     new Set(["sync", "batch"]),
   );
@@ -140,7 +142,7 @@ it("publishes direct ID/alias prices and distinguishes Messages from Batch witho
       provider_id: "anthropic",
       model_id: "claude-opus-legacy",
       selectors,
-      offer_ref: offer(candidate, key ?? ""),
+      execution_mode: key === "batch" ? "batch" : "request",
     });
     expect(result.status).toBe("matched");
     expect(result.requires_offer_choice).toBe(false);
@@ -194,7 +196,13 @@ it("uses the same selected offer in public static output and the interactive UI"
       selectors,
       offer_ref: offer(candidate, key),
     });
-    const ui = queryWebsiteInferencePrice(id, selectors, at, offer(candidate, key));
+    const ui = queryWebsiteInferencePrice(
+      id,
+      selectors,
+      at,
+      undefined,
+      key === "batch" ? "batch" : "request",
+    );
     expect(ui.status).toBe(publicResult.status);
     expect(ui.candidates.map(({ offer_ref }) => offer_ref)).toEqual(
       publicResult.candidates.map(({ offer }) => offer.id),
@@ -205,13 +213,12 @@ it("uses the same selected offer in public static output and the interactive UI"
     prices: detail?.inference_prices,
     offers,
   });
-  expect(html).toMatch(/<legend\b[^>]*>Pricing plan<\/legend>/);
-  const radios = [...html.matchAll(/<input\b[^>]*\btype="radio"[^>]*>/g)].map(([radio]) => radio);
-  expect(radios).toHaveLength(2);
-  for (const key of ["sync", "batch"])
-    expect(radios).toContainEqual(expect.stringContaining(`value="${offer(candidate, key)}"`));
-  expect(radios.every((radio) => !radio.includes("checked"))).toBe(true);
-  expect(html).toContain("Message Batches");
+  expect(html).toMatch(/<label\b[^>]*>Execution<\/label>/);
+  expect(html).toContain("Ordinary request");
+  expect(html).toContain("Batch");
+  expect(html).toContain("Served speed");
+  expect(html).toContain("All applicable options");
+  expect(html).not.toContain("Message Batches");
   expect(html).not.toContain("Inspect target");
   expect(JSON.stringify(id)).not.toContain("content_hash");
 });

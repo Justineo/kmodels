@@ -115,6 +115,32 @@ function offerRef(query: ReturnType<typeof lookup>, model_id: string, key: strin
 it("maps exact structured IDs and declared aliases to the same canonical offers", async () => {
   const { candidate, facts } = await collect();
   const query = lookup(candidate);
+  const native = query({
+    provider_id: "xai",
+    model_id: "grok-4.3",
+    execution_mode: "request",
+    selectors: [
+      context,
+      categorical("endpoint", "https://api.x.ai/v1"),
+      categorical("served_service_tier", "default"),
+    ],
+  });
+  const normalized = query({
+    provider_id: "xai",
+    model_id: "grok-4.3",
+    choices: [
+      { dimension: "execution", value: { namespace: "kmodels", value: "request" } },
+      { dimension: "served_service_tier", value: { namespace: "kmodels", value: "standard" } },
+    ],
+    selectors: [context, categorical("endpoint", "https://api.x.ai/v1")],
+  });
+  expect(normalized.candidates).toMatchObject(
+    native.candidates.map((candidate) => ({
+      ...candidate,
+      selectors: expect.arrayContaining(candidate.selectors),
+    })),
+  );
+  expect(normalized.candidates.length).toBeGreaterThan(0);
   const base = query({ provider_id: "xai", model_id: "grok-4.3" });
   const alias = query({ provider_id: "xai", model_id: "grok-4.3-latest" });
   expect(alias.candidates.map(({ offer }) => offer.id)).toEqual(
@@ -208,7 +234,7 @@ it("maps media and realtime IDs to the documented global tariff without a cluste
     const result = query({
       provider_id: "xai",
       model_id,
-      offer_ref: offerRef(query, model_id, key),
+      execution_mode: key === "direct" ? "request" : key,
       selectors: [...selectors],
     });
     expect(result.status, model_id).toBe("matched");

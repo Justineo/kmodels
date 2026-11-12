@@ -817,3 +817,22 @@ function bindGroundingRelations(
 function groundingModelRef(offerKey: string): string | undefined {
   return offerKey.startsWith("grounding:") ? offerKey.slice("grounding:".length) : undefined;
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const gemini_commercialSelectionPolicy = {
+  excluded_execution: { sync: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: {
+      request: ["generate.", "interaction."],
+      realtime: ["live."],
+    },
+    batch: ["batch"],
+  },
+  values: {
+    service_tier: ["standard", "priority", "flex", "batch"],
+    served_service_tier: ["standard", "priority", "flex"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

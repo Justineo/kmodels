@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { commercialDimensionSchema } from "../pricing/commercial-vocabulary.ts";
 import { pricingDecimalPattern, pricingLimits } from "./pricing-constants.ts";
 import { recurringTimeScheduleSchema } from "./pricing-temporal.ts";
 import { isCanonicalInstant, isPublishedTime } from "./pricing-time.ts";
@@ -619,12 +620,58 @@ export const settlementVariantSchema = z.strictObject({
   observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
+export const commercialChoiceSchema = z.strictObject({
+  dimension: commercialDimensionSchema,
+  value: priceCategoricalValueSchema,
+});
+export const commercialSelectionScopeSchema = z.strictObject({
+  dimension: commercialDimensionSchema,
+  coverage: z.enum(["complete", "partial", "not_applicable"]),
+  excluded_values: z.array(priceCategoricalValueSchema).max(128).optional(),
+  applicability: priceApplicabilitySchema,
+  validity: publishedValiditySchema.optional(),
+  alternatives: z
+    .array(
+      z.strictObject({
+        value: priceCategoricalValueSchema,
+        applicability: priceApplicabilitySchema,
+      }),
+    )
+    .max(128),
+});
+export const commercialSelectionSchema = commercialSelectionScopeSchema
+  .extend({
+    observations: z.array(rawPriceObservationSchema).min(1),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      (value.coverage === "not_applicable" && value.alternatives.length > 0) ||
+      (value.coverage === "complete" && value.alternatives.length === 0) ||
+      value.excluded_values?.some((excluded) =>
+        value.alternatives.some(
+          ({ value }) =>
+            value.namespace === excluded.namespace &&
+            value.value === excluded.value &&
+            (excluded.namespace === "kmodels" ||
+              (value.namespace === "provider" && value.provider_id === excluded.provider_id)),
+        ),
+      )
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Commercial coverage disagrees with its alternatives",
+      });
+  });
+export type CommercialChoice = z.infer<typeof commercialChoiceSchema>;
+export type CommercialSelection = z.infer<typeof commercialSelectionSchema>;
+
 const pricingOfferBaseShape = {
   id: hash,
   offer_key: nonEmptyString,
   name: nonEmptyString.optional(),
   model_refs: z.array(nonEmptyString).min(1).optional(),
   billing_mode: billingModeSchema,
+  selection: z.array(commercialSelectionSchema).max(1024).optional(),
   states: z.array(priceStateVariantSchema),
   enrollment: z.array(priceEnrollmentVariantSchema),
   terms: z.array(pricingTermSchema),

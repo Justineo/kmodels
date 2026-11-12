@@ -1,8 +1,13 @@
 import { z } from "zod";
-import { priceApplicabilitySchema, publishedValiditySchema } from "../catalog/pricing-schema.ts";
+import {
+  commercialSelectionScopeSchema,
+  priceApplicabilitySchema,
+  publishedValiditySchema,
+} from "../catalog/pricing-schema.ts";
 import { isCanonicalInstant } from "../catalog/pricing-time.ts";
 import { priceStates, rawPricingImpacts } from "../catalog/pricing-vocabulary.ts";
 import { selectorSchema } from "./schema.ts";
+import { executionChoiceSchema } from "./inference-schema.ts";
 
 const identifier = z.string().min(1);
 const instant = z.string().refine(isCanonicalInstant);
@@ -30,6 +35,7 @@ const term = z.strictObject({
 });
 const offer = z.strictObject({
   id: identifier,
+  selection: z.array(commercialSelectionScopeSchema).optional(),
   states: z.array(z.strictObject({ ...qualified, state: z.enum(priceStates) })),
   relations: z.array(variant),
   terms: z.array(term),
@@ -41,9 +47,10 @@ export const inferenceMatchDataSchema = z.strictObject({
   observed_at: instant,
   rules: z.array(
     z.strictObject({
-      model_ref: identifier,
+      model_ref: identifier.optional(),
       offer_refs: z.array(identifier).min(1),
       fixed_selectors: z.array(selectorSchema),
+      execution_choices: z.array(executionChoiceSchema.omit({ evidence: true })).optional(),
     }),
   ),
   offers: z.array(offer),

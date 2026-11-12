@@ -19,6 +19,8 @@ import {
   type WebsitePricingContext,
 } from "../catalog/website-pricing-context.ts";
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
+import type { CommercialChoice } from "../catalog/pricing-schema.ts";
+import CommercialChoices from "./CommercialChoices.vue";
 import {
   formatCategoricalValue,
   formatDimension,
@@ -34,6 +36,7 @@ const props = defineProps<{
 const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 const selectedId = ref("");
 const selectedOffer = ref("");
+const commercialChoices = ref<CommercialChoice[]>([]);
 const copiedId = ref("");
 const inputs = ref<Record<string, string>>({});
 const evaluatedAt = ref(new Date().toISOString());
@@ -68,10 +71,22 @@ const idOptions = computed(() =>
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
 ]);
+const commercialMatch = computed(() => {
+  const matching = toRaw(selectedPrice.value?.matching);
+  return matching === undefined
+    ? undefined
+    : matchInferencePrices(
+        matching,
+        [],
+        evaluatedAt.value,
+        undefined,
+        undefined,
+        commercialChoices.value,
+      );
+});
+const commercialOptions = computed(() => commercialMatch.value?.available_choices ?? []);
 const offerOptions = computed(() => {
-  const refs = new Set(
-    selectedPrice.value?.matching?.rules.flatMap(({ offer_refs }) => offer_refs),
-  );
+  const refs = new Set(commercialMatch.value?.candidates.map(({ offer_ref }) => offer_ref));
   return props.offers
     .filter(({ id }) => refs.has(id))
     .map(({ id, title }) => ({ value: id, label: title }));
@@ -84,12 +99,16 @@ function matchConditions(selections: readonly PricingSelection[]) {
     selections,
     evaluatedAt.value,
     selectedOffer.value || undefined,
+    undefined,
+    commercialChoices.value,
   );
 }
 function excludesPrices(result: InferenceMatchResult | undefined): boolean {
   return result?.reason === "no_applicable_price" || result?.reason === "incompatible_conditions";
 }
-const initialMatch = computed(() => matchConditions([]));
+const initialMatch = computed(() =>
+  selectedOffer.value === "" ? commercialMatch.value : matchConditions([]),
+);
 const availableConditionOptions = computed(() => {
   const price = toRaw(selectedPrice.value);
   const initial = initialMatch.value;
@@ -100,7 +119,15 @@ const availableConditionOptions = computed(() => {
     price.pricing_options ?? [],
     evaluatedAt.value,
     selectedOffer.value || undefined,
-  ).map((option) => ({ option, fixed: fixedPricingSelection(option) }));
+    commercialChoices.value,
+  )
+    .filter(
+      ({ dimension }) =>
+        !commercialOptions.value.some(
+          (choice) => dimension.namespace === "kmodels" && choice.dimension === dimension.value,
+        ),
+    )
+    .map((option) => ({ option, fixed: fixedPricingSelection(option) }));
 });
 const configurableConditionOptions = computed(() =>
   availableConditionOptions.value.flatMap(({ option, fixed }) =>
@@ -168,11 +195,14 @@ const conditionOptions = computed(() => {
 const needsPricingSelection = computed(
   () =>
     selected.value?.status === "candidates" &&
-    (selected.value.requires_offer_choice || selected.value.missing_conditions.length > 0),
+    (selected.value.missing_choices.length > 0 ||
+      selected.value.requires_offer_choice ||
+      selected.value.missing_conditions.length > 0),
 );
 const hasPricingControls = computed(
   () =>
     conditionOptions.value.length > 0 ||
+    commercialOptions.value.length > 0 ||
     (selected.value?.requires_offer_choice === true && offerOptions.value.length > 1),
 );
 function setInput(key: string, value: string): void {
@@ -234,6 +264,9 @@ const candidates = computed(() => {
         .filter(
           ({ dimension }) =>
             !(dimension.namespace === "kmodels" && dimension.value === "model") &&
+            !commercialChoices.value.some(
+              (choice) => dimension.namespace === "kmodels" && choice.dimension === dimension.value,
+            ) &&
             !chosenSelections.value.some(
               (selection) => canonicalJson(selection.dimension) === canonicalJson(dimension),
             ),
@@ -250,6 +283,7 @@ watch(
   () => {
     selectedId.value = "";
     selectedOffer.value = "";
+    commercialChoices.value = [];
     copiedId.value = "";
     inputs.value = {};
   },
@@ -280,6 +314,11 @@ function retainInputs(previous: ReturnType<typeof inferencePriceOptions>): void 
       availableConditionOptions.value.map(({ option }) => option),
       inputs.value,
     );
+}
+function selectCommercial(choices: CommercialChoice[]): void {
+  commercialChoices.value = choices;
+  selectedOffer.value = "";
+  inputs.value = {};
 }
 async function copyId(id: string): Promise<void> {
   try {
@@ -334,7 +373,21 @@ async function copyId(id: string): Promise<void> {
       </ul>
       <p class="visually-hidden" aria-live="polite">{{ copiedId ? `Copied ${copiedId}` : "" }}</p>
     </div>
-    <fieldset v-if="offerOptions.length > 1" class="plan-control">
+    <CommercialChoices
+      :choices="commercialOptions"
+      :candidate-refs="initialMatch?.candidates.map(({ offer_ref }) => offer_ref) ?? []"
+      :selected="commercialChoices"
+      :prefix="`commercial-${modelRef}`"
+      @change="selectCommercial"
+    />
+    <p v-if="selected.unresolved_choices.length" class="fixed-conditions">
+      Some offers have incomplete evidence for the selected commercial choices. They have not been
+      treated as unsupported.
+    </p>
+    <fieldset
+      v-if="offerOptions.length > 1 && !selected.missing_choices.includes('execution')"
+      class="plan-control"
+    >
       <legend>Pricing plan</legend>
       <div class="offer-list">
         <label v-for="option in offerOptions" :key="option.value" class="offer-choice">

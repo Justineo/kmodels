@@ -1,5 +1,5 @@
 import { canonicalJson } from "../catalog/canonical-value.ts";
-import type { InferencePriceRule } from "./inference-schema.ts";
+import type { InferencePriceMapping } from "./inference-schema.ts";
 import type { InferenceMatchData, InferenceMatchTerm } from "./inference-matching-schema.ts";
 import { pricingSemantics, type Qualified } from "./selection.ts";
 import type { CalculationTerm } from "./schema.ts";
@@ -7,7 +7,8 @@ import type { PricingSnapshot } from "./snapshot.ts";
 
 export function inferenceMatchData(
   snapshot: PricingSnapshot,
-  rules: readonly InferencePriceRule[],
+  rules: readonly InferenceMatchData["rules"][number][],
+  selections: InferencePriceMapping["offer_selections"] = [],
 ): InferenceMatchData {
   const semantics = new Map<string, number>();
   function qualified(value: Qualified) {
@@ -61,13 +62,40 @@ export function inferenceMatchData(
   return {
     generated_at: snapshot.data.snapshot.generatedAt,
     observed_at: offers[0]?.provider.snapshot.observed_at ?? snapshot.data.snapshot.generatedAt,
-    rules: rules.map(({ model_ref, offer_refs, fixed_selectors }) => ({
-      model_ref,
+    rules: rules.map(({ model_ref, offer_refs, fixed_selectors, execution_choices }) => ({
+      ...(model_ref === undefined ? {} : { model_ref }),
       offer_refs,
       fixed_selectors,
+      ...(execution_choices === undefined
+        ? {}
+        : {
+            execution_choices: execution_choices.map(({ mode, offer_ref }) => ({
+              mode,
+              offer_ref,
+            })),
+          }),
     })),
     offers: offers.map(({ offer }) => ({
       id: offer.id,
+      selection:
+        selections
+          .find(({ offer_ref }) => offer_ref === offer.id)
+          ?.selection.map(({ evidence: _evidence, ...claim }) => claim) ??
+        rules.flatMap(({ execution_choices }) =>
+          (execution_choices ?? [])
+            .filter(({ offer_ref }) => offer_ref === offer.id)
+            .map(({ mode }) => ({
+              dimension: "execution" as const,
+              coverage: "complete" as const,
+              applicability: { any_of: [{ all_of: [] }] },
+              alternatives: [
+                {
+                  value: { namespace: "kmodels" as const, value: mode },
+                  applicability: { any_of: [{ all_of: [] }] },
+                },
+              ],
+            })),
+        ),
       states: offer.states.map((state) => ({ ...qualified(state), state: state.state })),
       relations: offer.relations.map(qualified),
       terms: offer.terms.map(term),

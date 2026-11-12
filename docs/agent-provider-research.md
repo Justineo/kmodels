@@ -48,6 +48,17 @@ missing or conflicting model facts. The [collection contract](collection.md), th
 
 ## Extract and prove the result
 
+- Apply the offer/condition decision rules in [Commercial topology](commercial-topology.md#offers-and-dimensions)
+  before normalizing a price table. Record the exact source evidence for an independently selectable
+  mechanism, or explain why the distinction only qualifies an existing mechanism's rates. Provider
+  labels such as Standard, Online, Realtime and operation are not shared semantics by themselves.
+  Review the request/result aggregation and acquisition contracts when splitting an offer; Batch
+  cannot inherit synchronous response paths merely because its meters have the same names.
+  Verify both the producer's canonical offer boundary and selection through the public
+  `choices` query, including a sibling condition that must remain inside the offer. Emit evidenced
+  selection scope in the owning commercial adapter; model tasks, endpoint support and transport
+  tags are not tariff proof. Preserve partial coverage, native bindings and requested/served
+  distinctions as specified in [Commercial selection](offer-semantics-design.md).
 - Read only the fields a consumer needs. Validate external shapes at the boundary, anchor
   extraction to the owning table or schema operation, and preserve literal identifiers.
   Check the meaning of structured fields as well as their shape. An ignored OpenAPI

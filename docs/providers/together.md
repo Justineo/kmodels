@@ -48,7 +48,10 @@ specific configuration and does not supply a current tariff across supported con
 
 The [Batch overview](https://docs.together.ai/docs/inference/batch/overview) joins an exact
 discounted audio ID to its Serverless per-minute rate. The standard and discounted rates
-have separate operation selectors. Batch bills successful responses and the discount
+are extracted with separate source operation selectors and assembled into independent `usage`
+and `batch` offers. Their canonical selection claims describe `request` and `batch` execution; mechanism
+operation predicates are removed from rate applicability and retained in raw evidence. Endpoint
+geography remains a price condition. Batch bills successful result items and the discount
 excludes dedicated inference. The guide also establishes the audio translation route where
 it names the model. Other Batch terms, provisioned throughput, dedicated capacity and
 negotiated account terms are outside this source's commercial scope.

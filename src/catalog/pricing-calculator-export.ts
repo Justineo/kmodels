@@ -130,7 +130,12 @@ function modelDisposition(
 }
 
 function exportBook(book: PricingBook): CalculationProvider["books"][number] {
-  return calculationBookSchema.parse(replaceObservationsWithEvidence(book));
+  return calculationBookSchema.parse(
+    replaceObservationsWithEvidence({
+      ...book,
+      offers: book.offers.map(({ selection: _selection, ...offer }) => offer),
+    }),
+  );
 }
 
 function replaceObservationsWithEvidence(value: unknown): unknown {

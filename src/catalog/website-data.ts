@@ -733,15 +733,10 @@ function websitePricingDetail(
       mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
   ].map(({ offer, group, mechanismRefs }) => {
-    const projected = websiteOffer(
-      view.books,
-      offer,
-      group,
-      modelRef,
-      labels,
-      atoms,
-      mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs },
-    );
+    const projected = websiteOffer(view.books, offer, group, modelRef, labels, atoms, {
+      ...(mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs }),
+      observedAt: view.snapshot?.observed_at,
+    });
     const links =
       mechanismRefs === undefined ? [] : websiteMechanismLinks(view, offer, projected.selectors);
     const choice = group === "capacity" ? capacityChoice(offer, projected) : undefined;
@@ -862,6 +857,9 @@ function websiteProviderPricingResources(
         offers: book.offers.map((offer) =>
           websiteOffer(books, offer, "standalone", undefined, labels, atoms, {
             unnormalizedLimit: PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
+            observedAt: pricing.provider_snapshots.find(
+              ({ provider_id }) => provider_id === providerId,
+            )?.observed_at,
           }),
         ),
       };
@@ -925,7 +923,11 @@ function websiteOffer(
   modelRef: string | undefined,
   labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
-  options: { unnormalizedLimit?: number; mechanismRefs?: readonly string[] } = {},
+  options: {
+    unnormalizedLimit?: number;
+    mechanismRefs?: readonly string[];
+    observedAt?: string | undefined;
+  } = {},
 ): WebsitePricingOffer {
   const states = offer.states.map((state, index) => ({
     key: `state:${index}`,
@@ -1024,6 +1026,14 @@ function websiteOffer(
 
   return {
     id: offer.id,
+    ...(offer.selection === undefined || options.observedAt === undefined
+      ? {}
+      : {
+          commercial_selection: {
+            observed_at: options.observedAt,
+            claims: offer.selection.map(({ observations: _observations, ...claim }) => claim),
+          },
+        }),
     title: offer.name ?? formatSentenceCase(offer.offer_key),
     group,
     ...(options.mechanismRefs === undefined ? {} : { mechanism_refs: [...options.mechanismRefs] }),

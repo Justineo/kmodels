@@ -39,6 +39,8 @@ This index points to the repository's current decisions. Detailed documents are 
   inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
+- [Canonical commercial selection](docs/offer-semantics-design.md): evidenced scoped offer semantics,
+  canonical-to-native selectors, shared model/resource selection and stored migration.
 
 ## Downstream consumers
 

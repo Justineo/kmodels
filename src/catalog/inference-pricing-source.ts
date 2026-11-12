@@ -6,7 +6,7 @@ import type { SourceRecord } from "./schema.ts";
 
 // Provider parsers name a reviewed commercial offer; assembly resolves its canonical references.
 export const sourceInferencePriceSchema = inferencePriceRuleSchema
-  .omit({ provider_id: true, offer_refs: true })
+  .omit({ provider_id: true, offer_refs: true, execution_choices: true })
   .extend({ offer_key: z.string().min(1), source_ref: z.string().min(1) });
 
 export type SourceInferencePrice = z.infer<typeof sourceInferencePriceSchema>;

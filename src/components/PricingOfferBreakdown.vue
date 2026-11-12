@@ -1,6 +1,9 @@
 <script setup lang="ts" vapor>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { canonicalJson } from "../catalog/canonical-value.ts";
+import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
+import type { CommercialChoice } from "../catalog/pricing-schema.ts";
+import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
+import CommercialChoices from "./CommercialChoices.vue";
 import {
   formatCategoricalValue,
   formatDimension,
@@ -58,10 +61,11 @@ interface ScopeCopy {
 }
 
 const inputs = ref<Record<string, string>>({});
+const commercialChoices = ref<CommercialChoice[]>([]);
 const liveNow = ref(new Date().toISOString());
 const viewingUpcoming = ref(false);
 const timeline = computed(() => projectWebsitePricingTimeline(props.offer, liveNow.value));
-const displayOffer = computed(() =>
+const unfilteredOffer = computed(() =>
   props.matchedRows !== undefined
     ? props.offer
     : viewingUpcoming.value && timeline.value.upcoming !== undefined
@@ -80,23 +84,62 @@ const inherited = computed(() => {
   );
 });
 const boundSelections = computed(() => [...(props.boundSelectors ?? []), ...inherited.value]);
+const commercialQuery = computed(() =>
+  queryWebsiteCommercialOffer(
+    unfilteredOffer.value,
+    uniqueCanonicalValues([
+      ...boundSelections.value,
+      ...unfilteredOffer.value.selectors.flatMap((option) => {
+        const selected = pricingSelection(option, inputs.value[option.key] ?? "");
+        return selected === undefined ? [] : [selected];
+      }),
+      ...(props.modelRef === undefined
+        ? []
+        : [
+            {
+              kind: "categorical" as const,
+              dimension: { namespace: "kmodels" as const, value: "model" as const },
+              value: { namespace: "kmodels" as const, value: props.modelRef },
+            },
+          ]),
+    ]),
+    props.hideConditions ? [] : commercialChoices.value,
+    viewingUpcoming.value && timeline.value.upcoming
+      ? timeline.value.upcoming.effective_at
+      : liveNow.value,
+  ),
+);
+const displayOffer = computed(() =>
+  props.hideConditions ? unfilteredOffer.value : commercialQuery.value.offer,
+);
+function selectCommercial(choices: CommercialChoice[]): void {
+  commercialChoices.value = choices;
+  inputs.value = {};
+}
 const selectors = computed(() => {
   if (props.hideConditions) return [];
   const bound = new Set(boundSelections.value.map(({ dimension }) => canonicalJson(dimension)));
   return displayOffer.value.selectors.filter(
-    ({ dimension }) => !bound.has(canonicalJson(dimension)),
+    ({ dimension }) =>
+      !bound.has(canonicalJson(dimension)) &&
+      !commercialQuery.value.available_choices.some(
+        (choice) => dimension.namespace === "kmodels" && dimension.value === choice.dimension,
+      ),
   );
 });
 const configurableSelectors = computed(() =>
   selectors.value.filter((selector) => fixedPricingSelection(selector) === undefined),
 );
-const fixedSelectionValues = computed(() => [
-  ...selectors.value.flatMap((selector) => {
-    const fixed = fixedPricingSelection(selector);
-    return fixed === undefined ? [] : [fixed];
-  }),
-  ...boundSelections.value,
-]);
+const fixedSelectionValues = computed(() =>
+  uniqueCanonicalValues([
+    ...selectors.value.flatMap((selector) => {
+      const fixed = fixedPricingSelection(selector);
+      return fixed === undefined ? [] : [fixed];
+    }),
+    ...boundSelections.value,
+    ...(props.hideConditions ? [] : commercialQuery.value.selectors),
+  ]),
+);
 const followedRegion = computed(() => {
   const region = props.preferredRegion;
   if (region === undefined) return;
@@ -108,13 +151,15 @@ const followedRegion = computed(() => {
     fixedSelectionValues.value,
   );
 });
-const selectionValues = computed(() => [
-  ...configurableSelectors.value.flatMap((selector) => {
-    const value = selection(selector);
-    return value === undefined ? [] : [value];
-  }),
-  ...fixedSelectionValues.value,
-]);
+const selectionValues = computed(() =>
+  uniqueCanonicalValues([
+    ...configurableSelectors.value.flatMap((selector) => {
+      const value = selection(selector);
+      return value === undefined ? [] : [value];
+    }),
+    ...fixedSelectionValues.value,
+  ]),
+);
 const visibleStates = computed(() => matchingRows(displayOffer.value.states));
 const rateProjection = computed(() =>
   projectWebsiteRateQuery(displayOffer.value, props.modelRef, selectionValues.value),
@@ -212,6 +257,7 @@ const showPublishedStatus = computed(
 
 watch([() => props.offer.id, () => props.modelRef], () => {
   inputs.value = {};
+  commercialChoices.value = [];
   viewingUpcoming.value = false;
   scheduleClockRefresh();
 });
@@ -448,6 +494,17 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </button>
     </div>
 
+    <CommercialChoices
+      v-if="!hideConditions"
+      :candidate-refs="[offer.id]"
+      :choices="commercialQuery.available_choices"
+      :selected="commercialChoices"
+      :prefix="`commercial-offer-${offer.id}`"
+      @change="selectCommercial"
+    />
+    <p v-if="!hideConditions && commercialQuery.unresolved_choices.length">
+      Commercial selection evidence is incomplete for this offer.
+    </p>
     <PricingConditions
       :prefix="offer.id"
       :selectors="rateSelectors"

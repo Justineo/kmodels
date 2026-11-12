@@ -212,8 +212,10 @@ it("keeps native Fast context tiers and regional amounts instead of extending th
     const result = query({
       provider_id: "vercel",
       model_id: "openai/gpt-6-astra",
+      offer_ref: query({ provider_id: "vercel", model_id: "openai/gpt-6-astra" }).candidates.find(
+        ({ offer }) => offer.offer_key === "usage",
+      )?.offer.id,
       selectors: [
-        condition("operation", "sync"),
         condition("speed", "fast"),
         condition("served_service_tier", "standard"),
         condition("region", region),
@@ -225,7 +227,14 @@ it("keeps native Fast context tiers and regional amounts instead of extending th
         },
       ],
     });
-    expect(result.status).toBe("matched");
+    expect(
+      result.status,
+      JSON.stringify({
+        reason: result.reason,
+        modes: result.execution_modes,
+        missing: result.missing_conditions,
+      }),
+    ).toBe("matched");
     expect(amounts(result)).toEqual([{ numerator, denominator }]);
   }
 });
@@ -241,13 +250,16 @@ it("associates Batch IDs and base IDs with the same published Batch rates", asyn
       const result = query({
         provider_id: "vercel",
         model_id,
-        selectors: [
-          condition("operation", "batch"),
-          condition("route_provider", "anthropic"),
-          condition("region", region),
-        ],
+        execution_mode: "batch",
+        selectors: [condition("route_provider", "anthropic"), condition("region", region)],
       });
       expect(result.status).toBe("matched");
+      expect(result.candidates.every(({ offer }) => offer.offer_key === "batch")).toBe(true);
+      expect(
+        result.candidates.every(({ selectors }) =>
+          selectors.every(({ dimension }) => dimension.value !== "operation"),
+        ),
+      ).toBe(true);
       expect(amounts(result)).toEqual([{ numerator, denominator }]);
     }
   }
@@ -255,14 +267,15 @@ it("associates Batch IDs and base IDs with the same published Batch rates", asyn
     query({
       provider_id: "vercel",
       model_id: "anthropic/claude-opus-5-batch",
-      selectors: [condition("operation", "sync")],
+      execution_mode: "request",
     }).reason,
-  ).toBe("incompatible_conditions");
+  ).toBe("no_applicable_price");
   expect(
     query({
       provider_id: "vercel",
       model_id: "anthropic/claude-opus-5",
-      selectors: [condition("operation", "batch"), condition("route_provider", "bedrock")],
+      execution_mode: "batch",
+      selectors: [condition("route_provider", "bedrock")],
     }).reason,
   ).toBe("no_applicable_price");
 });

@@ -732,3 +732,22 @@ function unit(
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const vercel_commercialSelectionPolicy = {
+  excluded_execution: { usage: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    usage: {
+      request: ["video.", "image.", "rerank."],
+      realtime: [],
+    },
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["standard", "priority", "flex", "ultrafast"],
+    speed: ["standard", "fast"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

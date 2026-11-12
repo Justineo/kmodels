@@ -757,3 +757,22 @@ function standardUnit(value: "request" | "token"): UnitExpression {
 function sortCanonical<T>(values: T[]): T[] {
   return values.sort(compareCanonicalValues);
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const bedrock_commercialSelectionPolicy = {
+  excluded_execution: { "on-demand": ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    "on-demand": {
+      request: ["runtime.converse.", "runtime.invocation_log."],
+      realtime: ["runtime.sonic."],
+    },
+    batch: ["batch"],
+  },
+  values: {
+    service_tier: ["standard", "priority", "flex", "ultrafast"],
+    speed: ["standard", "optimized"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

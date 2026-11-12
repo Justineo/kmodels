@@ -46,7 +46,7 @@ pricing or coverage claim, and an adapter that exceeds it still fails assembly.
 ## Direct inference ID association
 
 The model-list API's literal `id` is the request identifier. Associate it with the existing
-model-scoped `usage` offer, retaining all route, region, speed, served-tier and context conditions.
+model-scoped offers, retaining all route, region, speed, served-tier and context conditions.
 The creator prefix is not the serving provider. Do not strip it, invent regional prefixes or aliases,
 or resolve a private `vmc/` virtual model without its independently known configuration. Unknown
 IDs remain unknown. A removed list entry withdraws its direct association on the next accepted refresh.
@@ -55,10 +55,23 @@ Independent search-service books do not become base-model inference tariffs.
 The official [Batch guide](https://vercel.com/docs/ai-gateway/models-and-providers/batch-processing)
 establishes the exact `<model>-batch` relation to an independently listed base model. Both IDs can
 be used for Batch; the suffixed ID cannot be used synchronously. Preserve both catalog identities.
-Their existing model books share the published Batch rates through source-derived facts, with
-`operation=batch`; the base model's other inference rates retain `operation=sync`. A Batch ID fixes
-the operation and creator route. The base ID retains the operation choice. No protocol selection
+Their model books share the published Batch rates through source-derived facts. Extraction retains
+`operation=batch/sync` as source evidence; canonical assembly promotes Batch into a `batch` offer
+and keeps ordinary invocation in the existing `usage` offer. The mechanism operation predicate is
+removed from canonical rates while unrelated operations, region and route conditions remain.
+A Batch ID references only the Batch offer and fixes the creator route. The base ID references
+both mechanisms where evidenced. Consumers use canonical commercial choices. Batch is established
+by its owned tariff and result-item accounting; generic generation telemetry does not establish
+an ordinary-request versus live-session tariff. Those execution scopes remain partial, while exact
+native price conditions and evidenced speed/tier choices remain usable. No protocol selection
 or request template is involved. Batch never borrows another hosting provider's route price.
+
+Batch bindings aggregate successful result items. Synchronous generation-report, response and
+stream acquisition mappings do not establish Batch result locations; keep independently supported
+quantity calculations but omit those acquisition paths until a Batch contract establishes them.
+Realtime gateway type/tag evidence classifies a dedicated live-session offer as `realtime`;
+an ID containing the word realtime is not evidence. Other API operations and service tiers remain
+conditions, not new offers.
 
 Use the list's actual Batch amounts, including cache exceptions, rather than assuming a uniform
 discount. Anthropic regional Batch rates additionally require the documented 50% rule and regional

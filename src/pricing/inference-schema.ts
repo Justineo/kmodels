@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { executionModeSchema } from "./execution-mode.ts";
+import {
+  commercialChoiceSchema,
+  commercialSelectionScopeSchema,
+} from "../catalog/pricing-schema.ts";
 import {
   calculationProviderSchema,
   calculationRequestSchema,
@@ -14,7 +19,15 @@ export const inferencePriceReasonSchema = z.enum([
   "incompatible_conditions",
   "no_applicable_price",
   "unresolved_price",
+  "unreviewed_execution_mode",
+  "unreviewed_commercial_choice",
 ]);
+
+export const executionChoiceSchema = z.strictObject({
+  mode: executionModeSchema,
+  offer_ref: hash,
+  evidence: z.array(evidenceSchema).min(1),
+});
 
 export const inferencePriceRuleSchema = z.strictObject({
   provider_id: identifier,
@@ -23,6 +36,7 @@ export const inferencePriceRuleSchema = z.strictObject({
   offer_refs: z.array(hash).min(1),
   fixed_selectors: z.array(selectorSchema).max(128),
   evidence: z.array(evidenceSchema).min(1),
+  execution_choices: z.array(executionChoiceSchema).min(1).optional(),
 });
 
 // Associations belong to the same accepted snapshot as their referenced prices and sources.
@@ -33,12 +47,24 @@ export const inferencePriceMappingSchema = z.strictObject({
     calculationProviderSchema.shape.sources.element.extend({ provider_id: identifier }),
   ),
   rules: z.array(inferencePriceRuleSchema),
+  offer_selections: z
+    .array(
+      z.strictObject({
+        offer_ref: hash,
+        selection: z.array(
+          commercialSelectionScopeSchema.extend({ evidence: z.array(evidenceSchema).min(1) }),
+        ),
+      }),
+    )
+    .optional(),
 });
 
 export const inferencePriceQuerySchema = z.strictObject({
   provider_id: identifier,
   model_id: identifier,
   offer_ref: hash.optional(),
+  execution_mode: executionModeSchema.optional(),
+  choices: z.array(commercialChoiceSchema).max(7).default([]),
   selectors: z.array(selectorSchema).max(128).default([]),
   evaluated_at: calculationRequestSchema.shape.evaluatedAt.optional(),
 });
@@ -47,3 +73,4 @@ export type InferencePriceRule = z.infer<typeof inferencePriceRuleSchema>;
 export type InferencePriceMapping = z.infer<typeof inferencePriceMappingSchema>;
 export type InferencePriceQuery = z.input<typeof inferencePriceQuerySchema>;
 export type InferencePriceReason = z.infer<typeof inferencePriceReasonSchema>;
+export type ExecutionChoice = z.infer<typeof executionChoiceSchema>;

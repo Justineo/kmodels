@@ -952,3 +952,28 @@ function providerSignal(
 function unit(value: "event" | "second" | "token" | "request"): UnitExpression {
   return { factors: [{ unit: { namespace: "kmodels", value }, power: 1 }] };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const dashscope_commercialSelectionPolicy = {
+  excluded_execution: { sync: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: {
+      request: [
+        "chat.",
+        "anthropic.",
+        "tts.",
+        "video.",
+        "image.",
+        "responses.",
+        "embedding.",
+        "rerank.",
+      ],
+      realtime: ["realtime."],
+    },
+    batch: ["batch"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

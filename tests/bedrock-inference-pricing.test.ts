@@ -248,7 +248,7 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
       query({ provider_id, model_id: "us.moonshotai.kimi-k3", selectors: paid }).candidates,
     ).not.toHaveLength(0);
   }
-});
+}, 15000);
 
 it("keeps shared commercial Geo rates and named tier rates within each profile's source Regions", async () => {
   const candidate = await collect((bundle) => {

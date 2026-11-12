@@ -1,5 +1,11 @@
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import type { PriceDimension } from "../catalog/pricing-schema.ts";
+import type { ExecutionMode } from "./execution-mode.ts";
+import type {
+  AvailableCommercialChoice,
+  UnresolvedCommercialChoice,
+} from "./commercial-matching.ts";
+import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { PricingError } from "./errors.ts";
 import {
   inferencePriceMappingSchema,
@@ -48,6 +54,11 @@ export interface InferencePriceResult {
   candidates: InferencePriceCandidate[];
   missing_conditions: PriceDimension[];
   requires_offer_choice: boolean;
+  execution_modes: ExecutionMode[];
+  requires_execution_mode_choice: boolean;
+  available_choices: AvailableCommercialChoice[];
+  missing_choices: CommercialChoice["dimension"][];
+  unresolved_choices: UnresolvedCommercialChoice[];
   freshness?: CalculationProvider["snapshot"];
 }
 
@@ -62,7 +73,96 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
     throw new PricingError("INVALID_DATA", "Inference mappings belong to another price snapshot");
   if (new Set(mapping.sources.map(({ id }) => id)).size !== mapping.sources.length)
     throw new PricingError("INVALID_DATA", "Inference evidence repeats a source identity");
-  for (const rule of mapping.rules) validateRule(snapshot, rule, mapping.sources);
+  if (
+    new Set(mapping.offer_selections?.map(({ offer_ref }) => offer_ref)).size !==
+    (mapping.offer_selections?.length ?? 0)
+  )
+    throw new PricingError("INVALID_DATA", "Commercial selection repeats an offer identity");
+  for (const projection of mapping.offer_selections ?? []) {
+    const owner = snapshot.offers.get(projection.offer_ref);
+    // A provider partition may consume the complete snapshot's bound selection resource.
+    if (owner === undefined) continue;
+    for (const claim of projection.selection) {
+      if (
+        (claim.coverage === "complete" && claim.alternatives.length === 0) ||
+        (claim.coverage === "not_applicable" && claim.alternatives.length > 0) ||
+        claim.excluded_values?.some((value) =>
+          claim.alternatives.some(
+            (alternative) => canonicalJson(value) === canonicalJson(alternative.value),
+          ),
+        )
+      )
+        throw new PricingError(
+          "INVALID_DATA",
+          "Commercial coverage disagrees with its alternatives",
+        );
+      if (
+        claim.evidence.some(
+          ({ source_ref }) =>
+            !owner.provider.sources.some(({ id }) => id === source_ref) &&
+            !mapping.sources.some(
+              ({ id, provider_id }) =>
+                id === source_ref && provider_id === owner.provider.snapshot.provider_id,
+            ),
+        )
+      )
+        throw new PricingError(
+          "INVALID_DATA",
+          "Commercial selection has an unknown evidence source",
+        );
+      const scopes = [
+        claim.applicability,
+        ...claim.alternatives.map(({ applicability }) => applicability),
+      ];
+      if (
+        claim.dimension === "billing_mode" &&
+        claim.alternatives.some(
+          ({ value }) => canonicalJson(value) !== canonicalJson(owner.offer.billing_mode),
+        )
+      )
+        throw new PricingError("INVALID_DATA", "Commercial selection changes the billing basis");
+      if (
+        claim.dimension === "resource_kind" &&
+        (owner.book.scope.kind !== "provider_resource" ||
+          claim.alternatives.some(
+            ({ value }) =>
+              canonicalJson(value) !==
+              canonicalJson(
+                owner.book.scope.kind === "provider_resource"
+                  ? owner.book.scope.resource_kind
+                  : undefined,
+              ),
+          ))
+      )
+        throw new PricingError("INVALID_DATA", "Commercial selection changes the resource kind");
+      validateSelectors([], scopes);
+      for (const scope of scopes)
+        for (const clause of scope.any_of)
+          for (const condition of clause.all_of) {
+            if (condition.kind !== "categorical") continue;
+            for (const value of condition.values)
+              validateSelectorVocabulary(
+                [{ kind: "categorical", dimension: condition.dimension, value }],
+                owner.provider,
+              );
+          }
+    }
+  }
+  const offerModes = new Map<string, ExecutionMode>();
+  for (const rule of mapping.rules) {
+    validateRule(snapshot, rule, mapping.sources);
+    for (const choice of rule.execution_choices ?? []) {
+      if (mapping.offer_selections?.some(({ offer_ref }) => offer_ref === choice.offer_ref))
+        throw new PricingError(
+          "INVALID_DATA",
+          "Legacy and canonical commercial selections overlap",
+        );
+      const previous = offerModes.get(choice.offer_ref);
+      if (previous !== undefined && previous !== choice.mode)
+        throw new PricingError("INVALID_DATA", "Conflicting execution modes for one offer");
+      offerModes.set(choice.offer_ref, choice.mode);
+    }
+  }
 
   return (input: InferencePriceQuery): InferencePriceResult => {
     const query = parseRequest(inferencePriceQuerySchema, input);
@@ -83,6 +183,11 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
       candidates: [],
       missing_conditions: [],
       requires_offer_choice: false,
+      execution_modes: [],
+      requires_execution_mode_choice: false,
+      available_choices: [],
+      missing_choices: [],
+      unresolved_choices: [],
     };
     if (rules.length === 0) return { ...result, reason: "unreviewed_id" };
     result.evidence = uniqueCanonicalValues(rules.flatMap(({ evidence }) => evidence));
@@ -107,10 +212,12 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
       result.freshness = provider.snapshot;
     }
     const matched = matchInferencePrices(
-      inferenceMatchData(snapshot, rules),
+      inferenceMatchData(snapshot, rules, mapping.offer_selections),
       query.selectors,
       evaluatedAt,
       query.offer_ref,
+      query.execution_mode,
+      query.choices,
     );
     return structuredClone({
       ...result,
@@ -119,13 +226,29 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
         matched.candidates.map((candidate): InferencePriceCandidate => {
           const owner = snapshot.offers.get(candidate.offer_ref);
           const matchedRules = candidate.rule_indexes.map((index) => rules[index]);
-          if (owner === undefined || matchedRules.some((rule) => rule === undefined))
+          if (
+            owner === undefined ||
+            candidate.model_ref === undefined ||
+            matchedRules.some((rule) => rule === undefined)
+          )
             throw new PricingError("INVALID_DATA", "Missing matched offer or rule");
           return {
             model_ref: candidate.model_ref,
             book_ref: owner.book.id,
             selectors: selectorSchema.array().parse(candidate.selectors),
-            evidence: uniqueCanonicalValues(matchedRules.flatMap((rule) => rule?.evidence ?? [])),
+            evidence: uniqueCanonicalValues(
+              matchedRules.flatMap((rule) => [
+                ...(rule?.evidence ?? []),
+                ...(mapping.offer_selections
+                  ?.find(({ offer_ref }) => offer_ref === candidate.offer_ref)
+                  ?.selection.flatMap(({ evidence }) => evidence) ?? []),
+                ...(rule?.execution_choices ?? []).flatMap((choice) =>
+                  choice.mode === query.execution_mode && choice.offer_ref === candidate.offer_ref
+                    ? choice.evidence
+                    : [],
+                ),
+              ]),
+            ),
             missing_conditions: candidate.missing_conditions,
             gaps: candidate.gaps,
             offer: {
@@ -196,13 +319,35 @@ function validateRule(
     if (rule.fixed_selectors.some(({ dimension }) => !dimensions.has(canonicalJson(dimension))))
       throw new PricingError("INVALID_DATA", "Inference mapping fixes an unused price condition");
   }
+  for (const choice of rule.execution_choices ?? []) {
+    if (!rule.offer_refs.includes(choice.offer_ref))
+      throw new PricingError("INVALID_DATA", "Execution choice references an unrelated offer");
+    const owner = snapshot.offers.get(choice.offer_ref);
+    if (owner === undefined) throw new PricingError("INVALID_DATA", "Missing execution offer");
+    // Reuse the exact source, ownership and consumed-selector checks for the scoped association.
+    validateRule(
+      snapshot,
+      {
+        provider_id: rule.provider_id,
+        model_id: rule.model_id,
+        model_ref: rule.model_ref,
+        offer_refs: [choice.offer_ref],
+        fixed_selectors: rule.fixed_selectors,
+        evidence: choice.evidence,
+      },
+      sources,
+    );
+  }
 }
 
 function isModelDimension(dimension: PriceDimension): boolean {
   return dimension.namespace === "kmodels" && dimension.value === "model";
 }
 
-function selectedTerm(term: CalculationTerm, selected: InferenceTermSelection): CalculationTerm {
+export function selectedTerm(
+  term: CalculationTerm,
+  selected: InferenceTermSelection,
+): CalculationTerm {
   if (term.kind === "raw")
     return {
       ...term,

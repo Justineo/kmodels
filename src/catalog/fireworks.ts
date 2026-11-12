@@ -584,3 +584,13 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
       ]),
   };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const fireworksSelectionPolicy = {
+  offers: {
+    usage: ["request"],
+  },
+  values: {
+    service_tier: ["standard", "priority"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

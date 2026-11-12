@@ -401,3 +401,17 @@ function sortCanonical<T>(values: T[]): T[] {
 function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {
   return offer !== undefined && (offer.states.length > 0 || offer.terms.length > 0);
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const anthropic_commercialSelectionPolicy = {
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: ["request"],
+    batch: ["batch"],
+  },
+  values: {
+    speed: ["standard", "fast"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

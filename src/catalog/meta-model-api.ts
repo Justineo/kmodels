@@ -397,3 +397,11 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       })),
   };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const meta_model_apiSelectionPolicy = {
+  offers: {
+    usage: ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

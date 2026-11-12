@@ -172,3 +172,11 @@ function providerSignal(
   });
   return { namespace: "provider", provider_id: input.provider_id, value: key };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const cohere_commercialSelectionPolicy = {
+  offers: {
+    "hosted-inference": ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

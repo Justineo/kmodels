@@ -550,6 +550,25 @@ function modelSignal(
   );
 }
 
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const azure_pricing_commercialSelectionPolicy = {
+  excluded_execution: { sync: ["batch"] },
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: {
+      request: ["chat.", "responses.", "images.", "embeddings.", "audio."],
+      realtime: ["realtime."],
+    },
+    router: ["request"],
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["standard", "priority", "flex"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
+
 function quantityMethods(
   spec: SignalSpec,
   meter: PriceMeter,

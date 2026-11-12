@@ -1,4 +1,6 @@
 import type { InferencePriceReason } from "../pricing/inference-schema.ts";
+import type { ExecutionMode } from "../pricing/execution-mode.ts";
+import type { CommercialChoice } from "./pricing-schema.ts";
 import type { InferenceMatchResult } from "../pricing/inference-matching.ts";
 import { matchInferencePrices } from "../pricing/inference-matching.ts";
 import type { PricingSelection } from "./pricing-applicability.ts";
@@ -10,6 +12,7 @@ export function inferencePriceExplanation(result: {
   reason?: InferencePriceReason;
   candidates: ReadonlyArray<{ gaps: ReadonlyArray<{ code: string }> }>;
   requires_offer_choice?: boolean;
+  requires_execution_mode_choice?: boolean;
 }): string {
   const explanations: Record<InferencePriceReason, string> = {
     unreviewed_id: "No verified inference price mapping is available for this identifier.",
@@ -19,6 +22,10 @@ export function inferencePriceExplanation(result: {
       "The selected conditions conflict with this ID's documented pricing scope.",
     no_applicable_price: "No published price applies to these conditions at the evaluated time.",
     unresolved_price: "The ID mapping is known, but the available price evidence is incomplete.",
+    unreviewed_execution_mode:
+      "The price mapping does not yet establish the selected inference mode.",
+    unreviewed_commercial_choice:
+      "The available evidence does not establish this commercial choice for every eligible offer.",
   };
   if (result.reason !== undefined) return explanations[result.reason];
   if (
@@ -33,6 +40,8 @@ export function inferencePriceExplanation(result: {
     )
   )
     return "Price validity is not fully established at the evaluated time. Review the available candidates.";
+  if (result.requires_execution_mode_choice)
+    return "Choose an inference mode and any remaining conditions to identify applicable prices.";
   if (result.requires_offer_choice)
     return "Choose a pricing plan and any remaining conditions to identify applicable prices.";
   return result.status === "matched"
@@ -48,6 +57,11 @@ export interface WebsiteInferenceCandidate {
 export type WebsiteInferenceQuery = Omit<WebsiteInferencePrice, "candidates"> & {
   candidates: WebsiteInferenceCandidate[];
   requires_offer_choice: boolean;
+  execution_modes: ExecutionMode[];
+  requires_execution_mode_choice: boolean;
+  available_choices: InferenceMatchResult["available_choices"];
+  missing_choices: InferenceMatchResult["missing_choices"];
+  unresolved_choices: InferenceMatchResult["unresolved_choices"];
 };
 
 export function queryWebsiteInferencePrice(
@@ -55,13 +69,23 @@ export function queryWebsiteInferencePrice(
   selectors: readonly PricingSelection[],
   evaluatedAt: string,
   offerRef?: string,
+  executionMode?: ExecutionMode,
+  choices: readonly CommercialChoice[] = [],
 ): WebsiteInferenceQuery {
   const matching = price.matching;
+  if (matching === undefined && executionMode !== undefined)
+    return {
+      ...presentWebsiteInferencePrice(price, undefined),
+      status: "unknown",
+      reason: "unreviewed_execution_mode",
+      candidates: [],
+      explanation: "The price mapping does not yet establish the selected inference mode.",
+    };
   return presentWebsiteInferencePrice(
     price,
     matching === undefined
       ? undefined
-      : matchInferencePrices(matching, selectors, evaluatedAt, offerRef),
+      : matchInferencePrices(matching, selectors, evaluatedAt, offerRef, executionMode, choices),
   );
 }
 
@@ -73,6 +97,11 @@ export function presentWebsiteInferencePrice(
     return {
       ...price,
       requires_offer_choice: new Set(price.candidates.map(({ offer_ref }) => offer_ref)).size > 1,
+      execution_modes: [],
+      requires_execution_mode_choice: false,
+      available_choices: [],
+      missing_choices: [],
+      unresolved_choices: [],
     };
   const { reason: _reason, ...base } = price;
   return {
@@ -82,6 +111,11 @@ export function presentWebsiteInferencePrice(
     explanation: inferencePriceExplanation(result),
     missing_conditions: result.missing_conditions.map(formatDimension),
     requires_offer_choice: result.requires_offer_choice,
+    execution_modes: result.execution_modes,
+    requires_execution_mode_choice: result.requires_execution_mode_choice,
+    available_choices: result.available_choices,
+    missing_choices: result.missing_choices,
+    unresolved_choices: result.unresolved_choices,
     candidates: (result.reason === "no_applicable_price" ? [] : result.candidates).map(
       (candidate) => {
         const offer = price.matching?.offers.find(({ id }) => id === candidate.offer_ref);

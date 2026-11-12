@@ -41,6 +41,7 @@ export interface CommercialPricingOffer {
   offer_key: string;
   model_refs?: string[];
   billing_mode: PricingOffer["billing_mode"];
+  selection?: Array<Omit<NonNullable<PricingOffer["selection"]>[number], "observations">>;
   states: Array<Omit<PricingOffer["states"][number], "observations">>;
   enrollment: Array<Omit<PricingOffer["enrollment"][number], "observations">>;
   terms: CommercialPricingTerm[];
@@ -178,6 +179,9 @@ function commercialOffer(offer: PricingOffer, used: UsedAtoms): CommercialPricin
     offer_key: offer.offer_key,
     ...(offer.model_refs === undefined ? {} : { model_refs: offer.model_refs }),
     billing_mode: offer.billing_mode,
+    ...(offer.selection === undefined
+      ? {}
+      : { selection: offer.selection.map(({ observations: _observations, ...claim }) => claim) }),
     states: offer.states.map(({ observations: _observations, ...state }) => state),
     enrollment: offer.enrollment.map(({ observations: _observations, ...variant }) => variant),
     terms: offer.terms.flatMap((term) => {

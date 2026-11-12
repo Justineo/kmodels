@@ -430,6 +430,33 @@ function validateOffer(
   if (context.offers.has(offer.id)) fail(path, "duplicate offer ID");
   context.offers.set(offer.id, offer);
   assertSourceRefs(offer.source_refs, context, path);
+  for (const claim of offer.selection ?? []) {
+    validateApplicability(claim.applicability, book, context, path);
+    validateValidity(claim.validity, path);
+    for (const alternative of claim.alternatives)
+      validateApplicability(alternative.applicability, book, context, path);
+    for (const observation of claim.observations)
+      validateObservationBase(observation, context, path);
+    if (
+      claim.dimension === "billing_mode" &&
+      claim.alternatives.some(
+        ({ value }) => canonicalJson(value) !== canonicalJson(offer.billing_mode),
+      )
+    )
+      fail(path, "commercial selection changes the billing basis");
+    if (
+      claim.dimension === "resource_kind" &&
+      (book.scope.kind !== "provider_resource" ||
+        claim.alternatives.some(
+          ({ value }) =>
+            canonicalJson(value) !==
+            canonicalJson(
+              book.scope.kind === "provider_resource" ? book.scope.resource_kind : undefined,
+            ),
+        ))
+    )
+      fail(path, "commercial selection changes the resource kind");
+  }
   if (offer.model_refs !== undefined) {
     assertSortedUnique(offer.model_refs, (modelRef) => [modelRef], `${path} model refs`);
     if (canonicalJson(offer.model_refs) === canonicalJson(book.scope.model_refs))

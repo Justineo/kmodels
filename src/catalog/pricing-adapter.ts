@@ -59,6 +59,9 @@ import { applyVercelCommercialTopology } from "./vercel-commercial.ts";
 import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
 import { applyXaiCommercialTopology } from "./xai-commercial.ts";
 import { applyTypesafeCommercialTopology } from "./typesafe-commercial.ts";
+import { applyCommercialSelections } from "./commercial-selection.ts";
+import { commercialSelectionPolicies } from "./commercial-selection-policies.ts";
+import { splitBatchModelOffers } from "./batch-model-offers.ts";
 import {
   sourcePriceFactSchema,
   sourcePricingFacts,
@@ -251,7 +254,10 @@ export function assembleParsedProviderPricing(
     dispositions,
     books,
   } satisfies AtomicProviderPricing;
-  return assembleProviderPricing(applyCommercialTopology(input, publishedModels, pricingInputs));
+  return applyCommercialSelections(
+    assembleProviderPricing(applyCommercialTopology(input, publishedModels, pricingInputs)),
+    commercialSelectionPolicies[providerId],
+  );
 }
 
 function applyCommercialTopology(
@@ -293,7 +299,9 @@ function applyCommercialTopology(
     case "amazon-sagemaker":
       return applySagemakerCommercialTopology(input, publishedModels);
     case "vercel":
-      return applyVercelCommercialTopology(input, pricingInputs);
+      return splitBatchModelOffers(applyVercelCommercialTopology(input, pricingInputs), "sync");
+    case "together":
+      return splitBatchModelOffers(input, "standard");
     case "vertex":
       return applyVertexCommercialTopology(input, publishedModels, pricingInputs);
     case "xai":

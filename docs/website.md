@@ -15,16 +15,20 @@ in Pricing.
 Use associations for the selected catalog entry. When mapping is unknown,
 keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
 when its pricing association is independently evidenced.
-When an ID has multiple commercial offers, a **Pricing plan** radio group uses their
-existing names, shares Run mode's bordered choice cards and starts unselected. Selecting an offer limits the displayed conditions and rates
-to that offer.
-Publication runs the
+The shared commercial controls expose execution, billing basis and evidenced tier/speed options.
+Served fields are labeled as observed outcomes or explicit planning estimates. Options retain
+correlations; selecting Batch does not invent Fast support. Provider-specific residuals remain
+readable and unresolved coverage is explicit. Resource and fallback offer controls use the same
+canonical-to-native resolver. Services and capacity retain their existing groups and composition.
+When multiple offers remain within the selected semantics, a **Pricing plan** radio group uses
+their existing names and starts unselected. Selecting an offer retains compatible condition inputs
+and limits the displayed conditions and rates to that offer. Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
 chunks remain the price source. Interactive conditions execute the same matching function as the
-public lookup, updating status, missing conditions and visible price rows together. Scope published
-menu values to the selected inference ID, pricing plan, and evaluation time. Prompt for the required
-pricing plan and conditions before showing rates. Once those inputs are complete, show
+public lookup, updating status, missing conditions and visible price rows together. Published menu
+values remain scoped to the selected ID, commercial choices, plan and evaluation time. Prompt for the
+required pricing plan and conditions before showing rates. Once those inputs are complete, show
 applicable rates or explain unresolved evidence such as imprecise validity or conflicting prices.
 Show fixed ID conditions without claiming a complete request quote. Mapping evidence uses the
 shared detail disclosure and evidence link list. Unknown mappings preserve ordinary catalog prices

@@ -26,7 +26,12 @@ InferencePriceRule
   offer_refs         evidenced canonical commercial records
   fixed_selectors    only pricing values established by the ID mapping
   evidence           source references and owned source locations for the association
+  execution_choices  legacy input compatibility only; current producers omit it
 ```
+
+The mapping root also carries `offer_selections`: exact offer references and scoped commercial
+claims with evidence, projected from canonical offer selection. It includes model and resource
+offers and is bound to the same pricing data version. The decoded mapping is bounded to 32 MiB.
 
 This is the semantic contract, not a second price-book format. Reuse the existing selector and
 evidence representations when implementing it. Do not add surface IDs, case IDs, task enumerations,
@@ -68,12 +73,30 @@ an independently reviewed provider pricing rule explains why it is necessary to 
 
 ## Lookup semantics
 
-Input is `provider_id`, `model_id`, optional canonical pricing conditions, and an optional
-`offer_ref` copied from a candidate when the caller selects a commercial offer. Omitting it retains
-all candidates; it never chooses the cheapest or first offer. An unrelated offer reference produces
-`no_applicable_price` for a known ID and cannot disambiguate conflicting model identities. The same matcher
-supplies exported results and the website. It must not depend on `InvocationCatalog` or execute a
-request. Existing exact calculation remains responsible for quantities, aggregation and totals.
+Input is `provider_id`, `model_id`, optional `choices`, exact native `selectors`, `evaluated_at`,
+and an optional `offer_ref`. A choice is `{ dimension, value }`, where values use the existing
+canonical/provider categorical atom shape. Registered dimensions are execution, billing mode,
+resource kind, service tier, requested service tier, served service tier and speed.
+
+The result exposes `available_choices`, `missing_choices` and `unresolved_choices`, together with
+native missing conditions and exact candidate selectors. Available choices are probed under the
+other current choices and native constraints; they are not a Cartesian product. Only the chosen
+value's native binding is filled in. Context such as region or context length stays unresolved
+until supplied; it is never guessed from the source row used to normalize a tier.
+Unknown coverage remains visible alongside positive matches. Equal semantics preserve all offer
+identities and may still require `offer_ref`. `execution_mode` and the mode result fields remain
+compatibility conveniences; current storage uses `offer.selection` and root `offer_selections`.
+
+`createCommercialPriceLookup` uses the same matching implementation for either
+`{ kind: "model", provider_id, model_id }` or `{ kind: "resource", provider_id, book_ref }` subjects.
+A resource subject identifies a charge family, not a fabricated model ID. Applicable `requires`,
+`incurs`, compatibility and exclusion relationships remain on returned offers. They identify other
+components; the caller still supplies those components and quantities to exact calculation.
+No lookup silently drops an additive charge or treats unrelated services as competing plans.
+
+Original IDs remain exact calculation and evidence references. An unrelated offer reference cannot
+disambiguate conflicting model identities. Lookup never consults an invocation graph or executes a
+request. Exact calculation remains responsible for quantities, aggregation and totals.
 
 Return the original query, evidence status and all surviving commercial candidates:
 
@@ -93,11 +116,14 @@ Return the original query, evidence status and all surviving commercial candidat
 Keep mapping uncertainty distinct from missing conditions and from an empty result under known
 conditions. `unreviewed_id` and `ambiguous_identity` describe unknown associations;
 `unresolved_price` means the association is known but price evidence is incomplete.
+`unreviewed_execution_mode` means a compatible offer lacks reviewed mechanism metadata for a
+mode-filtered query. Legacy mappings still work without mode selection. An absent classification
+never defaults to `request`; a known unsupported mode returns `no_applicable_price`.
 `incompatible_conditions` means supplied conditions conflict with the ID's fixed scope;
 `no_applicable_price` means no published price survives the conditions and evaluated time.
 The last two reasons display **No applicable prices**, separately from **Price mapping unknown**.
 They describe the available snapshot, not provider support or account eligibility. Preserve
-association evidence even when conditions exclude every candidate. Region, request mode, endpoint/API,
+association evidence even when conditions exclude every candidate. Region, endpoint/API,
 context length, cache TTL, quality, speed or service tier belongs in the query only if the provider's
 commercial evidence makes it relevant. Preserve existing validity, conflict and freshness semantics.
 Equal visible amounts alone do not erase different commercial conditions or accounting rules.
@@ -171,6 +197,10 @@ the remaining prices. Explicit user selections remain visible and editable. If a
 excludes every price, the controls remain available so the viewer can revise their inputs.
 Switching a tier can reveal its newly required conditions without a separate invocation
 configuration step.
+Commercial controls use shared labels such as Ordinary request, Batch, Live session and Served
+speed. A sole fully classified execution/billing/resource value appears as context; scoped rate
+qualifiers remain explicit choices. Residual offer ambiguity uses the existing offer picker.
+Changing execution clears the selected offer and dependent condition inputs.
 When a model has no verified ID association, preserve its ordinary catalog prices and explicitly
 state that those prices are not verified for the requested inference ID.
 Known associations with no applicable price do not fall back to unfiltered catalog rates.
@@ -222,3 +252,12 @@ parsers emit direct ID/offer associations without an invocation graph. Public mo
 that require private deployment names do not establish those private request IDs. Provider guides own
 specific evidence limits. Stored-data adoption is separate from source extraction or projection
 implementation.
+
+`vp node scripts/canonicalize-commercial-selection.ts` prepares an offline migration of the accepted
+canonical price records; `--write` atomically adopts the validated pair and rebuilt projections.
+It removes the previous scalar execution field and emits selection claims with the same owned
+policies used by collection. It asserts that all IDs, monetary facts, native applicability,
+validity, accounting bindings, relationships, core catalog and source revisions are unchanged.
+It does not fetch sources or rewrite captured inputs. The previously reviewed Vercel/Together
+Batch partitions remain independently priced contracts; this metadata migration does not split
+or merge any further offers.

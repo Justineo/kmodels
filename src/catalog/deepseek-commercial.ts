@@ -195,3 +195,11 @@ function standardSignal(
 ): Extract<UsageSignal, { namespace: "kmodels" }> {
   return { namespace: "kmodels", value };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const deepseek_commercialSelectionPolicy = {
+  offers: {
+    payg: ["request"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

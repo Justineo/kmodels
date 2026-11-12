@@ -278,20 +278,78 @@ function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): 
         evidence: book.evidence,
       },
     ],
+    offer_selections: [
+      {
+        offer_ref: offer.id,
+        selection: [
+          {
+            dimension: "execution",
+            coverage: "complete",
+            applicability: { any_of: [{ all_of: [] }] },
+            alternatives: ["request", "realtime"].map((value) => ({
+              value: { namespace: "kmodels", value },
+              applicability: { any_of: [{ all_of: [] }] },
+            })),
+            evidence: book.evidence,
+          },
+          {
+            dimension: "billing_mode",
+            coverage: "complete",
+            applicability: { any_of: [{ all_of: [] }] },
+            alternatives: [
+              { value: offer.billing_mode, applicability: { any_of: [{ all_of: [] }] } },
+            ],
+            evidence: book.evidence,
+          },
+        ],
+      },
+    ],
   };
   const lookup: unknown = moduleExports.createInferencePriceLookup(data, mapping);
   if (typeof lookup !== "function") throw new Error("Missing inference lookup function");
   const reference = createInferencePriceLookup(data, mapping);
   for (const model_id of ["literal-model-id", "unreviewed-id"]) {
-    for (const offer_ref of [undefined, offer.id, "0".repeat(64)]) {
-      const query: InferencePriceQuery = {
-        provider_id: provider.snapshot.provider_id,
-        model_id,
-        ...(offer_ref === undefined ? {} : { offer_ref }),
-      };
-      assert.equal(JSON.stringify(lookup(query)), JSON.stringify(reference(query)), model_id);
+    for (const execution_mode of [undefined, "request", "batch", "realtime"] as const) {
+      for (const offer_ref of [undefined, offer.id, "0".repeat(64)]) {
+        const query: InferencePriceQuery = {
+          provider_id: provider.snapshot.provider_id,
+          model_id,
+          ...(offer_ref === undefined ? {} : { offer_ref }),
+          ...(execution_mode === undefined ? {} : { execution_mode }),
+        };
+        assert.equal(JSON.stringify(lookup(query)), JSON.stringify(reference(query)), model_id);
+      }
     }
   }
+  for (const execution of ["request", "batch", "realtime"]) {
+    const query: InferencePriceQuery = {
+      provider_id: provider.snapshot.provider_id,
+      model_id: "literal-model-id",
+      choices: [
+        { dimension: "execution", value: { namespace: "kmodels", value: execution } },
+        { dimension: "billing_mode", value: offer.billing_mode },
+      ],
+    };
+    assert.equal(JSON.stringify(lookup(query)), JSON.stringify(reference(query)), execution);
+  }
+  if (
+    !("createCommercialPriceLookup" in moduleExports) ||
+    typeof moduleExports.createCommercialPriceLookup !== "function"
+  )
+    throw new Error("Missing commercial lookup export");
+  const commercial: unknown = moduleExports.createCommercialPriceLookup(data, mapping);
+  if (typeof commercial !== "function") throw new Error("Missing commercial lookup function");
+  const query: InferencePriceQuery = {
+    provider_id: provider.snapshot.provider_id,
+    model_id: "literal-model-id",
+    choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "request" } }],
+  };
+  const { provider_id, model_id, ...selection } = query;
+  const subject = { kind: "model", provider_id, model_id };
+  assert.equal(
+    JSON.stringify(commercial({ subject, ...selection })),
+    JSON.stringify({ subject, ...reference(query) }),
+  );
 }
 
 function assertExpectedResult(actual: unknown, testCase: ConformanceCase): void {

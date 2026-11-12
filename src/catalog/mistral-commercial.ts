@@ -589,3 +589,17 @@ function normalized(
 ): NormalizedPriceObservation {
   return { ...rawEvidence(observation), establishes_applicability: applicability };
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const mistral_commercialSelectionPolicy = {
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    sync: ["request"],
+    batch: ["batch"],
+  },
+  values: {
+    served_service_tier: ["standard", "priority"],
+  },
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

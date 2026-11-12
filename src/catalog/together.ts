@@ -542,3 +542,15 @@ export function parseTogetherApi(input: SourceParseInput): ParsedProviderModel[]
         : {},
   }));
 }
+
+// Commercial selection describes owned tariffs, independently of model capabilities.
+export const togetherSelectionPolicy = {
+  not_applicable: {
+    batch: ["speed", "service_tier", "requested_service_tier", "served_service_tier"],
+  },
+  offers: {
+    usage: ["request"],
+    batch: ["batch"],
+  },
+  values: {},
+} satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

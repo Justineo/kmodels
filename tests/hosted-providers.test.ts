@@ -272,9 +272,10 @@ describe("Together AI Serverless", () => {
         inference?.mapping,
       );
       const whisper = { provider_id: "together", model_id: "Example/ASR" };
-      expect(lookup(whisper).missing_conditions).toContainEqual({
-        namespace: "kmodels",
-        value: "operation",
+      expect(lookup(whisper)).toMatchObject({
+        execution_modes: ["batch", "request"],
+        requires_execution_mode_choice: true,
+        missing_conditions: [],
       });
       for (const [value, denominator] of [
         ["standard", "6000"],
@@ -282,15 +283,15 @@ describe("Together AI Serverless", () => {
       ] as const) {
         const selected = lookup({
           ...whisper,
-          selectors: [
-            {
-              kind: "categorical",
-              dimension: { namespace: "kmodels", value: "operation" },
-              value: { namespace: "provider", provider_id: "together", value },
-            },
-          ],
+          execution_mode: value === "batch" ? "batch" : "request",
         });
         expect(selected.status).toBe("matched");
+        expect(selected.missing_conditions).toEqual([]);
+        expect(
+          selected.candidates.every(
+            ({ offer }) => offer.offer_key === (value === "batch" ? "batch" : "usage"),
+          ),
+        ).toBe(true);
         expect(
           selected.candidates.flatMap(({ offer }) =>
             offer.terms.flatMap((term) =>
