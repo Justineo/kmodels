@@ -11,7 +11,16 @@ import { canonicalJsonKey } from "./canonical-value.ts";
 import { evaluatePricingCondition, type PricingSelection } from "./pricing-applicability.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 import type { CommercialChoice, PriceCondition, PublishedValidity } from "./pricing-schema.ts";
-import { pricingSelection } from "./pricing-selector-input.ts";
+import {
+  fixedCommercialChoices,
+  fixedPricingSelections,
+  pricingSelection,
+} from "./pricing-selector-input.ts";
+import {
+  commercialBranchesCoverScopes,
+  resolveCommercialChoices,
+  type AvailableCommercialChoice,
+} from "../pricing/commercial-matching.ts";
 import { publishedValidityStatus } from "./pricing-time.ts";
 import type { WebsitePricingSelector } from "./website-schema.ts";
 
@@ -20,6 +29,54 @@ interface ChoiceDomain {
   lastClause: number;
   categories: Set<string>;
   predicates: PriceCondition[];
+}
+
+export function fixedInferenceSelections(
+  options: readonly WebsitePricingSelector[],
+  current: InferenceMatchResult,
+): PricingSelection[] {
+  const missing = new Set(current.missing_conditions.map(canonicalJsonKey));
+  return fixedPricingSelections(
+    options.filter(({ dimension }) => missing.has(canonicalJsonKey(dimension))),
+    current.candidates.flatMap(({ selectors }) => selectors),
+  );
+}
+
+export function fixedInferenceCommercialChoices(
+  data: InferenceMatchData,
+  current: InferenceMatchResult,
+  options: readonly AvailableCommercialChoice[],
+  evaluatedAt: string,
+  choices: readonly CommercialChoice[],
+): AvailableCommercialChoice[] {
+  return fixedCommercialChoices(
+    options,
+    current.candidates.map(({ offer_ref }) => offer_ref),
+  ).filter((choice) => {
+    // Explicit choices remain editable; their bindings cannot prove automatic applicability.
+    if (choices.some(({ dimension }) => dimension === choice.dimension)) return false;
+    return current.candidates.every((candidate) => {
+      const offer = data.offers.find(({ id }) => id === candidate.offer_ref);
+      if (offer === undefined) return false;
+      const resolve = (selected: readonly CommercialChoice[]) =>
+        resolveCommercialChoices(
+          offer,
+          candidate.selectors,
+          selected,
+          evaluatedAt,
+          data.observed_at,
+        );
+      const proposed = resolve([...choices, choice]);
+      return (
+        proposed.unresolved.length === 0 &&
+        commercialBranchesCoverScopes(
+          inferenceCandidateScopes(offer, candidate),
+          resolve(choices).branches,
+          proposed.branches,
+        )
+      );
+    });
+  });
 }
 
 export function inferencePriceOptions(

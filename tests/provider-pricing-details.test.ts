@@ -177,8 +177,10 @@ describe("provider pricing details", () => {
     expect(fixed).toMatch(/<output\b[^>]*>Standard<\/output>/);
     expect(fixed).toContain('class="exact-rate"');
     expect(fixed).not.toContain("<select");
+    expect(fixed).toContain('aria-label="Price scope"');
+    expect(fixed).not.toContain("Usage conditions");
 
-    // One advertised value need not apply to every price context within the same offer.
+    // A native singleton keeps unqualified sibling prices instead of applying a scoped choice.
     const mixed = {
       ...offer,
       rates: [...offer.rates, { ...rate, key: "unqualified-rate", applicability: allContexts }],
@@ -186,9 +188,25 @@ describe("provider pricing details", () => {
     expect(
       queryWebsiteCommercialOffer(mixed, [], [], "2026-11-01T00:00:00.000Z").fixed_choices,
     ).toEqual([]);
+    expect(
+      queryWebsiteCommercialOffer(
+        mixed,
+        [],
+        [{ dimension: "service_tier", value: standard }],
+        "2026-11-01T00:00:00.000Z",
+      ).fixed_choices,
+    ).toEqual([]);
     const mixedControls = await renderComponent(PricingOfferBreakdown, { offer: mixed });
-    expect(mixedControls).toContain("<select");
-    expect(mixedControls).not.toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(mixedControls).not.toContain("<select");
+    expect(mixedControls).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(
+      queryWebsiteCommercialOffer(
+        mixed,
+        [{ kind: "categorical", dimension, value: standard }],
+        [],
+        "2026-11-01T00:00:00.000Z",
+      ).offer.rates.map(({ key }) => key),
+    ).toEqual(["standard-rate", "unqualified-rate"]);
 
     offer.commercial_selection.claims = [
       {
@@ -202,6 +220,9 @@ describe("provider pricing details", () => {
       amount: "$2",
       applicability: scope(priority),
     });
+    const selector = offer.selectors[0];
+    if (selector?.kind !== "categorical") throw new Error("Missing tier selector");
+    selector.values.push({ key: "priority", label: "Priority", value: priority });
     const selectable = await renderComponent(PricingOfferBreakdown, { offer });
     expect(selectable).toContain("<select");
     expect(selectable).toContain("Priority");

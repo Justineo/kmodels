@@ -4,6 +4,7 @@ import { canonicalJson } from "../catalog/canonical-value.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
+import { fixedPricingSelection } from "../catalog/pricing-selector-input.ts";
 import {
   commercialDimensionLabels,
   commercialDefinitions,
@@ -51,11 +52,22 @@ const groups = computed(() =>
 );
 const sections = computed(() =>
   ["Plan", "Usage conditions"]
-    .map((label) => ({ label, groups: groups.value.filter((group) => group.section === label) }))
+    .map((label) => ({
+      label,
+      groups: groups.value.filter((group) => group.section === label && !group.fixed),
+    }))
     .filter(
       (section) =>
-        section.groups.length || (section.label === "Usage conditions" && props.selectors.length),
+        section.groups.length ||
+        (section.label === "Usage conditions" && editableSelectors.value.length),
     ),
+);
+const fixedGroups = computed(() => groups.value.filter((group) => group.fixed));
+const fixedSelectors = computed(() =>
+  props.selectors.filter((selector) => fixedPricingSelection(selector) !== undefined),
+);
+const editableSelectors = computed(() =>
+  props.selectors.filter((selector) => fixedPricingSelection(selector) === undefined),
 );
 function choose(dimension: CommercialChoice["dimension"], key: string): void {
   const choice = props.choices.find(
@@ -67,21 +79,32 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
 </script>
 
 <template>
-  <div v-if="sections.length" class="pricing-controls">
+  <div
+    v-if="sections.length || fixedGroups.length || fixedSelectors.length"
+    class="pricing-controls"
+  >
+    <section
+      v-if="fixedGroups.length || fixedSelectors.length"
+      class="pricing-scope"
+      aria-label="Price scope"
+    >
+      <p class="pricing-scope-title">Price scope</p>
+      <p class="pricing-scope-description">Prices shown apply within this scope.</p>
+      <div class="pricing-scope-values">
+        <div v-for="group in fixedGroups" :key="group.dimension" class="commercial-choice">
+          <span class="pricing-scope-label" :title="group.description">{{ group.label }}</span>
+          <output class="pricing-fixed-value">{{ group.options[0]?.label }}</output>
+        </div>
+        <PricingConditions :prefix="prefix" :selectors="fixedSelectors" :inputs="inputs" />
+      </div>
+    </section>
     <fieldset v-for="section in sections" :key="section.label">
       <legend>{{ section.label }}</legend>
       <div v-for="group in section.groups" :key="group.dimension" class="commercial-choice">
         <label :for="`${prefix}-${group.dimension}`" :title="group.description">{{
           group.label
         }}</label>
-        <output
-          v-if="group.fixed"
-          :id="`${prefix}-${group.dimension}`"
-          class="pricing-fixed-value"
-          >{{ group.options[0]?.label }}</output
-        >
         <UiSelect
-          v-else
           :id="`${prefix}-${group.dimension}`"
           :model-value="group.selected ? canonicalJson(group.selected.value) : ''"
           :options="group.options"
@@ -92,7 +115,7 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
       <PricingConditions
         v-if="section.label === 'Usage conditions'"
         :prefix="prefix"
-        :selectors="selectors"
+        :selectors="editableSelectors"
         :inputs="inputs"
         :follow-region="followRegion"
         @input="(key, value) => emit('input', key, value)"
@@ -106,7 +129,8 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   display: grid;
   gap: var(--space-3);
 }
-.pricing-controls fieldset {
+.pricing-controls fieldset,
+.pricing-scope-values {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
@@ -122,12 +146,23 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   font-size: var(--font-size-meta);
   font-weight: var(--font-weight-semibold);
 }
+.pricing-scope-title {
+  margin: 0;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-semibold);
+}
+.pricing-scope-description {
+  margin: var(--space-1) 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
+}
 .commercial-choice {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
 }
-.pricing-controls label {
+.pricing-controls label,
+.pricing-scope-label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
@@ -146,20 +181,15 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   outline-offset: calc(var(--stroke-focus) * -1);
 }
 .pricing-controls :deep(.pricing-fixed-value) {
-  display: flex;
-  align-items: center;
+  display: block;
   min-width: 0;
-  min-height: var(--control-height-default);
-  padding-inline: var(--space-2);
-  border: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
   color: var(--color-text-primary);
-  background: var(--color-surface-subtle);
   font-size: var(--font-size-meta);
   line-height: var(--line-height-body);
 }
 @media (max-width: 640px) {
-  .pricing-controls fieldset {
+  .pricing-controls fieldset,
+  .pricing-scope-values {
     grid-template-columns: 1fr;
   }
 }

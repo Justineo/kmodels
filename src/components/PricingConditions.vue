@@ -58,22 +58,21 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 <template>
   <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
-    <label :for="`${prefix}-selector-${index}`">
+    <span v-if="fixedPricingSelection(selector) !== undefined" class="pricing-condition-label">
+      {{ selector.label }}
+      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
+    </span>
+    <label v-else :for="`${prefix}-selector-${index}`">
       {{ selector.label }}
       <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
     </label>
-    <output
-      v-if="fixedPricingSelection(selector) !== undefined"
-      :id="`${prefix}-selector-${index}`"
-      class="pricing-fixed-value"
-      >{{
-        selector.kind === "categorical" || selector.kind === "decimal_buckets"
-          ? selector.values[0]?.label
-          : selector.kind === "decimal_values"
-            ? selector.values[0]
-            : ""
-      }}</output
-    >
+    <output v-if="fixedPricingSelection(selector) !== undefined" class="pricing-fixed-value">{{
+      selector.kind === "categorical" || selector.kind === "decimal_buckets"
+        ? selector.values[0]?.label
+        : selector.kind === "decimal_values"
+          ? selector.values[0]
+          : ""
+    }}</output>
     <template v-else-if="selector.kind === 'categorical'">
       <UiSelect
         :id="`${prefix}-selector-${index}`"
@@ -180,7 +179,8 @@ function scheduleRows(selector: WebsitePricingSelector) {
   gap: var(--space-1);
 }
 
-.pricing-condition > label {
+.pricing-condition > label,
+.pricing-condition-label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }

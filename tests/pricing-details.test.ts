@@ -566,7 +566,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("$9");
   });
 
-  it("resolves fixed request context and displays its value without a selector", async () => {
+  it("shows a sole published Region as price scope rather than a required input", async () => {
     const pricedOffer = offer([{ amount: "$2", scope: region("us") }]);
     const selector = pricedOffer.selectors[0];
     if (selector?.kind !== "categorical") throw new Error("Missing categorical test selector");
@@ -579,7 +579,9 @@ describe("model pricing details", () => {
     expect(html).toMatch(/<output\b[^>]*>US<\/output>/);
     expect(html).not.toContain("<select");
     expect(html).not.toContain("Billing details");
-    expect(html).toContain("Usage conditions");
+    expect(html).toContain('aria-label="Price scope"');
+    expect(html).toContain("Prices shown apply within this scope.");
+    expect(html).not.toContain("Usage conditions");
   });
 
   it("shows linked capacity separately from model rates", async () => {

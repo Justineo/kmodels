@@ -53,6 +53,7 @@ export function fixedCommercialChoices(
 
 type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
 
+/** A sole published scope for browsing prices, not evidence of the caller's actual usage. */
 export function fixedPricingSelection(
   selector: WebsitePricingSelector,
 ): PricingSelection | undefined {
@@ -64,6 +65,23 @@ export function fixedPricingSelection(
   if (selector.kind === "decimal_values" && selector.values.length === 1)
     return pricingSelection(selector, selector.values[0] ?? "");
   return undefined;
+}
+
+export function fixedPricingSelections(
+  selectors: readonly WebsitePricingSelector[],
+  bound: readonly PricingSelection[] = [],
+): PricingSelection[] {
+  return selectors.flatMap((selector) => {
+    const fixed = fixedPricingSelection(selector);
+    return fixed !== undefined &&
+      bound.every(
+        (value) =>
+          canonicalJsonKey(value.dimension) !== canonicalJsonKey(fixed.dimension) ||
+          canonicalJsonKey(value) === canonicalJsonKey(fixed),
+      )
+      ? [fixed]
+      : [];
+  });
 }
 
 export function pricingSelection(

@@ -8,7 +8,6 @@ import PricingControls from "./PricingControls.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import {
   fixedPricingSelection,
-  fixedCommercialChoices,
   pricingSelection,
   retainPricingInputs,
   retainCommercialChoices,
@@ -18,12 +17,9 @@ import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import { presentWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
 import {
   inferencePriceOptions,
-  inferenceCandidateScopes,
+  fixedInferenceCommercialChoices,
+  fixedInferenceSelections,
 } from "../catalog/inference-price-options.ts";
-import {
-  commercialBranchesCoverScopes,
-  resolveCommercialChoices,
-} from "../pricing/commercial-matching.ts";
 import {
   inferencePricingContext,
   type WebsitePricingContext,
@@ -82,7 +78,7 @@ const idOptions = computed(() =>
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
 ]);
-const commercialMatch = computed(() => {
+const baseCommercialMatch = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   return matching === undefined
     ? undefined
@@ -95,6 +91,41 @@ const commercialMatch = computed(() => {
         commercialChoices.value,
       );
 });
+const fixedNativeSelections = computed(() => {
+  const price = toRaw(selectedPrice.value);
+  const current = baseCommercialMatch.value;
+  if (price?.matching === undefined || current === undefined) return [];
+  const options = inferencePriceOptions(
+    price.matching,
+    current,
+    price.pricing_options ?? [],
+    evaluatedAt.value,
+    undefined,
+    commercialChoices.value,
+  ).filter(
+    ({ dimension }) =>
+      !current.available_choices.some(
+        (choice) =>
+          choice.dimension === "account_plan" &&
+          dimension.namespace === "kmodels" &&
+          dimension.value === commercialConditionDimension(choice.dimension),
+      ),
+  );
+  return fixedInferenceSelections(options, current);
+});
+const commercialMatch = computed(() => {
+  const matching = toRaw(selectedPrice.value?.matching);
+  if (matching === undefined || fixedNativeSelections.value.length === 0)
+    return baseCommercialMatch.value;
+  return matchInferencePrices(
+    matching,
+    fixedNativeSelections.value,
+    evaluatedAt.value,
+    undefined,
+    undefined,
+    commercialChoices.value,
+  );
+});
 const commercialOptions = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   if (matching === undefined) return [];
@@ -102,40 +133,25 @@ const commercialOptions = computed(() => {
     matchInferencePrices(matching, [], evaluatedAt.value).available_choices,
     commercialMatch.value?.available_choices ?? [],
     commercialChoices.value,
+  ).filter(
+    (choice) =>
+      !fixedNativeSelections.value.some(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" &&
+          dimension.value === commercialConditionDimension(choice.dimension),
+      ),
   );
 });
 const fixedChoices = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
-  if (matching === undefined) return [];
-  return fixedCommercialChoices(
+  const current = commercialMatch.value;
+  if (matching === undefined || current === undefined) return [];
+  return fixedInferenceCommercialChoices(
+    matching,
+    current,
     commercialOptions.value,
-    commercialMatch.value?.candidates.map(({ offer_ref }) => offer_ref) ?? [],
-  ).filter((choice) =>
-    commercialMatch.value?.candidates.every((candidate) => {
-      const offer = matching.offers.find(({ id }) => id === candidate.offer_ref);
-      if (offer === undefined) return false;
-      const resolve = (choices: CommercialChoice[]) =>
-        resolveCommercialChoices(
-          offer,
-          candidate.selectors,
-          choices,
-          evaluatedAt.value,
-          matching.observed_at,
-        );
-      const current = resolve(commercialChoices.value);
-      const proposed = resolve([
-        ...commercialChoices.value.filter(({ dimension }) => dimension !== choice.dimension),
-        choice,
-      ]);
-      return (
-        proposed.unresolved.length === 0 &&
-        commercialBranchesCoverScopes(
-          inferenceCandidateScopes(offer, candidate),
-          current.branches,
-          proposed.branches,
-        )
-      );
-    }),
+    evaluatedAt.value,
+    commercialChoices.value,
   );
 });
 const effectiveCommercialChoices = computed(() => [
@@ -201,27 +217,14 @@ const chosenSelections = computed(() =>
 );
 const selections = computed(() => {
   const chosen = chosenSelections.value;
-  const fixed = availableConditionOptions.value.flatMap(({ fixed }) =>
-    fixed === undefined ? [] : [fixed],
-  );
-  if (fixed.length === 0) return chosen;
   const pending = chosen.length === 0 ? initialMatch.value : matchConditions(chosen);
   if (pending === undefined) return chosen;
-  const missing = new Set(pending.missing_conditions.map(canonicalJson));
-  const bound = pending.candidates.flatMap(({ selectors }) => selectors);
   return [
     ...chosen,
-    ...fixed.filter((selection) => {
-      const key = canonicalJson(selection.dimension);
-      return (
-        missing.has(key) &&
-        bound.every(
-          (value) =>
-            canonicalJson(value.dimension) !== key ||
-            canonicalJson(value) === canonicalJson(selection),
-        )
-      );
-    }),
+    ...fixedInferenceSelections(
+      availableConditionOptions.value.map(({ option }) => option),
+      pending,
+    ),
   ];
 });
 const activeMatch = computed(() => {

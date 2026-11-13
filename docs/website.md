@@ -23,15 +23,26 @@ API rather than a latency guarantee. Use **Billed service tier** for the observe
 pricing program; request mode and billed tier qualify its rates. Canonical condition choices and
 native price selectors share one **Usage conditions** fieldset and one continuous two-column grid.
 The canonical mapping is an input convenience, not a separate category of pricing condition.
+Resolve native single-value fields before generating mapped commercial controls, and keep those
+values as descriptive text in **Price scope**, outside the editable **Usage conditions** fieldset.
+This ordering applies to model-ID, ordinary and provider-resource pricing.
+Apply their native predicates without restricting unrelated price rows to a commercial claim's
+narrower scope. Unknown price evidence remains unknown.
 Use consistent control heights and borders, collapsing to one column on narrow
 screens. Keep labels above controls and definitions in their titles, without persistent help text.
 Automatically apply a sole condition value only when its mapping covers every remaining price
 context, not merely every offer ID. A Standard speed scoped to Request cannot silently discard
-Batch while Request mode is still unselected. Show fixed
-values as read-only fields in the same grid, with the same label position, height and padding as
-editable controls, a subtle background and no dropdown arrow. Recompute these values from the
+Batch while Request mode is still unselected. Show fixed values as labeled text without input
+borders, backgrounds or dropdown arrows. The scope describes the displayed published prices;
+it does not establish the caller's actual usage or provider support outside that scope. Keep the
+underlying applicability predicate even for a singleton. Public lookup requires caller inputs or
+evidenced ID bindings and never guesses an actual value from a one-value published domain.
+Recompute these values from the
 current options rather than storing them as user selections, so switching request mode or plan can
-restore alternatives. A sole account plan still requires an explicit choice; availability alone
+restore alternatives. Evaluate automatic scope without the value's own explicit selection and
+native bindings. A scoped singleton remains editable after selection when clearing it restores
+other price contexts; a mandatory singleton resolves before selection.
+A sole account plan still requires an explicit choice; availability alone
 does not establish enrollment.
 Served fields are labeled as observed outcomes or explicit planning estimates. Options retain
 correlations; selecting Batch does not invent Fast support. Provider-specific residuals remain
@@ -248,8 +259,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
   remains in the canonical audit; a missing driver never hides a rate. Labels identify the meter,
   not an optional usage counter. TTL and other rate-changing facts remain conditions. Selecting
-  geography must not hide a still-required TTL; a sole proven value uses the same field layout
-  as a selectable value, rendered readonly. The UI must not interpret provider-specific term keys.
+  geography must not hide a still-required TTL; a sole published value appears as descriptive
+  **Price scope**. The UI must not interpret provider-specific term keys.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,

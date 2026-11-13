@@ -196,10 +196,25 @@ If the mapping is unknown, show that status and keep the catalog ID in the heade
 owned by another catalog record is excluded even when its literal value matches the current
 record's catalog ID. Catalog aliases remain searchable and available in the catalog identifier index.
 
-The matcher retains candidate rates for programmatic resolution. The inspector uses the sole
-published categorical or exact decimal value for a required condition when it agrees with the
-remaining candidates' fixed selectors. The applied value appears as a read-only field in the same
-condition grid as editable inputs.
+The matcher retains candidate rates for programmatic resolution. A condition is a predicate on
+price applicability, regardless of how many values are published. A singleton does not establish
+the caller's Region, enrollment, requested preference or observed outcome. Only evidenced ID
+bindings and caller inputs establish those facts for public lookup; omitted conditions remain
+missing even when the snapshot publishes one value.
+
+The inspector browses published price schedules. It uses the sole published categorical, exact
+decimal or decimal-bucket value for a required condition when it agrees with the remaining
+candidates' fixed selectors. Display these values as plain text under **Price scope**, separately
+from editable **Usage conditions**. The scope describes the prices being shown, not facts inferred
+about a real request or a claim that other usage is unsupported. Do not require a confirmation click
+for a sole published price scope. Keep the predicate in canonical rates and public lookup; removing
+it would incorrectly make a conditional price universal. Do not turn a varying condition into a
+model property merely because one model or filtered view has one published value.
+Resolve native singletons before replacing mapped dimensions with canonical controls. Keep the
+native price scope and its exact selection instead of an equivalent one-option canonical picker.
+Native selection preserves sibling prices that omit the dimension; it does not broaden a commercial
+claim's scope or resolve missing evidence. Apply this ordering to inference-ID, ordinary model and
+provider-resource pricing. A sole account-plan option still requires explicit enrollment selection.
 The inspector prompts for any remaining choices before displaying rates and explains unresolved
 evidence after those choices are complete. Unknown mappings are labeled unknown. Condition controls
 offer published values that the shared matcher can still consider for the selected ID, pricing
@@ -213,8 +228,11 @@ speed. A sole canonical condition value is applied automatically only when its m
 all remaining price contexts. Sharing one offer ID is insufficient: a speed specific to Request
 must not eliminate Batch before the viewer chooses the request mode.
 Inferred values are derived afresh from explicit choices, so a changed plan or request mode can
-restore alternatives. Fixed and editable conditions share the same label-above-value layout;
-fixed values have a subtle background and no dropdown arrow. Multiple scoped
+restore alternatives. Check a value's automatic applicability without that dimension's explicit
+choice or its resolved native bindings: selecting a scoped value cannot make it prove its own
+coverage and turn read-only. A singleton that still narrows other price contexts stays editable;
+once the other conditions make it mandatory, it resolves automatically before a click.
+Fixed scope uses descriptive text without form-control borders or dropdown arrows. Multiple scoped
 rate qualifier values remain explicit choices and share one Usage conditions fieldset and grid with native
 selectors such as context and endpoint. Canonical mapping does not create a separate UI category.
 Account-plan choices remain in Plan. Residual offer ambiguity uses the existing offer picker only

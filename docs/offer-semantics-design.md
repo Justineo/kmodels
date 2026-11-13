@@ -87,7 +87,11 @@ The result distinguishes candidate relationships, missing request/outcome inputs
 combinations and incomplete classification. It never selects the cheapest candidate or supplies an
 unobserved outcome. Exact quantities and independent charge components remain caller-owned.
 
-The website groups controls into **Plan** and **Usage conditions**. Account plan selects the
+The website groups editable controls into **Plan** and **Usage conditions** and displays fixed
+published qualifiers as descriptive **Price scope**. A sole published value still qualifies a price;
+it neither establishes an actual usage fact nor becomes an unconditional model property. The
+website can display the schedule for that explicit scope without requiring a confirmation click,
+while public lookup keeps omitted usage facts unresolved. Account plan selects the
 agreement. Request mode and billed tier qualify its rates. Resource kind and billing basis remain
 descriptive subject/plan properties. Services are separate charges rather than mutually exclusive
 account plans. Planning estimates use explicit hypothetical inputs.

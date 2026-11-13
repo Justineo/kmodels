@@ -73,10 +73,8 @@ export function queryWebsiteCommercialOffer(
   return {
     available_choices: available,
     fixed_choices: fixedCommercialChoices(available, [offer.id]).filter((choice) => {
-      const proposed = resolve([
-        ...choices.filter(({ dimension }) => dimension !== choice.dimension),
-        choice,
-      ]);
+      const previous = choices.filter(({ dimension }) => dimension !== choice.dimension);
+      const proposed = resolve([...previous, choice]);
       return (
         proposed.unresolved.length === 0 &&
         commercialBranchesCoverScopes(
@@ -91,7 +89,7 @@ export function queryWebsiteCommercialOffer(
               .filter(({ impact }) => impact !== "informational")
               .map(({ possible_scope }) => possible_scope ?? unconditionalApplicability),
           ],
-          resolved.branches,
+          resolve(previous).branches,
           proposed.branches,
         )
       );

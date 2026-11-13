@@ -35,6 +35,7 @@ import UiIcon from "./UiIcon.vue";
 import PricingControls from "./PricingControls.vue";
 import {
   fixedPricingSelection,
+  fixedPricingSelections,
   pricingSelection,
   retainCommercialChoices,
   retainPricingInputs,
@@ -90,15 +91,34 @@ const inherited = computed(() => {
   );
 });
 const boundSelections = computed(() => [...(props.boundSelectors ?? []), ...inherited.value]);
+function automaticNativeSelections(
+  choices: readonly CommercialChoice[],
+  supplied: readonly PricingSelection[],
+) {
+  return fixedPricingSelections(
+    unfilteredOffer.value.selectors.filter(
+      ({ dimension }) =>
+        !(unfilteredOffer.value.commercial_selection?.claims ?? []).some(
+          (claim) =>
+            (claim.dimension === "account_plan" ||
+              choices.some((choice) => choice.dimension === claim.dimension)) &&
+            dimension.namespace === "kmodels" &&
+            dimension.value === commercialConditionDimension(claim.dimension),
+        ),
+    ),
+    supplied,
+  );
+}
 function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
+  const selected = unfilteredOffer.value.selectors.flatMap(
+    (option) => pricingSelection(option, values[option.key] ?? "") ?? [],
+  );
   return queryWebsiteCommercialOffer(
     unfilteredOffer.value,
     uniqueCanonicalValues([
       ...boundSelections.value,
-      ...unfilteredOffer.value.selectors.flatMap((option) => {
-        const selected = pricingSelection(option, values[option.key] ?? "");
-        return selected === undefined ? [] : [selected];
-      }),
+      ...automaticNativeSelections(choices, [...boundSelections.value, ...selected]),
+      ...selected,
       ...(props.modelRef === undefined
         ? []
         : [
@@ -116,13 +136,21 @@ function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
   );
 }
 const commercialContext = computed(() => queryCommercial(commercialChoices.value));
-const commercialOptions = computed(() =>
-  commercialControlChoices(
+const commercialOptions = computed(() => {
+  const fixed = automaticNativeSelections(commercialChoices.value, boundSelections.value);
+  return commercialControlChoices(
     queryCommercial([], {}).available_choices,
     queryCommercial(commercialChoices.value, {}).available_choices,
     commercialChoices.value,
-  ),
-);
+  ).filter(
+    (choice) =>
+      !fixed.some(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" &&
+          dimension.value === commercialConditionDimension(choice.dimension),
+      ),
+  );
+});
 const commercialQuery = computed(() =>
   queryCommercial([
     ...commercialChoices.value,
@@ -181,10 +209,7 @@ const configurableSelectors = computed(() =>
 );
 const fixedSelectionValues = computed(() =>
   uniqueCanonicalValues([
-    ...selectors.value.flatMap((selector) => {
-      const fixed = fixedPricingSelection(selector);
-      return fixed === undefined ? [] : [fixed];
-    }),
+    ...fixedPricingSelections(selectors.value),
     ...boundSelections.value,
     ...(props.hideConditions ? [] : commercialQuery.value.selectors),
   ]),
