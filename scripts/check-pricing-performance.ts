@@ -184,7 +184,9 @@ async function measure(
         for (let step = 0; step < 12; step++) {
           const next = state.controls
             .flatMap((control) =>
-              control.options.slice(0, 2).map((option) => ({ id: control.id, ...option })),
+              control.options
+                .slice(0, 2)
+                .map((option) => ({ id: control.id, control: control.label, ...option })),
             )
             .find(
               ({ id, value }) =>
@@ -194,7 +196,7 @@ async function measure(
           if (next === undefined) break;
           seen.add(`${next.id}:${next.value}`);
           record(
-            next.id,
+            `${next.control} (${next.id})`,
             await page.evaluate(({ id, value }) => window.pricingBenchmark.select(id, value), next),
           );
           if (step === 0) first.push(state.update_ms);

@@ -173,6 +173,10 @@ Deterministic unit guards complement wall-clock limits: regional scope preparati
 clause-work bound and warm reuse assertion, and full matcher queries at 24 and 48 regions allow
 at most eight tariff-row validation passes. These protect both batching and native-row reuse
 independently of runner speed. Browser checks cover the reactive/rendering work those guards omit.
+Selector validation groups predicates by dimension and serializes each caller-supplied numeric
+unit once per call, using canonical keys for immutable published units. A 128-scope work guard
+prevents repeated unit serialization; negative controls preserve late kind/unit conflicts,
+duplicate selectors, and validation of changed caller inputs on subsequent calls.
 
 ## Required validation
 

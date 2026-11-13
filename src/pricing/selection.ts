@@ -37,17 +37,33 @@ export function validateSelectors(
   selectors: readonly PricingSelection[],
   scopes: readonly PriceApplicability[],
 ): void {
+  if (selectors.length === 0) return;
   const suppliedDimensions = new Set<string>();
-  const conditions = scopes.flatMap((scope) => scope.any_of.flatMap((clause) => clause.all_of));
+  const conditions = new Map<string, PriceCondition[]>();
+  for (const scope of scopes) {
+    for (const clause of scope.any_of) {
+      for (const condition of clause.all_of) {
+        const key = canonicalJsonKey(condition.dimension);
+        const group = conditions.get(key);
+        if (group === undefined) conditions.set(key, [condition]);
+        else group.push(condition);
+      }
+    }
+  }
   for (const selector of selectors) {
     const dimensionKey = canonicalJson(selector.dimension);
     if (suppliedDimensions.has(dimensionKey)) {
       throw new PricingError("DUPLICATE_SELECTOR", "Selectors repeat a dimension");
     }
     suppliedDimensions.add(dimensionKey);
-    for (const condition of conditions) {
-      if (canonicalJsonKey(condition.dimension) !== dimensionKey) continue;
-      if (!selectorMatchesConditionType(selector, condition)) {
+    let unit: string | undefined;
+    for (const condition of conditions.get(dimensionKey) ?? []) {
+      const matches =
+        condition.kind === "decimal_range"
+          ? (selector.kind === "decimal" || selector.kind === "decimal_range") &&
+            canonicalJsonKey(condition.unit) === (unit ??= canonicalJson(selector.unit))
+          : selector.kind === condition.kind;
+      if (!matches) {
         throw new PricingError(
           "INVALID_REQUEST",
           "Selector kind or unit conflicts with its dimension",
@@ -55,17 +71,6 @@ export function validateSelectors(
       }
     }
   }
-}
-
-function selectorMatchesConditionType(
-  selector: PricingSelection,
-  condition: PriceCondition,
-): boolean {
-  if (condition.kind !== "decimal_range") return selector.kind === condition.kind;
-  return (
-    (selector.kind === "decimal" || selector.kind === "decimal_range") &&
-    canonicalJson(condition.unit) === canonicalJson(selector.unit)
-  );
 }
 
 export function validityGap(
