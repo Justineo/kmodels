@@ -40,7 +40,7 @@ import type { SourceRecord } from "./schema.ts";
 import { runWorkerPool } from "./worker-pool.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
-const pricingReplaySourceSchema = sourcePricingFactsSchema.extend({
+export const pricingReplaySourceSchema = sourcePricingFactsSchema.extend({
   source_id: z.string().min(1),
   extractor_version: z.string().min(1),
   content_hash: hashSchema,

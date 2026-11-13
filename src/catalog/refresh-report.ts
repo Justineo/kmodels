@@ -1,15 +1,7 @@
 import { z } from "zod";
 import { modelLimitFields } from "./catalog-vocabulary.ts";
-import {
-  contractFindings,
-  maxContractFindings,
-  sourceContractEvidenceSchema,
-} from "./source-contract.ts";
-import { dependencyFailureSchema, maxDependencyFailures } from "./source-failure.ts";
-import {
-  sourcePricingExtractionSchema,
-  sourcePricingReconciliationSchema,
-} from "./pricing-reconciliation.ts";
+import { contractFindings } from "./source-contract.ts";
+import { providerRefreshAttemptSchema } from "./refresh-attempt.ts";
 
 const fieldChangeSchema = z
   .object({
@@ -60,45 +52,12 @@ const diffSchema = z.object({
     .default([]),
 });
 
-const attemptSchema = z.object({
-  outcome: z.enum(["accepted", "rejected", "not_configured"]),
-  sources: z.array(
-    z.object({
-      source_id: z.string(),
-      outcome: z.enum([
-        "changed",
-        "unchanged",
-        "fetch_failed",
-        "parse_failed",
-        "skipped_not_configured",
-      ]),
-      message: z.string().optional(),
-      http_status: z.number().int().min(100).max(599).optional(),
-      dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
-      dependency_failures_omitted: z.number().int().positive().optional(),
-      consecutive_failures: z.number().int().positive().optional(),
-      last_success_at: z.iso.datetime({ offset: true }).optional(),
-      contract_finding: sourceContractEvidenceSchema.optional(),
-      contract_findings: z
-        .array(sourceContractEvidenceSchema)
-        .min(1)
-        .max(maxContractFindings)
-        .optional(),
-      contract_findings_omitted: z.number().int().positive().optional(),
-      pricing_extraction: sourcePricingExtractionSchema.optional(),
-      pricing_reconciliation: sourcePricingReconciliationSchema.optional(),
-    }),
-  ),
-  validation_issue: z.object({ code: z.string(), message: z.string().optional() }).optional(),
-  failure: z.object({ code: z.string(), message: z.string().optional() }).optional(),
-  pricing: z
-    .object({
-      outcome: z.enum(["accepted", "failed", "not_observed"]),
-      failure_code: z.string().optional(),
-      message: z.string().optional(),
-    })
-    .optional(),
-});
+const attemptSchema = providerRefreshAttemptSchema
+  .pick({ outcome: true, sources: true, pricing: true })
+  .extend({
+    validation_issue: z.object({ code: z.string(), message: z.string().optional() }).optional(),
+    failure: z.object({ code: z.string(), message: z.string().optional() }).optional(),
+  });
 
 const providerSchema = z.object({
   provider_id: z.string(),
@@ -162,6 +121,15 @@ const reportSchema = z.object({
           duration_ms: z.number().int().nonnegative(),
         }),
       ),
+      source_durations: z
+        .array(
+          z.object({
+            provider_id: z.string(),
+            source_id: z.string(),
+            duration_ms: z.number().int().nonnegative(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
 });
@@ -795,6 +763,27 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     ),
     ...legend,
   ];
+
+  const sourceDurations = report.operational?.source_durations ?? [];
+  if (sourceDurations.length > 0)
+    lines.push(
+      "",
+      "<details>",
+      "<summary>Source acquisition durations</summary>",
+      "",
+      "Durations include transport and retries, excluding scheduler queue time and provider parsing. Concurrent durations do not add up to elapsed time.",
+      "",
+      "| Provider | Source | Duration |",
+      "| --- | --- | ---: |",
+      ...[...sourceDurations]
+        .sort((left, right) => right.duration_ms - left.duration_ms)
+        .map(
+          ({ provider_id, source_id, duration_ms }) =>
+            `| ${table(provider_id)} | ${table(source_id)} | ${(duration_ms / 1000).toFixed(1)}s |`,
+        ),
+      "",
+      "</details>",
+    );
 
   for (const provider of providers) {
     const findingSources =

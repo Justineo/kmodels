@@ -216,6 +216,36 @@ function pruneTransitionAudit(now: number) {
 
 async function publish(directory: string, output: string, capturedAt: number) {
   const { archive, pointer } = await packSnapshot(directory, capturedAt);
+  await publishArchive(archive, pointer, output);
+}
+
+export async function stageSnapshot(directory: string, output: string, capturedAt: number) {
+  const { archive, pointer } = await packSnapshot(directory, capturedAt);
+  await mkdir(output, { recursive: true });
+  await atomicWrite(join(output, "snapshot.pack.gz"), archive);
+  await atomicWrite(join(output, pointerFile), `${JSON.stringify(pointer, null, 2)}\n`);
+}
+
+async function stagedSnapshot(input: string) {
+  const pointer = await readPointer(join(input, pointerFile));
+  const archive = await readFile(join(input, "snapshot.pack.gz"));
+  if (archive.length !== pointer.bytes || sha256(archive) !== pointer.sha256)
+    throw new Error("Staged catalog snapshot does not match its pointer");
+  return { archive, pointer };
+}
+
+export async function restoreStagedSnapshot(input: string, directory: string) {
+  const { archive, pointer } = await stagedSnapshot(input);
+  await restoreSnapshot(directory, pointer, archive);
+  await atomicWrite(join(directory, pointerFile), `${JSON.stringify(pointer, null, 2)}\n`);
+}
+
+export async function publishStagedSnapshot(input: string, output: string) {
+  const { archive, pointer } = await stagedSnapshot(input);
+  await publishArchive(archive, pointer, output);
+}
+
+async function publishArchive(archive: Buffer, pointer: Pointer, output: string) {
   const name = assetName(pointer);
   await mkdir(output, { recursive: true });
   const path = join(output, name);
@@ -238,6 +268,18 @@ async function main() {
   const [command, argument, capture, source] = process.argv.slice(2);
   const directory = resolve("data");
   const now = Math.floor(Date.now() / 1000);
+  if (command === "stage" && argument !== undefined) {
+    await stageSnapshot(directory, resolve(argument), now);
+    return;
+  }
+  if (command === "restore" && argument !== undefined) {
+    await restoreStagedSnapshot(resolve(argument), directory);
+    return;
+  }
+  if (command === "publish-staged" && argument !== undefined && capture !== undefined) {
+    await publishStagedSnapshot(resolve(argument), resolve(capture));
+    return;
+  }
   if (command === "fingerprint") {
     console.log(await snapshotFingerprint(directory));
     return;
@@ -293,7 +335,7 @@ async function main() {
     return;
   }
   throw new Error(
-    "Usage: catalog-snapshot hydrate [--force | archive] | fingerprint | publish OUTPUT [EPOCH [DATA_DIR]] | prune",
+    "Usage: catalog-snapshot hydrate [--force | archive] | fingerprint | stage OUTPUT | restore INPUT | publish-staged INPUT OUTPUT | publish OUTPUT [EPOCH [DATA_DIR]] | prune",
   );
 }
 

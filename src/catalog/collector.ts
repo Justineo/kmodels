@@ -8,6 +8,7 @@ import {
 import { compileInferencePriceMapping } from "./inference-pricing-compilation.ts";
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { mapConcurrentByKey } from "./concurrency.ts";
+import type { ProviderResult, CollectionBatch } from "./collection-result.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import {
   fetchSource,
@@ -15,6 +16,7 @@ import {
   type FetchResult,
   type FetchState,
   type SourceState,
+  type SagemakerDiscoveryCache,
 } from "./fetch.ts";
 import {
   manifests,
@@ -110,20 +112,6 @@ const availabilityWarning: CatalogWarning = {
   message: "Global catalog presence does not imply availability to a specific account.",
 };
 
-interface ProviderResult {
-  provider: Provider;
-  models: ProviderModel[];
-  sources: SourceRecord[];
-  coverage: Coverage;
-  warnings: CatalogWarning[];
-  pricing?: ProviderPricingPartition;
-  pricingReplaySources?: PricingReplaySource[];
-  inferencePriceSources?: InferencePriceSource[];
-  pricingFailure?: PricingRefreshFailureCode;
-  quarantine?: { provider_id: string; checked_at: string; reason: string };
-  attempt: ProviderRefreshAttempt;
-}
-
 type SourceFetch = { sourceId: string; result: FetchResult } | { sourceId: string; error: unknown };
 
 interface CollectionOptions {
@@ -133,6 +121,7 @@ interface CollectionOptions {
   rebuildProvider?: string;
   pricingTransitions?: readonly ProviderPricingTransition[];
   pricingSafetyFindings?: readonly AcceptedPairSafetyFinding[];
+  collected?: CollectionBatch & { state: FetchState };
 }
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
@@ -613,15 +602,25 @@ function retainsPricingOnFailure(source: SourceManifest): boolean {
   return isPricingSource(source) || isRequiredPricingSource(source);
 }
 
-async function fetchProviderSources(sources: readonly SourceManifest[]): Promise<SourceFetch[]> {
+async function fetchProviderSources(
+  sources: readonly SourceManifest[],
+  onSourceFetch?: (sourceId: string, durationMs: number) => void,
+): Promise<SourceFetch[]> {
+  const discoveryCache: SagemakerDiscoveryCache = new Map();
   return mapConcurrentByKey(
     sources.filter((source) => !missingCredential(source)),
-    ({ allowedHosts }) => allowedHosts,
+    (source) =>
+      source.transport?.kind === "aws-sagemaker"
+        ? [new URL(source.url).hostname]
+        : source.allowedHosts,
     async (source) => {
+      const started = performance.now();
       try {
-        return { sourceId: source.id, result: await fetchSource(source) };
+        return { sourceId: source.id, result: await fetchSource(source, discoveryCache) };
       } catch (error) {
         return { sourceId: source.id, error };
+      } finally {
+        onSourceFetch?.(source.id, Math.round(performance.now() - started));
       }
     },
   );
@@ -773,6 +772,7 @@ export async function collectProvider(
   previous: Catalog | undefined,
   state: FetchState,
   observedAt: string,
+  onSourceFetch?: (sourceId: string, durationMs: number) => void,
 ): Promise<ProviderResult> {
   if (manifest.notConfiguredReason !== undefined) {
     return {
@@ -839,7 +839,10 @@ export async function collectProvider(
 
   try {
     const sourceFetches = new Map(
-      (await fetchProviderSources(manifest.sources)).map((fetch) => [fetch.sourceId, fetch]),
+      (await fetchProviderSources(manifest.sources, onSourceFetch)).map((fetch) => [
+        fetch.sourceId,
+        fetch,
+      ]),
     );
     const groups: SourceGroup[] = [];
     const supplements: SourceGroup[] = [];
@@ -1332,23 +1335,29 @@ export async function collectProvider(
   }
 }
 
-async function collectProviders(
+export async function collectProviders(
   previous: Catalog | undefined,
   state: FetchState,
   observedAt: string,
   rebuildProvider: string | undefined,
-): Promise<{
-  results: ProviderResult[];
-  durations: { provider_id: string; duration_ms: number }[];
-}> {
+  selected: readonly ProviderManifest[] = manifests,
+): Promise<CollectionBatch> {
+  const sourceDurations: { provider_id: string; source_id: string; duration_ms: number }[] = [];
   const collected = await Promise.all(
-    manifests.map(async (manifest) => {
+    selected.map(async (manifest) => {
       const started = performance.now();
       const result = await collectProvider(
         manifest,
         rebuildProvider === manifest.provider.id ? undefined : previous,
         state,
         observedAt,
+        (sourceId, durationMs) => {
+          sourceDurations.push({
+            provider_id: manifest.provider.id,
+            source_id: sourceId,
+            duration_ms: durationMs,
+          });
+        },
       );
       return {
         result,
@@ -1362,10 +1371,15 @@ async function collectProviders(
   return {
     results: collected.map(({ result }) => result),
     durations: collected.map(({ duration }) => duration),
+    sourceDurations: sourceDurations.sort((left, right) =>
+      compareUtf8(left.source_id, right.source_id),
+    ),
   };
 }
 
 export async function collect(options: CollectionOptions = {}): Promise<Catalog> {
+  if (options.collected !== undefined && (options.rebuild || options.rebuildProvider !== undefined))
+    throw new Error("Sharded collection cannot be combined with a rebuild");
   const observedAt = (options.now ?? new Date()).toISOString();
   if ((options.jitterMs ?? 0) > 0) await wait(Math.floor(Math.random() * (options.jitterMs ?? 0)));
 
@@ -1377,9 +1391,11 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   const stateValue = await readJson(join(rootDirectory, "data/fetch-state.json"));
   const stateResult = stateValue === undefined ? undefined : fetchStateSchema.safeParse(stateValue);
   const previousState: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
-  const state = structuredClone(previousState);
+  const state = options.collected?.state ?? structuredClone(previousState);
 
-  const collected = await collectProviders(previous, state, observedAt, options.rebuildProvider);
+  const collected =
+    options.collected ??
+    (await collectProviders(previous, state, observedAt, options.rebuildProvider));
   const { results } = collected;
 
   const providers = results
@@ -1494,7 +1510,10 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   if (runReportPath !== undefined && runReportPath.trim() !== "")
     await writeJson(runReportPath, {
       ...summary,
-      operational: { provider_durations: collected.durations },
+      operational: {
+        provider_durations: collected.durations,
+        source_durations: collected.sourceDurations,
+      },
     });
   await writePricingCompilationSnapshot(pricingCompilation);
   await commitCatalogPair(candidate);

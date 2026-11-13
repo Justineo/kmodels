@@ -2570,18 +2570,48 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   };
 }
 
-export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
-  if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, fetchPayload);
+// Shared only for one provider attempt. Retain the three public discovery inputs
+// in memory so regional API discovery can overlap SDK detail acquisition.
+export type SagemakerDiscoveryCache = Map<string, Promise<FetchPayload>>;
+
+function sagemakerDiscoveryPayload(
+  source: SourceManifest,
+  cache: SagemakerDiscoveryCache | undefined,
+): Promise<FetchPayload> {
+  if (
+    cache === undefined ||
+    source.auth !== undefined ||
+    source.access !== "public" ||
+    ![sagemakerCatalogUrl, sagemakerOpenManifestUrl, sagemakerManifestUrl].includes(source.url)
+  )
+    return fetchPayload(source);
+  const url = checkedUrl(source.url, source);
+  const key = JSON.stringify([url.href, source.format, source.maxResponseBytes]);
+  let payload = cache.get(key);
+  if (payload === undefined) {
+    // Sharing cannot widen another source's redirect policy.
+    payload = fetchPayload({ ...source, allowedHosts: [url.hostname] });
+    cache.set(key, payload);
+  }
+  return payload;
+}
+
+export async function fetchSource(
+  source: SourceManifest,
+  discoveryCache?: SagemakerDiscoveryCache,
+): Promise<FetchResult> {
+  const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
+  if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {
     const { auth: _auth, ...publicSource } = source;
-    const catalog = await fetchPayload({
+    const catalog = await readDiscovery({
       ...publicSource,
       url: sagemakerCatalogUrl,
       access: "public",
       format: "html",
       maxResponseBytes: 4 * 1024 * 1024,
     });
-    const openManifest = await fetchPayload({
+    const openManifest = await readDiscovery({
       ...publicSource,
       url: sagemakerOpenManifestUrl,
       access: "public",
@@ -2589,7 +2619,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       maxResponseBytes: 32 * 1024 * 1024,
     });
     const rows = sagemakerRows(catalog.body);
-    const proprietary = await fetchPayload({
+    const proprietary = await readDiscovery({
       ...publicSource,
       url: sagemakerManifestUrl,
       access: "public",
@@ -2616,7 +2646,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     };
   }
   if (source.transport?.kind === "sagemaker-pricing")
-    return fetchSagemakerPricing(source, fetchPayload);
+    return fetchSagemakerPricing(source, readDiscovery);
   if (source.transport?.kind === "aws-bedrock") {
     const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
     return generatedFetchResult(body);
@@ -2654,7 +2684,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
 
   const crawl = source.linkedDocuments;
   if (crawl === undefined) {
-    const payload = await fetchPayload(source);
+    const payload = await readDiscovery(source);
     return { ...payload, dependencies: [] };
   }
 

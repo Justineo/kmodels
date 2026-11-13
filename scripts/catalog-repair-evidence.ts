@@ -87,6 +87,7 @@ export async function loadRefreshExecution(
   const legacyArtifact = `catalog-refresh-${runId}`;
   const attemptArtifact = `${legacyArtifact}-attempt-${run.attempt}`;
   const available = new Set(artifacts.filter(({ expired }) => !expired).map(({ name }) => name));
+  const verificationArtifact = `catalog-verification-${runId}-attempt-${run.attempt}`;
   const artifactName = [attemptArtifact, legacyArtifact].find((name) => available.has(name));
   let verificationFailure: "test_timeout" | undefined;
   let reportPath: string | undefined;
@@ -109,6 +110,18 @@ export async function loadRefreshExecution(
       run.conclusion === "failure" &&
       failedSteps.includes("Verify generated catalog")
     ) {
+      if (available.has(verificationArtifact))
+        await gh([
+          "run",
+          "download",
+          runId,
+          "--repo",
+          repository,
+          "--name",
+          verificationArtifact,
+          "--dir",
+          reportDirectory,
+        ]);
       const result = await readFile(
         join(reportDirectory, "generated-verification.txt"),
         "utf8",
@@ -122,6 +135,7 @@ export async function loadRefreshExecution(
   const repairRequired = failedSteps.some(
     (name) =>
       name === "Collect official sources" ||
+      name === "Assemble collected providers" ||
       name === "Build generated catalog" ||
       (name === "Verify generated catalog" && verificationFailure === undefined),
   );

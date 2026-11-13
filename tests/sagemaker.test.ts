@@ -820,4 +820,58 @@ describe("SageMaker public-hub projection", () => {
     ).rejects.toThrow("repeated a token");
     expect(aws.destroy).toHaveBeenCalledOnce();
   });
+
+  it("starts two detail reads immediately and keeps the third behind the concurrency bound", async () => {
+    vi.useFakeTimers();
+    aws.send.mockReset();
+    aws.destroy.mockClear();
+    let releaseFirst = () => {};
+    let releaseSecond = () => {};
+    const first = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const second = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const detail = (id: string) => ({
+      HubContentName: id,
+      HubContentVersion: "1.0.0",
+      HubContentDocument: "{}",
+    });
+    aws.send
+      .mockResolvedValueOnce({
+        HubContentSummaries: ["first", "second", "third"].map((id) => ({
+          HubContentName: id,
+          HubContentVersion: "1.0.0",
+        })),
+      })
+      .mockImplementationOnce(async () => {
+        await first;
+        return detail("first");
+      })
+      .mockImplementationOnce(async () => {
+        await second;
+        return detail("second");
+      })
+      .mockResolvedValueOnce(detail("third"));
+    try {
+      const result = fetchSagemakerInventory(
+        "us-west-2",
+        new Set(["first", "second", "third"]),
+        4096,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(aws.send).toHaveBeenCalledTimes(3);
+      releaseFirst();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(aws.send).toHaveBeenCalledTimes(4);
+      releaseSecond();
+      expect(JSON.parse(await result).models).toHaveLength(3);
+      expect(aws.destroy).toHaveBeenCalledOnce();
+    } finally {
+      releaseFirst();
+      releaseSecond();
+      vi.useRealTimers();
+    }
+  });
 });

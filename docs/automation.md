@@ -152,9 +152,10 @@ Status: implemented
   receives that patch before inference. It verifies the same bytes after detection.
   The publication job checks out latest `main`, applies that exact patch with Git's three-way
   conflict check, validates the affected delta against current data, and commits only the exact
-  validated Git tree and hydrated snapshot. The refresh collector and repair publisher share a
-  queued Actions concurrency group starting before checkout. Repair investigation, threat
-  detection, deployment, and archive cleanup run independently of the publication queue.
+  validated Git tree and hydrated snapshot. The whole refresh workflow and repair publisher share
+  a queued Actions concurrency group starting before checkout. Only the refresh workflow owns
+  that lock across its jobs; its jobs never reacquire it. Repair investigation, threat detection
+  and deployment run independently of the publication queue.
   Credentials are not persisted during checkout or exposed to validation steps.
   Only the final push and deployment steps receive the workflow token. A normal, non-force push
   rejects any concurrent update after validation. On the first non-fast-forward rejection,
@@ -349,6 +350,8 @@ Status: implemented
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.
+  The refresh pipeline's five job definitions share `.github/actions/setup-catalog-toolchain`
+  for pnpm setup, the pinned Vite+ runtime and frozen dependency installation.
 - Only native dependencies allowlisted in `pnpm-workspace.yaml` may run install scripts.
 - The pnpm 12 toolchain declares `node-gyp` as a development dependency so clean installs can
   compile the allowlisted `better-sqlite3` dependency without relying on a package-manager-bundled
@@ -374,6 +377,28 @@ Status: implemented
   CI, repair, refresh, and deployment hydrate the snapshot from that exact pointer before
   reading generated data. Hydration verifies the entire archive before replacing the mirrors.
   It resets interrupted collector state when the checkout selects a different snapshot.
+  Preparation freezes the exact code revision, accepted snapshot pointer hash, shared observation
+  time and provider assignment in a one-day plan artifact. Five collection runners own SageMaker,
+  Bedrock, Azure, NVIDIA and the remaining providers respectively. New providers join the remaining
+  group automatically. Each runner hydrates that same accepted snapshot, reads only its model
+  catalog and fetch state, and exports parsed provider results without loading or publishing the
+  full accepted price graph. Group results use fast gzip compression and retain the plan's hash.
+  Artifact names include that plan hash, so retrying a failed group can reuse successful sibling
+  groups from the same plan, while a new preparation cannot mix in their results. Explicitly
+  rerunning a group replaces only that plan/group artifact. The final candidate remains immutable
+  and is consumed by artifact ID. Both matrices disable fail-fast so sibling evidence can finish.
+  One assembly runner requires all five exact groups, validates the result schemas and ownership,
+  merges disjoint fetch state, and applies the existing provider-atomic catalog/pricing fallback
+  rules against the accepted pair. Missing, duplicate, foreign, stale-base or malformed inputs
+  cannot become partial publication. Raw HTTP bodies and authenticated documents never enter
+  shard artifacts. Only this runner loads the full accepted price graph and stages the candidate.
+  Assembly stages one immutable candidate archive and uploads it as a one-day Actions artifact.
+  A matrix checks generated data and the production build on two parallel runners, using the
+  plan's exact commit and candidate artifact ID. Each verifies the archive's pointer/hash before
+  restoration and checks the generated-input fingerprint after validation. Publication waits for
+  both checks and uploads those same staged archive bytes, without repacking or collecting again.
+  Reports remain in the seven-day refresh evidence artifact; generated verification uploads its
+  own attempt-specific evidence artifact. Repair reads both when diagnosing verification timeouts.
   After a refresh commits and
   pushes changed data, it explicitly dispatches the dedicated deployment
   workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
@@ -424,29 +449,35 @@ Status: implemented
   `possible_structural_change`. Published count decreases are separate diagnostics, never
   structural failures or repair triggers by themselves; automation does not infer schema drift
   from a change in catalog size.
-- Collection starts every provider concurrently because provider fetch, failure,
-  validation, and publication boundaries are independent. Total collection time
-  therefore approaches the slowest provider instead of accumulating behind a
-  shared provider-worker limit. Within one provider, source transports with disjoint
+- Each collection group starts all of its providers concurrently because provider fetch,
+  failure and validation boundaries are independent. The four largest provider workloads get
+  separate CPUs and heaps; small providers share one runner to avoid setup and artifact overhead
+  for each provider. Total acquisition time approaches the slowest group. Within one provider,
+  source transports with disjoint
   reviewed host sets may overlap; any shared host serializes them, and every
   multi-document transport retains its own reviewed concurrency limit. Parsing and
   application stay in manifest order because overlays and inventories can depend on
   preceding catalog output.
+  SageMaker's regional Hub inventory shares public discovery inputs and overlaps SDK/pricing
+  acquisition once those indexes are ready. Its two-request concurrency bound and adaptive SDK
+  retries replace fixed one-second pacing; no published Hub quota establishes that delay.
+  The run report includes per-source acquisition durations separately from provider elapsed time.
+  Source durations include retry waits, exclude scheduler queue time and parsing, and can overlap.
 - Scheduled refresh validates only the generated catalog suite and production
-  build. It does not rerun code-only unit and fixture tests when the checkout is
+  build on parallel runners. It does not rerun code-only unit and fixture tests when the checkout is
   unchanged. Push and pull-request CI runs those tests once. Generated-data
   assertions follow the boundary and volatility rules in [Testing](testing.md).
 - One non-isolated, single-worker generated-data test project shares one parsed
   catalog/pricing context. Pricing runs one whole-catalog topology and limit
-  pass, then validates provider partitions through four largest-first,
+  pass, then validates provider partitions through three largest-first,
   work-conserving worker threads. Canonical pricing replay likewise assembles
   independent provider partitions through a four-worker pool before one parallel
   candidate-validation pass. Large providers therefore run concurrently without
   parsing the 100+ MB resource more than once. Per-test
   timeouts remain an inner diagnostic. The refresh retries verification once on the same
   candidate when only test-body timeouts occurred. Both attempts stay in the job log, and a
-  second timeout-only failure blocks publication. The 40-minute job cap gives the retry
-  room to complete within the hourly schedule.
+  second timeout-only failure blocks publication. The generated verification job retains a
+  40-minute cap for its retry; the publication queue prevents overlapping refresh writers.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
   overlaps provider validation with canonical serialization, then freezes and
   brands the exact candidate object. Commit concurrently compresses deterministic

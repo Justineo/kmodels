@@ -1,0 +1,15 @@
+name: Set up the catalog toolchain
+description: Install the pinned runtime, package manager and frozen dependencies for catalog jobs.
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v6
+    - name: Set up Vite+
+      uses: voidzero-dev/setup-vp@v1
+      with:
+        node-version-file: .node-version
+        cache: true
+    - name: Install dependencies
+      shell: bash
+      run: vp install --frozen-lockfile

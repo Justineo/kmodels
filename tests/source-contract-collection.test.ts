@@ -18,6 +18,53 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
 const observedAt = "2026-10-19T00:00:00.000Z";
 
 describe("source contract collection", () => {
+  it("overlaps SageMaker regional discovery with public collection while public sources keep their order", async () => {
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "fixture");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "fixture");
+    const manifest = manifests.find(({ provider }) => provider.id === "amazon-sagemaker");
+    if (manifest === undefined) throw new Error("Missing SageMaker manifest");
+    let release = () => {};
+    const catalog = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started: string[] = [];
+    const timings: string[] = [];
+    vi.mocked(fetchSource).mockImplementation(async (source) => {
+      started.push(source.id);
+      if (source.id === "sagemaker-models") await catalog;
+      return {
+        body: "fixture",
+        contentHash: "a".repeat(64),
+        etag: undefined,
+        lastModified: undefined,
+        dependencies: [],
+      };
+    });
+    vi.mocked(parseSource).mockReturnValue({ models: [] });
+    try {
+      const result = collectProvider(manifest, undefined, { sources: {} }, observedAt, (id) =>
+        timings.push(id),
+      );
+      await vi.waitFor(() =>
+        expect(started).toEqual(["sagemaker-models", "sagemaker-api-us-west-2"]),
+      );
+      release();
+      await result;
+      expect(started).toEqual([
+        "sagemaker-models",
+        "sagemaker-api-us-west-2",
+        "sagemaker-sdk",
+        "sagemaker-pricing",
+      ]);
+      expect(timings.sort()).toEqual(manifest.sources.map(({ id }) => id).sort());
+      const caches = vi.mocked(fetchSource).mock.calls.map((call) => call[1]);
+      expect(new Set(caches).size).toBe(1);
+      expect(caches[0]).toBeInstanceOf(Map);
+    } finally {
+      release();
+      vi.unstubAllEnvs();
+    }
+  });
   it("does not turn a fetched but rejected dependency into a successful observation", async () => {
     const manifest = manifests.find(({ provider }) => provider.id === "typesafe");
     const source = manifest?.sources[0];

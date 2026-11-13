@@ -1,30 +1,32 @@
 import { apiEndpointKey, modelRouteKey, modelUid } from "./model.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
+import { z } from "zod";
 
-type ProviderValidationIssueCode =
-  | "empty_candidate"
-  | "schema_invalid"
-  | "uid_mismatch"
-  | "duplicate_model"
-  | "duplicate_service_family"
-  | "duplicate_api_endpoint"
-  | "duplicate_route"
-  | "missing_route_source"
-  | "duplicate_availability"
-  | "model_count_drop"
-  | "service_family_count_drop"
-  | "api_endpoint_count_drop"
-  | "route_count_drop"
-  | "availability_count_drop";
-
-export interface ProviderValidationIssue {
-  code: ProviderValidationIssueCode;
-  message: string;
-  model_ref?: string;
-  previous?: number;
-  current?: number;
-  minimum_ratio?: number;
-}
+export const providerValidationIssueSchema = z.object({
+  code: z.enum([
+    "empty_candidate",
+    "schema_invalid",
+    "uid_mismatch",
+    "duplicate_model",
+    "duplicate_service_family",
+    "duplicate_api_endpoint",
+    "duplicate_route",
+    "missing_route_source",
+    "duplicate_availability",
+    "model_count_drop",
+    "service_family_count_drop",
+    "api_endpoint_count_drop",
+    "route_count_drop",
+    "availability_count_drop",
+  ]),
+  message: z.string(),
+  model_ref: z.string().optional(),
+  previous: z.number().optional(),
+  current: z.number().optional(),
+  minimum_ratio: z.number().optional(),
+});
+export type ProviderValidationIssue = z.infer<typeof providerValidationIssueSchema>;
+type ProviderValidationIssueCode = ProviderValidationIssue["code"];
 
 export type ValidationResult =
   | { ok: true; issue?: never }

@@ -4,12 +4,9 @@ import { compareUtf8 } from "./canonical-value.ts";
 import { commercialPricingProjection } from "./pricing-commercial.ts";
 import { providerPartition } from "./pricing-transition.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
-import type {
-  SourcePricingExtraction,
-  SourcePricingReconciliation,
-} from "./pricing-reconciliation.ts";
-import { isContractDrift, type SourceContractFindings } from "./source-contract.ts";
-import type { DependencyFailure } from "./source-failure.ts";
+import { isContractDrift } from "./source-contract.ts";
+import type { SourceRefreshAttempt, ProviderRefreshAttempt } from "./refresh-attempt.ts";
+export type { SourceRefreshAttempt, ProviderRefreshAttempt } from "./refresh-attempt.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
 import {
   providerCountDecreases,
@@ -104,43 +101,6 @@ interface SourceDiffSummary {
   added_source_ids: string[];
   removed_source_ids: string[];
   changed_sources: SourceChangeSummary[];
-}
-
-type SourceRefreshOutcome =
-  | "changed"
-  | "unchanged"
-  | "fetch_failed"
-  | "parse_failed"
-  | "skipped_not_configured";
-
-export interface SourceRefreshAttempt extends SourceContractFindings {
-  source_id: string;
-  outcome: SourceRefreshOutcome;
-  parsed_models?: number;
-  content_changed?: boolean;
-  extractor_changed?: boolean;
-  message?: string;
-  http_status?: number;
-  dependency_failures?: DependencyFailure[];
-  dependency_failures_omitted?: number;
-  consecutive_failures?: number;
-  last_success_at?: string;
-  pricing_extraction?: SourcePricingExtraction;
-  pricing_reconciliation?: SourcePricingReconciliation;
-}
-
-export interface ProviderRefreshAttempt {
-  provider_id: string;
-  outcome: "accepted" | "rejected" | "not_configured";
-  sources: SourceRefreshAttempt[];
-  candidate_models?: ProviderModel[];
-  validation_issue?: ProviderValidationIssue;
-  failure?: { code: string; message: string };
-  pricing?: {
-    outcome: "accepted" | "failed" | "not_observed";
-    failure_code?: string;
-    message?: string;
-  };
 }
 
 interface ProviderAttemptSummary {

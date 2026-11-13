@@ -98,11 +98,23 @@ Absence from one Region does not delete a global model.
 Only a bounded metadata projection leaves the API transport. Account/resource ARNs, package
 locations, dependencies, training data, container paths, payload samples, and raw authenticated
 documents are discarded. Requests have deadlines, bounded concurrency, page limits, repeated-token
-checks and adaptive SDK retries. Calls start at least one second apart, use at most two concurrent
-detail requests, and allow 90 seconds for each request including SDK retry waits. A full successful
-source requires every selected detail; a throttled/aborted source is never published as complete.
+checks and adaptive SDK retries. Detail reads use at most two concurrent requests and allow
+90 seconds for each request including SDK retry waits. There is no fixed inter-request sleep:
+the [API references](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeHubContent.html)
+and [published quotas](https://docs.aws.amazon.com/general/latest/gr/sagemaker.html) do not specify
+a one-request-per-second limit for these Hub operations. The [SDK adaptive limiter](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)
+responds to observed throttling; the effective account/Region rate is not a catalog contract.
+A full successful source requires every selected detail; a throttled/aborted source is never
+published as complete.
 Public S3 spec reads reuse native HTTP connections with the same host, redirect, response-size and
 retry boundaries as other sources. API failure does not prevent independent public catalog/pricing collection.
+The public model table and open/proprietary discovery manifests are shared in memory for one
+provider attempt, including failed acquisitions. Each source keeps its own provenance and
+checks its host and byte boundaries; shared discovery cannot redirect off its original host.
+Regional Hub discovery starts alongside public collection. After these shared indexes resolve,
+its requests touch only the regional API, so they overlap SDK details and pricing acquisition.
+The public sources remain serialized in manifest order and keep their existing S3/Marketplace
+request bounds. Parsing and enrichment application still follow manifest order.
 The retry boundary includes the entire response body: a timeout or interrupted stream after
 HTTP headers retries that dependency from the beginning, up to three attempts. Partial bytes
 are discarded, readers are released, and size-limit violations still fail without retrying.

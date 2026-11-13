@@ -1,6 +1,10 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
+import {
+  fetchSource,
+  linkedDocumentUrls,
+  type SagemakerDiscoveryCache,
+} from "../src/catalog/fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
@@ -57,6 +61,30 @@ afterEach(() => {
   transport.failures.clear();
   transport.responses.clear();
   transport.calls.length = 0;
+});
+
+it("shares SageMaker discovery within one attempt and checks each source's host policy on cache hits", async () => {
+  const source = reviewedPublicSource("sagemaker-models");
+  const cache: SagemakerDiscoveryCache = new Map();
+  transport.responses.set("docs.aws.amazon.com", [
+    "HTTP/1.1 200 OK\r\n\r\nfirst",
+    "HTTP/1.1 200 OK\r\n\r\nexceeds smaller limit",
+    "HTTP/1.1 200 OK\r\n\r\nnext attempt",
+  ]);
+  const [first, shared] = await Promise.all([
+    fetchSource(source, cache),
+    fetchSource(source, cache),
+  ]);
+  expect(first.body).toBe("first");
+  expect(shared.contentHash).toBe(first.contentHash);
+  expect(transport.calls).toHaveLength(1);
+  await expect(fetchSource({ ...source, allowedHosts: ["unrelated.test"] }, cache)).rejects.toThrow(
+    "reviewed host allowlist",
+  );
+  await expect(fetchSource({ ...source, maxResponseBytes: 2 }, cache)).rejects.toThrow(
+    "Response exceeded byte limit",
+  );
+  expect((await fetchSource(source, new Map())).body).toBe("next attempt");
 });
 
 it("applies a linked-document request suffix once and deduplicates both public spellings", () => {

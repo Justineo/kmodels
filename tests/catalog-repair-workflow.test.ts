@@ -325,11 +325,44 @@ it("queues the refresh and repair writers together while inference uses a separa
     new URL("../.github/workflows/catalog.yml", import.meta.url),
     "utf8",
   );
-  for (const writer of [job(workflow, "publish_repair"), job(refresh, "collect")]) {
-    expect(writer).toMatch(
-      /concurrency:\n(?:      [^\n]+\n)*?      group: catalog-main-publication\n      queue: max/,
-    );
-  }
+  expect(job(workflow, "publish_repair")).toMatch(
+    /concurrency:\n(?:      [^\n]+\n)*?      group: catalog-main-publication\n      queue: max/,
+  );
+  expect(refresh.split("\njobs:")[0]).toContain(
+    "concurrency:\n  group: catalog-main-publication\n  queue: max\n  cancel-in-progress: false",
+  );
+  expect(job(refresh, "collect")).not.toContain("concurrency:");
   expect(job(workflow, "agent")).not.toContain("catalog-main-publication");
   expect(job(workflow, "commit_repair")).not.toMatch(/^\s+(?:contents|actions): write$/m);
+});
+
+it("checks one immutable refresh candidate on parallel runners before publishing its exact archive", async () => {
+  const refresh = await readFile(
+    new URL("../.github/workflows/catalog.yml", import.meta.url),
+    "utf8",
+  );
+  const collect = job(refresh, "collect");
+  const assemble = job(refresh, "assemble");
+  const checks = job(refresh, "check");
+  const publish = job(refresh, "publish");
+  expect(collect).toContain("shard: [sagemaker, bedrock, azure, nvidia, other]");
+  expect(collect).toContain("fail-fast: false");
+  expect(collect).toContain("needs.prepare.outputs.plan_id");
+  expect(assemble).toContain("needs: [prepare, collect]");
+  expect(assemble).toContain("steps.candidate.outputs.artifact-id");
+  expect(assemble).toContain("scripts/collect-shards.ts merge");
+  expect(checks).toContain("check: [generated, build]");
+  expect(checks).toContain("fail-fast: false");
+  expect(checks).toContain("KMODELS_GENERATED_VERIFICATION_PATH");
+  expect(checks).toContain(
+    "catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+  );
+  expect(checks).toContain('diff "$RUNNER_TEMP/candidate-fingerprint"');
+  expect(publish).toContain("needs: [prepare, assemble, check]");
+  for (const consumer of [checks, publish]) {
+    expect(consumer).toContain("ref: ${{ needs.prepare.outputs.sha }}");
+    expect(consumer).toContain("artifact-ids: ${{ needs.assemble.outputs.candidate }}");
+  }
+  expect(publish).toContain("catalog-snapshot.ts publish-staged");
+  expect(publish).not.toContain("vp run collect");
 });

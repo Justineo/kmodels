@@ -225,8 +225,17 @@ or the PR base. Trusted repair publication uses the same planner against latest 
   awaiting delivery. Re-run a failed check after its cause changes, then validate the affected
   result; a different checkout or trust boundary needs its own relevant proof.
 
-The scheduled refresh checks the generated project and production build because code-only
-behavior was already verified in CI. Refresh and the Actions validation planner use the same
+The scheduled refresh checks the generated project and production build on parallel runners
+against the exact staged candidate archive and collection commit, because code-only behavior
+was already verified in CI. Each runner checks that validation preserved its candidate's input
+fingerprint; publication reuses that same archive only after both checks pass.
+Fixture replay compares ordinary collection with compressed shard round trips through the
+normal provider collector. Fresh and retained-price cases must preserve provider results, fetch
+history, replay/inference inputs, accepted pair identity and portable price exports without
+changing the accepted model/state inputs. Boundary tests reject incomplete/duplicate groups,
+mixed plans, foreign ownership and malformed result artifacts. Workflow tests bind both matrices
+to one plan/revision and keep the only snapshot publication behind complete assembly and checks.
+Refresh and the Actions validation planner use the same
 test runner. It retries the identical command once when every reported failure is a test-body
 timeout. Both attempts are logged. Assertion, hook, collection, and unhandled failures stop
 that check immediately. A second timeout remains an operational failure. The repair agent demonstrates

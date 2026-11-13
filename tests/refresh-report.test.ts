@@ -128,6 +128,9 @@ describe("refresh report", () => {
       publication: "partial",
       operational: {
         provider_durations: [{ provider_id: "example", duration_ms: 1_250 }],
+        source_durations: [
+          { provider_id: "example", source_id: "example-api", duration_ms: 1_000 },
+        ],
       },
       providers: [
         {
@@ -271,6 +274,8 @@ describe("refresh report", () => {
     ]);
     expect(output.markdown).toContain("**🟰** · ⚠️");
     expect(output.markdown).toContain("1.3s");
+    expect(output.markdown).toContain("Source acquisition durations");
+    expect(output.markdown).toContain("| example | example-api | 1.0s |");
     expect(output.markdown).toContain("| + | <code>example/new</code> | — |");
     expect(output.markdown).toContain("| − | <code>example/old</code> | — |");
     expect(output.markdown).toContain(

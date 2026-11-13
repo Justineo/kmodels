@@ -4,7 +4,6 @@ import {
   SageMakerClient,
 } from "@aws-sdk/client-sagemaker";
 import { z } from "zod";
-import { setTimeout as sleep } from "node:timers/promises";
 import { mapConcurrent } from "./concurrency.ts";
 import { baseModel } from "./model.ts";
 import { modalitySchema } from "./schema.ts";
@@ -45,13 +44,6 @@ export async function fetchSagemakerInventory(
   maxBytes: number,
 ): Promise<string> {
   const client = new SageMakerClient({ region, maxAttempts: 3, retryMode: "adaptive" });
-  let nextRequestAt = 0;
-  async function waitForRequestSlot(): Promise<void> {
-    const now = Date.now();
-    const delay = Math.max(0, nextRequestAt - now);
-    nextRequestAt = Math.max(now, nextRequestAt) + 1000;
-    if (delay > 0) await sleep(delay);
-  }
   const common = { HubName: "SageMakerPublicHub", HubContentType: "Model" as const };
   try {
     const selected = new Map<string, { id: string; version: string }>();
@@ -59,7 +51,6 @@ export async function fetchSagemakerInventory(
     let next: string | undefined;
     let finished = false;
     for (let page = 0; page < 100; page += 1) {
-      await waitForRequestSlot();
       const result = await client.send(
         new ListHubContentsCommand({
           ...common,
@@ -88,7 +79,6 @@ export async function fetchSagemakerInventory(
     if (!finished || selected.size === 0)
       throw new Error("SageMaker public hub inventory was incomplete");
     const models = await mapConcurrent([...selected.values()], 2, async ({ id, version }) => {
-      await waitForRequestSlot();
       const result = await client.send(
         new DescribeHubContentCommand({
           ...common,

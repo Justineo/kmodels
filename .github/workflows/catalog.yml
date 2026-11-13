@@ -10,42 +10,74 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: catalog-refresh
+  group: catalog-main-publication
+  queue: max
   cancel-in-progress: false
 
 jobs:
-  collect:
+  prepare:
     if: github.repository == 'Justineo/kmodels' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    concurrency:
-      group: catalog-main-publication
-      queue: max
-    timeout-minutes: 40
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      plan_id: ${{ steps.plan.outputs.plan_id }}
+      plan: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: main
+          persist-credentials: false
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
 
-      - name: Set up Vite+
-        uses: voidzero-dev/setup-vp@v1
+      - name: Freeze collection plan
+        id: plan
+        run: vp node scripts/collect-shards.ts plan "$RUNNER_TEMP/collection-plan"
+
+      - name: Upload collection plan
+        id: upload
+        uses: actions/upload-artifact@v7
         with:
-          node-version: 24.21.0
-          cache: true
+          name: catalog-plan-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/collection-plan/
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Install dependencies
-        run: vp install --frozen-lockfile
+  collect:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [sagemaker, bedrock, azure, nvidia, other]
+    steps:
+      - name: Checkout the collection revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Download collection plan
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.plan }}
+          path: ${{ runner.temp }}/collection-plan
+          merge-multiple: true
 
       - name: Hydrate the accepted catalog
         run: vp node scripts/catalog-snapshot.ts hydrate
 
       - name: Collect official sources
-        run: vp run collect
+        run: vp node scripts/collect-shards.ts collect "$RUNNER_TEMP/collection-plan/plan.json" "$SHARD" "$RUNNER_TEMP/collection-shard"
         env:
-          KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
+          SHARD: ${{ matrix.shard }}
           KMODELS_JITTER_MS: "30000"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -70,30 +102,154 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Upload collected providers
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-shard-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-${{ matrix.shard }}
+          overwrite: true
+          path: ${{ runner.temp }}/collection-shard/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    needs: [prepare, collect]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      candidate: ${{ steps.candidate.outputs.artifact-id }}
+    steps:
+      - name: Checkout the collection revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Download collection plan
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.plan }}
+          path: ${{ runner.temp }}/collection-plan
+          merge-multiple: true
+
+      - name: Download collected providers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: catalog-shard-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-*
+          path: ${{ runner.temp }}/collection-shards
+          merge-multiple: true
+
+      - name: Hydrate the accepted catalog
+        run: vp node scripts/catalog-snapshot.ts hydrate
+
+      - name: Assemble collected providers
+        run: vp node scripts/collect-shards.ts merge "$RUNNER_TEMP/collection-plan/plan.json" "$RUNNER_TEMP/collection-shards"
+        env:
+          KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
+
       - name: Summarize refresh
         if: always()
         run: vp run report:refresh
         env:
           KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
 
-      - name: Verify generated catalog
-        env:
-          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification.txt
-        run: vp node scripts/validate-tests.ts --run --project generated --reporter=minimal --reporter=github-actions --silent=passed-only
-
       - name: Upload refresh evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: catalog-refresh-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/refresh-report.json
-            ${{ runner.temp }}/generated-verification.txt
+          path: ${{ runner.temp }}/refresh-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stage the candidate snapshot
+        run: vp node scripts/catalog-snapshot.ts stage "$RUNNER_TEMP/catalog-candidate"
+
+      - name: Upload the candidate snapshot
+        id: candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-candidate-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/catalog-candidate/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  check:
+    needs: [prepare, assemble]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [generated, build]
+    steps:
+      - name: Checkout the collection revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Download the candidate snapshot
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.assemble.outputs.candidate }}
+          path: ${{ runner.temp }}/catalog-candidate
+          merge-multiple: true
+
+      - name: Restore the candidate snapshot
+        run: vp node scripts/catalog-snapshot.ts restore "$RUNNER_TEMP/catalog-candidate"
+
+      - name: Record candidate fingerprint
+        run: vp node scripts/catalog-snapshot.ts fingerprint > "$RUNNER_TEMP/candidate-fingerprint"
+
+      - name: Verify generated catalog
+        if: matrix.check == 'generated'
+        env:
+          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification.txt
+        run: vp node scripts/validate-tests.ts --run --project generated --reporter=minimal --reporter=github-actions --silent=passed-only
+
+      - name: Upload verification evidence
+        if: always() && matrix.check == 'generated'
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/generated-verification.txt
           if-no-files-found: warn
           retention-days: 7
 
       - name: Build generated catalog
+        if: matrix.check == 'build'
         run: vp run build
+
+      - name: Verify candidate preservation
+        run: diff "$RUNNER_TEMP/candidate-fingerprint" <(vp node scripts/catalog-snapshot.ts fingerprint)
+
+  publish:
+    needs: [prepare, assemble, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the collection revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Download the validated snapshot
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.assemble.outputs.candidate }}
+          path: ${{ runner.temp }}/catalog-candidate
+          merge-multiple: true
 
       - name: Publish the validated catalog snapshot
         id: commit
@@ -102,7 +258,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git ls-files -- data/)" = data/catalog-snapshot.json
-          vp node scripts/catalog-snapshot.ts publish "$RUNNER_TEMP/catalog-snapshot"
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD)" ]; then
+            echo "::warning::main advanced during collection; skipping this stale refresh."
+            echo "### Publication skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "main advanced during collection. The next scheduled refresh will use the latest main." >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          vp node scripts/catalog-snapshot.ts publish-staged "$RUNNER_TEMP/catalog-candidate" "$RUNNER_TEMP/catalog-snapshot"
           cp "$RUNNER_TEMP/catalog-snapshot/catalog-snapshot.json" data/catalog-snapshot.json
           git add data/catalog-snapshot.json
           git config user.name "github-actions[bot]"

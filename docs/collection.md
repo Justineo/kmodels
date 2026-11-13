@@ -155,7 +155,22 @@ Status: implemented
   existing internal request-concurrency bound. Parsing, overlay application, reconciliation, and
   diagnostics still follow manifest order, so transport overlap neither raises a host's request
   concurrency nor changes deterministic provider semantics.
+- SageMaker's regional inventory shares the three fixed public discovery inputs with its public
+  sources for one attempt, then uses only its regional API. This reviewed dependency graph lets
+  inventory acquisition overlap public SDK/pricing work without increasing their host concurrency.
+  Shared inputs keep source-specific provenance and byte/host checks; their redirects stay on the
+  original host. Public source ordering and all parsing/application ordering remain unchanged.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
+- Hourly collection can acquire the five reviewed provider groups on separate runners. A common
+  plan binds every group to the same code, accepted snapshot pointer and observation time. Shard
+  artifacts contain only parsed catalog/pricing/replay facts, bounded diagnostics, operational
+  timings and provider-owned fetch state. They contain no transport bodies or raw authenticated
+  documents. Runners read the accepted model catalog without materializing its complete price
+  graph. Assembly requires each configured provider exactly once, validates schemas, group/base
+  identity, observation time and ownership, then uses the same pair composition and publication
+  path as ordinary `collect`. Provider failures retain their normal typed fallback; a missing or
+  malformed shard prevents publication. Optional scoped inventories never become shard-level
+  completeness requirements. Provider request bounds and manifest-order application are unchanged.
 - Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
   save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
   public repair source, fixed companion, or bounded raw discovery index (`--index`), to temporary

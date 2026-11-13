@@ -56,6 +56,43 @@ function mockGitHub(
 }
 
 describe("repair execution evidence", () => {
+  it("investigates shard assembly failures before a combined report exists", async () => {
+    const evidence = await loadRefreshExecution(
+      "example/catalog",
+      await directory(),
+      mockGitHub("Assemble collected providers", false),
+    );
+    expect(evidence).toMatchObject({ repair_required: true, evidence_incomplete: true });
+  });
+  it.each([1, 2])(
+    "uses separate verification evidence only from the selected attempt: %s",
+    async (attempt) => {
+      const existing = mockGitHub("Verify generated catalog");
+      const gh = vi.fn(async (args: string[]) => {
+        if (args[0] === "api")
+          return JSON.stringify({
+            artifacts: [
+              { name: "catalog-refresh-123-attempt-2", expired: false },
+              { name: `catalog-verification-123-attempt-${attempt}`, expired: false },
+            ],
+          });
+        if (
+          args[1] === "download" &&
+          args.includes(`catalog-verification-123-attempt-${attempt}`)
+        ) {
+          const target = args[args.indexOf("--dir") + 1];
+          if (target === undefined) throw new Error("Missing evidence directory");
+          await mkdir(target, { recursive: true });
+          await writeFile(join(target, "generated-verification.txt"), "test_timeout\n");
+          return "";
+        }
+        return existing(args);
+      });
+      const evidence = await loadRefreshExecution("example/catalog", await directory(), gh);
+      expect(evidence?.verification_failure).toBe(attempt === 2 ? "test_timeout" : undefined);
+      expect(evidence?.repair_required).toBe(attempt !== 2);
+    },
+  );
   it("uses the latest completed main refresh report and includes post-collection failures", async () => {
     const path = await directory();
     const gh = mockGitHub("Verify generated catalog");
