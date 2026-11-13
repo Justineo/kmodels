@@ -1,5 +1,17 @@
 # Cerebras
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Retain one public PAYG relationship for each priced model. Context, cache accounting and published outcome facts qualify its terms. Batch support alone establishes no price or new offer; its unestablished public tariff stays unknown and cannot inherit synchronous prices. Free credits, subscriptions and Dedicated contracts remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 Cerebras is represented as a public AI Gateway price book. Kmodels publishes the public

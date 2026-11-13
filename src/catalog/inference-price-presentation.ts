@@ -109,7 +109,13 @@ export function presentWebsiteInferencePrice(
     status: result.status,
     ...(result.reason === undefined ? {} : { reason: result.reason }),
     explanation: inferencePriceExplanation(result),
-    missing_conditions: result.missing_conditions.map(formatDimension),
+    missing_conditions: result.missing_conditions.map((dimension) =>
+      dimension.namespace === "kmodels" &&
+      dimension.value === "account_eligibility" &&
+      result.available_choices.some((choice) => choice.dimension === "account_plan")
+        ? "Account plan"
+        : formatDimension(dimension),
+    ),
     requires_offer_choice: result.requires_offer_choice,
     execution_modes: result.execution_modes,
     requires_execution_mode_choice: result.requires_execution_mode_choice,

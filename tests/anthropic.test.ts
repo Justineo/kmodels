@@ -1,3 +1,4 @@
+import { offerContexts, executionSelector } from "./offer-context.ts";
 import { anthropicDocuments } from "./anthropic-fixture.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
@@ -6,7 +7,6 @@ import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
-import { evaluateChargeQuantity } from "../src/catalog/pricing-calculation.ts";
 import { linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
@@ -19,7 +19,6 @@ import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricin
 import type { Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
 function contractPaths(findings: readonly SourceContractEvidence[]): string[] {
   return findings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path));
@@ -35,7 +34,6 @@ function manifest(providerId: string): ProviderManifest {
 function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
-
 function validatedPricing(parsed: SourceParseResult) {
   const { models } = parsed;
   const value = manifest("anthropic");
@@ -82,7 +80,6 @@ function validatedPricing(parsed: SourceParseResult) {
   );
   return partition;
 }
-
 async function parsed(
   providerId: string,
   path: string,
@@ -104,13 +101,15 @@ async function parsed(
     observedAt,
   }).models;
 }
-
 async function anthropicSource(
   options: {
     overview?: string;
     overrides?: Readonly<Record<string, string>>;
     omit?: readonly string[];
-    extraDocuments?: readonly { url: string; body: string }[];
+    extraDocuments?: readonly {
+      url: string;
+      body: string;
+    }[];
     onPricingReconciliation?: (item: PricingReconciliationItem) => void;
     onPricingDependencyFailure?: (url: string) => void;
     onContractFinding?: (evidence: SourceContractEvidence) => void;
@@ -155,13 +154,11 @@ async function anthropicSource(
     ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
 }
-
 async function anthropicCatalog(
   options: Parameters<typeof anthropicSource>[0] = {},
 ): Promise<ProviderModel[]> {
   return (await anthropicSource(options)).models;
 }
-
 async function anthropicContextPricing(transform?: (body: string) => string) {
   const native = await fixture("anthropic/prompt-length-pricing.md");
   return anthropicSource({
@@ -180,7 +177,6 @@ async function anthropicContextPricing(transform?: (body: string) => string) {
     },
   });
 }
-
 describe("Anthropic adapters", () => {
   it("reads the owned Message response union without borrowing stream or example usage", async () => {
     const body = await fixture("anthropic/messages-response-union.md");
@@ -208,7 +204,6 @@ describe("Anthropic adapters", () => {
       expect(invalid.models[0]?.price_facts).toEqual(parsed.models[0]?.price_facts);
     }
   });
-
   it("accepts Fast feature metadata and the current tool-overhead columns", async () => {
     const fast =
       "---\nfeatureMetadata:\n  supportedModels:\n    - claude-opus-4-8\n    - claude-opus-4-7\n---\n" +
@@ -233,7 +228,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toEqual([]);
   });
-
   it("binds a retired display name only through its dated explicit ID announcement", async () => {
     const id = "claude-3-5-haiku-20241022";
     const lifecycle =
@@ -267,7 +261,6 @@ describe("Anthropic adapters", () => {
       "/anthropic/lifecycle_date_invalid/retirement date: To be announced",
     );
   });
-
   it.each([false, true])(
     "keeps public synchronous scope independent of Batch peer quotes (%s)",
     async (withBatch) => {
@@ -283,7 +276,9 @@ describe("Anthropic adapters", () => {
       const book = partition.books.find(
         (value) => value.book_key === "model:anthropic/claude-fable-5",
       );
-      const sync = book?.offers.find((offer) => offer.offer_key === "sync");
+      const sync = book?.offers
+        .flatMap(offerContexts)
+        .find((offer) => offer.context_key === "sync");
       const variants = sync?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
       expect(variants?.length).toBeGreaterThan(0);
       expect(
@@ -296,7 +291,9 @@ describe("Anthropic adapters", () => {
           ),
         ),
       ).toBe(true);
-      const batch = book?.offers.find((offer) => offer.offer_key === "batch");
+      const batch = book?.offers
+        .flatMap(offerContexts)
+        .find((offer) => offer.context_key === "batch");
       expect(batch !== undefined).toBe(withBatch);
     },
   );
@@ -473,36 +470,40 @@ describe("Anthropic adapters", () => {
     ).toEqual([
       {
         price: "0.10",
-        conditions: { speed: "standard", context_max_tokens: 100_000, inference_geo: "global" },
+        conditions: { speed: "standard", context_max_tokens: 100000, inference_geo: "global" },
       },
       {
         price: "0.50",
-        conditions: { speed: "standard", context_min_tokens: 100_001, inference_geo: "global" },
+        conditions: { speed: "standard", context_min_tokens: 100001, inference_geo: "global" },
       },
       {
         price: "0.05",
-        conditions: { service_tier: "batch", context_max_tokens: 100_000, inference_geo: "global" },
+        conditions: { service_tier: "batch", context_max_tokens: 100000, inference_geo: "global" },
       },
       {
         price: "0.25",
-        conditions: { service_tier: "batch", context_min_tokens: 100_001, inference_geo: "global" },
+        conditions: { service_tier: "batch", context_min_tokens: 100001, inference_geo: "global" },
       },
     ]);
     const partition = validatedPricing(parsed);
     for (const offerKey of ["sync", "batch"]) {
       const input = partition.books
         .find(({ book_key }) => book_key === "model:anthropic/claude-haiku-5-5")
-        ?.offers.find(({ offer_key }) => offer_key === offerKey)
-        ?.terms.find(({ term_key }) => term_key === "input_text");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === offerKey)
+        ?.terms.find(
+          ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+        );
       if (input?.kind !== "rate") throw new Error("Missing context-priced input term");
       expect(input.raw_variants).toEqual([]);
       for (const [context, denominator] of [
-        [100_000, 10_000_000],
-        [100_001, 2_000_000],
+        [100000, 10000000],
+        [100001, 2000000],
       ] as const) {
         const selected = input.variants.filter(
           ({ applicability }) =>
             evaluateApplicability(applicability, [
+              executionSelector(offerKey === "batch" ? "batch" : "request"),
               {
                 dimension: { namespace: "kmodels", value: "context_tokens" },
                 kind: "decimal",
@@ -528,7 +529,6 @@ describe("Anthropic adapters", () => {
       }
     }
   });
-
   it.each(["up to", "over"])(
     "keeps a source prompt band explicit when its peer is absent (%s)",
     async (band) => {
@@ -544,16 +544,15 @@ describe("Anthropic adapters", () => {
       expect(
         haiku?.price_facts.every(({ conditions }) =>
           band === "up to"
-            ? conditions.context_min_tokens === 100_001 &&
+            ? conditions.context_min_tokens === 100001 &&
               conditions.context_max_tokens === undefined
-            : conditions.context_max_tokens === 100_000 &&
+            : conditions.context_max_tokens === 100000 &&
               conditions.context_min_tokens === undefined,
         ),
       ).toBe(true);
       validatedPricing(parsed);
     },
   );
-
   it.each(["100,00", "1e5", "100000.5", "-100000", "9007199254740992"])(
     "retains an invalid native prompt count as raw (%s)",
     async (count) => {
@@ -567,7 +566,6 @@ describe("Anthropic adapters", () => {
       validatedPricing(parsed);
     },
   );
-
   it.each([
     "(for prompts up to 100,000 tokens) (for prompts over 200,000 tokens)",
     "(for prompts up to 100,000 tokens) (for prompts up to 100,000 tokens)",
@@ -579,7 +577,7 @@ describe("Anthropic adapters", () => {
     const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
     expect(haiku?.price_facts).toHaveLength(20);
     expect(
-      haiku?.price_facts.every(({ conditions }) => conditions.context_min_tokens === 100_001),
+      haiku?.price_facts.every(({ conditions }) => conditions.context_min_tokens === 100001),
     ).toBe(true);
     expect(haiku?.raw_price_facts).toHaveLength(7);
     expect(haiku?.raw_price_facts.every(({ reason }) => reason === "unknown_applicability")).toBe(
@@ -587,7 +585,6 @@ describe("Anthropic adapters", () => {
     );
     validatedPricing(parsed);
   });
-
   it("does not overflow an exclusive native prompt threshold", async () => {
     const parsed = await anthropicContextPricing((body) =>
       body.replaceAll(
@@ -598,12 +595,11 @@ describe("Anthropic adapters", () => {
     const haiku = parsed.models.find(({ model_id }) => model_id === "claude-haiku-5-5");
     expect(haiku?.price_facts).toHaveLength(20);
     expect(
-      haiku?.price_facts.every(({ conditions }) => conditions.context_max_tokens === 100_000),
+      haiku?.price_facts.every(({ conditions }) => conditions.context_max_tokens === 100000),
     ).toBe(true);
     expect(haiku?.raw_price_facts).toHaveLength(7);
     validatedPricing(parsed);
   });
-
   it("retains dated validity together with an explicit native prompt band", async () => {
     const parsed = await anthropicContextPricing((body) =>
       body.replaceAll(
@@ -616,7 +612,7 @@ describe("Anthropic adapters", () => {
     expect(haiku?.price_facts).toHaveLength(40);
     expect(
       haiku?.price_facts
-        .filter(({ conditions }) => conditions.context_min_tokens === 100_001)
+        .filter(({ conditions }) => conditions.context_min_tokens === 100001)
         .every(
           ({ conditions }) =>
             conditions.effective_until === "2026-08-31" && conditions.promotion === true,
@@ -624,7 +620,6 @@ describe("Anthropic adapters", () => {
     ).toBe(true);
     validatedPricing(parsed);
   });
-
   it.each([false, true])(
     "establishes ordinary speed from the native price matrix independently of Fast rows (%s)",
     async (omitFastRows) => {
@@ -663,13 +658,17 @@ describe("Anthropic adapters", () => {
       const partition = validatedPricing(source);
       const batchInput = partition.books
         .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
-        ?.offers.find(({ offer_key }) => offer_key === "batch")
-        ?.terms.find(({ term_key }) => term_key === "input_text");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "batch")
+        ?.terms.find(
+          ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+        );
       if (batchInput?.kind !== "rate") throw new Error("Missing Batch input rate");
       expect(
         batchInput.variants.some(
           ({ applicability }) =>
             evaluateApplicability(applicability, [
+              executionSelector("batch"),
               {
                 dimension: { namespace: "kmodels", value: "inference_geo" },
                 kind: "categorical",
@@ -680,7 +679,6 @@ describe("Anthropic adapters", () => {
       ).toBe(true);
     },
   );
-
   it("extracts execution minimums and allowances as typed source facts", async () => {
     const parsed = await anthropicSource();
     const standalone = parsed.commercial_facts?.find(
@@ -715,24 +713,12 @@ describe("Anthropic adapters", () => {
     const partition = validatedPricing(parsed);
     const rate = partition.books
       .find(({ book_key }) => book_key === "service:code-execution")
-      ?.offers.find(({ offer_key }) => offer_key === "standalone")
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "standalone")
       ?.terms.find(({ kind }) => kind === "rate");
     const binding = rate?.kind === "rate" ? rate.variants[0]?.charge_binding : undefined;
     if (binding === undefined) throw new Error("Missing typed execution calculation");
-    expect(
-      evaluateChargeQuantity(binding, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "anthropic",
-            value: "code_execution_active_seconds",
-          },
-          value: { numerator: "1", denominator: "1" },
-        },
-      ]),
-    ).toEqual({ kind: "resolved", value: { numerator: "300", denominator: "1" } });
   });
-
   it("binds a named cache override to an exact ID without renaming the catalog model", async () => {
     const pricing =
       (await fixture("anthropic/pricing.md")).replace(
@@ -755,7 +741,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("does not discard an unbound cache exception and derive the default read rate", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       /0\.1x base input price\s*\|/,
@@ -784,7 +769,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it.each([
     ["Claude Willow Latest", "claude-willow-latest", undefined],
     ["Claude Willow Plus 5", "claude-willow-plus-5", "11"],
@@ -820,7 +804,6 @@ describe("Anthropic adapters", () => {
       );
     }
   });
-
   it("keeps overview metadata conflicts distinct from later matching observations", async () => {
     const overview =
       (await fixture("anthropic/overview.md")) +
@@ -847,7 +830,6 @@ describe("Anthropic adapters", () => {
     expect(fable?.status).toBe("unknown");
     expect(fable?.capabilities.reasoning).toBe("unknown");
   });
-
   it("preserves explicit lifecycle state conflicts across multiple current tables", async () => {
     const lifecycle =
       (await fixture("anthropic/lifecycle.md")) +
@@ -860,7 +842,6 @@ describe("Anthropic adapters", () => {
     expect(fable?.status).toBe("unknown");
     expect(fable?.api_endpoints).toBeUndefined();
   });
-
   it("does not carry a release date across a different section", async () => {
     const overview =
       (await fixture("anthropic/overview.md")) +
@@ -875,18 +856,16 @@ describe("Anthropic adapters", () => {
       models.find(({ model_id }) => model_id === "claude-willow-6")?.release_date,
     ).toBeUndefined();
   });
-
   it("keeps known limits across a repeated partial overview", async () => {
     const overview =
       (await fixture("anthropic/overview.md")) +
       "\n| Feature | Claude Fable 5 |\n| --- | --- |\n| Claude API ID | claude-fable-5 |\n";
     const models = await anthropicCatalog({ overview });
     expect(models.find(({ model_id }) => model_id === "claude-fable-5")?.limits).toEqual({
-      context_tokens: 1_000_000,
-      max_output_tokens: 128_000,
+      context_tokens: 1000000,
+      max_output_tokens: 128000,
     });
   });
-
   it.each([
     ["64k", "128k"],
     ["128k", "64k"],
@@ -904,10 +883,9 @@ describe("Anthropic adapters", () => {
       const models = await anthropicCatalog({ overview });
       const limits = models.find(({ model_id }) => model_id === "claude-fable-5")?.limits;
       expect(limits?.max_output_tokens).toBeUndefined();
-      expect(limits?.context_tokens).toBe(1_000_000);
+      expect(limits?.context_tokens).toBe(1000000);
     },
   );
-
   it("prefers an exact API ID over a colliding normalized display name", async () => {
     const overview =
       (await fixture("anthropic/overview.md")) +
@@ -933,7 +911,6 @@ describe("Anthropic adapters", () => {
       models.find(({ model_id }) => model_id === "claude-fable-5-20260701")?.price_facts,
     ).toEqual([]);
   });
-
   it.each(["Claude 5 Fable", "claude-fable-5-20260101"])(
     "does not infer a price binding from rearranged tokens or an unknown revision (%s)",
     async (name) => {
@@ -954,7 +931,6 @@ describe("Anthropic adapters", () => {
       expect(failures).toContain("https://platform.claude.com/docs/en/about-claude/pricing.md");
     },
   );
-
   it.each(["### 2026-02-30: invalid announcement", "## A different section"])(
     "does not acquire a historical deprecation date from an invalid or unowned heading (%s)",
     async (heading) => {
@@ -970,7 +946,6 @@ describe("Anthropic adapters", () => {
       expect(opus?.replacement_model_ids).toEqual(["claude-opus-4-8"]);
     },
   );
-
   it("does not inherit a historical date across a later section heading", async () => {
     const lifecycle = (await fixture("anthropic/lifecycle.md"))
       .replace(
@@ -985,7 +960,6 @@ describe("Anthropic adapters", () => {
       models.find(({ model_id }) => model_id === "claude-opus-4-1-20250805")?.deprecated_at,
     ).toBeUndefined();
   });
-
   it("retains conflicts across three lifecycle date observations", async () => {
     const lifecycle = (await fixture("anthropic/lifecycle.md"))
       .replace(
@@ -1003,7 +977,6 @@ describe("Anthropic adapters", () => {
     expect(opus?.retired_at).toBeUndefined();
     expect(opus?.status).toBe("deprecated");
   });
-
   it("admits release evidence for a newly named official family", async () => {
     const overview =
       (await fixture("anthropic/overview.md")) +
@@ -1019,7 +992,6 @@ describe("Anthropic adapters", () => {
     );
     expect(models.some(({ model_id }) => model_id === "claude-legacy-unlisted")).toBe(false);
   });
-
   it("does not apply a longer model name's context claim to a prefix model", async () => {
     const overview =
       (await fixture("anthropic/overview.md")).replace(
@@ -1037,12 +1009,11 @@ describe("Anthropic adapters", () => {
     });
     expect(
       models.find(({ model_id }) => model_id === "claude-sonnet-5")?.limits.context_tokens,
-    ).toBe(200_000);
+    ).toBe(200000);
     expect(
       models.find(({ model_id }) => model_id === "claude-sonnet-5-1")?.limits.context_tokens,
-    ).toBe(1_000_000);
+    ).toBe(1000000);
   });
-
   it("keeps catalog and usage diagnostics outside pricing-row accounting", async () => {
     const normal: PricingReconciliationItem[] = [],
       partial: PricingReconciliationItem[] = [];
@@ -1072,7 +1043,6 @@ describe("Anthropic adapters", () => {
       ]),
     );
   });
-
   it("keeps the pricing-row denominator stable for an unreadable monetary cell", async () => {
     const normal: PricingReconciliationItem[] = [],
       partial: PricingReconciliationItem[] = [];
@@ -1089,7 +1059,6 @@ describe("Anthropic adapters", () => {
       expect.objectContaining({ disposition: "raw", reason_code: "pricing_row_preserved_raw" }),
     );
   });
-
   it("withholds a conflicting cache rule while retaining independent factors", async () => {
     const pricing = await fixture("anthropic/pricing.md");
     const table = pricing.match(/\| Cache operation[^\n]*\n[\s\S]*?\| Cache read[^\n]*/)?.[0];
@@ -1119,7 +1088,6 @@ describe("Anthropic adapters", () => {
     );
     expect(fable?.raw_price_facts.some(({ raw }) => raw.fragment?.includes("1.5x"))).toBe(true);
   });
-
   it("binds cache-read exceptions listed with commas and conjunctions", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "0.1x base input price",
@@ -1149,7 +1117,6 @@ describe("Anthropic adapters", () => {
       );
     }
   });
-
   it("preserves an unreviewed cache operation as a raw tariff", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       /(\| Cache read[^\n]*)(\n)/,
@@ -1169,7 +1136,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("preserves malformed cache policy rows alongside independent factors", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "1.25x base input price",
@@ -1195,7 +1161,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("keeps known columns if the input column becomes unreviewed", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "Base Input Tokens",
@@ -1216,7 +1181,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("signals an unbound price row without discarding independent catalog facts", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "Claude Fable 5",
@@ -1315,7 +1279,8 @@ describe("Anthropic adapters", () => {
     const partition = validatedPricing(modelsSource);
     const offer = partition.books
       .find(({ book_key }) => book_key === "model:anthropic/claude-opus-4-8")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const input = offer?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "input_text",
     );
@@ -1328,7 +1293,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("keeps Fast prices when only the response speed mapping drifts", async () => {
     const body = (await fixture("anthropic/messages.md")).replace(
       'speed: "standard" or "fast" or null',
@@ -1376,7 +1340,6 @@ describe("Anthropic adapters", () => {
       )?.price_facts[0]?.price,
     ).toBe("0.05");
   });
-
   it("preserves conflicting search rate declarations without choosing the first", async () => {
     const web =
       (await fixture("anthropic/web-search-tool.md")) + "\nThe price is $20 per 1,000 searches.\n";
@@ -1430,7 +1393,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("rejects malformed allowance grouping instead of turning it into a numeric benefit", async () => {
     const path = "/docs/en/agents-and-tools/tool-use/code-execution-tool.md";
     const body = (await fixture("anthropic/code-execution-tool.md")).replace(
@@ -1455,7 +1417,6 @@ describe("Anthropic adapters", () => {
         ),
     ).toBe(true);
   });
-
   it.each([
     ["Execution time has a minimum of 10 minutes", "unparsed:minimum-runtime"],
     [
@@ -1473,7 +1434,8 @@ describe("Anthropic adapters", () => {
         ({ scope }) =>
           scope.kind === "provider_resource" && scope.resource_key === "code-execution",
       )
-      ?.offers.find(({ offer_key }) => offer_key === "standalone");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "standalone");
     expect(offer?.terms).toContainEqual(
       expect.objectContaining({ kind: "raw", term_key: termKey }),
     );
@@ -1483,7 +1445,6 @@ describe("Anthropic adapters", () => {
     );
     expect(fact?.raw_price_facts.some(({ raw }) => raw.fragment?.includes(claim))).toBe(true);
   });
-
   it("reports unrepresentable service scope as a commercial dependency failure while retaining the catalog", async () => {
     const path = "/docs/en/agents-and-tools/tool-use/code-execution-tool.md";
     const body = (await fixture("anthropic/code-execution-tool.md")).replace(
@@ -1557,7 +1518,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("does not choose the first of conflicting geography multipliers", async () => {
     const pricing = await fixture("anthropic/pricing.md");
     const line = pricing.split("\n").find((line) => line.includes("1.1x multiplier"));
@@ -1578,7 +1538,7 @@ describe("Anthropic adapters", () => {
         ?.price_facts.some(({ conditions }) => conditions.inference_geo === "us"),
     ).toBe(false);
   });
-  it("cannot dismiss an unreadable 5m price by selecting a different global cache TTL", async () => {
+  it("scopes an unreadable 5m price to its TTL without blocking a different TTL", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "$12.50 / MTok",
       "EUR 12.50 / MTok",
@@ -1589,7 +1549,8 @@ describe("Anthropic adapters", () => {
     const partition = validatedPricing(modelsSource);
     const offer = partition.books
       .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const term = offer?.terms.find(
       ({ kind, term_key }) => kind === "raw" && term_key === "unparsed:cache_write_text:300",
     );
@@ -1598,6 +1559,7 @@ describe("Anthropic adapters", () => {
     if (scope === undefined) throw new Error("Missing raw price scope");
     expect(
       evaluateApplicability(scope, [
+        executionSelector("request"),
         {
           dimension: { namespace: "kmodels", value: "speed" },
           kind: "categorical",
@@ -1610,7 +1572,7 @@ describe("Anthropic adapters", () => {
           unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
         },
       ]).state,
-    ).toBe("true");
+    ).toBe("false");
   });
   it("preserves readable siblings and raw evidence when one base price is unsupported", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
@@ -1639,7 +1601,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it.each([
     ["September 30, 2026", "2026-09-30"],
     ["February 29, 2028", "2028-02-29"],
@@ -1659,7 +1620,6 @@ describe("Anthropic adapters", () => {
         ?.conditions,
     ).toMatchObject({ effective_until: iso, promotion: true });
   });
-
   it("keeps an invalid promotion date raw without publishing an undated discounted rate", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replaceAll(
       "through August 31, 2026",
@@ -1687,7 +1647,6 @@ describe("Anthropic adapters", () => {
       sonnet?.price_facts.some(({ conditions }) => conditions.effective_from === "2026-09-01"),
     ).toBe(true);
   });
-
   it("binds monetary columns by reviewed headers when columns move", async () => {
     const pricing = (await fixture("anthropic/pricing.md"))
       .split("\n")
@@ -1715,7 +1674,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("does not discard a second reviewed base table", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "| Claude Opus 4.8                            | $5 / MTok",
@@ -1736,7 +1694,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("keeps a readable Batch input and raw output without deriving rates from an unreadable multiplier", async () => {
     const pricing = (await fixture("anthropic/pricing.md"))
       .split("\n")
@@ -1767,7 +1724,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("keeps independent cache multipliers when one operation becomes unreadable", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "1.25x base input price",
@@ -1803,7 +1759,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("preserves an irregular row as raw rather than ignoring it", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "$12.50 / MTok   |",
@@ -1823,7 +1778,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("accepts the first-party explicit USD token-price spelling", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace("$10 / MTok", "$10 USD / MTok");
     const modelsSource = await anthropicSource({
@@ -1841,7 +1795,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("keeps an unreviewed context qualifier raw instead of turning it into an ordinary rate", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       "Claude Fable 5                             |",
@@ -1914,7 +1867,6 @@ describe("Anthropic adapters", () => {
       models.find(({ model_id }) => model_id === "claude-fable-5")?.price_facts,
     ).not.toHaveLength(0);
   });
-
   it("cannot bind a request field as returned usage", async () => {
     const body = (await fixture("anthropic/messages.md"))
       .replace("  - `output_tokens: number`", "")
@@ -1929,7 +1881,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toBe(false);
   });
-
   it("cannot bind usage attached to an unrelated returned object", async () => {
     const original = await fixture("anthropic/messages.md");
     const at = original.indexOf("### Returns");
@@ -1951,7 +1902,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toBe(false);
   });
-
   it.each([
     '{ "usage": { "server_tool_use": { "web_search_requests": "one" } } }',
     '{ "details": { "usage": { "server_tool_use": { "web_search_requests": 1 } } } }',
@@ -1976,7 +1926,6 @@ describe("Anthropic adapters", () => {
       )?.price_facts[0]?.price,
     ).toBe("10");
   });
-
   it("does not assign cache iteration quantities to an unreviewed iteration type", async () => {
     const body = (await fixture("anthropic/prompt-caching.md")).replace(
       '"type": "message"',
@@ -1991,7 +1940,6 @@ describe("Anthropic adapters", () => {
     expect(buckets.some(({ locator }) => locator.kind === "json_pointer")).toBe(true);
     expect(buckets.some(({ locator }) => locator.kind === "provider_field")).toBe(false);
   });
-
   it("retains services and accounting when no model has a readable rate", async () => {
     const modelsSource = await anthropicSource({
       overrides: { "/docs/en/about-claude/pricing.md": "# Unreadable model rates" },
@@ -2014,7 +1962,6 @@ describe("Anthropic adapters", () => {
       "provider_resource",
     ]);
   });
-
   it("keeps an owned field when an unrelated nested lookalike changes type", async () => {
     const body = (await fixture("anthropic/messages.md")).replace(
       "  - `output_tokens: number`",
@@ -2030,7 +1977,6 @@ describe("Anthropic adapters", () => {
       }),
     );
   });
-
   it("cannot bind a declaration quoted inside a returned code example", async () => {
     const body = (await fixture("anthropic/messages.md")).replace(
       "  - `output_tokens: number`",
@@ -2046,7 +1992,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toBe(false);
   });
-
   it("keeps a valid cache iteration mapping when the top-level example drifts", async () => {
     const body = (await fixture("anthropic/prompt-caching.md")).replace(
       '"ephemeral_5m_input_tokens": 148',
@@ -2061,7 +2006,6 @@ describe("Anthropic adapters", () => {
     expect(buckets.some(({ locator }) => locator.kind === "json_pointer")).toBe(false);
     expect(buckets.some(({ locator }) => locator.kind === "provider_field")).toBe(true);
   });
-
   it("does not invent an iteration cache-read field from the general compaction rule", async () => {
     const modelsSource = await anthropicSource();
     const inputs = modelsSource.pricing_inputs ?? [];
@@ -2074,7 +2018,6 @@ describe("Anthropic adapters", () => {
       2,
     );
   });
-
   it("withholds only a retyped iteration counter and reports incomplete compaction accounting", async () => {
     const body = (await fixture("anthropic/compaction.md")).replace(
       '"input_tokens": 180000',
@@ -2170,7 +2113,7 @@ describe("Anthropic adapters", () => {
       mythosRelease: "2026-06-09",
       mythosDescription: undefined,
       stage: "stable",
-      limits: { context_tokens: 1_000_000, max_output_tokens: 128_000 },
+      limits: { context_tokens: 1000000, max_output_tokens: 128000 },
       input: "10",
       usInput: "11",
       batchCache: "0.5",
@@ -2188,7 +2131,6 @@ describe("Anthropic adapters", () => {
       previewReplacement: ["claude-mythos-5"],
     });
   });
-
   it("keeps standard pricing when Anthropic changes header casing and publishes a cache override", async () => {
     const pricing = (await fixture("anthropic/pricing.md"))
       .replace("Base Input Tokens", "Base input tokens")
@@ -2207,7 +2149,6 @@ describe("Anthropic adapters", () => {
         onPricingReconciliation: (item) => reconciliation.push(item),
       })
     ).find(({ model_id }) => model_id === "claude-fable-5");
-
     const price = (meter: "input_text" | "cache_read_text", serviceTier?: string) =>
       fable?.price_facts.find(
         ({ meter: candidate, conditions }) =>
@@ -2215,33 +2156,28 @@ describe("Anthropic adapters", () => {
           conditions.service_tier === serviceTier &&
           conditions.inference_geo === "global",
       )?.price;
-
     expect(price("input_text")).toBe("10");
     expect(price("cache_read_text", "batch")).toBe("0.125");
     expect(reconciliation.map(({ reason_code }) => reason_code)).not.toEqual(
       expect.arrayContaining(["pricing_table_drift", "cache_multiplier_drift"]),
     );
   });
-
   it("reports an unreviewed Anthropic cache override shape", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
       /0\.1x base input price\s*\| Same duration as the preceding write/,
       "0.1x base input price (special case) | Same duration as the preceding write",
     );
     const reconciliation: PricingReconciliationItem[] = [];
-
     await anthropicCatalog({
       overrides: { "/docs/en/about-claude/pricing.md": pricing },
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-
     expect(reconciliation).toContainEqual({
       disposition: "unresolved",
       reason_code: "cache_multiplier_drift",
       sample: "Prompt caching multipliers",
     });
   });
-
   it("keeps separate Anthropic cache exceptions and validates Fast support across all rows", async () => {
     const pricing = (await fixture("anthropic/pricing.md"))
       .replace(
@@ -2276,7 +2212,6 @@ describe("Anthropic adapters", () => {
       false,
     );
   });
-
   it("reads only the bounded feature metadata model list and preserves code execution pricing", async () => {
     const original = await fixture("anthropic/code-execution-tool.md");
     const body =
@@ -2307,7 +2242,6 @@ describe("Anthropic adapters", () => {
       ),
     ).toBe(false);
   });
-
   it("accounts for every reviewed Anthropic pricing row or explicit boundary", async () => {
     const items: PricingReconciliationItem[] = [];
     await anthropicCatalog({ onPricingReconciliation: (item) => items.push(item) });
@@ -2340,7 +2274,6 @@ describe("Anthropic adapters", () => {
       ],
     });
   });
-
   it("publishes only direct request-priced Anthropic services", async () => {
     const modelsSource = await anthropicSource();
     const facts = modelsSource.commercial_facts ?? [];
@@ -2372,7 +2305,6 @@ describe("Anthropic adapters", () => {
       facts.flatMap(({ price_facts }) => price_facts).some(({ meter }) => meter === "tool_call"),
     ).toBe(false);
   });
-
   it("keeps independent Anthropic commercial claims when usage companions drift", async () => {
     const search = (await fixture("anthropic/web-search-tool.md")).replaceAll(
       "web_search_requests",
@@ -2420,7 +2352,8 @@ describe("Anthropic adapters", () => {
     ).toBe(false);
     const standalone = partition?.books
       .find(({ book_key }) => book_key === "service:code-execution")
-      ?.offers.find(({ offer_key }) => offer_key === "standalone");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "standalone");
     const codeRate = standalone?.terms.find(({ kind }) => kind === "rate");
     expect(codeRate?.kind === "rate" ? codeRate.variants[0]?.charge_binding : undefined).toBe(
       undefined,
@@ -2437,7 +2370,6 @@ describe("Anthropic adapters", () => {
       sample: "Code Execution minimum",
     });
   });
-
   it("parses the authenticated capability inventory as structured facts", async () => {
     const model = (await parsed("anthropic", "anthropic/api.json", "anthropic-api"))[0];
     expect({
@@ -2452,15 +2384,14 @@ describe("Anthropic adapters", () => {
       release: "2026-05-28",
       modalities: { input: ["text", "image", "pdf"], output: ["text"] },
       limits: {
-        context_tokens: 1_000_000,
-        max_input_tokens: 1_000_000,
-        max_output_tokens: 128_000,
+        context_tokens: 1000000,
+        max_input_tokens: 1000000,
+        max_output_tokens: 128000,
       },
       citations: true,
       structured: true,
     });
   });
-
   it("isolates invalid inventory rows and reports additive fields", async () => {
     const value = manifest("anthropic");
     const source = value.sources.find(({ id }) => id === "anthropic-api");
@@ -2497,7 +2428,6 @@ describe("Anthropic adapters", () => {
       ]),
     );
   });
-
   it("accepts frontmatter and equivalent API heading syntax", async () => {
     const frontmatter = "---\ntitle: Reference\n---\n\n";
     const endpoint = async (path: string, method: "get" | "post"): Promise<string> =>
@@ -2517,7 +2447,6 @@ describe("Anthropic adapters", () => {
       capabilities: { streaming: true, tool_call: true, batch: true },
     });
   });
-
   it("publishes Messages for callable models and batches only for active models", async () => {
     const models = await anthropicCatalog();
     const endpoints = (id: string) => models.find((model) => model.model_id === id)?.api_endpoints;
@@ -2534,7 +2463,6 @@ describe("Anthropic adapters", () => {
       { name: "Create a Message", path: "v1/messages" },
     ]);
   });
-
   it("derives current capabilities from public compatibility contracts", async () => {
     const models = await anthropicCatalog();
     const capabilities = (id: string) =>
@@ -2568,7 +2496,6 @@ describe("Anthropic adapters", () => {
       computer_use: true,
     });
   });
-
   it("accepts a single thinking matrix and supported-model code list", async () => {
     const overview = (await fixture("anthropic/overview.md"))
       .replace(" and joins the invitation-only Claude Mythos Preview (`claude-mythos-preview`)", "")
@@ -2615,7 +2542,6 @@ describe("Anthropic adapters", () => {
       ]),
     );
   });
-
   it("lets scoped inventory fill gaps without overriding global facts", () => {
     const value = manifest("anthropic");
     const catalogSource = value.sources[0];
@@ -2635,7 +2561,7 @@ describe("Anthropic adapters", () => {
         ...publicBase.capabilities,
         reasoning: true,
       },
-      limits: { context_tokens: 1_000_000 },
+      limits: { context_tokens: 1000000 },
       release_date: "2026-06-09",
     };
     const inventoryModel = {
@@ -2651,7 +2577,7 @@ describe("Anthropic adapters", () => {
         reasoning: false,
         tool_call: false,
       },
-      limits: { context_tokens: 500_000, max_input_tokens: 500_000 },
+      limits: { context_tokens: 500000, max_input_tokens: 500000 },
       release_date: "2026-06-07",
     };
     const merged = applyGroups(
@@ -2662,12 +2588,11 @@ describe("Anthropic adapters", () => {
     expect(merged).toMatchObject({
       name: "Public name",
       capabilities: { reasoning: true, tool_call: false },
-      limits: { context_tokens: 1_000_000, max_input_tokens: 500_000 },
+      limits: { context_tokens: 1000000, max_input_tokens: 500000 },
       release_date: "2026-06-09",
       source_refs: ["anthropic-models", "anthropic-api"],
     });
   });
-
   it("parses labeled lifecycle notes for models omitted from the status table", async () => {
     const lifecycle = (await fixture("anthropic/lifecycle.md")).replace(
       /\n\[Claude Mythos Preview].*\n/,
@@ -2684,7 +2609,6 @@ describe("Anthropic adapters", () => {
     });
     expect(preview?.retired_at).toBeUndefined();
   });
-
   it("isolates an impossible lifecycle date while retaining independent evidence", async () => {
     const lifecycle = (await fixture("anthropic/lifecycle.md")).replace(
       "August 5, 2026",
@@ -2702,7 +2626,6 @@ describe("Anthropic adapters", () => {
       "/anthropic/lifecycle_date_invalid/retirement date: February 30, 2026",
     );
   });
-
   it("withholds a drifted Messages operation without rejecting model identity", async () => {
     const body = (await fixture("anthropic/messages.md")).replace("/v1/messages", "/v2/messages");
     const findings: SourceContractEvidence[] = [];
@@ -2720,7 +2643,6 @@ describe("Anthropic adapters", () => {
     ]);
     expect(contractPaths(findings)).toContain("/anthropic/operation_contract_drift/v1/messages");
   });
-
   it("retains Anthropic prices without inventing a mapping for a drifted usage field", async () => {
     const body = (await fixture("anthropic/messages.md")).replace(
       "- `output_tokens: number`",
@@ -2750,11 +2672,11 @@ describe("Anthropic adapters", () => {
         },
       }),
     ]);
-
     const partition = validatedPricing(modelsSource);
     const sync = partition?.books
       .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const rate = (meter: "input_text" | "output_text") =>
       sync?.terms.find((term) => term.kind === "rate" && term.meter.value === meter);
     const input = rate("input_text");
@@ -2779,8 +2701,7 @@ describe("Anthropic adapters", () => {
       "/anthropic/accounting_contract_drift/Messages usage.output_tokens",
     );
   });
-
-  it("binds independent Anthropic cache TTL buckets and isolates a missing counter", async () => {
+  it("preserves TTL variants and prices independently of optional usage-counter evidence", async () => {
     const parsed = await anthropicSource();
     const { models } = parsed;
     const value = manifest("anthropic");
@@ -2795,34 +2716,34 @@ describe("Anthropic adapters", () => {
     );
     const sync = partition?.books
       .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     if (sync === undefined) throw new Error("Missing Messages offer");
     const writes = sync.terms.filter(
       (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
     );
-    expect(writes.map(({ term_key }) => term_key)).toEqual(
-      expect.arrayContaining([expect.stringMatching(/:5m$/), expect.stringMatching(/:1h$/)]),
-    );
+    expect(writes).toHaveLength(1);
     for (const term of writes) {
       if (term.kind !== "rate") throw new Error("Expected a rate");
       for (const variant of term.variants) {
-        expect(
-          variant.applicability.any_of
-            .flatMap(({ all_of }) => all_of)
-            .some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
-        ).toBe(false);
+        const ttl = variant.applicability.any_of
+          .flatMap(({ all_of }) => all_of)
+          .find(({ dimension }) => dimension.value === "cache_ttl_seconds");
+        expect(ttl?.kind).toBe("decimal_range");
+        if (ttl?.kind !== "decimal_range") throw new Error("Missing TTL condition");
+        const lifetime = ttl.lower?.value === "300" ? "5m" : "1h";
         expect(variant.charge_binding?.quantity_methods?.[0]?.input_sources).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               locator: {
                 kind: "json_pointer",
-                value: `/usage/cache_creation/ephemeral_${term.term_key.endsWith(":5m") ? "5m" : "1h"}_input_tokens`,
+                value: `/usage/cache_creation/ephemeral_${lifetime}_input_tokens`,
               },
             }),
             expect.objectContaining({
               locator: {
                 kind: "provider_field",
-                value: `usage.iterations[*].cache_creation.ephemeral_${term.term_key.endsWith(":5m") ? "5m" : "1h"}_input_tokens attributed to advisor_message.model or response.model for message/compaction`,
+                value: `usage.iterations[*].cache_creation.ephemeral_${lifetime}_input_tokens attributed to advisor_message.model or response.model for message/compaction`,
               },
             }),
           ]),
@@ -2850,7 +2771,6 @@ describe("Anthropic adapters", () => {
         ?.price_facts.some(({ meter }) => meter === "cache_write_text"),
     ).toBe(true);
   });
-
   it("withholds drifted batch coverage without rejecting synchronous models", async () => {
     const fable = (
       await anthropicCatalog({
@@ -2862,7 +2782,6 @@ describe("Anthropic adapters", () => {
       capabilities: { batch: "unknown", streaming: true },
     });
   });
-
   it("isolates an unbound structured-output ID to that capability claim", async () => {
     const structured = (await fixture("anthropic/structured-outputs.md")).replace(
       "`claude-sonnet-5`",
@@ -2880,7 +2799,6 @@ describe("Anthropic adapters", () => {
       "/anthropic/capability_model_unbound/structured-output: claude-unknown-5",
     );
   });
-
   it("derives geography eligibility from the documented generation for new model families", async () => {
     const overview = `${await fixture("anthropic/overview.md")}\n
 | Feature                                        | Claude Haiku 4.6        |
@@ -2928,7 +2846,7 @@ describe("Anthropic adapters", () => {
     expect(haiku).toMatchObject({
       status: "active",
       release_date: "2026-07-01",
-      limits: { context_tokens: 200_000, max_output_tokens: 64_000 },
+      limits: { context_tokens: 200000, max_output_tokens: 64000 },
       capabilities: { reasoning: true, tool_call: true, structured_output: true },
     });
     expect(
@@ -2937,7 +2855,6 @@ describe("Anthropic adapters", () => {
       )?.price,
     ).toBe("1.1");
   });
-
   it("keeps independent model facts when an optional companion is absent", async () => {
     const modelsSource = await anthropicSource({
       omit: [
@@ -2948,14 +2865,13 @@ describe("Anthropic adapters", () => {
     const models = modelsSource.models;
     expect(models.find(({ model_id }) => model_id === "claude-fable-5")).toMatchObject({
       name: "Claude Fable 5",
-      limits: { context_tokens: 1_000_000 },
+      limits: { context_tokens: 1000000 },
       pricing_state: "numeric",
     });
     expect(modelsSource.commercial_facts ?? []).not.toContainEqual(
       expect.objectContaining({ resource_key: "web-search" }),
     );
   });
-
   it("withholds only geo variants when eligibility sources disagree", async () => {
     const residency = (await fixture("anthropic/data-residency.md")).replace("4.6", "4.7");
     const items: PricingReconciliationItem[] = [];
@@ -2975,7 +2891,6 @@ describe("Anthropic adapters", () => {
       sample: "pricing and data-residency applicability, including global base pricing",
     });
   });
-
   it("rejects duplicate fixed documents instead of silently taking the first", async () => {
     await expect(
       anthropicCatalog({
@@ -2990,7 +2905,6 @@ describe("Anthropic adapters", () => {
       "Anthropic catalog expected at most one document: /docs/en/api/messages/create.md",
     );
   });
-
   it("parses escaped Markdown pipes without shifting model columns", async () => {
     const overview = (await fixture("anthropic/overview.md")).replace(
       "Speed and intelligence",

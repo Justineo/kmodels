@@ -1,9 +1,11 @@
 import type { PricingCatalog } from "./pricing-schema.ts";
 import {
   validatePricingCatalogTopology,
+  validatePricingCatalogProvidersFromTopology,
   type PricingValidationCore,
 } from "./pricing-validation.ts";
 import { runWorkerPool } from "./worker-pool.ts";
+import { selectorWeight, withPricingCanonicalCache } from "./pricing-canonical.ts";
 
 interface ValidationTask {
   providerId: string;
@@ -16,16 +18,97 @@ interface ValidationResult {
   error?: string;
 }
 
-export function validatePricingCatalogInParallel(
+// Overlap the most complex partition with in-process validation of the remaining
+// owned graph. Only one partition is cloned, and its worker ends before return.
+export async function validatePricingCatalogForRead(
   data: PricingCatalog,
   core: PricingValidationCore,
 ): Promise<void> {
   validatePricingCatalogTopology(data, core);
   const tasks = providerTasks(data, core);
+  let remoteIndex = 0;
+  let remoteWeight = -1;
+  for (const [index, task] of tasks.entries()) {
+    const weight = readValidationWeight(task);
+    if (weight > remoteWeight) {
+      remoteIndex = index;
+      remoteWeight = weight;
+    }
+  }
+  const largest = tasks[remoteIndex];
+  if (largest === undefined) return;
+  // A single provider has no independent work to overlap with transport.
+  const remote =
+    tasks.length === 1
+      ? undefined
+      : runWorkerPool(
+          [largest],
+          new URL("./pricing-validation-worker.ts", import.meta.url),
+          validationResult,
+          1,
+        );
+  let localFailure: { index: number; error: Error } | undefined;
+  for (const [index, task] of tasks.entries()) {
+    if (remote !== undefined && index === remoteIndex) continue;
+    try {
+      withPricingCanonicalCache(() =>
+        validatePricingCatalogProvidersFromTopology(task.data, task.core),
+      );
+    } catch (error) {
+      localFailure = {
+        index,
+        error: new Error(
+          `${task.providerId}: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      };
+      break;
+    }
+  }
+  // Execution order can change without changing the original task/error order.
+  // Always await teardown, including when an in-process provider fails first.
+  let remoteFailure: { error: unknown } | undefined;
+  try {
+    await remote;
+  } catch (error) {
+    remoteFailure = { error };
+  }
+  if (localFailure !== undefined && localFailure.index < remoteIndex) throw localFailure.error;
+  if (remoteFailure !== undefined) throw remoteFailure.error;
+  if (localFailure !== undefined) throw localFailure.error;
+}
+
+function readValidationWeight(task: ValidationTask): number {
+  let weight = validationWeight(task);
+  for (const book of task.data.books)
+    for (const offer of book.offers)
+      for (const term of offer.terms) {
+        for (const variant of term.variants) {
+          if ("applicability" in variant) weight += selectorWeight(variant.applicability);
+          else if ("possible_scope" in variant && variant.possible_scope !== undefined)
+            weight += selectorWeight(variant.possible_scope);
+        }
+        if ("raw_variants" in term)
+          for (const variant of term.raw_variants)
+            if (variant.possible_scope !== undefined)
+              weight += selectorWeight(variant.possible_scope);
+      }
+  return weight;
+}
+
+export function validatePricingCatalogInParallel(
+  data: PricingCatalog,
+  core: PricingValidationCore,
+  workerCount: 2 | 3 = 3,
+): Promise<void> {
+  validatePricingCatalogTopology(data, core);
+  const tasks = providerTasks(data, core);
+  // Bound simultaneous provider graph copies. Every partition is still validated;
+  // compilation keeps the worker pool's separate default concurrency.
   return runWorkerPool(
     tasks,
     new URL("./pricing-validation-worker.ts", import.meta.url),
     validationResult,
+    workerCount,
   ).then(() => undefined);
 }
 

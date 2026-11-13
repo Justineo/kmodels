@@ -1,0 +1,578 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "subject": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "model"
+            },
+            "provider_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "provider_id", "model_id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "resource"
+            },
+            "provider_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "book_ref": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": ["kind", "provider_id", "book_ref"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "choices": {
+      "default": [],
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "execution",
+              "account_plan",
+              "billing_mode",
+              "resource_kind",
+              "service_tier",
+              "requested_service_tier",
+              "served_service_tier",
+              "speed"
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "namespace": {
+                    "type": "string",
+                    "const": "kmodels"
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["namespace", "value"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "namespace": {
+                    "type": "string",
+                    "const": "provider"
+                  },
+                  "provider_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["namespace", "provider_id", "value"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["dimension", "value"],
+        "additionalProperties": false
+      }
+    },
+    "meter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "const": "kmodels"
+            },
+            "value": {
+              "type": "string",
+              "enum": [
+                "input_text",
+                "output_text",
+                "cache_read_text",
+                "cache_write_text",
+                "input_audio",
+                "output_audio",
+                "input_image",
+                "output_image",
+                "input_video",
+                "output_video",
+                "image_generation",
+                "video_generation",
+                "embedding",
+                "rerank",
+                "transcription",
+                "speech_generation",
+                "web_search",
+                "image_search",
+                "maps_search",
+                "file_search",
+                "retrieval",
+                "grounded_generation",
+                "code_execution",
+                "container_runtime",
+                "session_runtime",
+                "storage",
+                "data_transfer",
+                "content_safety",
+                "custom_reporting",
+                "training_input",
+                "training_compute",
+                "evaluation",
+                "compute",
+                "provisioned_capacity",
+                "subscription",
+                "acquisition"
+              ]
+            }
+          },
+          "required": ["namespace", "value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "const": "provider"
+            },
+            "provider_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["namespace", "provider_id", "value"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "selectors": {
+      "default": [],
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "dimension": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "kmodels"
+                      },
+                      "value": {
+                        "type": "string",
+                        "enum": [
+                          "model",
+                          "execution",
+                          "region",
+                          "endpoint",
+                          "deployment_type",
+                          "deployment_scope",
+                          "service_tier",
+                          "requested_service_tier",
+                          "served_service_tier",
+                          "speed",
+                          "inference_geo",
+                          "route_provider",
+                          "context_tier",
+                          "modality",
+                          "operation",
+                          "resolution",
+                          "quality",
+                          "search_effort",
+                          "style",
+                          "capacity",
+                          "billing_period",
+                          "billing_currency",
+                          "account_eligibility",
+                          "request_audio",
+                          "voice_control",
+                          "video_input",
+                          "promotion",
+                          "cache_ttl_seconds",
+                          "context_tokens",
+                          "input_tokens",
+                          "output_tokens",
+                          "duration_seconds"
+                        ]
+                      }
+                    },
+                    "required": ["namespace", "value"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "provider"
+                      },
+                      "provider_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["namespace", "provider_id", "value"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "const": "categorical"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "kmodels"
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["namespace", "value"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "provider"
+                      },
+                      "provider_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["namespace", "provider_id", "value"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": ["dimension", "kind", "value"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "dimension": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "kmodels"
+                      },
+                      "value": {
+                        "type": "string",
+                        "enum": [
+                          "model",
+                          "execution",
+                          "region",
+                          "endpoint",
+                          "deployment_type",
+                          "deployment_scope",
+                          "service_tier",
+                          "requested_service_tier",
+                          "served_service_tier",
+                          "speed",
+                          "inference_geo",
+                          "route_provider",
+                          "context_tier",
+                          "modality",
+                          "operation",
+                          "resolution",
+                          "quality",
+                          "search_effort",
+                          "style",
+                          "capacity",
+                          "billing_period",
+                          "billing_currency",
+                          "account_eligibility",
+                          "request_audio",
+                          "voice_control",
+                          "video_input",
+                          "promotion",
+                          "cache_ttl_seconds",
+                          "context_tokens",
+                          "input_tokens",
+                          "output_tokens",
+                          "duration_seconds"
+                        ]
+                      }
+                    },
+                    "required": ["namespace", "value"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "provider"
+                      },
+                      "provider_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["namespace", "provider_id", "value"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "const": "boolean"
+              },
+              "value": {
+                "type": "boolean"
+              }
+            },
+            "required": ["dimension", "kind", "value"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "dimension": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "kmodels"
+                      },
+                      "value": {
+                        "type": "string",
+                        "enum": [
+                          "model",
+                          "execution",
+                          "region",
+                          "endpoint",
+                          "deployment_type",
+                          "deployment_scope",
+                          "service_tier",
+                          "requested_service_tier",
+                          "served_service_tier",
+                          "speed",
+                          "inference_geo",
+                          "route_provider",
+                          "context_tier",
+                          "modality",
+                          "operation",
+                          "resolution",
+                          "quality",
+                          "search_effort",
+                          "style",
+                          "capacity",
+                          "billing_period",
+                          "billing_currency",
+                          "account_eligibility",
+                          "request_audio",
+                          "voice_control",
+                          "video_input",
+                          "promotion",
+                          "cache_ttl_seconds",
+                          "context_tokens",
+                          "input_tokens",
+                          "output_tokens",
+                          "duration_seconds"
+                        ]
+                      }
+                    },
+                    "required": ["namespace", "value"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "const": "provider"
+                      },
+                      "provider_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["namespace", "provider_id", "value"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "const": "decimal"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d*[1-9])?$"
+              },
+              "unit": {
+                "type": "object",
+                "properties": {
+                  "factors": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "unit": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "namespace": {
+                                  "type": "string",
+                                  "const": "kmodels"
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "enum": [
+                                    "token",
+                                    "character",
+                                    "byte",
+                                    "pixel",
+                                    "request",
+                                    "event",
+                                    "item",
+                                    "image",
+                                    "page",
+                                    "frame",
+                                    "second",
+                                    "billing_day",
+                                    "billing_month",
+                                    "billing_year",
+                                    "seat",
+                                    "instance",
+                                    "replica",
+                                    "accelerator",
+                                    "capacity_unit"
+                                  ]
+                                }
+                              },
+                              "required": ["namespace", "value"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "namespace": {
+                                  "type": "string",
+                                  "const": "provider"
+                                },
+                                "provider_id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["namespace", "provider_id", "value"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "power": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 8
+                        }
+                      },
+                      "required": ["unit", "power"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["factors"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["dimension", "kind", "value", "unit"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "offer_ref": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evaluated_at": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+    }
+  },
+  "required": ["subject"],
+  "additionalProperties": false
+}

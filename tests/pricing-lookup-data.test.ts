@@ -1,18 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  calculationExport,
-  calculationExportAssets,
-} from "../src/catalog/pricing-calculator-export.ts";
-import { calculationCoverage } from "../src/catalog/pricing-calculation-coverage.ts";
+import { priceDataExport, priceDataExportAssets } from "../src/catalog/pricing-lookup-export.ts";
+import { priceDataCoverage } from "../src/catalog/pricing-coverage.ts";
 import { providerPricingFreshnessSchema } from "../src/catalog/pricing-schema.ts";
 import { capturePricingSourceRecords } from "../src/catalog/pricing-source-records.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import {
   validatePriceData,
-  type CalculationEnvelope,
-  type CalculationOffer,
-  type CalculationRate,
-  type CalculationTerm,
+  type PriceDataEnvelope,
+  type PriceDataOffer,
+  type PriceDataRate,
+  type PriceDataTerm,
 } from "../src/pricing/index.ts";
 import type {
   PriceRateVariant,
@@ -20,20 +17,13 @@ import type {
   PricingOffer,
   PricingTerm,
 } from "../src/catalog/pricing-schema.ts";
-import {
-  evaluateChargeQuantity,
-  requiredUsageSignals,
-  type QuantityBinding,
-} from "../src/catalog/pricing-calculation.ts";
 import { generatedData } from "./generated-data-context.ts";
 
-describe("calculation exports", () => {
+describe("unit-price exports", () => {
   it("validates complete provider partitions and preserves all commercial components", async () => {
     const { catalog, pricing } = await generatedData();
     for (const snapshot of pricing.data.provider_snapshots) {
-      const envelope = validatePriceData(
-        calculationExport(catalog, pricing, [snapshot.provider_id]),
-      );
+      const envelope = validatePriceData(priceDataExport(catalog, pricing, [snapshot.provider_id]));
       const provider = envelope.providers[0];
       if (provider === undefined) throw new Error("Missing exported provider");
       const { source_records: _sourceRecords, ...freshness } = snapshot;
@@ -82,7 +72,7 @@ describe("calculation exports", () => {
       })),
     );
     const exported = validatePriceData(
-      calculationExport(
+      priceDataExport(
         catalog,
         {
           ...pricing,
@@ -105,7 +95,7 @@ describe("calculation exports", () => {
         [snapshot.provider_id],
       ),
     ).providers[0];
-    const baseline = calculationExport(catalog, pricing, [snapshot.provider_id]).providers[0];
+    const baseline = priceDataExport(catalog, pricing, [snapshot.provider_id]).providers[0];
     expect(exported?.sources).toEqual(captured.snapshot.source_records);
     expect(exported?.snapshot).not.toHaveProperty("source_records");
     expect(exported?.snapshot).toMatchObject({ publication: "retained", observed_at: historical });
@@ -117,26 +107,26 @@ describe("calculation exports", () => {
     const providerId = pricing.data.provider_snapshots[0]?.provider_id;
     if (providerId === undefined) throw new Error("Missing provider snapshot");
     for (const selection of [[], [providerId, providerId], ["example/missing"]]) {
-      expect(() => calculationExport(catalog, pricing, selection)).toThrow(
+      expect(() => priceDataExport(catalog, pricing, selection)).toThrow(
         "complete provider partitions",
       );
     }
   });
-  it("publishes the index, coverage and per-provider calculation assets", async () => {
+  it("publishes the index, coverage and per-provider unit-price assets", async () => {
     const { catalog, pricing } = await generatedData();
-    const fileNames = calculationExportAssets(catalog, pricing).map(({ fileName }) => fileName);
+    const fileNames = priceDataExportAssets(catalog, pricing).map(({ fileName }) => fileName);
     expect(fileNames).toEqual([
-      "pricing/calculation/index.json",
-      "pricing/calculation/coverage.json",
+      "pricing/lookup/index.json",
+      "pricing/lookup/coverage.json",
       ...pricing.data.provider_snapshots.map(
-        ({ provider_id }) => `pricing/calculation/providers/${provider_id}.json`,
+        ({ provider_id }) => `pricing/lookup/providers/${provider_id}.json`,
       ),
     ]);
   }, 90_000);
 });
 
 function expectExportedOffers(
-  exportedOffers: CalculationOffer[],
+  exportedOffers: PriceDataOffer[],
   canonicalBooks: PricingBook[],
 ): void {
   const offersById = new Map(exportedOffers.map((offer) => [offer.id, offer]));
@@ -149,7 +139,7 @@ function expectExportedOffers(
   }
 }
 
-function expectOfferMatchesCanonical(exported: CalculationOffer, canonical: PricingOffer): void {
+function expectOfferMatchesCanonical(exported: PriceDataOffer, canonical: PricingOffer): void {
   expect(exported.enrollment.map(({ evidence: _evidence, ...value }) => value)).toEqual(
     canonical.enrollment.map(({ observations: _observations, ...value }) => value),
   );
@@ -164,7 +154,7 @@ function expectOfferMatchesCanonical(exported: CalculationOffer, canonical: Pric
   }
 }
 
-function expectTermMatchesCanonical(exported: CalculationTerm, canonical: PricingTerm): void {
+function expectTermMatchesCanonical(exported: PriceDataTerm, canonical: PricingTerm): void {
   expect(exported.kind).toBe(canonical.kind);
   expect(exported.variants.length).toBe(canonical.variants.length);
   if (canonical.kind === "allowance" && exported.kind === "allowance") {
@@ -185,7 +175,7 @@ function expectTermMatchesCanonical(exported: CalculationTerm, canonical: Pricin
   }
 }
 
-function expectRateMatchesCanonical(exported: CalculationRate, canonical: PriceRateVariant): void {
+function expectRateMatchesCanonical(exported: PriceDataRate, canonical: PriceRateVariant): void {
   expect(exported.price).toEqual(canonical.price);
   expect(exported.applicability).toEqual(canonical.applicability);
   expect(exported.validity).toEqual(canonical.validity);
@@ -194,38 +184,22 @@ function expectRateMatchesCanonical(exported: CalculationRate, canonical: PriceR
   const { observations: _observations, ...canonicalBinding } = canonical.charge_binding;
   const { evidence: _evidence, ...exportedBinding } = exported.charge_binding;
   expect(exportedBinding).toEqual(canonicalBinding);
-  expect(quantityEvaluationOrError(exported.charge_binding)).toEqual(
-    quantityEvaluationOrError(canonical.charge_binding),
-  );
 }
 
 function expectCoverageMatchesTerms(
-  envelope: CalculationEnvelope,
+  envelope: PriceDataEnvelope,
   canonicalBooks: PricingBook[],
 ): void {
-  const coverage = calculationCoverage(envelope).providers[0];
+  const coverage = priceDataCoverage(envelope).providers[0];
   const termCount = canonicalBooks
     .flatMap((book) => book.offers)
     .reduce((count, offer) => count + offer.terms.length, 0);
   expect(coverage?.components.length).toBe(termCount);
 }
 
-function expectObservationFragmentsOmitted(envelope: CalculationEnvelope): void {
+function expectObservationFragmentsOmitted(envelope: PriceDataEnvelope): void {
   const serialized = JSON.stringify(envelope);
   expect(serialized).not.toContain('"observations":');
   expect(serialized).not.toContain('"raw":');
   expect(serialized).not.toContain('"fragment":');
-}
-
-function quantityEvaluationOrError(binding: QuantityBinding): unknown {
-  const quantities = requiredUsageSignals(binding).map((signal) => ({
-    signal,
-    value: { numerator: "1", denominator: "1" },
-  }));
-  try {
-    return evaluateChargeQuantity(binding, quantities);
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    return { error: error.message };
-  }
 }

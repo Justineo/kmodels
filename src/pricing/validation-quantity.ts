@@ -3,14 +3,14 @@ import {
   requiredUsageSignals,
   requiredUsageSignalsForMethod,
   validateUsageQuantityCalculation,
-} from "../catalog/pricing-calculation.ts";
+} from "../catalog/pricing-quantity-contract.ts";
 import type {
   UnitExpression,
   UsageQuantityCalculation,
   UsageQuantityMethod,
   UsageQuantityNode,
 } from "../catalog/pricing-schema.ts";
-import type { CalculationBinding, CalculationProvider } from "./schema.ts";
+import type { PriceDataBinding, PriceDataProvider } from "./schema.ts";
 import { signalUnit, unitKey } from "./validation-vocabulary.ts";
 
 const itemUnitKey = unitKey({
@@ -18,8 +18,8 @@ const itemUnitKey = unitKey({
 });
 
 export function validateBinding(
-  binding: CalculationBinding,
-  provider: CalculationProvider,
+  binding: PriceDataBinding,
+  provider: PriceDataProvider,
   expectedUnit: UnitExpression,
 ): void {
   const outputUnit = unitKey(signalUnit(binding.signal, provider));
@@ -33,7 +33,7 @@ export function validateBinding(
   }
 }
 
-function validateMethodSources(binding: CalculationBinding, method: UsageQuantityMethod): void {
+function validateMethodSources(binding: PriceDataBinding, method: UsageQuantityMethod): void {
   if (method.input_sources === undefined) return;
   const requiredSignals = new Set(
     requiredUsageSignalsForMethod(binding, method).map(canonicalJson),
@@ -44,7 +44,7 @@ function validateMethodSources(binding: CalculationBinding, method: UsageQuantit
 
 function validateCalculationUnits(
   calculation: UsageQuantityCalculation,
-  provider: CalculationProvider,
+  provider: PriceDataProvider,
   expectedUnit: string,
 ): void {
   validateUsageQuantityCalculation(calculation);
@@ -57,7 +57,7 @@ function validateCalculationUnits(
 function nodeUnit(
   node: UsageQuantityNode,
   computedUnits: string[],
-  provider: CalculationProvider,
+  provider: PriceDataProvider,
 ): string {
   switch (node.op) {
     case "constant":

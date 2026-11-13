@@ -1,0 +1,1050 @@
+{
+  "datasets": {
+    "base": {
+      "schemaVersion": "2.0",
+      "snapshot": {
+        "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generatedAt": "2026-09-05T00:00:00.000Z"
+      },
+      "providers": [
+        {
+          "snapshot": {
+            "provider_id": "example",
+            "publication": "fresh",
+            "observed_at": "2026-09-05T00:00:00.000Z"
+          },
+          "vocabulary": { "provider_id": "example", "atoms": [] },
+          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "sources": [
+            {
+              "id": "example/source",
+              "url": "https://example.invalid/pricing",
+              "observed_at": "2026-09-05T00:00:00.000Z",
+              "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "extractor_version": "synthetic-v1"
+            }
+          ],
+          "books": [
+            {
+              "id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "provider_id": "example",
+              "book_key": "model",
+              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "evidence": [
+                {
+                  "source_ref": "example/source",
+                  "locator": { "kind": "table", "value": "synthetic" }
+                }
+              ],
+              "resource_edges": [],
+              "offers": [
+                {
+                  "id": "0000000000000000000000000000000000000000000000000000000000000002",
+                  "offer_key": "inference",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000003",
+                      "term_key": "input",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "1000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ],
+                            "quantity_methods": [
+                              {
+                                "calculation": {
+                                  "nodes": [
+                                    {
+                                      "op": "signal",
+                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
+                                    },
+                                    {
+                                      "op": "signal",
+                                      "signal": {
+                                        "namespace": "kmodels",
+                                        "value": "cached_input_tokens"
+                                      }
+                                    },
+                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
+                                  ],
+                                  "result": 2
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000004",
+                      "term_key": "cached",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "10000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000005",
+                      "term_key": "output",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "500" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                }
+              ],
+              "source_refs": ["example/source"]
+            }
+          ]
+        }
+      ]
+    },
+    "tier": {
+      "schemaVersion": "2.0",
+      "snapshot": {
+        "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generatedAt": "2026-09-05T00:00:00.000Z"
+      },
+      "providers": [
+        {
+          "snapshot": {
+            "provider_id": "example",
+            "publication": "fresh",
+            "observed_at": "2026-09-05T00:00:00.000Z"
+          },
+          "vocabulary": {
+            "provider_id": "example",
+            "atoms": [
+              {
+                "kind": "categorical_value",
+                "key": "standard",
+                "dimension": { "namespace": "kmodels", "value": "served_service_tier" },
+                "definition": "Synthetic served tier."
+              },
+              {
+                "kind": "categorical_value",
+                "key": "priority",
+                "dimension": { "namespace": "kmodels", "value": "served_service_tier" },
+                "definition": "Synthetic served tier."
+              }
+            ]
+          },
+          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "sources": [
+            {
+              "id": "example/source",
+              "url": "https://example.invalid/pricing",
+              "observed_at": "2026-09-05T00:00:00.000Z",
+              "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "extractor_version": "synthetic-v1"
+            }
+          ],
+          "books": [
+            {
+              "id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "provider_id": "example",
+              "book_key": "model",
+              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "evidence": [
+                {
+                  "source_ref": "example/source",
+                  "locator": { "kind": "table", "value": "synthetic" }
+                }
+              ],
+              "resource_edges": [],
+              "offers": [
+                {
+                  "id": "0000000000000000000000000000000000000000000000000000000000000002",
+                  "offer_key": "inference",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000003",
+                      "term_key": "input",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "1000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": {
+                            "any_of": [
+                              {
+                                "all_of": [
+                                  {
+                                    "kind": "categorical",
+                                    "dimension": {
+                                      "namespace": "kmodels",
+                                      "value": "served_service_tier"
+                                    },
+                                    "values": [
+                                      {
+                                        "namespace": "provider",
+                                        "provider_id": "example",
+                                        "value": "standard"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ],
+                            "quantity_methods": [
+                              {
+                                "calculation": {
+                                  "nodes": [
+                                    {
+                                      "op": "signal",
+                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
+                                    },
+                                    {
+                                      "op": "signal",
+                                      "signal": {
+                                        "namespace": "kmodels",
+                                        "value": "cached_input_tokens"
+                                      }
+                                    },
+                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
+                                  ],
+                                  "result": 2
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "500" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": {
+                            "any_of": [
+                              {
+                                "all_of": [
+                                  {
+                                    "kind": "categorical",
+                                    "dimension": {
+                                      "namespace": "kmodels",
+                                      "value": "served_service_tier"
+                                    },
+                                    "values": [
+                                      {
+                                        "namespace": "provider",
+                                        "provider_id": "example",
+                                        "value": "priority"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ],
+                            "quantity_methods": [
+                              {
+                                "calculation": {
+                                  "nodes": [
+                                    {
+                                      "op": "signal",
+                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
+                                    },
+                                    {
+                                      "op": "signal",
+                                      "signal": {
+                                        "namespace": "kmodels",
+                                        "value": "cached_input_tokens"
+                                      }
+                                    },
+                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
+                                  ],
+                                  "result": 2
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000004",
+                      "term_key": "cached",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "10000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000005",
+                      "term_key": "output",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "500" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                }
+              ],
+              "source_refs": ["example/source"]
+            }
+          ]
+        }
+      ]
+    },
+    "contribution": {
+      "schemaVersion": "2.0",
+      "snapshot": {
+        "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generatedAt": "2026-09-05T00:00:00.000Z"
+      },
+      "providers": [
+        {
+          "snapshot": {
+            "provider_id": "example",
+            "publication": "fresh",
+            "observed_at": "2026-09-05T00:00:00.000Z"
+          },
+          "vocabulary": { "provider_id": "example", "atoms": [] },
+          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "sources": [
+            {
+              "id": "example/source",
+              "url": "https://example.invalid/pricing",
+              "observed_at": "2026-09-05T00:00:00.000Z",
+              "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "extractor_version": "synthetic-v1"
+            }
+          ],
+          "books": [
+            {
+              "id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "provider_id": "example",
+              "book_key": "model",
+              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "evidence": [
+                {
+                  "source_ref": "example/source",
+                  "locator": { "kind": "table", "value": "synthetic" }
+                }
+              ],
+              "resource_edges": [],
+              "offers": [
+                {
+                  "id": "0000000000000000000000000000000000000000000000000000000000000002",
+                  "offer_key": "inference",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000003",
+                      "term_key": "input",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "1000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ],
+                            "quantity_methods": [
+                              {
+                                "calculation": {
+                                  "nodes": [
+                                    {
+                                      "op": "signal",
+                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
+                                    },
+                                    {
+                                      "op": "signal",
+                                      "signal": {
+                                        "namespace": "kmodels",
+                                        "value": "cached_input_tokens"
+                                      }
+                                    },
+                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
+                                  ],
+                                  "result": 2
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000004",
+                      "term_key": "cached",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "10000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000070",
+                      "term_key": "advisor-output",
+                      "kind": "contribution",
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "target_rate_refs": [
+                            "000000000000000000000000000000000000000000000000000000000000006f"
+                          ],
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "charge_bindings": [
+                            {
+                              "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                              "aggregation": "request",
+                              "evidence": [
+                                {
+                                  "source_ref": "example/source",
+                                  "locator": { "kind": "table", "value": "synthetic" }
+                                }
+                              ]
+                            }
+                          ],
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ]
+                        }
+                      ],
+                      "raw_variants": []
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                },
+                {
+                  "id": "000000000000000000000000000000000000000000000000000000000000006e",
+                  "offer_key": "advisor",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "000000000000000000000000000000000000000000000000000000000000006f",
+                      "term_key": "output",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "500" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                }
+              ],
+              "source_refs": ["example/source"]
+            }
+          ]
+        }
+      ]
+    },
+    "contribution-raw-target": {
+      "schemaVersion": "2.0",
+      "snapshot": {
+        "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generatedAt": "2026-09-05T00:00:00.000Z"
+      },
+      "providers": [
+        {
+          "snapshot": {
+            "provider_id": "example",
+            "publication": "fresh",
+            "observed_at": "2026-09-05T00:00:00.000Z"
+          },
+          "vocabulary": { "provider_id": "example", "atoms": [] },
+          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "sources": [
+            {
+              "id": "example/source",
+              "url": "https://example.invalid/pricing",
+              "observed_at": "2026-09-05T00:00:00.000Z",
+              "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "extractor_version": "synthetic-v1"
+            }
+          ],
+          "books": [
+            {
+              "id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "provider_id": "example",
+              "book_key": "model",
+              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "evidence": [
+                {
+                  "source_ref": "example/source",
+                  "locator": { "kind": "table", "value": "synthetic" }
+                }
+              ],
+              "resource_edges": [],
+              "offers": [
+                {
+                  "id": "0000000000000000000000000000000000000000000000000000000000000002",
+                  "offer_key": "inference",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000003",
+                      "term_key": "input",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "1000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ],
+                            "quantity_methods": [
+                              {
+                                "calculation": {
+                                  "nodes": [
+                                    {
+                                      "op": "signal",
+                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
+                                    },
+                                    {
+                                      "op": "signal",
+                                      "signal": {
+                                        "namespace": "kmodels",
+                                        "value": "cached_input_tokens"
+                                      }
+                                    },
+                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
+                                  ],
+                                  "result": 2
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000004",
+                      "term_key": "cached",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "10000" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": []
+                    },
+                    {
+                      "id": "0000000000000000000000000000000000000000000000000000000000000070",
+                      "term_key": "advisor-output",
+                      "kind": "contribution",
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "target_rate_refs": [
+                            "000000000000000000000000000000000000000000000000000000000000006f"
+                          ],
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "charge_bindings": [
+                            {
+                              "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                              "aggregation": "request",
+                              "evidence": [
+                                {
+                                  "source_ref": "example/source",
+                                  "locator": { "kind": "table", "value": "synthetic" }
+                                }
+                              ]
+                            }
+                          ],
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ]
+                        }
+                      ],
+                      "raw_variants": []
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                },
+                {
+                  "id": "000000000000000000000000000000000000000000000000000000000000006e",
+                  "offer_key": "advisor",
+                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
+                  "states": [
+                    {
+                      "state": "numeric",
+                      "applicability": { "any_of": [{ "all_of": [] }] },
+                      "evidence": [
+                        {
+                          "source_ref": "example/source",
+                          "locator": { "kind": "table", "value": "synthetic" }
+                        }
+                      ]
+                    }
+                  ],
+                  "terms": [
+                    {
+                      "id": "000000000000000000000000000000000000000000000000000000000000006f",
+                      "term_key": "output",
+                      "kind": "rate",
+                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "source_refs": ["example/source"],
+                      "variants": [
+                        {
+                          "price": {
+                            "value": { "numerator": "1", "denominator": "500" },
+                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "per": {
+                              "factors": [
+                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                              ]
+                            }
+                          },
+                          "applicability": { "any_of": [{ "all_of": [] }] },
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ],
+                          "charge_binding": {
+                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
+                            "aggregation": "request",
+                            "evidence": [
+                              {
+                                "source_ref": "example/source",
+                                "locator": { "kind": "table", "value": "synthetic" }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "raw_variants": [
+                        {
+                          "impact": "base_price",
+                          "reason": "conflicting_values",
+                          "evidence": [
+                            {
+                              "source_ref": "example/source",
+                              "locator": { "kind": "table", "value": "synthetic" }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "relations": [],
+                  "source_refs": ["example/source"],
+                  "enrollment": [],
+                  "settlement": []
+                }
+              ],
+              "source_refs": ["example/source"]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

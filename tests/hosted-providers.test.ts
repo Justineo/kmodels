@@ -5,7 +5,7 @@ import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { togetherNextLibraryPage } from "../src/catalog/together-metadata.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
@@ -268,14 +268,14 @@ describe("Together AI Serverless", () => {
         expect.arrayContaining([expect.objectContaining({ model_id: "Example/Vision-Chat" })]),
       );
       const lookup = createInferencePriceLookup(
-        calculationExport(candidate.catalog, candidate.pricing),
+        priceDataExport(candidate.catalog, candidate.pricing),
         inference?.mapping,
       );
       const whisper = { provider_id: "together", model_id: "Example/ASR" };
       expect(lookup(whisper)).toMatchObject({
         execution_modes: ["batch", "request"],
         requires_execution_mode_choice: true,
-        missing_conditions: [],
+        missing_conditions: [{ namespace: "kmodels", value: "execution" }],
       });
       for (const [value, denominator] of [
         ["standard", "6000"],
@@ -287,11 +287,7 @@ describe("Together AI Serverless", () => {
         });
         expect(selected.status).toBe("matched");
         expect(selected.missing_conditions).toEqual([]);
-        expect(
-          selected.candidates.every(
-            ({ offer }) => offer.offer_key === (value === "batch" ? "batch" : "usage"),
-          ),
-        ).toBe(true);
+        expect(selected.candidates.every(({ offer }) => offer.offer_key === "public")).toBe(true);
         expect(
           selected.candidates.flatMap(({ offer }) =>
             offer.terms.flatMap((term) =>

@@ -95,7 +95,7 @@ function assemble(cards: SourcePriceFact[], prices: SourcePriceFact[]) {
   return { term, offer };
 }
 
-it("replaces an unqualified card write quote with independent lifetime charges without billing it twice", () => {
+it("replaces an unqualified card write quote with the authoritative TTL-qualified variants", () => {
   const write = (price: string, ttl?: number): SourcePriceFact => ({
     ...rate(price, ttl === undefined ? {} : { cache_ttl_seconds: ttl }),
     meter: "cache_write_text",
@@ -103,10 +103,7 @@ it("replaces an unqualified card write quote with independent lifetime charges w
   const { offer } = assemble([write("2.50")], [write("2.50", 1800), write("5.00", 43200)]);
   expect(offer).toBeDefined();
   const rates = offer?.terms.filter((term) => term.kind === "rate" && term.variants.length > 0);
-  expect(rates?.map((term) => term.term_key).sort()).toEqual([
-    "cache_write_text:12h",
-    "cache_write_text:30m",
-  ]);
+  expect(rates?.map((term) => term.term_key)).toEqual(["cache_write_text"]);
   expect(
     rates
       ?.flatMap((term) => (term.kind === "rate" ? term.variants : []))

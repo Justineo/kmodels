@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Regional origin and currency remain explicit; synchronous and Batch execution qualify one public model usage relationship. Retain each branch's exact counters and cache treatment. Search, Fetch, files and formula services remain independent books. REST/Responses and formula operation names qualify service terms, not commercial relationships. Disjoint execution conditions replace same-book sync/Batch exclusion edges; service composition remains explicit.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary and source authority
 
 Kmodels publishes Kimi's public price book and the machine-readable inputs needed to calculate its
@@ -89,14 +101,15 @@ and the semantic labels remain validated.
 ### Inference model ID pricing
 
 Each labeled model row on an official regional price page establishes the exact request ID and
-its existing synchronous or Batch offer. Direct associations reference those canonical offers;
+its synchronous or Batch source context. Direct associations resolve to the relationship and
+its exact execution conditions;
 they do not depend on OpenAPI, protocol capabilities, account inventories or usage-field contracts.
 Fresh pricing sources replace their own associations. Removed regional prices cannot be restored
 by the same ID remaining in the other region, and removal from both sources withdraws the mapping.
 
-The ID fixes no region or cache TTL. Callers select China or International according to the actual
-API origin, then a synchronous or Batch offer where both are published. Cache-write tariffs retain
-their TTL condition. Missing values return candidates; a known region with no surviving tariff returns
+The ID fixes no region. Callers select China or International according to the actual
+API origin, then synchronous or Batch execution where both are published. Cache-write TTL columns
+remain conditions on `cache_write_text` variants. Missing conditions return candidates; a known region with no surviving tariff returns
 no applicable price. Unregistered selector values fail input validation. Highspeed IDs remain independent exact identifiers, without inferred suffix aliases or
 discounts. Private deployment names, guessed regional prefixes and display names remain unknown.
 
@@ -121,10 +134,10 @@ Standard rates per one million tokens are:
 K3.1 Pro additionally charges CNY 13 / USD 2 for a 300-second write TTL and CNY 26 / USD 4 for a 3,600-second TTL;
 K3.1 Pro Highspeed charges CNY 26 / USD 4 and CNY 52 / USD 8. K3 additionally charges cache writes per million tokens: CNY 20 / USD 3 for a 300-second TTL and
 CNY 40 / USD 6 for a 3,600-second TTL. Cache hits do not incur another write charge. These are
-separate `cache_write_text` rates with `cache_ttl_seconds` applicability; callers supply the write
-quantity through the documented protocol counters below. The applicable TTL remains caller-owned:
-native requests use `5m` / `1h` strings and defaults, while the catalog selector uses seconds. No
-numeric JSON pointer is invented for that conversion.
+variants of `cache_write_text` qualified by `cache_ttl_seconds`. Preserve those conditions through
+assembly, lookup and UI. Selecting region or execution must not remove TTL from surviving write
+variants. Unit-price selection takes no usage quantities. Aggregate accounting fields do not
+establish per-TTL breakdowns, and that acquisition limit cannot erase published prices.
 
 Current Batch tables publish K3.1 Pro, K3, K2.7 Code and K2.6 rates. K3.1 Pro and K3 also have
 TTL-specific Batch cache-write prices; K2 rows explicitly leave those columns unquoted. Extract
@@ -155,7 +168,7 @@ represented by `web_search_call` output items, including image search at the sam
 publishes the execution rate for `kimi-k3`. The current policy excludes failed requests. Both
 quantities remain caller-supplied until a reviewed extraction method establishes billable results.
 The historical Chat `$web_search` and Fiber-creation locators are scoped to their earlier evidence
-and do not carry into the current execution offers.
+and do not carry into the current execution branches.
 
 Independent REST tools have their own resource books and no invented model relationships:
 `POST /v1/tools/search` and `/v1/tools/fetch` cost CNY 0.01 / USD 0.002 per qualifying call;
@@ -186,15 +199,15 @@ payload escape hatch.
 | Regional selection                | `region`                    | Request `HttpRequest.api_origin`                                                  | Map `.cn` to China and `.ai` to International. Every regional rate variant carries this selector source.                                                                                                                              |
 | Chat cache hit                    | `cached_input_tokens`       | Response or terminal stream `/usage/cached_tokens`                                | Direct quantity. A complete stream requires the final usage chunk.                                                                                                                                                                    |
 | Chat cache miss                   | `uncached_input_tokens`     | Response or stream prompt, cached and, for a separate write tariff, written usage | With a separate write tariff, the owned schema must prove three exclusive partitions: `max(prompt_tokens - (cached_tokens + cache_write_tokens), 0)`. Without that tariff, ordinary input is `max(prompt_tokens - cached_tokens, 0)`. |
-| Chat cache write                  | `cache_write_tokens`        | Response or terminal stream `/usage/prompt_tokens_details/cache_write_tokens`     | Direct quantity; TTL must select the applicable write rate.                                                                                                                                                                           |
+| Chat cache write                  | `cache_write_tokens`        | Response or terminal stream `/usage/prompt_tokens_details/cache_write_tokens`     | Aggregate accounting metadata; it does not establish a TTL breakdown or constrain unit-price lookup.                                                                                                                                  |
 | Chat output                       | `output_tokens`             | Response or terminal stream `/usage/completion_tokens`                            | Direct quantity. Thinking is already included in output.                                                                                                                                                                              |
 | K3 Responses cache hit            | `cached_input_tokens`       | Response `/usage/input_tokens_details/cached_tokens`                              | Direct quantity.                                                                                                                                                                                                                      |
 | K3 Responses cache miss           | `uncached_input_tokens`     | Caller-supplied uncached input                                                    | The schema does not prove whether total input includes cache writes. No subtraction formula is inferred for separately priced writes.                                                                                                 |
-| K3 Responses cache write          | `cache_write_tokens`        | Response `/usage/input_tokens_details/cache_write_tokens`                         | Direct quantity. The OpenAPI has no typed terminal SSE payload, so no Responses-stream locator is invented.                                                                                                                           |
+| K3 Responses cache write          | `cache_write_tokens`        | Response `/usage/input_tokens_details/cache_write_tokens`                         | Aggregate accounting metadata; no TTL breakdown or Responses-stream locator is inferred.                                                                                                                                              |
 | K3 Responses output               | `output_tokens`             | Response `/usage/output_tokens`                                                   | Direct quantity; the field explicitly includes reasoning tokens.                                                                                                                                                                      |
 | K3 Anthropic Messages cache hit   | `cached_input_tokens`       | Response or terminal `message_delta` cache-read usage                             | Direct quantity.                                                                                                                                                                                                                      |
 | K3 Anthropic Messages cache miss  | `uncached_input_tokens`     | Response or terminal `message_delta` `/usage/input_tokens`                        | Direct quantity only when the owned schema explicitly excludes cache hits and cache writes.                                                                                                                                           |
-| K3 Anthropic Messages cache write | `cache_write_tokens`        | Response or terminal `message_delta` `/usage/cache_creation_input_tokens`         | Direct quantity; TTL remains caller-owned.                                                                                                                                                                                            |
+| K3 Anthropic Messages cache write | `cache_write_tokens`        | Response or terminal `message_delta` `/usage/cache_creation_input_tokens`         | Aggregate accounting metadata; per-TTL usage attribution belongs to the consumer and is unnecessary for unit-price lookup.                                                                                                            |
 | K3 Anthropic Messages output      | `output_tokens`             | Response or terminal `message_delta` `/usage/output_tokens`                       | Direct quantity; output includes thinking.                                                                                                                                                                                            |
 | Responses web search              | executed web searches       | Caller-supplied billable `web_search_call` count                                  | The current offer counts executed searches, including image searches at the same price.                                                                                                                                               |
 | Formula web search                | billable Formula executions | Caller-supplied billable execution count                                          | Uses the exact `moonshot/web-search:latest` URI. Fiber creation alone does not establish the billed outcome.                                                                                                                          |

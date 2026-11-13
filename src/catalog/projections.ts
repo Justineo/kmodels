@@ -1,11 +1,12 @@
 import { createAssetPack, type EncodedAssetPack } from "./asset-pack.ts";
 import { catalogExportAssets, websiteAssets } from "./endpoints.ts";
 import { sha256 } from "./io.ts";
-import { calculationExportAssets } from "./pricing-calculator-export.ts";
+import { priceDataExportAssets } from "./pricing-lookup-export.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { inferencePricingPath, type InferencePricingPublication } from "./inference-pricing.ts";
 import { websiteInferencePrices } from "./website-inference-pricing.ts";
+import { withPricingCanonicalCache } from "./pricing-canonical.ts";
 
 export interface ProjectionInput {
   pairId: string;
@@ -13,6 +14,7 @@ export interface ProjectionInput {
   pricing: PricingCatalogEnvelope;
   catalogAssetSource: string;
   pricingAssetSource: string;
+  pricingAssetChunks?: readonly string[];
   inference?: InferencePricingPublication;
 }
 
@@ -37,6 +39,19 @@ export async function projectCatalogPair(input: ProjectionInput): Promise<PairPr
     input.pricing.pricing_data_version,
     input.inference?.source,
   );
+  // Projection indexes are temporary even when the caller retains the old pair.
+  // End the synchronous cache scope before asynchronous encoding/compression.
+  const { uiAssets, exportAssets } = withPricingCanonicalCache(() =>
+    projectionAssets(input, dataVersion),
+  );
+  const [ui, exports] = await Promise.all([
+    createAssetPack("ui", input.pairId, dataVersion, uiAssets),
+    createAssetPack("exports", input.pairId, input.pairId, exportAssets),
+  ]);
+  return { ui, exports };
+}
+
+function projectionAssets(input: ProjectionInput, dataVersion: string) {
   const uiAssets = websiteAssets(
     input.catalog,
     input.pricing.data,
@@ -47,18 +62,13 @@ export async function projectCatalogPair(input: ProjectionInput): Promise<PairPr
   );
   const exportAssets = [
     ...catalogExportAssets(input.catalog, input.catalogAssetSource),
-    { fileName: "pricing/index.json", source: input.pricingAssetSource },
-    ...calculationExportAssets(input.catalog, input.pricing),
+    input.pricingAssetChunks === undefined
+      ? { fileName: "pricing/index.json", source: input.pricingAssetSource }
+      : { fileName: "pricing/index.json", sourceChunks: input.pricingAssetChunks },
+    ...priceDataExportAssets(input.catalog, input.pricing),
     ...(input.inference === undefined
       ? []
       : [{ fileName: inferencePricingPath, source: input.inference.source }]),
   ];
-  const [ui, exports] = await Promise.all([
-    createAssetPack("ui", input.pairId, dataVersion, uiAssets),
-    createAssetPack("exports", input.pairId, input.pairId, exportAssets),
-  ]);
-  return {
-    ui,
-    exports,
-  };
+  return { uiAssets, exportAssets };
 }

@@ -1,12 +1,11 @@
 import { once } from "node:events";
 import { Worker } from "node:worker_threads";
 
-const workerCount = 4;
-
 export async function runWorkerPool<Task, Result>(
   tasks: readonly Task[],
   workerUrl: URL,
   readResult: (message: unknown, task: Task) => Result,
+  workerCount = 4,
 ): Promise<Result[]> {
   const results: ({ value: Result } | undefined)[] = Array.from({ length: tasks.length });
   let nextTask = 0;

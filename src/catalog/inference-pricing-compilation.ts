@@ -7,6 +7,8 @@ import {
 import { withInferencePriceMapping, type CatalogPairCandidate } from "./pricing-publication.ts";
 import { projectCommercialSelections } from "./commercial-selection-compilation.ts";
 import { batchInferenceAssociations } from "./batch-model-offers.ts";
+import { sourceContextSelectors } from "./offer-boundary.ts";
+import { selectorSchema } from "../pricing/schema.ts";
 
 type Source = InferencePriceSource["record"];
 
@@ -57,30 +59,36 @@ export function compileInferencePriceMapping(
       offers.some(
         ({ provider_id, offer, model_refs }) =>
           provider_id === record.provider_id &&
-          offer.offer_key === "batch" &&
+          (offer.offer_key === "batch" || offer.source_contexts?.some((c) => c.key === "batch")) &&
           model_refs.includes(fact.model_ref),
       )
         ? batchInferenceAssociations(record.provider_id, fact)
         : [fact],
     )) {
       if (models.get(fact.model_ref) !== record.provider_id) continue;
-      const offer_refs = offers
+      const matches = offers
         .filter(
           ({ provider_id, offer, model_refs }) =>
             provider_id === record.provider_id &&
-            offer.offer_key === fact.offer_key &&
+            (offer.offer_key === fact.offer_key ||
+              offer.source_contexts?.some((c) => c.key === fact.offer_key)) &&
             model_refs.includes(fact.model_ref),
         )
-        .map(({ offer }) => offer.id);
-      if (offer_refs.length === 0) continue;
-      rules.push({
-        provider_id: record.provider_id,
-        model_id: fact.model_id,
-        model_ref: fact.model_ref,
-        offer_refs,
-        fixed_selectors: fact.fixed_selectors,
-        evidence: fact.evidence,
-      });
+        .flatMap(({ offer }) =>
+          sourceContextSelectors(offer, fact.offer_key, fact.fixed_selectors).map(
+            (fixed_selectors) => ({ offer, fixed_selectors }),
+          ),
+        );
+      if (matches.length === 0) continue;
+      for (const { offer, fixed_selectors } of matches)
+        rules.push({
+          provider_id: record.provider_id,
+          model_id: fact.model_id,
+          model_ref: fact.model_ref,
+          offer_refs: [offer.id],
+          fixed_selectors: selectorSchema.array().parse(fixed_selectors),
+          evidence: fact.evidence,
+        });
       sources.set(current.id, current);
     }
   }

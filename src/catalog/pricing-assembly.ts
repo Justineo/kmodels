@@ -1,5 +1,11 @@
 import { canonicalJson, canonicalJsonBytes } from "./canonical-json.ts";
-import { compareUtf8, compareUtf8Sequences } from "./canonical-value.ts";
+import {
+  assertIJsonValue,
+  canonicalJsonChunksFromValidated,
+  compareUtf8,
+  compareUtf8Sequences,
+} from "./canonical-value.ts";
+import { sha256Chunks } from "./io.ts";
 import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
@@ -70,6 +76,7 @@ export interface AtomicPricingOffer {
   model_refs?: string[];
   billing_mode: BillingMode;
   selection?: PricingOffer["selection"];
+  source_contexts?: PricingOffer["source_contexts"];
   states: AtomicPriceState[];
   enrollment?: PricingOffer["enrollment"];
   terms: AtomicPricingTerm[];
@@ -165,12 +172,34 @@ export interface ProviderPricingPartition {
   books: PricingBook[];
 }
 
+// Fingerprint the complete value, including source evidence and metadata. Bounded
+// chunks avoid a contiguous provider-sized string or UTF-8 encoding buffer.
+export function providerPricingPartitionHash(partition: ProviderPricingPartition): string {
+  assertIJsonValue(partition);
+  return sha256Chunks(canonicalJsonChunksFromValidated(partition));
+}
+
 export function assembleProviderPricing(input: AtomicProviderPricing): ProviderPricingPartition {
   if (input.vocabulary.provider_id !== input.provider_id)
     throw new Error("Provider vocabulary ownership mismatch");
   rejectReservedAdapterOutput(input);
+  return assemblePreparedPricing(input, true);
+}
+
+/** Recompact already assembled facts after an evidence-preserving ownership migration. */
+export function reassembleProviderPricing(input: AtomicProviderPricing): ProviderPricingPartition {
+  if (input.vocabulary.provider_id !== input.provider_id)
+    throw new Error("Provider vocabulary ownership mismatch");
+  return assemblePreparedPricing(input, false);
+}
+
+function assemblePreparedPricing(
+  input: AtomicProviderPricing,
+  sourceInput: boolean,
+): ProviderPricingPartition {
   const prepared = prepareProvider(input);
-  assertPrecompactionLimit(prepared);
+  // Canonical reassembly expands compact observations; publication still enforces canonical limits.
+  if (sourceInput) assertPrecompactionLimit(prepared);
   const books = finalizeProviderTerms(prepared.books.map(assembleBook));
   return {
     vocabulary: sortVocabulary(input.vocabulary),
@@ -299,6 +328,7 @@ function assembleOffer(prepared: PreparedOffer, bookModelRefs: readonly string[]
     ),
     billing_mode: input.billing_mode,
     ...optional("selection", input.selection),
+    ...optional("source_contexts", input.source_contexts),
     states: sortStates(states),
     enrollment: sortByCanonicalKey(input.enrollment ?? [], (variant) => variant),
     terms,
@@ -1173,235 +1203,227 @@ function sortVocabulary(vocabulary: ProviderPricingVocabulary): ProviderPricingV
   };
 }
 
-function precompactionProjection(prepared: PreparedProvider) {
-  const { input } = prepared;
+function precompactionProjection(book: PreparedBook) {
   return {
-    provider_vocabulary: sortVocabulary(input.vocabulary),
-    provider_snapshot: {
-      provider_id: input.provider_id,
-      observed_at: input.observed_at,
-      publication: "retained" as const,
-    },
-    books: prepared.books
-      .map((book) => ({
+    books: [
+      {
         id: book.id,
-        provider_id: input.provider_id,
+        provider_id: book.providerId,
         book_key: book.input.book_key,
         ...optional("name", book.input.name),
         scope: canonicalScope(book.input.scope),
         source_refs: sortUniqueStrings(book.input.source_refs),
-      }))
-      .sort(byId),
-    offers: prepared.books
-      .flatMap(({ offers }) =>
-        offers.map((offer) => ({
-          id: offer.id,
-          book_id: offer.bookId,
-          offer_key: offer.input.offer_key,
-          ...optional("name", offer.input.name),
-          ...optional(
-            "model_refs",
-            offer.input.model_refs === undefined
-              ? undefined
-              : sortUniqueStrings(offer.input.model_refs),
-          ),
-          billing_mode: offer.input.billing_mode,
-          ...optional("selection", offer.input.selection),
-          source_refs: sortUniqueStrings(offer.input.source_refs),
-          relations: offer.input.relations.map(canonicalRelation),
-        })),
-      )
-      .sort(byId),
-    terms: prepared.books
-      .flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.map((term) => ({
-            id: term.id,
-            offer_id: term.offerId,
-            term_key: term.input.term_key,
-            source_refs: sortUniqueStrings(term.input.source_refs),
-            kind: term.input.kind,
-            ...(term.input.kind === "rate" ? { meter: term.input.meter } : {}),
-          })),
-        ),
-      )
-      .sort(byId),
-    scope_observations: sortAtomic(
-      prepared.books.flatMap((book) =>
-        book.input.scope_observations.map((observation) => ({
-          book_id: book.id,
-          observation,
-        })),
+      },
+    ],
+    offers: book.offers.map((offer) => ({
+      id: offer.id,
+      book_id: offer.bookId,
+      offer_key: offer.input.offer_key,
+      ...optional("name", offer.input.name),
+      ...optional(
+        "model_refs",
+        offer.input.model_refs === undefined
+          ? undefined
+          : sortUniqueStrings(offer.input.model_refs),
+      ),
+      billing_mode: offer.input.billing_mode,
+      ...optional("selection", offer.input.selection),
+      source_refs: sortUniqueStrings(offer.input.source_refs),
+      relations: offer.input.relations.map(canonicalRelation),
+    })),
+    terms: book.offers.flatMap(({ terms }) =>
+      terms.map((term) => ({
+        id: term.id,
+        offer_id: term.offerId,
+        term_key: term.input.term_key,
+        source_refs: sortUniqueStrings(term.input.source_refs),
+        kind: term.input.kind,
+        ...(term.input.kind === "rate" ? { meter: term.input.meter } : {}),
+      })),
+    ),
+    scope_observations: book.input.scope_observations.map((observation) => ({
+      book_id: book.id,
+      observation,
+    })),
+    relation_observations: book.offers.flatMap((offer) =>
+      offer.input.relations.flatMap((relation) =>
+        relation.observations.map((observation) => ({ offer_id: offer.id, observation })),
       ),
     ),
-    relation_observations: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap((offer) =>
-          offer.input.relations.flatMap((relation) =>
-            relation.observations.map((observation) => ({ offer_id: offer.id, observation })),
-          ),
-        ),
-      ),
+    states: book.offers.flatMap((offer) =>
+      offer.input.states.map((state) => ({
+        offer_id: offer.id,
+        state: state.state,
+        applicability: state.applicability,
+        ...optional("validity", state.validity),
+        observation: state.observation,
+      })),
     ),
-    disposition_observations: sortAtomic(input.dispositions),
-    states: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap((offer) =>
-          offer.input.states.map((state) => ({
-            offer_id: offer.id,
-            state: state.state,
-            applicability: state.applicability,
-            ...optional("validity", state.validity),
-            observation: state.observation,
-          })),
-        ),
-      ),
-    ),
-    rates: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.flatMap((term) =>
-            term.input.kind === "rate"
-              ? term.input.variants.map((variant) => ({
-                  term_id: term.id,
-                  price: variant.price,
-                  applicability: variant.applicability,
-                  ...optional(
-                    "charge_binding",
-                    variant.charge_binding === undefined
-                      ? undefined
-                      : chargeBindingIdentity(variant.charge_binding),
-                  ),
-                  ...optional("validity", variant.validity),
-                  ...optional("selector_sources", variant.selector_sources),
-                  observation: variant.observation,
-                }))
-              : [],
-          ),
-        ),
-      ),
-    ),
-    charge_observations: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.flatMap((term) =>
-            term.input.kind === "rate"
-              ? term.input.variants.flatMap(
-                  (variant) =>
-                    variant.charge_binding?.observations.map((observation) => ({
-                      term_id: term.id,
-                      observation,
-                    })) ?? [],
-                )
-              : [],
-          ),
-        ),
-      ),
-    ),
-    allowances: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.flatMap((term) =>
-            term.input.kind === "allowance"
-              ? term.input.variants.map((variant) => ({
-                  term_id: term.id,
-                  benefit: variant.benefit,
-                  target: variant.target,
-                  reset: variant.reset,
-                  applicability: variant.applicability,
-                  ...optional("validity", variant.validity),
-                  observation: variant.observation,
-                }))
-              : [],
-          ),
-        ),
-      ),
-    ),
-    contributions: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.flatMap((term) =>
-            term.input.kind === "contribution"
-              ? term.input.variants.map((variant) => ({
-                  term_id: term.id,
-                  target_rate_refs: variant.target_rate_refs,
-                  charge_bindings: variant.charge_bindings,
-                  applicability: variant.applicability,
-                  ...optional("validity", variant.validity),
-                  observation: variant.observation,
-                }))
-              : [],
-          ),
-        ),
-      ),
-    ),
-    raw_variants: sortAtomic(
-      prepared.books.flatMap(({ offers }) =>
-        offers.flatMap(({ terms }) =>
-          terms.flatMap((term) =>
-            rawAtomicVariants(term.input).map((variant) => ({
+    rates: book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        term.input.kind === "rate"
+          ? term.input.variants.map((variant) => ({
               term_id: term.id,
-              impact: variant.impact,
-              reason: variant.reason,
-              ...optional("possible_scope", variant.possible_scope),
+              price: variant.price,
+              applicability: variant.applicability,
+              ...optional(
+                "charge_binding",
+                variant.charge_binding === undefined
+                  ? undefined
+                  : chargeBindingIdentity(variant.charge_binding),
+              ),
+              ...optional("validity", variant.validity),
+              ...optional("selector_sources", variant.selector_sources),
+              observation: variant.observation,
+            }))
+          : [],
+      ),
+    ),
+    charge_observations: book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        term.input.kind === "rate"
+          ? term.input.variants.flatMap(
+              (variant) =>
+                variant.charge_binding?.observations.map((observation) => ({
+                  term_id: term.id,
+                  observation,
+                })) ?? [],
+            )
+          : [],
+      ),
+    ),
+    allowances: book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        term.input.kind === "allowance"
+          ? term.input.variants.map((variant) => ({
+              term_id: term.id,
+              benefit: variant.benefit,
+              target: variant.target,
+              reset: variant.reset,
+              applicability: variant.applicability,
               ...optional("validity", variant.validity),
               observation: variant.observation,
-            })),
-          ),
-        ),
+            }))
+          : [],
+      ),
+    ),
+    contributions: book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        term.input.kind === "contribution"
+          ? term.input.variants.map((variant) => ({
+              term_id: term.id,
+              target_rate_refs: variant.target_rate_refs,
+              charge_bindings: variant.charge_bindings,
+              applicability: variant.applicability,
+              ...optional("validity", variant.validity),
+              observation: variant.observation,
+            }))
+          : [],
+      ),
+    ),
+    raw_variants: book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        rawAtomicVariants(term.input).map((variant) => ({
+          term_id: term.id,
+          impact: variant.impact,
+          reason: variant.reason,
+          ...optional("possible_scope", variant.possible_scope),
+          ...optional("validity", variant.validity),
+          observation: variant.observation,
+        })),
       ),
     ),
   };
 }
 
 function assertPrecompactionLimit(prepared: PreparedProvider): void {
-  const projection = precompactionProjection(prepared);
-  if (canonicalJsonBytes(projection).byteLength > pricingLimits.providerPrecompactionBytes)
-    throw new Error("Provider precompaction byte limit exceeded");
-  const variantCount =
-    projection.states.length +
-    projection.rates.length +
-    projection.allowances.length +
-    projection.contributions.length +
-    projection.raw_variants.length;
+  const { input } = prepared;
+  const metadata = {
+    provider_vocabulary: input.vocabulary,
+    provider_snapshot: {
+      provider_id: input.provider_id,
+      observed_at: input.observed_at,
+      publication: "retained",
+    },
+    disposition_observations: input.dispositions,
+  };
+  // Ordering does not affect byte length. Validate I-JSON before ordinary JSON
+  // encoding, then count records without provider-sized strings or sort keys.
+  assertIJsonValue(metadata);
+  let bytes = Buffer.byteLength(JSON.stringify(metadata));
+  const lengths = new Map<string, number>();
   const counts = {
-    books: projection.books.length,
-    offers: projection.offers.length,
-    terms: projection.terms.length,
-    variants: variantCount,
-    observations:
+    books: 0,
+    offers: 0,
+    terms: 0,
+    variants: 0,
+    observations: input.dispositions.length,
+  };
+  function check() {
+    if (bytes > pricingLimits.providerPrecompactionBytes)
+      throw new Error("Provider precompaction byte limit exceeded");
+    if (
+      counts.books > pricingLimits.booksPerProvider ||
+      counts.offers > pricingLimits.offersPerProvider ||
+      counts.terms > pricingLimits.termsPerProvider ||
+      counts.variants > pricingLimits.variantsPerProvider ||
+      counts.observations > pricingLimits.observationsPerProvider
+    )
+      throw new Error("Provider precompaction resource limit exceeded");
+  }
+  // A new empty-array member adds a comma, quoted key, colon and two brackets.
+  for (const key of [
+    "books",
+    "offers",
+    "terms",
+    "scope_observations",
+    "relation_observations",
+    "states",
+    "rates",
+    "charge_observations",
+    "allowances",
+    "contributions",
+    "raw_variants",
+  ]) {
+    bytes += Buffer.byteLength(JSON.stringify(key)) + 4;
+    lengths.set(key, 0);
+  }
+  check();
+  for (const book of prepared.books) {
+    const projection = precompactionProjection(book);
+    assertIJsonValue(projection);
+    counts.books += projection.books.length;
+    counts.offers += projection.offers.length;
+    counts.terms += projection.terms.length;
+    const variants =
+      projection.states.length +
+      projection.rates.length +
+      projection.allowances.length +
+      projection.contributions.length +
+      projection.raw_variants.length;
+    counts.variants += variants;
+    counts.observations +=
       projection.scope_observations.length +
       projection.relation_observations.length +
       projection.charge_observations.length +
-      projection.disposition_observations.length +
-      variantCount +
-      projection.rates.reduce(
-        (count, rate) =>
-          count +
-          (rate.selector_sources ?? []).reduce(
-            (total, source) => total + source.observations.length,
-            0,
-          ),
-        0,
-      ) +
-      projection.contributions.reduce(
-        (count, variant) =>
-          count +
-          variant.charge_bindings.reduce(
-            (total, binding) => total + binding.observations.length,
-            0,
-          ),
-        0,
-      ),
-  };
-  if (
-    counts.books > pricingLimits.booksPerProvider ||
-    counts.offers > pricingLimits.offersPerProvider ||
-    counts.terms > pricingLimits.termsPerProvider ||
-    counts.variants > pricingLimits.variantsPerProvider ||
-    counts.observations > pricingLimits.observationsPerProvider
-  )
-    throw new Error("Provider precompaction resource limit exceeded");
+      variants;
+    for (const rate of projection.rates)
+      for (const source of rate.selector_sources ?? [])
+        counts.observations += source.observations.length;
+    for (const variant of projection.contributions)
+      for (const binding of variant.charge_bindings)
+        counts.observations += binding.observations.length;
+    check();
+    for (const [key, records] of Object.entries(projection)) {
+      let length = lengths.get(key) ?? 0;
+      for (const record of records) {
+        bytes += Buffer.byteLength(JSON.stringify(record)) + (length > 0 ? 1 : 0);
+        length += 1;
+        check();
+      }
+      lengths.set(key, length);
+    }
+  }
 }
 
 function rejectReservedAdapterOutput(input: AtomicProviderPricing): void {
@@ -1454,19 +1476,11 @@ function sortUnique<T>(values: T[], key: (value: T) => string): T[] {
     .map(({ value }) => value);
 }
 
-function sortAtomic<T>(values: T[]): T[] {
-  return sortByCanonicalKey(values, (value) => value);
-}
-
 function sortByCanonicalKey<T>(values: T[], key: (value: T) => unknown): T[] {
   return values
     .map((value) => ({ value, key: canonicalJson(key(value)) }))
     .sort((left, right) => compareUtf8(left.key, right.key))
     .map(({ value }) => value);
-}
-
-function byId(left: { id: string }, right: { id: string }): number {
-  return compareUtf8(left.id, right.id);
 }
 
 function normalizedObservationKey(observation: NormalizedPriceObservation): string {

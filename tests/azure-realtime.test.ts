@@ -2,15 +2,12 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
-import { load } from "cheerio";
-import { parseIJson, canonicalJson } from "../src/catalog/canonical-json.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema, type ModelTask } from "../src/catalog/schema.ts";
-import { createCalculator, type Quantity } from "../src/pricing/index.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import type { SourcePriceFact } from "../src/catalog/pricing-source.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
@@ -18,7 +15,6 @@ import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
 } from "../src/catalog/pricing-reconciliation.ts";
-
 const observedAt = "2026-10-19T08:43:01.898Z";
 const url =
   "https://learn.microsoft.com/en-us/azure/foundry-classic/openai/realtime-audio-reference-ga";
@@ -69,7 +65,6 @@ async function parse(body?: string, documentUrl = url, duplicate = false) {
     realtime: parsed.pricing_inputs?.filter(({ key }) => key.startsWith("realtime.")) ?? [],
   };
 }
-
 async function compiled(
   body: string | undefined,
   endpoint = "openai/v1/realtime/sessions",
@@ -138,7 +133,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = calculationExport(
+  const exported = priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -154,64 +149,8 @@ async function compiled(
     ({ offer_key }) => offer_key === (batch ? "batch" : "sync"),
   );
   if (offer === undefined) throw new Error("Missing execution offer");
-  const calculator = createCalculator(exported);
-  const calculate = (event: unknown) => {
-    const quantities = new Map<string, Quantity>();
-    for (const term of offer.terms) {
-      if (term.kind !== "rate") continue;
-      for (const { charge_binding } of term.variants) {
-        for (const method of charge_binding?.quantity_methods ?? []) {
-          for (const source of method.input_sources ?? []) {
-            if (source.locator.kind !== "json_pointer") continue;
-            let value: unknown = event;
-            for (const key of source.locator.value.split("/").slice(1))
-              value =
-                value !== null && typeof value === "object" && Object.hasOwn(value, key)
-                  ? Reflect.get(value, key)
-                  : undefined;
-            if (typeof value !== "number") continue;
-            quantities.set(canonicalJson(source.signal), {
-              signal: source.signal,
-              value: { numerator: String(value), denominator: "1" },
-            });
-          }
-        }
-      }
-    }
-    return calculator.calculate({
-      evaluatedAt: observedAt,
-      components: [
-        { id: "response", offerRef: offer.id, quantities: [...quantities.values()], selectors: [] },
-      ],
-    });
-  };
-  return { offer, calculate };
+  return { offer };
 }
-
-function event(values: Readonly<Record<string, number>>) {
-  return {
-    type: "response.done",
-    response: {
-      usage: {
-        input_token_details: {
-          text_tokens: values.input_text ?? 0,
-          audio_tokens: values.input_audio ?? 0,
-          image_tokens: values.input_image ?? 0,
-          cached_tokens_details: {
-            text_tokens: values.cached_text ?? 0,
-            audio_tokens: values.cached_audio ?? 0,
-            image_tokens: values.cached_image ?? 0,
-          },
-        },
-        output_token_details: {
-          text_tokens: values.output_text ?? 0,
-          audio_tokens: values.output_audio ?? 0,
-        },
-      },
-    },
-  };
-}
-
 describe("Azure native Realtime accounting", () => {
   it("extracts independent terminal counters from the owned response.done event", async () => {
     const result = await parse(await fixture());
@@ -230,7 +169,6 @@ describe("Azure native Realtime accounting", () => {
     );
     expect(result.realtime.every(({ absent_value }) => absent_value === undefined)).toBe(true);
   });
-
   it.each(["failed", "cancelled", "incomplete"])(
     "preserves terminal usage after a %s response",
     async (status) => {
@@ -239,7 +177,6 @@ describe("Azure native Realtime accounting", () => {
       ).toHaveLength(8);
     },
   );
-
   it.each(["missing", "retyped"])("withholds only a %s native counter", async (change) => {
     const body = (await fixture()).replace(
       '"text_tokens": 64, "audio_tokens": 0, "image_tokens": 0',
@@ -254,7 +191,6 @@ describe("Azure native Realtime accounting", () => {
       expect.objectContaining({ reason_code: "pricing_input_contract_partial" }),
     );
   });
-
   it.each([
     "duplicate-heading",
     "duplicate-example",
@@ -277,7 +213,6 @@ describe("Azure native Realtime accounting", () => {
               : body.replace(pre, `<blockquote>${pre}</blockquote>`);
     expect((await parse(changed)).realtime).toEqual([]);
   });
-
   it("does not borrow another event's numeric example", async () => {
     const body = await fixture();
     const pre = body.match(/<pre>[\s\S]*?<\/pre>/)?.[0];
@@ -287,7 +222,6 @@ describe("Azure native Realtime accounting", () => {
       .replace("<h3>response.output_item.added</h3>", `<h3>response.output_item.added</h3>${pre}`);
     expect((await parse(changed)).realtime).toEqual([]);
   });
-
   it("does not borrow the matching fields of another Azure product", async () => {
     expect(
       (
@@ -298,7 +232,6 @@ describe("Azure native Realtime accounting", () => {
       ).realtime,
     ).toEqual([]);
   });
-
   it("keeps Chat mappings when the optional Realtime document is absent", async () => {
     const result = await parse();
     expect(result.realtime).toEqual([]);
@@ -306,11 +239,9 @@ describe("Azure native Realtime accounting", () => {
       expect.objectContaining({ key: "chat.input_tokens" }),
     );
   });
-
   it("does not choose a winning duplicate reference document", async () => {
     expect((await parse(await fixture(), url, true)).realtime).toEqual([]);
   });
-
   it.each(["quoted-prose", "wrong-type", "wrong-response", "unsafe-counter", "negative-counter"])(
     "withholds an unproved native declaration (%s)",
     async (change) => {
@@ -333,7 +264,6 @@ describe("Azure native Realtime accounting", () => {
       expect(parsed.realtime).toHaveLength(change.endsWith("counter") ? 7 : 0);
     },
   );
-
   it("admits partial accounting contracts for repair even when source bytes are unchanged", async () => {
     const parsed = await parse(
       (await fixture()).replace('"audio_tokens": 13', '"audio_tokens": "13"'),
@@ -372,51 +302,7 @@ describe("Azure native Realtime accounting", () => {
     );
   });
 });
-
 describe("Azure Realtime charge quantities", () => {
-  it("calculates the native terminal usage through the portable export", async () => {
-    const body = await fixture();
-    const native = parseIJson(new TextEncoder().encode(load(body)("pre code").text()), 64 * 1024);
-    const { calculate } = await compiled(body);
-    expect(calculate(native)).toMatchObject({
-      status: "calculated",
-      totals: [
-        {
-          denomination: { kind: "fiat", currency: "USD" },
-          amount: { numerator: "2891", denominator: "1250000" },
-        },
-      ],
-    });
-  });
-
-  it.each([
-    [{ input_text: 1000000 }, { numerator: "2", denominator: "1" }],
-    [{ input_audio: 1000000 }, { numerator: "10", denominator: "1" }],
-    [{ input_image: 1000000 }, { numerator: "3", denominator: "1" }],
-    [
-      { input_text: 1000000, cached_text: 1000000 },
-      { numerator: "1", denominator: "5" },
-    ],
-    [
-      { input_audio: 1000000, cached_audio: 1000000 },
-      { numerator: "3", denominator: "10" },
-    ],
-    [
-      { input_image: 1000000, cached_image: 1000000 },
-      { numerator: "2", denominator: "5" },
-    ],
-    [{ output_text: 1000000 }, { numerator: "8", denominator: "1" }],
-    [{ output_audio: 1000000 }, { numerator: "20", denominator: "1" }],
-  ] as const)("uses independent native partitions (%j)", async (values, amount) => {
-    const { calculate } = await compiled(await fixture());
-    const result = calculate(event(values));
-    expect(result).toMatchObject({
-      status: "calculated",
-      totals: [{ denomination: { kind: "fiat", currency: "USD" }, amount }],
-    });
-    expect(result.charges.filter(({ amount }) => amount.numerator !== "0")).toHaveLength(1);
-  });
-
   it.each(["openai/v1/chat/completions", "openai/v1/images/generations"])(
     "does not lend Realtime locators to %s",
     async (endpoint) => {
@@ -436,7 +322,6 @@ describe("Azure Realtime charge quantities", () => {
       );
     },
   );
-
   it("does not use response.done fields as Batch job counters", async () => {
     const { offer } = await compiled(await fixture(), undefined, true);
     for (const term of offer.terms) {
@@ -447,34 +332,26 @@ describe("Azure Realtime charge quantities", () => {
       }
     }
   });
-
   it("preserves unresolvable quantities after a missing native counter instead of filling zero", async () => {
     const body = (await fixture()).replace(
       '"text_tokens": 64, "audio_tokens": 0, "image_tokens": 0',
       '"text_tokens": 64, "image_tokens": 0',
     );
-    const { calculate, offer } = await compiled(body);
+    const { offer } = await compiled(body);
     expect(offer.terms.filter(({ kind }) => kind === "rate")).toHaveLength(8);
-    const result = calculate(
-      event({ input_audio: 1000000, cached_audio: 500000, output_text: 10 }),
-    );
-    expect(result.status).not.toBe("calculated");
-    expect(result.totals).toBeUndefined();
   });
-
   it.each(["cache_write_text", "cache_write_audio", "cache_write_image"] as const)(
     "does not silently omit a separately priced %s partition",
     async (meter) => {
       const priceSource = manifest.sources.find(({ id }) => id === "azure-public-pricing");
       if (priceSource === undefined) throw new Error("Missing Azure price source");
-      const { offer, calculate } = await compiled(await fixture(), undefined, false, [
+      const { offer } = await compiled(await fixture(), undefined, false, [
         publishedRate(meter, "1", "million_tokens", priceSource.id, "Synthetic write control"),
       ]);
       const input = meter.replace("cache_write_", "input_");
       const term = offer.terms.find((term) => term.kind === "rate" && term.meter.value === input);
       if (term?.kind !== "rate") throw new Error("Missing input charge");
       expect(term.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
-      expect(calculate(event({ input_text: 1000000 })).totals).toBeUndefined();
     },
   );
 });

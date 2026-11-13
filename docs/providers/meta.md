@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep exact Standard and Contributor hosted model identities. Contributor data-use obligations are explicit facts of that separately identified subject, not an inferred tier alias. Each admitted subject retains its public usage relationship. Image/frame/audio quantities and streaming/file behavior qualify terms. Text web search remains independent of included image-model search. Muse Code subscriptions and partner deployments remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The `meta` provider publishes models hosted on Meta Model API under the display name Meta.

@@ -9,6 +9,8 @@ import {
   type ParsedPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
+import { providerPricingPartitionHash } from "../src/catalog/pricing-assembly.ts";
+import { runWorkerPool } from "../src/catalog/worker-pool.ts";
 import {
   capturePricingReplaySources,
   compilePricingSnapshot,
@@ -147,13 +149,19 @@ function sourceRecord(): SourceRecord {
   };
 }
 
-function candidate(price: string) {
+function candidate(price: string, includeSibling = false) {
   const model = published();
+  const models = [model];
+  const parsedModels = [parsed(price)];
+  if (includeSibling) {
+    models.push({ ...model, uid: `${providerId}/z-sibling`, model_id: "z-sibling" });
+    parsedModels.push({ ...parsed("1"), uid: `${providerId}/z-sibling`, model_id: "z-sibling" });
+  }
   const partition = assembleParsedProviderPricing(
     providerId,
     observedAt,
-    [{ source: sourceManifest, models: [parsed(price)] }],
-    [model],
+    [{ source: sourceManifest, models: parsedModels }],
+    models,
   );
   if (partition === undefined) throw new Error("Test pricing partition was not assembled");
   const pricing: PricingCatalog = {
@@ -173,14 +181,14 @@ function candidate(price: string) {
         catalog_version: "3".repeat(64),
       },
     ],
-    models: [model],
+    models,
     sources: [sourceRecord()],
     coverage: [
       {
         provider_id: providerId,
         status: "fresh",
-        model_count: 1,
-        pricing_term_count: 1,
+        model_count: models.length,
+        pricing_term_count: models.length,
         checked_at: observedAt,
         last_successful_sync_at: observedAt,
       },
@@ -665,6 +673,82 @@ describe("local canonical pricing compilation", () => {
       numerator: "1",
       denominator: "500000",
     });
+  });
+
+  it("reuses an unchanged accepted graph and publication after replaying its sources", async () => {
+    const current = candidate("1");
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replaySource("1")] },
+    ]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
+    expect(compiled.replayedProviders).toEqual([providerId]);
+    expect(compiled.candidate).toBe(current);
+  });
+
+  it("returns only a matching fingerprint across the worker boundary, otherwise the full result", async () => {
+    const current = candidate("1");
+    const partition = providerPartition(current.pricing.data, providerId, () => providerId);
+    if (partition === undefined) throw new Error("Missing accepted partition");
+    const fingerprint = providerPricingPartitionHash(partition);
+    const results = await runWorkerPool(
+      [fingerprint, "0".repeat(64)].map((acceptedPartitionHash) => ({
+        providerId,
+        acceptedPartitionHash,
+        snapshot: partition.snapshot,
+        sources: [{ source: sourceManifest, models: [parsed("1")] }],
+        models: current.catalog.models,
+      })),
+      new URL("../src/catalog/pricing-compilation-worker.ts", import.meta.url),
+      (message) => message,
+    );
+    expect(results).toEqual([
+      { providerId, acceptedPartitionHash: fingerprint },
+      { providerId, partition },
+    ]);
+  });
+
+  it("shares unchanged books while publishing changed prices and preserving the old graph", async () => {
+    const current = candidate("1", true);
+    const replay = replaySource("2");
+    replay.models.push({ ...parsed("1"), uid: `${providerId}/z-sibling`, model_id: "z-sibling" });
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replay] },
+    ]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
+    expect(compiled.candidate.pairId).not.toBe(current.pairId);
+    expect(compiled.candidate.pricing.data.books).toHaveLength(2);
+    for (const book of current.pricing.data.books) {
+      const next = compiled.candidate.pricing.data.books.find(({ id }) => id === book.id);
+      if (book.scope.model_refs.includes(modelRef)) {
+        expect(next).not.toBe(book);
+        const term = book.offers[0]?.terms[0];
+        expect(term?.kind === "rate" ? term.variants[0]?.price.value : undefined).toEqual({
+          numerator: "1",
+          denominator: "1000000",
+        });
+      } else expect(next).toBe(book);
+    }
+  });
+
+  it("publishes changed evidence even when the numeric rate and stable IDs are unchanged", async () => {
+    const current = candidate("1");
+    const replay = replaySource("1");
+    const fact = replay.models[0]?.price_facts[0];
+    if (fact === undefined) throw new Error("Missing replay price");
+    fact.raw_price = "1.00";
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replay] },
+    ]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
+    const before = current.pricing.data.books[0];
+    const after = compiled.candidate.pricing.data.books[0];
+    expect(after?.id).toBe(before?.id);
+    expect(after).not.toBe(before);
+    expect(compiled.candidate.pairId).not.toBe(current.pairId);
+    const term = after?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Missing replay rate");
+    expect(term.variants[0]?.price.value).toEqual({ numerator: "1", denominator: "1000000" });
+    expect(term.variants[0]?.observations[0]?.raw.amount).toBe("1.00");
   });
 
   it("replays retained source revisions against a newer catalog without rebinding their hashes", async () => {

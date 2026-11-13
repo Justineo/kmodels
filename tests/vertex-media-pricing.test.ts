@@ -4,10 +4,8 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { ParsedProviderModel } from "../src/catalog/pricing-source.ts";
-
 const at = "2026-11-02T04:00:00.000Z";
 const manifest = manifests.find(({ provider }) => provider.id === "vertex");
 const pricingSource = manifest?.sources.find(({ id }) => id === "vertex-pricing");
@@ -26,7 +24,6 @@ const source = {
   ...catalogSource,
   extractor: { ...catalogSource.extractor, minModels: 1, minModelDocuments: 1 },
 };
-
 it("keeps retired Imagen revision identities from the merged card associated with their count quotes", async () => {
   const url =
     "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/3-0-generate";
@@ -93,7 +90,6 @@ it("keeps retired Imagen revision identities from the merged card associated wit
     ),
   ).toBe(true);
 });
-
 it("prices reviewed Veo count rows in generated seconds without extending the contract to Lite", () => {
   const models = catalog("Veo 3.1", ["Generate", "Fast Generate", "Lite Generate"]).map(
     (model, index) => {
@@ -154,21 +150,7 @@ it("prices reviewed Veo count rows in generated seconds without extending the co
     (v) => v.price.value.numerator === "2" && v.price.value.denominator === "5",
   );
   if (variant?.charge_binding === undefined) throw new Error("Missing generated-second binding");
-  expect(
-    evaluateRateCost(variant, [
-      {
-        signal: { namespace: "provider", provider_id: "vertex", value: "video_duration_seconds" },
-        value: { numerator: "4", denominator: "1" },
-      },
-      {
-        signal: { namespace: "provider", provider_id: "vertex", value: "generated_video_count" },
-        value: { numerator: "2", denominator: "1" },
-      },
-    ]),
-  ).toMatchObject({ kind: "resolved", amount: { numerator: "16", denominator: "5" } });
-  expect(evaluateRateCost(variant, [])).toMatchObject({ kind: "missing_input" });
 });
-
 it.each([false, true])(
   "parses embedding token tables once with their request tiers and modalities (article=%s)",
   (article) => {
@@ -256,7 +238,6 @@ it.each([false, true])(
     ).toBe(false);
   },
 );
-
 function catalog(title: string, headings: string[]) {
   return parseSource({
     provider,
@@ -279,7 +260,6 @@ function catalog(title: string, headings: string[]) {
     }),
   }).models;
 }
-
 it.each([false, true])(
   "uses owned media variant headings without changing literal model IDs (version=%s)",
   (version) => {
@@ -303,7 +283,6 @@ it.each([false, true])(
     ).toEqual(["Imagen 4.0", "Imagen 4.0 Ultra"]);
   },
 );
-
 it.each([false, true])(
   "keeps wrapped media quotes, continuation rows and exact model ownership (article=%s)",
   (article) => {
@@ -385,9 +364,5 @@ it.each([false, true])(
       throw new Error("Missing music rate");
     const signal = term.variants[0].charge_binding?.signal;
     if (signal === undefined) throw new Error("Missing music quantity binding");
-    expect(
-      evaluateRateCost(term.variants[0], [{ signal, value: { numerator: "2", denominator: "1" } }]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "25" } });
-    expect(evaluateRateCost(term.variants[0], [])).toMatchObject({ kind: "missing_input" });
   },
 );

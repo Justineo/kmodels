@@ -1,3 +1,4 @@
+import { offerContexts, executionScope } from "./offer-context.ts";
 import { describe, expect, it } from "vite-plus/test";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import {
@@ -9,7 +10,6 @@ import {
 } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { anthropicCodeExecution } from "../src/catalog/anthropic-code-execution.ts";
-import { evaluateChargeQuantity } from "../src/catalog/pricing-calculation.ts";
 import { unionApplicabilities } from "../src/catalog/pricing-canonical.ts";
 import {
   pricingBookId,
@@ -29,20 +29,20 @@ import {
 } from "../src/catalog/pricing-source.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { unknownCapabilities, type Catalog, type SourceRecord } from "../src/catalog/schema.ts";
-
 const providerId = "gemini";
 const sourceRef = "gemini-pricing";
 const modelRef = "gemini/test-model";
 const observedAt = "2026-07-28T00:00:00.000Z";
-
-function pricingManifest(): { provider: ProviderManifest; source: SourceManifest } {
+function pricingManifest(): {
+  provider: ProviderManifest;
+  source: SourceManifest;
+} {
   const provider = manifests.find((manifest) => manifest.provider.id === providerId);
   const source = provider?.sources.find(({ id }) => id === sourceRef);
   if (provider === undefined || source === undefined)
     throw new Error("Gemini pricing manifest is missing");
   return { provider, source };
 }
-
 function baseModelPricingSource(id = sourceRef): SourceManifest {
   const { source } = pricingManifest();
   if (source.pricingEvidence === undefined) throw new Error("Gemini pricing policy is missing");
@@ -52,7 +52,6 @@ function baseModelPricingSource(id = sourceRef): SourceManifest {
     pricingEvidence: { ...source.pricingEvidence, binding: "base_model_id" },
   };
 }
-
 function model(): ParsedProviderModel {
   return {
     provider_id: providerId,
@@ -145,7 +144,6 @@ function model(): ParsedProviderModel {
     source_refs: [sourceRef],
   };
 }
-
 function tokenRate(price: string, conditions: SourcePriceFact["conditions"]): SourcePriceFact {
   return {
     meter: "input_text",
@@ -159,7 +157,6 @@ function tokenRate(price: string, conditions: SourcePriceFact["conditions"]): So
     raw_unit: "1M tokens",
   };
 }
-
 function geminiPricingInput(
   key: string,
   channel: SourcePricingInputFact["channel"],
@@ -173,7 +170,6 @@ function geminiPricingInput(
     source_ref: sourceRef,
   };
 }
-
 function bedrockPricingInput(
   key: string,
   channel: SourcePricingInputFact["channel"],
@@ -190,7 +186,6 @@ function bedrockPricingInput(
     source_ref: sourceRef,
   };
 }
-
 function withPriceSource(value: ParsedProviderModel, sourceId: string): ParsedProviderModel {
   return {
     ...value,
@@ -198,7 +193,6 @@ function withPriceSource(value: ParsedProviderModel, sourceId: string): ParsedPr
     source_refs: [sourceId],
   };
 }
-
 function source(): SourceRecord {
   return {
     id: sourceRef,
@@ -215,7 +209,6 @@ function source(): SourceRecord {
     extractor_version: "test",
   };
 }
-
 describe("parsed-source canonical pricing adapter", () => {
   it("canonicalizes megapixel rates without losing the pixel billing unit", () => {
     const { source: pricingSource } = pricingManifest();
@@ -247,7 +240,6 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     });
   });
-
   it("partitions every source pricing item into an explicit reconciliation disposition", () => {
     expect(
       sourcePricingReconciliation(
@@ -292,7 +284,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
   });
-
   it("falls back to parsed model outcomes and suppresses samples for private sources", () => {
     const unresolved = model();
     unresolved.pricing_state = "unknown";
@@ -305,7 +296,6 @@ describe("parsed-source canonical pricing adapter", () => {
       diagnostics: [{ disposition: "unresolved", reason_code: "parser_output_unknown" }],
     });
   });
-
   it("classifies every pricing source as reviewed first-party evidence", () => {
     const providerManifests: readonly ProviderManifest[] = manifests;
     for (const manifest of providerManifests)
@@ -319,7 +309,6 @@ describe("parsed-source canonical pricing adapter", () => {
         }
       }
   });
-
   it("treats accounting contracts as pricing dependencies without inventing rate authority", () => {
     const providerManifests: readonly ProviderManifest[] = manifests;
     const accounting = providerManifests
@@ -334,7 +323,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(openAiAccounting?.pricingEvidence).toBeUndefined();
     expect(openAiAccounting === undefined ? true : isPricingSource(openAiAccounting)).toBe(false);
   });
-
   it("keeps Azure pricing overlays optional and account inventory outside pricing", () => {
     const providerManifests: readonly ProviderManifest[] = manifests;
     const azure = providerManifests.find(({ provider }) => provider.id === "azure");
@@ -349,7 +337,6 @@ describe("parsed-source canonical pricing adapter", () => {
     if (accountInventory === undefined) throw new Error("Azure account inventory is missing");
     expect(isPricingSource(accountInventory)).toBe(false);
   });
-
   it("requires explicit provenance for calculated source facts", () => {
     const calculated = model().price_facts[2]!;
     expect(sourcePriceFactSchema.safeParse(calculated).success).toBe(true);
@@ -358,7 +345,6 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     expect(sourcePriceFactSchema.safeParse({ ...calculated, derived: false }).success).toBe(false);
   });
-
   it("uses a source-native commercial locator when one is available", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -383,13 +369,11 @@ describe("parsed-source canonical pricing adapter", () => {
       value: "11111111-1111-1111-1111-111111111111",
     });
   });
-
   it("omits absent optional conditions before canonicalization", () => {
     const parsed = sourcePriceFactSchema.parse(model().price_facts[0]);
     expect(parsed.conditions).toEqual({ region: "us-central1" });
     expect(Object.hasOwn(parsed.conditions, "endpoint")).toBe(false);
   });
-
   it.each(["rate", "raw", "state"] as const)(
     "keeps %s source evidence independent of condition key insertion order",
     (kind) => {
@@ -438,7 +422,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ).toEqual(expected);
     },
   );
-
   it("attaches reviewed labels only to observed categorical values", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -464,7 +447,6 @@ describe("parsed-source canonical pricing adapter", () => {
         },
       ],
     );
-
     expect(
       partition?.vocabulary.atoms.filter(
         (atom) => atom.kind === "categorical_value" && atom.dimension.value === "operation",
@@ -485,7 +467,6 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     ]);
   });
-
   it("normalizes exact calculated rates and fixed/provider units", () => {
     const { provider: providerManifest, source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -513,10 +494,11 @@ describe("parsed-source canonical pricing adapter", () => {
       sources: [source()],
     };
     expect(() => validatePricingCatalog(data, core)).not.toThrow();
-
     const bookId = pricingBookId(providerId, `model:${modelRef}`);
     const syncId = pricingOfferId(bookId, "sync");
-    const sync = partition.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+    const sync = partition.books[0]?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const input = sync?.terms.find(({ id }) => id === pricingTermId(syncId, "rate", "input_text"));
     const storage = sync?.terms.find(({ id }) => id === pricingTermId(syncId, "rate", "storage"));
     const output = sync?.terms.find(
@@ -560,7 +542,6 @@ describe("parsed-source canonical pricing adapter", () => {
       invalidValidity?.kind === "rate" ? invalidValidity.raw_variants[0]?.reason : undefined,
     ).toBe("unsupported_structure");
   });
-
   it("preserves source-native pricing formulas as raw terms", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -605,7 +586,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
   });
-
   it.each(["allowance", "informational"] as const)(
     "does not create an offer from %s raw facts alone",
     (impact) => {
@@ -622,7 +602,6 @@ describe("parsed-source canonical pricing adapter", () => {
           "Unresolved non-base pricing fact",
         ),
       ];
-
       expect(
         assembleParsedProviderPricing(
           providerId,
@@ -633,7 +612,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ).toBeUndefined();
     },
   );
-
   it("keeps account eligibility independent from inference service tiers", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -652,8 +630,12 @@ describe("parsed-source canonical pricing adapter", () => {
       [parsedModel],
     );
     const book = partition?.books[0];
-    const sync = book?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = book?.offers.find(({ offer_key }) => offer_key === "batch");
+    const sync = book?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = book?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const syncTerm = sync?.terms[0];
     const batchTerm = batch?.terms[0];
     if (syncTerm?.kind !== "rate" || batchTerm?.kind !== "rate")
@@ -666,10 +648,16 @@ describe("parsed-source canonical pricing adapter", () => {
             ? [[condition.dimension.value, condition.values[0]?.value]]
             : [],
         );
-    expect(dimensions(syncTerm, "0")).toEqual([["account_eligibility", "free_tier"]]);
-    expect(dimensions(batchTerm, "0.5")).toEqual([["account_eligibility", "paid_tier"]]);
+    expect(dimensions(syncTerm, "0")).toEqual([
+      ["account_eligibility", "free_tier"],
+      ["invocation_mode", "sync"],
+    ]);
+    expect(dimensions(batchTerm, "0.5")).toEqual([
+      ["account_eligibility", "paid_tier"],
+      ["execution", "batch"],
+      ["invocation_mode", "batch"],
+    ]);
   });
-
   it("keeps exact provider capacity units normalized", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -692,7 +680,9 @@ describe("parsed-source canonical pricing adapter", () => {
       [{ source: pricingSource, models: [parsedModel] }],
       [parsedModel],
     );
-    const capacity = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "capacity");
+    const capacity = partition?.books[0]?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "capacity");
     const term = capacity?.terms[0];
     expect(term?.kind === "rate" ? term.variants[0]?.price : undefined).toMatchObject({
       value: { numerator: "99", denominator: "500" },
@@ -711,16 +701,14 @@ describe("parsed-source canonical pricing adapter", () => {
       definition: "One 1,000-tokens-per-minute capacity unit sustained for one hour",
     });
   });
-
   it("keeps source context bands independently selectable from Batch", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
-      tokenRate("1", { context_max_tokens: 200_000 }),
-      tokenRate("2", { context_min_tokens: 200_001 }),
+      tokenRate("1", { context_max_tokens: 200000 }),
+      tokenRate("2", { context_min_tokens: 200001 }),
       tokenRate("0.5", { service_tier: "batch" }),
     ];
-
     const partition = assembleParsedProviderPricing(
       providerId,
       observedAt,
@@ -728,8 +716,12 @@ describe("parsed-source canonical pricing adapter", () => {
       [parsedModel],
     );
     const book = partition?.books[0];
-    const sync = book?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = book?.offers.find(({ offer_key }) => offer_key === "batch");
+    const sync = book?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = book?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const term = sync?.terms[0];
     if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
     expect(term.raw_variants).toEqual([]);
@@ -738,7 +730,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(
       batchTerm?.kind === "rate" ? batchTerm.variants[0]?.observations[0]?.raw.amount : undefined,
     ).toBe("0.5");
-
     const base = term.variants.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "1"),
     );
@@ -754,7 +745,6 @@ describe("parsed-source canonical pricing adapter", () => {
       { dimension: "context_max_tokens", value: "200000" },
     ]);
   });
-
   it.each([false, true])(
     "requires source-owned complementary context bounds (explicit=%s)",
     (explicit) => {
@@ -770,8 +760,9 @@ describe("parsed-source canonical pricing adapter", () => {
         [{ source: pricingSource, models: [parsedModel] }],
         [parsedModel],
       );
-      const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")
-        ?.terms[0];
+      const term = partition?.books[0]?.offers
+        .flatMap(offerContexts)
+        .find((offer) => offer.context_key === "sync")?.terms[0];
       if (term?.kind !== "rate") throw new Error("Missing context rate term");
       if (explicit) {
         expect(term.variants).toHaveLength(2);
@@ -795,7 +786,6 @@ describe("parsed-source canonical pricing adapter", () => {
       }
     },
   );
-
   it.each([
     ["databricks", false],
     ["databricks", true],
@@ -840,7 +830,6 @@ describe("parsed-source canonical pricing adapter", () => {
       expect(condition?.kind === "boolean" ? condition.value : undefined).toBe(false);
     },
   );
-
   it.each([
     ["anthropic", false, "speed", "standard", "fast"],
     ["anthropic", true, "speed", "standard", "fast"],
@@ -897,7 +886,6 @@ describe("parsed-source canonical pricing adapter", () => {
       }
     },
   );
-
   it("keeps reviewed applicability independent of alternative price amounts", () => {
     const { source: pricingSource } = pricingManifest();
     const scopes = [];
@@ -913,7 +901,9 @@ describe("parsed-source canonical pricing adapter", () => {
         [{ source: pricingSource, models: [parsedModel] }],
         [parsedModel],
       );
-      const sync = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+      const sync = partition?.books[0]?.offers
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync");
       const term = sync?.terms.find(
         (term) => term.kind === "rate" && term.meter.value === "input_text",
       );
@@ -936,7 +926,6 @@ describe("parsed-source canonical pricing adapter", () => {
     }
     expect(scopes[0]).toEqual(scopes[1]);
   });
-
   it.each(["1", "2"])(
     "does not invent a Standard scope from an explicit Priority peer (%s)",
     (amount) => {
@@ -949,8 +938,9 @@ describe("parsed-source canonical pricing adapter", () => {
         [{ source, models: [parsed] }],
         [parsed],
       );
-      const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")
-        ?.terms[0];
+      const term = partition?.books[0]?.offers
+        .flatMap(offerContexts)
+        .find((offer) => offer.context_key === "sync")?.terms[0];
       if (term?.kind !== "rate") throw new Error("Missing input term");
       expect(partition?.vocabulary.atoms).not.toContainEqual(
         expect.objectContaining({ key: "standard" }),
@@ -965,7 +955,6 @@ describe("parsed-source canonical pricing adapter", () => {
       }
     },
   );
-
   it("separates Foundry synchronous, Batch, and router request rates", () => {
     const { source: pricingSource } = pricingManifest();
     const azure = (id: string, rates: SourcePriceFact[]): ParsedProviderModel => ({
@@ -1059,11 +1048,19 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     const books = partition?.books ?? [];
     const directBook = books.find(({ book_key }) => book_key === "model:azure/gpt-test");
-    expect(directBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
-    const sync = directBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = directBook?.offers.find(({ offer_key }) => offer_key === "batch");
-    const syncInput = sync?.terms.find(({ term_key }) => term_key === "input_text");
-    const batchInput = batch?.terms.find(({ term_key }) => term_key === "input_text");
+    expect(directBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
+    const sync = directBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = directBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
+    const syncInput = sync?.terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
+    const batchInput = batch?.terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
     expect(batchInput?.source_refs).toEqual([accountingSource.id, sourceRef].sort());
     expect(
       syncInput?.kind === "rate"
@@ -1119,7 +1116,9 @@ describe("parsed-source canonical pricing adapter", () => {
         : true,
     ).toBe(false);
     expect(sync).toMatchObject({ enrollment: [], relations: [], settlement: [] });
-    const imageInput = sync?.terms.find(({ term_key }) => term_key === "input_image");
+    const imageInput = sync?.terms.find(
+      ({ term_key }) => term_key === "input_image" || term_key.endsWith("/" + "input_image"),
+    );
     expect(
       imageInput?.kind === "rate"
         ? imageInput.variants
@@ -1127,9 +1126,7 @@ describe("parsed-source canonical pricing adapter", () => {
             .sort((left, right) => (left ?? "").localeCompare(right ?? ""))
         : [],
     ).toEqual(["input_image_tokens", "processed_pages"]);
-
     expect(books.some(({ scope }) => scope.kind === "provider_resource")).toBe(false);
-
     const routerBook = books.find(({ book_key }) => book_key === "model:azure/model-router");
     expect(routerBook?.offers[0]).toMatchObject({ offer_key: "router", name: "Model Router" });
     expect(routerBook?.offers[0]?.terms[0]).toMatchObject({
@@ -1150,7 +1147,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
   });
-
   it("retains Azure text-token equations and endpoint-local acquisition paths through drift", () => {
     const { source: pricingSource } = pricingManifest();
     const rate = (meter: SourcePriceFact["meter"], price: string): SourcePriceFact => ({
@@ -1271,7 +1267,6 @@ describe("parsed-source canonical pricing adapter", () => {
         }),
       ]),
     );
-
     const partialPartition = assembleParsedProviderPricing(
       "azure",
       observedAt,
@@ -1285,7 +1280,7 @@ describe("parsed-source canonical pricing adapter", () => {
       [priced],
     );
     const partialInput = partialPartition?.books[0]?.offers[0]?.terms.find(
-      ({ term_key }) => term_key === "input_text",
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
     );
     if (partialInput?.kind !== "rate") throw new Error("Missing partial Azure input rate");
     const partialBinding = partialInput.variants[0]?.charge_binding;
@@ -1317,28 +1312,7 @@ describe("parsed-source canonical pricing adapter", () => {
         }),
       ]),
     );
-    expect(
-      evaluateChargeQuantity(partialBinding, [
-        {
-          signal: { namespace: "kmodels", value: "input_tokens" },
-          value: { numerator: "1000", denominator: "1" },
-        },
-        {
-          signal: { namespace: "kmodels", value: "cached_input_tokens" },
-          value: { numerator: "200", denominator: "1" },
-        },
-        {
-          signal: { namespace: "kmodels", value: "cache_write_tokens" },
-          value: { numerator: "50", denominator: "1" },
-        },
-        {
-          signal: { namespace: "provider", provider_id: "azure", value: "input_audio_tokens" },
-          value: { numerator: "100", denominator: "1" },
-        },
-      ]),
-    ).toEqual({ kind: "resolved", value: { numerator: "650", denominator: "1" } });
   });
-
   it("binds Azure image, audio-duration, and video quantities without synthetic locators", () => {
     const { source: pricingSource } = pricingManifest();
     const rate = (
@@ -1455,7 +1429,10 @@ describe("parsed-source canonical pricing adapter", () => {
       namespace: "kmodels",
       value: "generated_images",
     });
-    const generation = imageTerms.find(({ term_key }) => term_key === "image_generation");
+    const generation = imageTerms.find(
+      ({ term_key }) =>
+        term_key === "image_generation" || term_key.endsWith("/" + "image_generation"),
+    );
     expect(generation?.kind === "rate" ? generation.variants[0]?.selector_sources : []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1503,7 +1480,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
   });
-
   it("separates Gemini execution from provider-native grounding", () => {
     const { source: pricingSource } = pricingManifest();
     const gemini: ParsedProviderModel = {
@@ -1589,11 +1565,19 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     const books = partition?.books ?? [];
     const modelBook = books.find(({ book_key }) => book_key === `model:${modelRef}`);
-    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
-    const syncInput = sync?.terms.find(({ term_key }) => term_key === "input_text");
-    const batchInput = batch?.terms.find(({ term_key }) => term_key === "input_text");
-    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    const sync = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
+    const syncInput = sync?.terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
+    const batchInput = batch?.terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
     expect(
       syncInput?.kind === "rate"
         ? syncInput.variants.map(({ applicability, charge_binding }) => ({
@@ -1622,7 +1606,7 @@ describe("parsed-source canonical pricing adapter", () => {
       ]),
     );
     expect(batchInput?.kind === "rate" ? batchInput.variants[0] : undefined).toMatchObject({
-      applicability: { any_of: [{ all_of: [] }] },
+      applicability: executionScope("batch"),
       charge_binding: {
         aggregation: "result_item",
         quantity_methods: [
@@ -1643,11 +1627,11 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     });
     expect(sync?.settlement).toEqual([]);
-
-    const syncRef = pricingOfferId(pricingBookId("gemini", `model:${modelRef}`), "sync");
     const search = books.find(({ book_key }) => book_key === "service:google-search");
     const searchOffer = search?.offers[0];
-    const searchRate = searchOffer?.terms.find(({ term_key }) => term_key === "web_search");
+    const searchRate = searchOffer?.terms.find(
+      ({ term_key }) => term_key === "web_search" || term_key.endsWith("/" + "web_search"),
+    );
     expect(
       searchRate?.kind === "rate" ? searchRate.variants[0]?.charge_binding : undefined,
     ).toMatchObject({
@@ -1661,11 +1645,10 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(searchOffer?.relations).toEqual([
       expect.objectContaining({
         kind: "compatible_with",
-        target: { kind: "offers", offer_refs: [syncRef] },
+        target: { kind: "offers", offer_refs: [sync?.id] },
       }),
     ]);
   });
-
   it("derives Gemini multimodal and embedding quantities from exact response partitions", () => {
     const { source: pricingSource } = pricingManifest();
     const rate = (
@@ -1815,7 +1798,8 @@ describe("parsed-source canonical pricing adapter", () => {
     const offer = (uid: string) =>
       partition?.books
         .find(({ book_key }) => book_key === `model:${uid}`)
-        ?.offers.find(({ offer_key }) => offer_key === "sync");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync");
     const variant = (uid: string, termKey: string) => {
       const term = offer(uid)?.terms.find(({ term_key }) => term_key === termKey);
       return term?.kind === "rate" ? term.variants[0] : undefined;
@@ -1826,7 +1810,6 @@ describe("parsed-source canonical pricing adapter", () => {
           ? [locator.value]
           : [],
       ) ?? [];
-
     expect(variant(modelRef, "input_image")?.charge_binding).toMatchObject({
       signal: {
         namespace: "provider",
@@ -1867,26 +1850,6 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     });
     if (cachedImage === undefined) throw new Error("Missing Gemini image cache binding");
-    expect(
-      evaluateChargeQuantity(cachedImage, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "gemini",
-            value: "reported_cached_image_tokens",
-          },
-          value: { numerator: "20", denominator: "1" },
-        },
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "gemini",
-            value: "reported_cached_document_tokens",
-          },
-          value: { numerator: "30", denominator: "1" },
-        },
-      ]),
-    ).toEqual({ kind: "resolved", value: { numerator: "50", denominator: "1" } });
     expect(variant(modelRef, "image_generation")?.charge_binding).toMatchObject({
       signal: { namespace: "kmodels", value: "generated_images" },
       quantity_methods: [
@@ -1949,7 +1912,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ]),
     });
   });
-
   it("separates Vertex execution mechanisms and keeps only request-attributable resources", () => {
     const { source } = pricingManifest();
     const googleSource: SourceManifest = {
@@ -2222,9 +2184,13 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     const books = partition?.books ?? [];
     const googleBook = books.find(({ book_key }) => book_key === "model:vertex/gemini-test");
-    const sync = googleBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = googleBook?.offers.find(({ offer_key }) => offer_key === "batch");
-    expect(googleBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    const sync = googleBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = googleBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
+    expect(googleBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
     expect(
       sync?.terms[0]?.kind === "rate"
         ? sync.terms[0].variants.map(({ applicability, charge_binding }) => ({
@@ -2250,7 +2216,7 @@ describe("parsed-source canonical pricing adapter", () => {
       kind: "rate",
       variants: [
         expect.objectContaining({
-          applicability: { any_of: [{ all_of: [] }] },
+          applicability: executionScope("batch"),
           charge_binding: expect.objectContaining({
             aggregation: "result_item",
             quantity_methods: [
@@ -2301,10 +2267,10 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
     expect(sync?.settlement).toEqual([]);
-
     const partnerOffer = books
       .find(({ book_key }) => book_key === "model:vertex/claude-test")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     expect(partnerOffer?.settlement).toEqual([]);
     expect(partnerOffer?.terms[0]).toMatchObject({
       kind: "rate",
@@ -2328,7 +2294,6 @@ describe("parsed-source canonical pricing adapter", () => {
         }),
       ],
     });
-
     const imageSearch = books.find(({ book_key }) => book_key === "service:google-image-search");
     expect(imageSearch?.offers[0]).toMatchObject({
       relations: [],
@@ -2382,7 +2347,6 @@ describe("parsed-source canonical pricing adapter", () => {
     ])
       expect(books.some(({ book_key }) => book_key === bookKey)).toBe(false);
   });
-
   it("binds Vertex partner, media, and Maps rates only to documented quantities", () => {
     const { source: baseSource } = pricingManifest();
     const pricingSource: SourceManifest = {
@@ -2538,7 +2502,8 @@ describe("parsed-source canonical pricing adapter", () => {
     const modelVariant = (id: string, meter: string) => {
       const term = pricing?.books
         .find(({ book_key }) => book_key === `model:vertex/${id}`)
-        ?.offers.find(({ offer_key }) => offer_key === "sync")
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync")
         ?.terms.find(
           (candidate) =>
             candidate.kind === "rate" &&
@@ -2547,7 +2512,6 @@ describe("parsed-source canonical pricing adapter", () => {
         );
       return term?.kind === "rate" ? term.variants[0] : undefined;
     };
-
     expect(modelVariant("grok-test", "input_text")).toMatchObject({
       charge_binding: {
         signal: expect.objectContaining({ value: "responses_uncached_input_tokens" }),
@@ -2654,7 +2618,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ),
     ).not.toThrow();
   });
-
   it("does not attach Converse accounting to API-qualified Bedrock tier rates", () => {
     const { source: pricingSource } = pricingManifest();
     const bedrock: ParsedProviderModel = {
@@ -2705,7 +2668,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(term.variants[0]?.charge_binding).not.toHaveProperty("quantity_methods");
     expect(term.variants[0]).not.toHaveProperty("selector_sources");
   });
-
   it("keeps Bedrock request-priced execution and Nova grounding", () => {
     const { source: pricingSource } = pricingManifest();
     const bedrock: ParsedProviderModel = {
@@ -2829,15 +2791,14 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     const books = partition?.books ?? [];
     const modelBook = books.find(({ scope }) => scope.kind === "models");
-    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual([
-      "batch",
-      "on-demand",
-    ]);
-    for (const offer of modelBook?.offers ?? []) {
-      const input = offer.terms.find(({ term_key }) => term_key === "input_text");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
+    for (const offer of modelBook?.offers.flatMap(offerContexts) ?? []) {
+      const input = offer.terms.find(
+        ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+      );
       if (input?.kind !== "rate") throw new Error("Missing Bedrock input rate");
       expect(input.variants[0]?.charge_binding).toMatchObject({
-        aggregation: offer.offer_key === "batch" ? "job" : "attempt",
+        aggregation: offer.context_key === "batch" ? "job" : "attempt",
         signal: {
           namespace: "kmodels",
           value: "input_tokens",
@@ -2846,13 +2807,13 @@ describe("parsed-source canonical pricing adapter", () => {
           {
             input_sources: expect.arrayContaining([
               expect.objectContaining({
-                channel: offer.offer_key === "batch" ? "result" : "response",
+                channel: offer.context_key === "batch" ? "result" : "response",
               }),
             ]),
           },
         ],
       });
-      if (offer.offer_key === "on-demand")
+      if (offer.context_key === "on-demand")
         expect(input.variants[0]?.selector_sources).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
@@ -2890,10 +2851,9 @@ describe("parsed-source canonical pricing adapter", () => {
           ),
         ),
       );
-      expect(tiers.sort()).toEqual(offer.offer_key === "batch" ? [] : ["priority", "standard"]);
+      expect(tiers.sort()).toEqual(offer.context_key === "batch" ? [] : ["priority", "standard"]);
       expect(input.raw_variants).toEqual([]);
     }
-
     const capacity = books.find(
       ({ scope }) =>
         scope.kind === "provider_resource" &&
@@ -2901,7 +2861,6 @@ describe("parsed-source canonical pricing adapter", () => {
         scope.resource_key === "model-capacity:amazon-bedrock/test-model",
     );
     expect(capacity).toBeUndefined();
-
     const grounding = books.find(
       ({ scope }) =>
         scope.kind === "provider_resource" &&
@@ -2929,7 +2888,6 @@ describe("parsed-source canonical pricing adapter", () => {
         .some(({ term_key }) => term_key.startsWith("tool_call")),
     ).toBe(false);
   });
-
   it("retains Bedrock invocation-service raw evidence without executing its payload", () => {
     const { source: pricingSource } = pricingManifest();
     const commercial = (
@@ -3016,7 +2974,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(
       resources.map(({ scope }) => (scope.kind === "provider_resource" ? scope.resource_key : "")),
     ).toEqual(["guardrails", "web-search", "prompt-routing"]);
-
     const guardrail = resources.find(
       ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "guardrails",
     )?.offers[0]?.terms[0];
@@ -3039,7 +2996,6 @@ describe("parsed-source canonical pricing adapter", () => {
         offers.every(({ terms }) => terms.every(({ kind }) => kind === "raw")),
       ),
     ).toBe(true);
-
     expect(
       resources.find(
         ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "guardrails",
@@ -3068,7 +3024,9 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     const book = partition?.books[0];
     const conditions = (offerKey: string, amount: string) => {
-      const term = book?.offers.find(({ offer_key }) => offer_key === offerKey)?.terms[0];
+      const term = book?.offers
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === offerKey)?.terms[0];
       if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
       const variant = term.variants.find(({ observations }) =>
         observations.some(({ raw }) => raw.amount === amount),
@@ -3082,14 +3040,15 @@ describe("parsed-source canonical pricing adapter", () => {
       );
     };
     expect(conditions("batch", "0.5")).toEqual({
+      execution: "batch",
       inference_geo: "global",
     });
     expect(conditions("sync", "2")).toEqual({
+      execution: "request",
       speed: "fast",
       inference_geo: "global",
     });
   });
-
   it("does not assign xAI's default tier to an unqualified source quote", () => {
     const manifest = manifests.find((item) => item.provider.id === "xai");
     const source = manifest?.sources.find((item) => item.id === "xai-models");
@@ -3109,7 +3068,9 @@ describe("parsed-source canonical pricing adapter", () => {
       [{ source, models: [parsed] }],
       [parsed],
     );
-    const term = partition?.books[0]?.offers.find((offer) => offer.offer_key === "sync")?.terms[0];
+    const term = partition?.books[0]?.offers
+      .flatMap(offerContexts)
+      .find((offer) => offer.context_key === "sync")?.terms[0];
     if (term?.kind !== "rate") throw new Error("Missing xAI input term");
     expect(term.variants).toEqual([]);
     expect(term.raw_variants).toHaveLength(2);
@@ -3120,7 +3081,6 @@ describe("parsed-source canonical pricing adapter", () => {
       expect.objectContaining({ key: "default" }),
     );
   });
-
   it("publishes OpenAI Batch and separately billed services as distinct offers", () => {
     const openAi = manifests.find(({ provider }) => provider.id === "openai");
     const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
@@ -3368,9 +3328,13 @@ describe("parsed-source canonical pricing adapter", () => {
       [parsedModel],
     );
     const modelBook = partition?.books.find(({ book_key }) => book_key === "model:openai/gpt-test");
-    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
-    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
+    const sync = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     expect(sync?.terms[0]).toMatchObject({
       kind: "rate",
       variants: [
@@ -3408,7 +3372,7 @@ describe("parsed-source canonical pricing adapter", () => {
       kind: "rate",
       variants: [
         {
-          applicability: { any_of: [{ all_of: [] }] },
+          applicability: executionScope("batch"),
           charge_binding: {
             signal: { namespace: "kmodels", value: "uncached_input_tokens" },
             aggregation: "result_item",
@@ -3421,7 +3385,6 @@ describe("parsed-source canonical pricing adapter", () => {
     for (const term of batch?.terms ?? [])
       if (term.kind === "rate")
         for (const variant of term.variants) expect(variant.selector_sources).toBeUndefined();
-
     const service = partition?.books.find(({ book_key }) => book_key === "service:file-search");
     expect(service?.scope).toEqual({
       kind: "provider_resource",
@@ -3499,7 +3462,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(
       containers.offers[0].terms[0].variants[0]?.charge_binding?.quantity_methods,
     ).toBeUndefined();
-
     const training = partition?.books.find(
       ({ book_key }) => book_key === "service:fine-tuning:gpt-test",
     );
@@ -3508,10 +3470,10 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     expect(training).toBeUndefined();
     expect(fineTuned?.resource_edges).toEqual([]);
-    expect(fineTuned?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(fineTuned?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
     expect(
-      fineTuned?.offers.map(({ offer_key, terms }) => ({
-        offer_key,
+      fineTuned?.offers.flatMap(offerContexts).map(({ context_key, terms }) => ({
+        offer_key: context_key,
         aggregation:
           terms[0]?.kind === "rate" ? terms[0].variants[0]?.charge_binding?.aggregation : undefined,
       })),
@@ -3531,10 +3493,7 @@ describe("parsed-source canonical pricing adapter", () => {
       },
       parsedModel,
     );
-    expect(view.modelMechanisms.map(({ offer_key }) => offer_key).sort()).toEqual([
-      "batch",
-      "sync",
-    ]);
+    expect(view.modelMechanisms.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
     expect(view).toMatchObject({
       optionalServices: expect.arrayContaining([
         expect.objectContaining({ offer_key: "usage" }),
@@ -3546,7 +3505,6 @@ describe("parsed-source canonical pricing adapter", () => {
       standaloneOffers: [],
     });
   });
-
   it("preserves OpenAI semantic quantities without borrowing organization totals", () => {
     const openAi = manifests.find(({ provider }) => provider.id === "openai");
     const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
@@ -3700,7 +3658,8 @@ describe("parsed-source canonical pricing adapter", () => {
     const variant = (modelId: string, meter: string) => {
       const term = partition?.books
         .find(({ book_key }) => book_key === `model:openai/${modelId}`)
-        ?.offers.find(({ offer_key }) => offer_key === "sync")
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync")
         ?.terms.find((candidate) => candidate.kind === "rate" && candidate.meter.value === meter);
       if (term?.kind !== "rate") throw new Error(`${modelId}/${meter} rate is missing`);
       return term.variants[0]!;
@@ -3798,7 +3757,6 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     ]);
   });
-
   it("prefers OpenAI pricing-page rates to broader model-card fallbacks", () => {
     const openAi = manifests.find(({ provider }) => provider.id === "openai");
     const overview = openAi?.sources.find(({ id }) => id === "openai-overview");
@@ -3840,8 +3798,8 @@ describe("parsed-source canonical pricing adapter", () => {
             {
               ...parsedModel,
               price_facts: [
-                rate(pricing.id, "3", { context_max_tokens: 272_000 }),
-                rate(pricing.id, "4", { context_min_tokens: 272_001 }),
+                rate(pricing.id, "3", { context_max_tokens: 272000 }),
+                rate(pricing.id, "4", { context_min_tokens: 272001 }),
               ],
             },
           ],
@@ -3849,8 +3807,9 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
       [parsedModel],
     );
-    const term = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "sync")
-      ?.terms[0];
+    const term = partition?.books[0]?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync")?.terms[0];
     if (term?.kind !== "rate") throw new Error("OpenAI input rate is missing");
     expect(term.variants.map(({ price }) => price.value)).toEqual([
       { numerator: "3", denominator: "1000000" },
@@ -3869,7 +3828,6 @@ describe("parsed-source canonical pricing adapter", () => {
       }),
     ]);
   });
-
   it("publishes Anthropic request rates and excludes unrelated commercial products", () => {
     const anthropic = manifests.find(({ provider }) => provider.id === "anthropic");
     const pricingSource = anthropic?.sources.find(({ id }) => id === "anthropic-models");
@@ -4084,8 +4042,12 @@ describe("parsed-source canonical pricing adapter", () => {
       anthropic?.pricingCategoricalLabels,
     );
     const modelBook = partition?.books.find(({ book_key }) => book_key === `model:${modelRef}`);
-    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    const sync = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const inputRate = (offer: typeof sync) =>
       offer?.terms.find(
         (term) =>
@@ -4112,7 +4074,7 @@ describe("parsed-source canonical pricing adapter", () => {
           : undefined,
       exclusive: sync?.relations[0]?.target,
     }).toEqual({
-      offers: ["batch", "sync"],
+      offers: ["public"],
       syncAggregation: "attempt",
       batchAggregation: "result_item",
       syncInputs: [
@@ -4159,7 +4121,6 @@ describe("parsed-source canonical pricing adapter", () => {
         ? cacheWrite.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
         : undefined,
     ).toBeUndefined();
-
     const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
     expect(search?.offers).toEqual([
       expect.objectContaining({
@@ -4198,10 +4159,10 @@ describe("parsed-source canonical pricing adapter", () => {
         ],
       }),
     ]);
-
     const code = partition?.books.find(({ book_key }) => book_key === "service:code-execution");
     const allowance = code?.offers
-      .find(({ offer_key }) => offer_key === "standalone")
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "standalone")
       ?.terms.find(({ kind }) => kind === "allowance");
     expect(allowance).toMatchObject({
       kind: "allowance",
@@ -4216,7 +4177,8 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
     const codeRate = code?.offers
-      .find(({ offer_key }) => offer_key === "standalone")
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "standalone")
       ?.terms.find(({ kind }) => kind === "rate");
     expect(
       codeRate?.kind === "rate" ? codeRate.variants[0]?.charge_binding : undefined,
@@ -4252,7 +4214,8 @@ describe("parsed-source canonical pricing adapter", () => {
     });
     expect(
       code?.offers
-        .find(({ offer_key }) => offer_key === "standalone")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "standalone")
         ?.terms.filter(({ kind }) => kind === "raw"),
     ).toEqual([]);
     expect(
@@ -4273,7 +4236,6 @@ describe("parsed-source canonical pricing adapter", () => {
       "anthropic commercial topology changed",
     );
   });
-
   it("preserves explicit non-numeric source states", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -4289,7 +4251,6 @@ describe("parsed-source canonical pricing adapter", () => {
       expect.objectContaining({ state: "not_published" }),
     ]);
   });
-
   it("keeps a free usage offer alongside numeric capacity pricing", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
@@ -4323,7 +4284,6 @@ describe("parsed-source canonical pricing adapter", () => {
       { billing_mode: "usage", states: ["free"] },
     ]);
   });
-
   it("binds versionless pricing evidence only to one unambiguous model", () => {
     const { source: pricingSource } = pricingManifest();
     const sourceModel = model();
@@ -4351,7 +4311,6 @@ describe("parsed-source canonical pricing adapter", () => {
       ),
     ).toBeUndefined();
   });
-
   it("shares explicitly base-model pricing across every published version", () => {
     const source = baseModelPricingSource();
     const sourceModel = model();
@@ -4384,7 +4343,6 @@ describe("parsed-source canonical pricing adapter", () => {
       }),
     ]);
   });
-
   it("uses base-model pricing as a fallback when exact numeric evidence exists", () => {
     const { source: exactSource } = pricingManifest();
     const fallbackSource = baseModelPricingSource("gemini-base-model-pricing");
@@ -4402,7 +4360,6 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(partition?.books).toHaveLength(1);
     expect(partition?.books[0]?.source_refs).toEqual([exactSource.id]);
   });
-
   it("suppresses a lower-authority not-published state when an exact price book has rates", () => {
     const { source: exactSource } = pricingManifest();
     if (exactSource.pricingEvidence === undefined)
@@ -4432,7 +4389,6 @@ describe("parsed-source canonical pricing adapter", () => {
       true,
     );
   });
-
   it("keeps a higher-authority not-published state when only commercial terms have rates", () => {
     const { source: exactSource } = pricingManifest();
     if (exactSource.pricingEvidence === undefined)
@@ -4459,7 +4415,6 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     expect(partition?.books[0]?.source_refs).toEqual([commercialSource.id, exactSource.id]);
   });
-
   it("limits shared base-model pricing to versions without exact numeric evidence", () => {
     const { source: exactSource } = pricingManifest();
     const fallbackSource = baseModelPricingSource("gemini-base-model-pricing");
@@ -4483,7 +4438,6 @@ describe("parsed-source canonical pricing adapter", () => {
       partition?.books.find(({ book_key }) => book_key === `base-model:${modelRef}`)?.scope,
     ).toEqual({ kind: "models", model_refs: [sibling.uid] });
   });
-
   it("publishes DashScope on-demand, Batch, cache, and web-search mechanisms separately", () => {
     const provider = manifests.find(({ provider }) => provider.id === "dashscope");
     const pricingSource = provider?.sources.find(({ id }) => id === "dashscope-pricing");
@@ -4666,9 +4620,13 @@ describe("parsed-source canonical pricing adapter", () => {
       provider?.pricingCategoricalLabels,
     );
     const modelBook = partition?.books.find(({ book_key }) => book_key === `model:${modelRef}`);
-    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
-    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    const sync = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
     expect(sync?.relations).toEqual([]);
     const voice = sync?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "speech_generation",

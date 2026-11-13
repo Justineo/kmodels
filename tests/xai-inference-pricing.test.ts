@@ -12,7 +12,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -83,7 +83,7 @@ async function collect(
 }
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -105,12 +105,55 @@ const context: Selector = {
   unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
 };
 function offerRef(query: ReturnType<typeof lookup>, model_id: string, key: string) {
-  const offer = query({ provider_id: "xai", model_id }).candidates.find(
-    ({ offer }) => offer.offer_key === key,
-  )?.offer;
+  const offer = query({
+    provider_id: "xai",
+    model_id,
+    execution_mode: key === "batch" ? "batch" : key === "realtime" ? "realtime" : "request",
+  }).candidates[0]?.offer;
   if (!offer) throw new Error(`Missing ${model_id} ${key} offer`);
   return offer.id;
 }
+
+it("selects conditional tariffs inside one relationship without inventing Priority Batch", async () => {
+  const { candidate } = await collect();
+  const query = lookup(candidate);
+  const args = {
+    provider_id: "xai",
+    model_id: "grok-4.7",
+    selectors: [context, categorical("endpoint", "https://api.x.ai/v1")],
+  };
+  const choices = (execution: string, tier?: string) => [
+    { dimension: "execution" as const, value: { namespace: "kmodels" as const, value: execution } },
+    ...(tier === undefined
+      ? []
+      : [
+          {
+            dimension: "served_service_tier" as const,
+            value: { namespace: "kmodels" as const, value: tier },
+          },
+        ]),
+  ];
+  const standard = query({ ...args, choices: choices("request", "standard") });
+  const priority = query({ ...args, choices: choices("request", "priority") });
+  const batch = query({ ...args, choices: choices("batch") });
+  for (const result of [standard, priority, batch]) {
+    expect(result.status).toBe("matched");
+    expect(result.requires_offer_choice).toBe(false);
+    expect(
+      result.available_choices.find((choice) => choice.dimension === "execution")?.targets,
+    ).toEqual(["condition"]);
+  }
+  expect(
+    new Set(
+      [standard, priority, batch].flatMap((result) => result.candidates.map((c) => c.offer.id)),
+    ).size,
+  ).toBe(1);
+  expect(query({ ...args, choices: choices("batch", "priority") })).toMatchObject({
+    status: "unknown",
+    reason: "no_applicable_price",
+    candidates: [],
+  });
+});
 
 it("maps exact structured IDs and declared aliases to the same canonical offers", async () => {
   const { candidate, facts } = await collect();
@@ -146,12 +189,14 @@ it("maps exact structured IDs and declared aliases to the same canonical offers"
   expect(alias.candidates.map(({ offer }) => offer.id)).toEqual(
     base.candidates.map(({ offer }) => offer.id),
   );
-  expect(alias.candidates.map(({ offer }) => offer.offer_key).sort()).toEqual(["batch", "sync"]);
+  expect(new Set(alias.candidates.map(({ offer }) => offer.id)).size).toBe(1);
   expect(alias.status).toBe("candidates");
-  expect(alias.requires_offer_choice).toBe(true);
+  expect(alias.requires_offer_choice).toBe(false);
+  expect(alias.requires_execution_mode_choice).toBe(true);
   expect(alias.missing_conditions.map(({ value }) => value).sort()).toEqual([
     "context_tokens",
     "endpoint",
+    "execution",
     "served_service_tier",
   ]);
   expect(
@@ -186,7 +231,12 @@ it("selects regional Standard, realized Priority, and Batch prices without guess
       categorical("endpoint", region),
       ...(tier ? [categorical("served_service_tier", tier)] : []),
     ];
-    const result = query({ ...args, offer_ref: offerRef(query, args.model_id, key), selectors });
+    const result = query({
+      ...args,
+      offer_ref: offerRef(query, args.model_id, key),
+      execution_mode: key === "batch" ? "batch" : "request",
+      selectors,
+    });
     expect(result.status).toBe("matched");
     expect(
       result.candidates.flatMap(({ offer }) =>
@@ -203,6 +253,7 @@ it("selects regional Standard, realized Priority, and Batch prices without guess
     query({
       ...args,
       offer_ref: sync,
+      execution_mode: "request",
       selectors: [context, categorical("endpoint", "https://api.x.ai/v1")],
     }),
   ).toMatchObject({
@@ -213,6 +264,7 @@ it("selects regional Standard, realized Priority, and Batch prices without guess
     query({
       ...args,
       offer_ref: offerRef(query, args.model_id, "batch"),
+      execution_mode: "batch",
       selectors: [
         context,
         categorical("endpoint", "https://us.api.x.ai/v1"),
@@ -258,6 +310,7 @@ it("maps media and realtime IDs to the documented global tariff without a cluste
     provider_id: "xai",
     model_id: "grok-imagine-image",
     offer_ref: offerRef(query, "grok-imagine-image", "direct"),
+    execution_mode: "request",
     selectors: [categorical("resolution", "1K")],
   });
   expect(
@@ -398,6 +451,7 @@ it("uses identical conditional matching in the static UI with compact evidence",
       ],
       at,
       ref,
+      "request",
     ).status,
   ).toBe("matched");
   expect(JSON.stringify(price)).not.toContain("content_hash");

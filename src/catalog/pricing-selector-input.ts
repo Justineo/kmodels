@@ -3,12 +3,63 @@ import { canonicalJsonKey } from "./canonical-value.ts";
 import { isWholeNumberDimension } from "./pricing-presentation.ts";
 import { evaluateApplicability, type PricingSelection } from "./pricing-applicability.ts";
 import type { WebsitePricingSelector } from "./website-schema.ts";
+import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
+import type { CommercialChoice } from "./pricing-schema.ts";
+
+/** Keep alternatives for an explicit choice editable; infer only choices applicable to this scope. */
+export function commercialControlChoices(
+  all: readonly AvailableCommercialChoice[],
+  applicable: readonly AvailableCommercialChoice[],
+  selected: readonly CommercialChoice[],
+): AvailableCommercialChoice[] {
+  return all.filter(
+    (choice) =>
+      selected.some(({ dimension }) => dimension === choice.dimension) ||
+      applicable.some(
+        (current) =>
+          canonicalJsonKey(current.value) === canonicalJsonKey(choice.value) &&
+          current.dimension === choice.dimension,
+      ),
+  );
+}
+
+/** The edited value takes precedence; retain other choices whenever their joint scope survives. */
+export function retainCommercialChoices(
+  previous: readonly CommercialChoice[],
+  next: readonly CommercialChoice[],
+  accepts: (choices: CommercialChoice[]) => boolean,
+): CommercialChoice[] {
+  const unchanged = (choice: CommercialChoice) =>
+    previous.some((old) => canonicalJsonKey(old) === canonicalJsonKey(choice));
+  const retained = next.filter((choice) => !unchanged(choice));
+  for (const choice of next.filter(unchanged)) {
+    if (accepts([...retained, choice])) retained.push(choice);
+  }
+  return retained;
+}
+
+export function fixedCommercialChoices(
+  choices: readonly AvailableCommercialChoice[],
+  candidateRefs: readonly string[],
+): AvailableCommercialChoice[] {
+  return choices.filter(
+    (choice) =>
+      choice.dimension !== "account_plan" &&
+      choices.filter(({ dimension }) => dimension === choice.dimension).length === 1 &&
+      candidateRefs.length > 0 &&
+      candidateRefs.every((ref) => choice.offer_refs.includes(ref)),
+  );
+}
+
 type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
 
 export function fixedPricingSelection(
   selector: WebsitePricingSelector,
 ): PricingSelection | undefined {
-  if (selector.kind === "categorical" && selector.values.length === 1)
+  if (
+    (selector.kind === "categorical" || selector.kind === "decimal_buckets") &&
+    selector.values.length === 1
+  )
     return pricingSelection(selector, selector.values[0]?.key ?? "");
   if (selector.kind === "decimal_values" && selector.values.length === 1)
     return pricingSelection(selector, selector.values[0] ?? "");
@@ -54,6 +105,7 @@ export function retainPricingInputs(
   previous: readonly WebsitePricingSelector[],
   next: readonly WebsitePricingSelector[],
   inputs: Readonly<Record<string, string>>,
+  accepts: (selection: PricingSelection) => boolean = () => true,
 ): Record<string, string> {
   const oldByDimension = new Map(
     previous.map((selector) => [canonicalJsonKey(selector.dimension), selector]),
@@ -67,7 +119,8 @@ export function retainPricingInputs(
       const after = pricingSelection(selector, input);
       return before !== undefined &&
         after !== undefined &&
-        canonicalJsonKey(before) === canonicalJsonKey(after)
+        canonicalJsonKey(before) === canonicalJsonKey(after) &&
+        accepts(after)
         ? [[selector.key, input]]
         : [];
     }),

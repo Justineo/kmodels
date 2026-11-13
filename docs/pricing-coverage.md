@@ -9,26 +9,21 @@ complete commercial coverage. Catalog identities can include downloadable artifa
 models and hosted routes without public rates. An aggregate unknown-model count is therefore not
 a hosted-service failure percentage.
 
-Pricing has four independent evidence levels:
+Unit-price completeness requires amount, denomination, denominator, applicability and validity.
+It does not require billable quantities or usage acquisition. Coverage inventories normalized
+rate variants, condition dimensions, operation predicates, raw reasons, evidence references and
+provider freshness. It does not assess whether a consumer could reconstruct a total cost.
 
-1. A normalized rate establishes amount, denomination, denominator, applicability and validity.
-2. A semantic charge binding identifies the final billable quantity and aggregation boundary.
-3. A quantity method establishes native input locators and any arithmetic needed to obtain that
-   quantity. Alternative methods stay within their own protocol and observation boundary.
-4. A complete operation additionally needs every applicable charge, selector and eligibility
-   condition. One known token rate or computable component cannot establish a complete total.
-
-Missing acquisition does not erase a known rate. A caller can supply an independently measured
-billable quantity. An absent counter does not become zero unless its owned contract says so.
+Missing acquisition does not erase a known rate. Price-basis metadata may describe provider-owned
+billing categories and rules, but Kmodels does not execute them or accept runtime usage.
 Numeric zero, explicit free usage, `not_published`, `not_supported` and `not_applicable` require
 positive commercial evidence. An unobserved price remains unknown. Catalog-only evidence creates
 no commercial partition; Meta's registry and hosted SDK illustrate this boundary.
 
 ## Current coverage resources
 
-The versioned `/pricing/calculation/coverage.json` export is the snapshot-specific inventory. It
-enumerates logical components, operation predicates, bindings, acquisition alternatives, missing
-selectors, raw reasons, source references and freshness. An empty operation predicate does not
+The versioned `/pricing/lookup/coverage.json` export is the snapshot-specific inventory. It
+enumerates terms, operation predicates, condition dimensions, raw reasons, source references and freshness. An empty operation predicate does not
 assert support for every operation. The canonical `/pricing/index.json` retains the full evidence;
 the core catalog independently retains model identity and lifecycle.
 
@@ -72,12 +67,12 @@ snapshot. When original evidence is insufficient, retain an explicit limitation 
 a replacement contract.
 
 Provider fixtures test extraction and local gaps. Generated-data checks compare canonical terms
-with consumer exports. Portable synthetic conformance vectors independently verify evaluator
+with consumer exports. Portable synthetic fixtures independently verify unit-price query
 semantics and packed Node/browser behavior. These checks complement native evidence; none alone
 proves every published service or charge has been discovered.
 
 Production build verification replays every exact mapped inference ID against its published
-calculation partition and summarizes lookup failures and candidate evidence gaps by provider.
-After a build, `vp node scripts/check-calculation-assets.ts --list-inference-gaps` lists affected
+price-data partition and summarizes lookup failures and candidate evidence gaps by provider.
+After a build, `vp node scripts/check-price-assets.ts --list-inference-gaps` lists affected
 IDs and reasons. Missing caller conditions alone are normal candidates. The replay covers
 published mappings and supplies a review queue for source investigations, including known gaps.

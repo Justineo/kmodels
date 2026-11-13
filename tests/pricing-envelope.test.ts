@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   createPricingCatalogEnvelope,
+  createPricingCatalogEnvelopeFromValidatedData,
   decodePricingCatalog,
   pricingCatalogJson,
   validatePricingCatalogEnvelope,
 } from "../src/catalog/pricing-envelope.ts";
-import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import type { PricingCatalog, ProviderPricingSnapshot } from "../src/catalog/pricing-schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
 const emptyPricing: PricingCatalog = {
@@ -26,6 +27,42 @@ const catalog: Catalog = {
 };
 
 describe("canonical pricing envelope", () => {
+  it.each(["fresh", "retained"] as const)(
+    "preserves an untouched %s provider's clock in a targeted publication",
+    (publication) => {
+      const observed_at = "2026-07-26T00:00:00.000Z";
+      const snapshot: ProviderPricingSnapshot =
+        publication === "fresh"
+          ? { provider_id: "unchanged", publication, observed_at }
+          : {
+              provider_id: "unchanged",
+              publication,
+              observed_at,
+              refresh_failure: {
+                attempted_at: "2026-07-27T00:00:00.000Z",
+                code: "provider_refresh_failed",
+              },
+            };
+      const make = (snapshot: ProviderPricingSnapshot) =>
+        createPricingCatalogEnvelopeFromValidatedData(
+          { ...emptyPricing, provider_snapshots: [snapshot] },
+          catalog,
+          "a".repeat(64),
+        );
+      expect(make(snapshot).data.provider_snapshots).toEqual([snapshot]);
+      const future = "2026-07-29T00:00:00.000Z";
+      expect(() =>
+        make(
+          snapshot.publication === "fresh"
+            ? { ...snapshot, observed_at: future }
+            : {
+                ...snapshot,
+                refresh_failure: { ...snapshot.refresh_failure, attempted_at: future },
+              },
+        ),
+      ).toThrow("refresh time after publication");
+    },
+  );
   it("binds canonical pricing data to the exact core catalog data", () => {
     const envelope = createPricingCatalogEnvelope(emptyPricing, catalog);
     expect(envelope.core_catalog_version).toBe(catalog.catalog_version);

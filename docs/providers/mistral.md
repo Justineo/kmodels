@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Online and Batch share the public model usage relationship. Execution, actual service tier, context, media and operation qualify rates while preserving successful result-item accounting. Independently billed tools/services retain separate books and request-visible triggers. Do not create an enrollment for a separate price-table column or API route.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 Mistral's partition is an AI Gateway rate book, not a model of every product Mistral sells. It
@@ -86,7 +98,7 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 ## Direct inference ID association
 
 The catalog source emits exact API names and explicitly listed aliases as references to the
-existing synchronous and Batch offers. The inventory and model card must agree on the primary
+the public relationship with exact synchronous or Batch conditions. The inventory and model card must agree on the primary
 API ID before either establishes an association. Retired and weights-only definitions do not
 create current price associations. The central pricing overlay may update amounts but cannot
 revive an alias withdrawn from fresh identity evidence, or invent an API ID from a model title
@@ -124,9 +136,9 @@ historical replay and provenance, not as a live dependency.
   Without usable linked identity, the title must exactly equal one active repository model name.
   Documentation URL slugs never become API IDs, and linked pages never create new catalog models.
   Explicit card IDs and aliases retain their existing precedence.
-- Synchronous and Batch invocation are separate offers. Batch rates are derived at 50% only for
-  models whose official feature definition supports batching. Their distinct offers already express
-  selection; no synthetic `exclusive_with` relation is needed.
+- Synchronous and Batch invocation use disjoint execution conditions within one offer. Batch rates
+  are derived at 50% only for models whose official feature definition supports batching. These
+  predicates express selection; no synthetic `exclusive_with` relation is needed.
 - Cache-read rates are derived at 10% of input only for supported Chat/FIM models without an
   explicit cached-input row. Exact `Cached input` rows in the repository model definition or the
   pricing page are direct cache rates, not additional ordinary input rates; an explicit page amount

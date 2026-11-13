@@ -1,5 +1,17 @@
 # TypeSafe AI
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep one public System One usage relationship per established versioned model ID. Input/output terms retain the exact nested request usage fields. System One is a product label, not an inferred subscription or execution enum. Model identity and published unit/rate evidence control admission; no additional plan is created from a model/version distinction.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary and sources
 
 TypeSafe AI (`typesafe`) is a hosted provider. Its public

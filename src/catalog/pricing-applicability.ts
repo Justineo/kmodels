@@ -1,5 +1,5 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
-import { predicateContainedIn, predicatesOverlap } from "./pricing-canonical.ts";
+import { clauseContainedIn, predicateContainedIn, predicatesOverlap } from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import type {
@@ -41,12 +41,10 @@ export function evaluateApplicability(
   selections: readonly PricingSelection[],
 ): ApplicabilityResult {
   const context = selectionMap(selections);
-  const missing = new Map<string, PriceDimension>();
-  let hasMissingClause = false;
+  const pending: PriceCondition[][] = [];
   for (const clause of applicability.any_of) {
-    let clauseMissing = false;
     let clauseFalse = false;
-    const clauseDimensions: PriceDimension[] = [];
+    const missingConditions: PriceCondition[] = [];
     for (const condition of clause.all_of) {
       const result = evaluatePricingCondition(
         condition,
@@ -57,16 +55,26 @@ export function evaluateApplicability(
         break;
       }
       if (result === "missing") {
-        clauseMissing = true;
-        clauseDimensions.push(condition.dimension);
+        missingConditions.push(condition);
       }
     }
     if (clauseFalse) continue;
-    if (!clauseMissing) return { state: "true", missing_dimensions: [] };
-    hasMissingClause = true;
-    for (const dimension of clauseDimensions) missing.set(canonicalJsonKey(dimension), dimension);
+    if (missingConditions.length === 0) return { state: "true", missing_dimensions: [] };
+    pending.push(missingConditions);
   }
-  if (!hasMissingClause) return { state: "false", missing_dimensions: [] };
+  if (pending.length === 0) return { state: "false", missing_dimensions: [] };
+  const alternatives: PriceCondition[][] = [];
+  const missing = new Map<string, PriceDimension>();
+  // A OR (A AND B) does not depend on B. Compare predicates, not just dimension names,
+  // after supplied facts have removed true conditions and impossible branches.
+  for (const clause of pending.sort((left, right) => left.length - right.length)) {
+    if (
+      alternatives.some((other) => other.length < clause.length && clauseContainedIn(clause, other))
+    )
+      continue;
+    alternatives.push(clause);
+    for (const { dimension } of clause) missing.set(canonicalJsonKey(dimension), dimension);
+  }
   return {
     state: "missing",
     missing_dimensions: [...missing.values()].sort((left, right) =>

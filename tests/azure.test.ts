@@ -6,7 +6,6 @@ import { applySupplementGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { evaluateModelApplicability } from "../src/catalog/pricing-applicability.ts";
 import { transitionProviderPricing } from "../src/catalog/pricing-transition.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
@@ -24,29 +23,24 @@ import { providerModelSchema } from "../src/catalog/schema.ts";
 import { captureInferencePriceSources } from "../src/catalog/inference-pricing-source.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
 import { renderComponent } from "./render-component.ts";
 import PricingDetails from "../src/components/PricingDetails.vue";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
-
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
-
 function manifest(providerId: string): ProviderManifest {
   const value = manifests.find((item) => item.provider.id === providerId);
   if (value === undefined) throw new Error(`Missing manifest ${providerId}`);
   return value;
 }
-
 function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
-
 function validateParsedPricing(
   value: ProviderManifest,
   source: SourceManifest,
@@ -86,7 +80,6 @@ function validateParsedPricing(
     },
   );
 }
-
 const azureApiFixtureSchema = z
   .object({
     regions: z.array(z.object({ location: z.string(), models: z.array(z.unknown()) })),
@@ -95,7 +88,6 @@ const azureApiFixtureSchema = z
 async function azureApiFixture(): Promise<z.infer<typeof azureApiFixtureSchema>> {
   return azureApiFixtureSchema.parse(JSON.parse(await fixture("azure/api.json")));
 }
-
 function azurePricingModel(id: string, version?: string): ProviderModel {
   return {
     ...baseModel({
@@ -109,7 +101,6 @@ function azurePricingModel(id: string, version?: string): ProviderModel {
     service_families: ["Azure OpenAI"],
   };
 }
-
 function azureRetailSource(
   minModels: number,
   maxModels: number,
@@ -123,7 +114,6 @@ function azureRetailSource(
     extractor: { kind: "azure-retail-prices", minModels, maxModels, minHandledRatio },
   };
 }
-
 function azurePublicPricingSource(minModels: number, maxModels: number): SourceManifest {
   const configured = manifest("azure").sources.find(({ id }) => id === "azure-public-pricing");
   if (configured === undefined || configured.extractor.kind !== "azure-public-pricing")
@@ -133,14 +123,12 @@ function azurePublicPricingSource(minModels: number, maxModels: number): SourceM
     extractor: { kind: "azure-public-pricing", minModels, maxModels },
   };
 }
-
 function azureAccountingSource(): SourceManifest {
   const configured = manifest("azure").sources.find(({ id }) => id === "azure-accounting");
   if (configured === undefined || configured.extractor.kind !== "azure-accounting")
     throw new Error("Missing Azure accounting source");
   return configured;
 }
-
 function azurePortalSource(minModels: number, maxModels: number): SourceManifest {
   const configured = manifest("azure").sources.find(({ id }) => id === "azure-portal-models");
   if (configured === undefined || configured.extractor.kind !== "azure-portal-catalog")
@@ -150,7 +138,6 @@ function azurePortalSource(minModels: number, maxModels: number): SourceManifest
     extractor: { kind: "azure-portal-catalog", minModels, maxModels },
   };
 }
-
 function azureApiModels(
   body: string,
   reconciliation?: PricingReconciliationItem[],
@@ -168,7 +155,6 @@ function azureApiModels(
       : { onPricingReconciliation: (item) => reconciliation.push(item) }),
   }).models;
 }
-
 async function azureCatalog(
   lifecycleBody?: string,
   omitted: ReadonlySet<string> = new Set(),
@@ -210,7 +196,6 @@ async function azureCatalog(
   });
   return parseSource({ provider: provider(value), source, body, observedAt }).models;
 }
-
 describe("Azure adapters", () => {
   it("retains an unclassified built-in quote without claiming prices are unpublished", async () => {
     const value = manifest("azure");
@@ -244,7 +229,6 @@ describe("Azure adapters", () => {
       pricing?.books.flatMap(({ offers }) => offers.flatMap(({ states }) => states)),
     ).not.toContainEqual(expect.objectContaining({ state: "not_published" }));
   });
-
   it.each([false, true])(
     "does not subtract another region's cache charge (broad input scope=%s)",
     (broad) => {
@@ -316,27 +300,17 @@ describe("Azure adapters", () => {
             locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
           }),
         );
-        expect(
-          evaluateRateCost(input, [
-            {
-              signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-              value: { numerator: "1000", denominator: "1" },
-            },
-          ]),
-        ).toMatchObject({ kind: "resolved", amount: { numerator: "1", denominator: "500" } });
       }
       validateParsedPricing(manifest("azure"), source, [priced], partition);
     },
   );
-
   it("preserves known model limits when another capability row omits them", async () => {
     const body = `${await fixture("azure/openai.md")}\n## Additional operations\n\n| Model ID | Description |\n| --- | --- |\n| \`gpt-multi\` (2026-01-01) | Chat Completions API. Streaming. |\n`;
     const model = (await azureCatalog(undefined, new Set(), body)).find(
       ({ uid }) => uid === "azure/gpt-multi@2026-01-01",
     );
-    expect(model?.limits).toMatchObject({ context_tokens: 128_000, max_output_tokens: 16_384 });
+    expect(model?.limits).toMatchObject({ context_tokens: 128000, max_output_tokens: 16384 });
   });
-
   it.each([false, true])(
     "keeps ARM scalar conflicts unknown after a third location (reverse=%s)",
     async (reverse) => {
@@ -365,10 +339,9 @@ describe("Azure adapters", () => {
       expect(model?.limits.context_tokens).toBeUndefined();
       expect(model?.capabilities.streaming).toBe("unknown");
       expect(model?.release_stage).toBe("unknown");
-      expect(model?.limits.max_output_tokens).toBe(16_384);
+      expect(model?.limits.max_output_tokens).toBe(16384);
     },
   );
-
   it("retains conflicting direct ARM amounts instead of selecting the last observation", async () => {
     const bundle = z
       .object({
@@ -383,7 +356,6 @@ describe("Azure adapters", () => {
       azureApiModels(JSON.stringify(bundle))[0]?.price_facts.map(({ price }) => price),
     ).toEqual(["1.25", "2.5"]);
   });
-
   it("preserves same-page public price conflicts through canonical assembly", async () => {
     const source = azurePublicPricingSource(1, 1);
     const body = await fixture("azure/public-openai-pricing.html");
@@ -423,7 +395,6 @@ describe("Azure adapters", () => {
     expect(term.variants).toHaveLength(1);
     validateParsedPricing(manifest("azure"), source, models, partition);
   });
-
   it("isolates an invalid published amount without discarding readable sibling cells", async () => {
     const source = azurePublicPricingSource(1, 1);
     const items: PricingReconciliationItem[] = [];
@@ -454,7 +425,6 @@ describe("Azure adapters", () => {
       expect.objectContaining({ reason_code: "public_price_amount_unreadable" }),
     );
   });
-
   it.each([
     [
       "retyped",
@@ -497,7 +467,6 @@ describe("Azure adapters", () => {
     expect(inputs.some(({ key }) => key === "chat.input_tokens")).toBe(false);
     expect(inputs.some(({ key }) => key === "chat.cached_input_tokens")).toBe(true);
   });
-
   it("reads published Learn pivots and expanded lifecycle and region companions", async () => {
     const value = manifest("azure");
     const configured = value.sources[0];
@@ -535,7 +504,7 @@ describe("Azure adapters", () => {
       version: "2026-09-29",
       service_families: ["Azure OpenAI"],
       api_endpoints: expect.arrayContaining([expect.objectContaining({ name: "createResponse" })]),
-      limits: { context_tokens: 1_050_000, max_output_tokens: 128_000 },
+      limits: { context_tokens: 1050000, max_output_tokens: 128000 },
     });
     expect(models.find(({ model_id }) => model_id === "Cohere-parse-v5")).toMatchObject({
       service_families: ["Foundry Models sold by Azure"],
@@ -558,7 +527,6 @@ describe("Azure adapters", () => {
     expect(() => parse(body + body)).toThrow("duplicated");
     expect(() => parse(body.replaceAll("::: zone-end", ""))).toThrow("pivot");
   });
-
   it("extracts fact-local accounting inputs from the reviewed Azure API contracts", async () => {
     const value = manifest("azure");
     const source = azureAccountingSource();
@@ -649,7 +617,6 @@ describe("Azure adapters", () => {
         sample: "38/38 Azure pricing inputs",
       },
     ]);
-
     const findings: SourceContractEvidence[] = [];
     const drifted = parseSource({
       provider: provider(value),
@@ -675,7 +642,6 @@ describe("Azure adapters", () => {
       ]),
     );
   });
-
   it("keeps exact model/version tuples and unions every observed operation", async () => {
     const models = await azureCatalog();
     const model = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-01-01");
@@ -726,8 +692,8 @@ describe("Azure adapters", () => {
         { name: "createResponse", path: "openai/v1/responses" },
       ]),
       modalities: { input: ["text", "image"], output: ["text"] },
-      context: 128_000,
-      output: 16_384,
+      context: 128000,
+      output: 16384,
       lifecycle: ["active", "stable"],
       availability: 5,
       whisper: ["transcription", "translation"],
@@ -771,7 +737,6 @@ describe("Azure adapters", () => {
       models.some((candidate) => candidate.model_id === "Old Model Not In The Current Catalog"),
     ).toBe(false);
   });
-
   it("keeps usable catalog facts when an optional companion is unavailable", async () => {
     const models = await azureCatalog(
       undefined,
@@ -785,13 +750,12 @@ describe("Azure adapters", () => {
     );
     expect(models.some(({ uid }) => uid === "azure/claude-opus-4-8")).toBe(false);
   });
-
   it("supplements documented identities from the public Foundry portal without widening scope", async () => {
     const value = manifest("azure");
     const source = azurePortalSource(2, 2);
     const documented = {
       ...azurePricingModel("gpt-multi", "2026-01-01"),
-      limits: { max_output_tokens: 128_000 },
+      limits: { max_output_tokens: 128000 },
       status: "deprecated",
       release_stage: "stable",
       deprecated_at: "2026-06-01",
@@ -823,9 +787,9 @@ describe("Azure adapters", () => {
         batch: true,
       },
       limits: {
-        context_tokens: 256_000,
-        max_input_tokens: 240_000,
-        max_output_tokens: 16_000,
+        context_tokens: 256000,
+        max_input_tokens: 240000,
+        max_output_tokens: 16000,
       },
       status: "unknown",
       release_stage: "unknown",
@@ -851,16 +815,15 @@ describe("Azure adapters", () => {
     ]);
     expect(merged.find(({ version }) => version === "2026-01-01")).toMatchObject({
       limits: {
-        context_tokens: 256_000,
-        max_input_tokens: 240_000,
-        max_output_tokens: 128_000,
+        context_tokens: 256000,
+        max_input_tokens: 240000,
+        max_output_tokens: 128000,
       },
       status: "deprecated",
       release_stage: "stable",
       deprecated_at: "2026-06-01",
     });
   });
-
   it("keeps a portal row when one inference task is new", async () => {
     const value = manifest("azure");
     const body = (await fixture("azure/portal-models.json")).replace(
@@ -882,7 +845,6 @@ describe("Azure adapters", () => {
     expect(models[0]?.tasks).toEqual(["text_generation"]);
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
-
   it("maps the reviewed zero-shot classification task", async () => {
     const value = manifest("azure");
     const models = parseSource({
@@ -896,7 +858,6 @@ describe("Azure adapters", () => {
     expect(models[0]?.modalities).toEqual({ input: ["text"], output: [] });
     expect(models[0]?.capabilities.structured_output).toBe(true);
   });
-
   it("bounds the anonymous portal request as a non-exhaustive supplement", () => {
     const source = azurePortalSource(50, 150);
     expect(source).toMatchObject({
@@ -922,7 +883,6 @@ describe("Azure adapters", () => {
     });
     expect(source).toMatchObject({ optional: true, retainOmittedFacts: true });
   });
-
   it("parses the scoped ARM inventory and exact billing-meter price join", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const model = azureApiModels(await fixture("azure/api.json"), reconciliation)[0];
@@ -956,7 +916,7 @@ describe("Azure adapters", () => {
         effort_control: "unknown",
         computer_use: "unknown",
       },
-      context: 128_000,
+      context: 128000,
       status: "active",
       retiredAt: "2027-01-01",
       availability: [{ region: "eastus", deployment_type: "GlobalStandard" }],
@@ -1007,7 +967,6 @@ describe("Azure adapters", () => {
     ).toEqual([]);
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
-
   it("merges exact ARM model identities across discovered locations", async () => {
     const bundle = await azureApiFixture();
     const eastus = bundle.regions[0];
@@ -1042,7 +1001,6 @@ describe("Azure adapters", () => {
       capabilities: { streaming: "unknown" },
     });
   });
-
   it("treats null ARM capabilities as unknown without dropping the model", async () => {
     const body = (await fixture("azure/api.json")).replace(
       '"streaming": "true"',
@@ -1054,7 +1012,6 @@ describe("Azure adapters", () => {
       capabilities: { streaming: "unknown", structured_output: true },
     });
   });
-
   it("normalizes the live ARM embedding TotalToken meter shape", () => {
     const model = azureApiModels(
       JSON.stringify({
@@ -1107,7 +1064,6 @@ describe("Azure adapters", () => {
       ],
     });
   });
-
   it.each([false, true])(
     "does not invent a context class for an unqualified native SKU (long peer=%s)",
     (withLong) => {
@@ -1171,7 +1127,6 @@ describe("Azure adapters", () => {
       );
     },
   );
-
   it("extracts current public retail rates without Azure credentials", async () => {
     const value = manifest("azure");
     const source = azureRetailSource(3, 5, 0.8);
@@ -1246,7 +1201,6 @@ describe("Azure adapters", () => {
     });
     expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
   });
-
   it("binds compact GPT identities and keeps Standard, Flex and Priority tariffs disjoint", () => {
     const source = azureRetailSource(1, 1, 1);
     const catalog = azurePricingModel("gpt-6.1-terra", "2026-10-26");
@@ -1305,14 +1259,6 @@ describe("Azure adapters", () => {
           dimension: { namespace: "kmodels", value: "served_service_tier" },
         }),
       );
-      expect(
-        evaluateRateCost(variant, [
-          {
-            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-            value: { numerator: "1000", denominator: "1" },
-          },
-        ]).kind,
-      ).toBe("resolved");
     }
     const unknown = parseSource({
       provider: provider(manifest("azure")),
@@ -1325,7 +1271,6 @@ describe("Azure adapters", () => {
     });
     expect(unknown.models).toEqual([]);
   });
-
   it("keeps Azure OpenAI Standard and Flex columns in separate commercial scopes", () => {
     const value = manifest("azure");
     const source = azurePublicPricingSource(1, 1);
@@ -1367,7 +1312,6 @@ describe("Azure adapters", () => {
       ),
     );
   });
-
   it("uses public Microsoft price pages at their published version scope", async () => {
     const value = manifest("azure");
     const source = azurePublicPricingSource(2, 2);
@@ -1478,7 +1422,7 @@ describe("Azure adapters", () => {
     if (!pair.inference) throw new Error("Missing evaluated Azure mapping");
     expect(pair.inference.mapping.rules).toEqual([]);
     const lookup = createInferencePriceLookup(
-      calculationExport(pair.catalog, pair.pricing),
+      priceDataExport(pair.catalog, pair.pricing),
       pair.inference.mapping,
     );
     for (const model_id of [
@@ -1526,7 +1470,6 @@ describe("Azure adapters", () => {
     expect(html).toContain("East US");
     expect(html).not.toContain("Inspect target");
   });
-
   it("accepts a newly linked Foundry pricing family without widening identity matching", async () => {
     const value = manifest("azure");
     const source = azurePublicPricingSource(1, 1);
@@ -1562,7 +1505,6 @@ describe("Azure adapters", () => {
       }),
     ]);
   });
-
   it.each([false, true])(
     "keeps built-in tool rates without a model carrier (service only: %s)",
     async (serviceOnly) => {
@@ -1698,7 +1640,6 @@ describe("Azure adapters", () => {
       ).toEqual(pricing);
     },
   );
-
   it("normalizes official partner meters with provider-native billing units", () => {
     const value = manifest("azure");
     const partner = (id: string, tasks: ModelTask[], version?: string): ProviderModel => ({
@@ -1759,7 +1700,6 @@ describe("Azure adapters", () => {
       ["azure/mistral-ocr-4-0", [["input_image", "page"]]],
     ]);
   });
-
   it.each([true, false])("preserves an owned public Standard header (explicit=%s)", (explicit) => {
     const source = azurePublicPricingSource(1, 1);
     const model = azurePricingModel("gpt-4.1", "2025-04-14");
@@ -1824,24 +1764,6 @@ describe("Azure adapters", () => {
       expect(selected).toHaveLength(1);
       const variant = selected[0];
       if (variant === undefined) throw new Error("Missing selected public rate");
-      expect(
-        evaluateRateCost(variant, [
-          {
-            signal: { namespace: "kmodels", value: "input_tokens" },
-            value: { numerator: "1000000", denominator: "1" },
-          },
-          {
-            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-            value: { numerator: "1000000", denominator: "1" },
-          },
-        ]),
-      ).toMatchObject({
-        kind: "resolved",
-        amount:
-          tier === "standard"
-            ? { numerator: "2", denominator: "1" }
-            : { numerator: "7", denominator: "2" },
-      });
     }
     const old = assembleParsedProviderPricing(
       "azure",
@@ -1887,7 +1809,6 @@ describe("Azure adapters", () => {
     expect(advanced.books).toEqual(partition.books);
     validateParsedPricing(manifest("azure"), source, [model], partition);
   });
-
   it.each([false, true])(
     "keeps delegated Claude prompt bands and safe siblings (invalid=%s)",
     async (invalid) => {
@@ -1986,7 +1907,6 @@ describe("Azure adapters", () => {
       validateParsedPricing(value, source, [model], partition);
     },
   );
-
   it("imports Claude's delegated token rates without Marketplace settlement facts", async () => {
     const value = manifest("azure");
     const configured = value.sources.find(({ id }) => id === "azure-claude-pricing");
@@ -2098,7 +2018,6 @@ describe("Azure adapters", () => {
       },
     ]);
   });
-
   it("shares delegated Claude base-model prices across offered versions and retains readable cells", async () => {
     const value = manifest("azure");
     const source = value.sources.find(({ id }) => id === "azure-claude-pricing");
@@ -2136,7 +2055,6 @@ describe("Azure adapters", () => {
     });
     validateParsedPricing(value, source, catalogModels, partition);
   });
-
   it("matches retail SKUs against the public model/version catalog", async () => {
     const value = manifest("azure");
     const catalogModels: ProviderModel[] = [
@@ -2177,7 +2095,6 @@ describe("Azure adapters", () => {
       { uid: "azure/sora-2@2025-10-06", meters: ["video_generation"] },
     ]);
   });
-
   it("does not guess which version owns a versionless retail SKU", async () => {
     const value = manifest("azure");
     const bundle = z
@@ -2186,7 +2103,10 @@ describe("Azure adapters", () => {
     const body = JSON.stringify({
       prices: bundle.prices.filter(({ skuName }) => skuName === "Sora 2 glbl"),
     });
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: {
+      disposition: string;
+      reason_code: string;
+    }[] = [];
     expect(
       parseSource({
         provider: provider(value),
@@ -2208,7 +2128,6 @@ describe("Azure adapters", () => {
       },
     ]);
   });
-
   it("recognizes scoped Mistral and Llama SKU spellings without resolving competing base identities", () => {
     const source = azureRetailSource(0, 2, 0);
     const llama = {
@@ -2248,11 +2167,13 @@ describe("Azure adapters", () => {
     };
     expect(parse([llama, medium, base]).map(({ uid }) => uid)).toEqual([medium.uid]);
   });
-
   it("classifies unmatched public retail rows without guessing a catalog binding", async () => {
     const value = manifest("azure");
     const body = await fixture("azure/retail-prices.json");
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: {
+      disposition: string;
+      reason_code: string;
+    }[] = [];
     const models = parseSource({
       provider: provider(value),
       source: azureRetailSource(3, 5, 0.8),
@@ -2284,7 +2205,6 @@ describe("Azure adapters", () => {
       sample: "Azure OpenAI / Unknown Inp glbl / Unknown Inp glbl Tokens",
     });
   });
-
   it("preserves ARM Legacy as a callable lifecycle state", async () => {
     const value = manifest("azure");
     const source = value.sources.find((candidate) => candidate.id === "azure-api");
@@ -2299,7 +2219,6 @@ describe("Azure adapters", () => {
       release_stage: "unknown",
     });
   });
-
   it("keeps ARM model availability and skips pricing diagnostics for current inventory bundles", async () => {
     const body = await fixture("azure/api.json");
     const { regions } = JSON.parse(body);
@@ -2313,7 +2232,6 @@ describe("Azure adapters", () => {
     expect(models[0]?.price_facts).toEqual([]);
     expect(diagnostics).toEqual([]);
   });
-
   it("treats an effective inference retirement date as retired despite stale lifecycle labels", async () => {
     const value = manifest("azure");
     const source = value.sources.find((candidate) => candidate.id === "azure-api");
@@ -2324,7 +2242,6 @@ describe("Azure adapters", () => {
     );
     const apiModel = parseSource({ provider: provider(value), source, body, observedAt }).models[0];
     expect(apiModel).toMatchObject({ status: "retired", retired_at: "2026-07-01" });
-
     const lifecycle = (await fixture("azure/lifecycle.md")).replace(
       "| gpt-multi    | 2026-01-01 | GA        | 2027-01-01",
       "| gpt-multi    | 2026-01-01 | GA        | 2026-07-01",

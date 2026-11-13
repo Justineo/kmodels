@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { copyFile, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,28 +7,16 @@ import { pathToFileURL } from "node:url";
 import { createContext, SourceTextModule } from "node:vm";
 import { build } from "vite-plus";
 import { z } from "zod";
-import {
-  conformanceDataset,
-  conformanceErrorData,
-  conformanceSchema,
-  type ConformanceCase,
-  type ConformanceSuite,
-} from "../tests/pricing-conformance.ts";
-import {
-  calculationEnvelopeSchema,
-  createCalculator,
-  createInferencePriceLookup,
-  type InferencePriceQuery,
-} from "../src/pricing/index.ts";
+import { lookupFixtureSchema, type LookupFixtures } from "../tests/pricing-lookup-fixture.ts";
+import { createInferencePriceLookup, type InferencePriceQuery } from "../src/pricing/index.ts";
 
 const expectedPackageFiles = [
   "package/CONTRACT.md",
   "package/README.md",
-  "package/conformance.json",
   "package/dist/index.d.ts",
   "package/dist/index.js",
   "package/package.json",
-  "package/request.schema.json",
+  "package/query.schema.json",
   "package/schema.json",
 ];
 
@@ -39,17 +26,6 @@ const packageManifestSchema = z.object({
   dependencies: z.record(z.string(), z.string()),
 });
 
-interface RuntimeCalculator {
-  calculate(input: unknown): unknown;
-}
-
-const runtimeResultSchema = z.looseObject({
-  status: z.string(),
-  subtotals: z.unknown(),
-  totals: z.unknown().optional(),
-  unresolved: z.array(z.looseObject({ code: z.string() })),
-});
-
 await checkPricingPackage();
 
 async function checkPricingPackage(): Promise<void> {
@@ -57,9 +33,12 @@ async function checkPricingPackage(): Promise<void> {
   try {
     const packageDirectory = await packAndExtractPackage(temporaryDirectory);
     await checkPackageContents(packageDirectory);
-    await checkOriginalContract(packageDirectory);
     await checkConsumerTypes(packageDirectory);
-    const suite = await readConformanceSuite(packageDirectory);
+    const suite = lookupFixtureSchema.parse(
+      JSON.parse(
+        await readFile(new URL("../tests/fixtures/pricing/lookup.json", import.meta.url), "utf8"),
+      ),
+    );
     const entryPath = join(packageDirectory, "dist/index.js");
 
     await checkNodeRuntime(entryPath, suite);
@@ -67,8 +46,8 @@ async function checkPricingPackage(): Promise<void> {
 
     console.log(
       `Packed package: ${expectedPackageFiles.length} expected files; ` +
-        `${suite.cases.length} calculations and ${suite.errors.length} errors verified in Node and browser; ` +
-        "consumer types verified; synthetic conformance data only; no transport or Node dependency in the runtime.",
+        "unit-price queries verified in Node and browser; " +
+        "consumer types verified; synthetic price data only; no transport or Node dependency in the runtime.",
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
@@ -77,10 +56,7 @@ async function checkPricingPackage(): Promise<void> {
 
 async function checkConsumerTypes(packageDirectory: string): Promise<void> {
   const consumer = join(packageDirectory, "consumer.mts");
-  await copyFile(
-    new URL("../tests/fixtures/calculator/consumer.ts.txt", import.meta.url),
-    consumer,
-  );
+  await copyFile(new URL("../tests/fixtures/pricing/consumer.ts.txt", import.meta.url), consumer);
   for (const module of ["nodenext", "preserve"]) {
     execFileSync(
       "vp",
@@ -101,28 +77,6 @@ async function checkConsumerTypes(packageDirectory: string): Promise<void> {
       ],
       { stdio: "inherit" },
     );
-  }
-}
-
-async function checkOriginalContract(packageDirectory: string): Promise<void> {
-  const frozen = z
-    .object({
-      source_commit: z.string(),
-      files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
-    })
-    .parse(
-      JSON.parse(
-        await readFile(
-          new URL("../tests/fixtures/calculator/v1-contract-hashes.json", import.meta.url),
-          "utf8",
-        ),
-      ),
-    );
-  for (const [name, expected] of Object.entries(frozen.files)) {
-    const actual = createHash("sha256")
-      .update(await readFile(join(packageDirectory, name)))
-      .digest("hex");
-    assert.equal(actual, expected, `Public contract changed: ${name}`);
   }
 }
 
@@ -159,40 +113,18 @@ async function checkPackageContents(packageDirectory: string): Promise<void> {
   );
 }
 
-async function readConformanceSuite(packageDirectory: string): Promise<ConformanceSuite> {
-  const fixturePath = join(packageDirectory, "conformance.json");
-  const suite = conformanceSchema.parse(JSON.parse(await readFile(fixturePath, "utf8")));
-  const envelopes = [
-    ...Object.values(suite.datasets),
-    ...suite.errors.flatMap((vector) => {
-      const inline = calculationEnvelopeSchema.safeParse(vector.data);
-      return inline.success ? [inline.data] : [];
-    }),
-  ];
-  for (const envelope of envelopes) {
-    for (const provider of envelope.providers) {
-      assert.equal(
-        provider.snapshot.provider_id,
-        "example",
-        "Conformance contains real provider prices",
-      );
-    }
-  }
-  return suite;
-}
-
-async function checkNodeRuntime(entryPath: string, suite: ConformanceSuite): Promise<void> {
+async function checkNodeRuntime(entryPath: string, suite: LookupFixtures): Promise<void> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = rejectNetworkAccess;
   try {
     const moduleExports: unknown = await import(pathToFileURL(entryPath).href);
-    checkRuntimeConformance(moduleExports, suite);
+    checkInferenceLookup(moduleExports, suite);
   } finally {
     globalThis.fetch = originalFetch;
   }
 }
 
-async function checkBrowserRuntime(entryPath: string, suite: ConformanceSuite): Promise<void> {
+async function checkBrowserRuntime(entryPath: string, suite: LookupFixtures): Promise<void> {
   const browserSource = await bundleForBrowser(entryPath);
   const browserGlobals = createContext({
     TextEncoder,
@@ -206,7 +138,7 @@ async function checkBrowserRuntime(entryPath: string, suite: ConformanceSuite): 
     throw new Error("Browser bundle has external imports");
   });
   await browserModule.evaluate();
-  checkRuntimeConformance(browserModule.namespace, suite);
+  checkInferenceLookup(browserModule.namespace, suite);
 }
 
 async function bundleForBrowser(entryPath: string): Promise<string> {
@@ -229,27 +161,7 @@ async function bundleForBrowser(entryPath: string): Promise<string> {
   return entryChunk.code;
 }
 
-function checkRuntimeConformance(moduleExports: unknown, suite: ConformanceSuite): void {
-  checkInferenceLookup(moduleExports, suite);
-  for (const testCase of suite.cases) {
-    const dataset = conformanceDataset(suite, testCase.dataset);
-    const calculator = loadRuntimeCalculator(moduleExports, dataset);
-    const actual = calculator.calculate(testCase.request);
-    assertExpectedResult(actual, testCase);
-    const reference = createCalculator(dataset).calculate(testCase.request);
-    assert.equal(JSON.stringify(actual), JSON.stringify(reference), testCase.name);
-  }
-  for (const testCase of suite.errors) {
-    const dataset = conformanceErrorData(suite, testCase);
-    const actualCode = capturedErrorCode(() => {
-      const calculator = loadRuntimeCalculator(moduleExports, dataset);
-      if (testCase.request !== undefined) calculator.calculate(testCase.request);
-    });
-    assert.equal(actualCode, testCase.expectedCode, testCase.name);
-  }
-}
-
-function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): void {
+function checkInferenceLookup(moduleExports: unknown, suite: LookupFixtures): void {
   if (
     typeof moduleExports !== "object" ||
     moduleExports === null ||
@@ -257,6 +169,11 @@ function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): 
     typeof moduleExports.createInferencePriceLookup !== "function"
   )
     throw new Error("Missing inference price lookup export");
+  assert(!("createCalculator" in moduleExports), "Cost API must not be exported");
+  assert(
+    !("calculationRequestSchema" in moduleExports),
+    "Cost request schema must not be exported",
+  );
   const data = suite.datasets.base;
   const provider = data?.providers[0];
   const book = provider?.books[0];
@@ -332,6 +249,14 @@ function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): 
     };
     assert.equal(JSON.stringify(lookup(query)), JSON.stringify(reference(query)), execution);
   }
+  for (const value of ["input_text", "cache_write_text"] as const) {
+    const query: InferencePriceQuery = {
+      provider_id: provider.snapshot.provider_id,
+      model_id: "literal-model-id",
+      meter: { namespace: "kmodels", value },
+    };
+    assert.equal(JSON.stringify(lookup(query)), JSON.stringify(reference(query)), value);
+  }
   if (
     !("createCommercialPriceLookup" in moduleExports) ||
     typeof moduleExports.createCommercialPriceLookup !== "function"
@@ -342,6 +267,7 @@ function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): 
   const query: InferencePriceQuery = {
     provider_id: provider.snapshot.provider_id,
     model_id: "literal-model-id",
+    meter: { namespace: "kmodels", value: "input_text" },
     choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "request" } }],
   };
   const { provider_id, model_id, ...selection } = query;
@@ -352,60 +278,6 @@ function checkInferenceLookup(moduleExports: unknown, suite: ConformanceSuite): 
   );
 }
 
-function assertExpectedResult(actual: unknown, testCase: ConformanceCase): void {
-  const result = runtimeResultSchema.parse(actual);
-  assert.equal(result.status, testCase.expected.status, testCase.name);
-  assert.deepEqual(result.subtotals, testCase.expected.subtotals, testCase.name);
-  assert.deepEqual(
-    [...new Set(result.unresolved.map((gap) => gap.code))].sort(),
-    [...testCase.expected.unresolvedCodes].sort(),
-    testCase.name,
-  );
-  assert.equal(
-    result.totals !== undefined,
-    result.status === "calculated" || result.status === "estimated",
-    testCase.name,
-  );
-}
-
-function loadRuntimeCalculator(moduleExports: unknown, priceData: unknown): RuntimeCalculator {
-  if (
-    typeof moduleExports !== "object" ||
-    moduleExports === null ||
-    !("createCalculator" in moduleExports) ||
-    typeof moduleExports.createCalculator !== "function"
-  ) {
-    throw new Error("Missing calculator export");
-  }
-
-  const calculator: unknown = moduleExports.createCalculator(priceData);
-  if (
-    typeof calculator !== "object" ||
-    calculator === null ||
-    !("calculate" in calculator) ||
-    typeof calculator.calculate !== "function"
-  ) {
-    throw new Error("Missing calculate method");
-  }
-
-  const calculate = calculator.calculate;
-  return {
-    calculate(input: unknown): unknown {
-      return calculate.call(calculator, input);
-    },
-  };
-}
-
-function capturedErrorCode(action: () => void): unknown {
-  try {
-    action();
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error) return error.code;
-    throw error;
-  }
-  return undefined;
-}
-
 function rejectNetworkAccess(): never {
-  throw new Error("Calculator attempted network access");
+  throw new Error("Price lookup attempted network access");
 }

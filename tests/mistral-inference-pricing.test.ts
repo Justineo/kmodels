@@ -12,7 +12,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -83,7 +83,7 @@ async function collect(change?: (bundle: LinkedBundle) => void, previous?: Catal
 }
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -103,9 +103,11 @@ const standard = [
   categorical("served_service_tier", "standard"),
 ];
 function offerRef(query: ReturnType<typeof lookup>, model_id: string, key: string) {
-  const offer = query({ provider_id: "mistral", model_id }).candidates.find(
-    ({ offer }) => offer.offer_key === key,
-  )?.offer;
+  const offer = query({
+    provider_id: "mistral",
+    model_id,
+    execution_mode: key === "batch" ? "batch" : "request",
+  }).candidates[0]?.offer;
   if (!offer) throw new Error(`Missing ${model_id} ${key}`);
   return offer.id;
 }
@@ -116,7 +118,10 @@ it("maps actual Mistral API names and declared aliases while leaving invented ID
   for (const model_id of ["mistral-large-4", "mistral-large-4-0"]) {
     const result = query({ provider_id: "mistral", model_id });
     expect(result.status).toBe("candidates");
-    expect(result.candidates.map(({ offer }) => offer.offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(result.candidates.map(({ offer }) => offer.offer_key).sort()).toEqual([
+      "public",
+      "public",
+    ]);
     expect(result.candidates.map(({ offer }) => offer.id)).toEqual(
       query({ provider_id: "mistral", model_id: "mistral-large-4" }).candidates.map(
         ({ offer }) => offer.id,
@@ -148,6 +153,7 @@ it("selects actual currency and served tier over shared synchronous and Batch pr
     const result = query({
       ...args,
       offer_ref: offerRef(query, args.model_id, key),
+      execution_mode: key === "batch" ? "batch" : "request",
       selectors: [
         categorical("billing_currency", currency),
         ...(tier
@@ -173,6 +179,7 @@ it("selects actual currency and served tier over shared synchronous and Batch pr
     query({
       ...args,
       offer_ref: offerRef(query, args.model_id, "sync"),
+      execution_mode: "request",
       selectors: [categorical("billing_currency", "USD")],
     }).missing_conditions,
   ).toContainEqual({ namespace: "kmodels", value: "served_service_tier" });
@@ -181,6 +188,7 @@ it("selects actual currency and served tier over shared synchronous and Batch pr
       provider_id: "mistral",
       model_id: "mistral-ocr-4-1",
       offer_ref: offerRef(query, "mistral-ocr-4-1", "sync"),
+      execution_mode: "request",
       selectors: [
         categorical("billing_currency", "USD"),
         categorical("served_service_tier", "priority"),
@@ -203,6 +211,7 @@ it("preserves free moderation and model-specific page and audio units without bo
       provider_id: "mistral",
       model_id,
       offer_ref: offerRef(query, model_id, "sync"),
+      execution_mode: "request",
       selectors: [...selectors],
     });
     // Published cached non-token cells have no reviewed meter; their unknowns remain visible.
@@ -288,6 +297,7 @@ it("shares exact ID matching with the static UI while keeping audit data out", a
       [...standard, categorical("endpoint", "/v1/chat/completions")],
       at,
       offerRef(lookup(candidate), "mistral-large-4-0", "sync"),
+      "request",
     ).status,
   ).toBe("matched");
   expect(JSON.stringify(price)).not.toContain("content_hash");

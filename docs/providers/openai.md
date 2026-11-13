@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Online/Batch and ordinary/live execution qualify the public usage relationship rather than creating plans. Actual tier, context, cache and media conditions retain their own quantities. An explicitly opted-in data-sharing discount on fine-tuned inference identifies a separate account program where evidenced; the default program stays distinct. Container minute/session-block schedules remain dated billing conditions, not inferred enrollment. Fine-tuned inference, search and containers keep separate service subjects; contributions retain exact referenced rates.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 OpenAI extraction lives in `src/catalog/openai.ts`, with the accounting recognizer in
 `src/catalog/openai-accounting.ts`. `adapters.ts` owns dispatch and shared error translation;
 `source-parse.ts` owns the structural parser input contract. Moving provider code does not change
@@ -57,7 +69,8 @@ or rates, and missing accounting fields do not stall the required pricing-page p
 
 The producer emits direct ID-to-offer associations from each successfully parsed card's explicit
 `Model ID` declaration and from exact ID rows in reviewed pricing tables. The shared compiler joins
-these facts to existing `sync` and `batch` offers for the same catalog identity. Absent offers do not
+these facts to `sync` and `batch` source contexts within the public relationship for the same
+catalog identity. Absent contexts do not
 produce public associations. A price-only ID can therefore be matched even if its model card is
 unavailable. Display names and retained aliases do not establish request IDs.
 
@@ -76,7 +89,7 @@ unmapped; no account-resource discovery or name-prefix matching is performed.
 Associations fix no commercial selectors. Existing offers own context bands, actual served tier,
 regional processing and residency conditions, validity, exclusions and charge bindings. Missing
 conditions return candidates; the requested `service_tier` cannot replace the actual billed tier.
-The synchronous and Batch offers remain separate pricing plans without requiring a protocol choice.
+Synchronous and Batch are execution conditions within the same relationship; protocol choice is not required.
 Neither an ID nor the default API hostname establishes regional execution, project eligibility or
 access. Regional configuration remains an ordinary price input when the tariff consumes it.
 
@@ -174,15 +187,13 @@ rendering retains the column names but omits those tooltips. Each column carries
 even when every quote in the opposite column is absent. Neither a peer quote nor the model's
 maximum context window establishes a tariff boundary.
 
-The explicit 30-minute and 12-hour cache-write columns form independent additive terms. The
-[prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) permits both
-lifetimes in one request, so a global TTL selector cannot choose only one charge. Each term consumes
-its own provider signal (`cache_write_30m_tokens` or `cache_write_12h_tokens`); its source observation
-retains the literal TTL and its context/tier/region scope. These are complete write rates, not
-surcharges on ordinary input. The current reviewed OpenAPI lacks the per-TTL counters, so callers
-must supply those quantities; the aggregate write counter is used only to subtract writes from
-ordinary input. The pricing page's TTL schedule supersedes an unqualified model-card write quote
-in overlapping scope, including equal amounts, to avoid charging the same writes twice.
+The explicit 30-minute and 12-hour cache-write columns are variants of `cache_write_text` with
+`cache_ttl_seconds` equal to 1800 and 43200. Preserve their context, served-tier and region predicates.
+Lookup selects the unit price for one TTL; consumers may query both independently within the same
+request. These are complete write rates, not surcharges on ordinary input. Missing per-TTL counters
+do not block unit-price lookup. Existing quantity bindings remain optional price-basis metadata.
+The pricing page's TTL schedule supersedes unqualified model-card write quotes in overlapping
+scope, including equal amounts; it does not establish an additional priced item.
 
 Alias prices are derived only while the pricing page declares exact, unique target IDs. The current
 [Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak) says `latest` resolution
@@ -445,7 +456,7 @@ Organization Usage can support external grouped comparisons when all relevant pr
 independently established; actual spend, discounts, credits and invoice reconciliation remain
 outside Kmodels.
 
-Model books use separate synchronous and Batch offers, but do not add redundant `exclusive_with`
+Model books retain synchronous and Batch rate contexts within one relationship, but do not add redundant `exclusive_with`
 edges: the mechanisms already select different executions. Service-book `model_refs` fully express
 which models can use Web Search, File Search, or containers, so those books likewise need no
 `compatible_with` fan-out to every model offer.

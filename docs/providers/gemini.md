@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Free Tier, Paid Tier and their explicitly evidenced Contributor programs identify account relationships. Contributor is supported only with the owned invitation and data-use evidence. Within each account offer, online/Batch, Standard/Flex/Priority, context and modality qualify rates. Search/Maps remain separate service subjects linked to the same project account program. Model-specific service rates become model conditions; shared daily/monthly allowances retain one pool with exact targets, never one allowance per model or request.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 Catalog and capability evidence cannot establish a commercial state. Gemma model cards leave
 pricing unknown; only the independently reviewed pricing table can establish free-tier rates or
 paid-tier restrictions. An unreadable or absent declaration cannot imply `not_published`.
@@ -92,7 +104,8 @@ associations. Plain price-table IDs remain independent of Discovery, protocol re
 response-field mappings. No Vertex publisher prefix, regional prefix, tuned-model name or private
 deployment name is inferred from this rule.
 
-Associations reference the existing `sync` and `batch` offers; they create no second price book.
+Associations resolve `sync` and `batch` source contexts to execution conditions within each
+evidenced account offer; they create no second price book.
 Account eligibility, response-reported served tier, context bands and media conditions remain on
 the existing rates. Missing conditions return candidates, and an explicit incompatible account
 condition returns no applicable price. Selecting a requested tier is not evidence of a served tier.
@@ -115,13 +128,13 @@ is separate from this producer integration.
 
 ### Offers and conditions
 
-Each model book has up to two offers:
+The source publishes up to two invocation contexts, combined under the account relationships above:
 
 - `sync` — online inference. Standard, Flex, and Priority are realized service-tier variants because
   the response reports the tier actually served.
 - `batch` — asynchronous Batch inference. Successful result items carry their own model usage.
 
-Sync and Batch are already alternative offers and therefore need no `exclusive_with` relations.
+Sync and Batch are disjoint execution conditions and therefore need no `exclusive_with` relations.
 The processing heading owns each table's tier, including Standard, independently of peer tables.
 A table without a processing heading stays unqualified; shared assembly cannot invent Standard.
 Search and Maps are shared provider-service books. Each exact compatible model has an offer with a
@@ -131,7 +144,7 @@ Search and Maps grounding use the account eligibility of the same Gemini API pro
 linked inference request. The website can apply that shared condition when the exact online
 offer is established. Each grounding offer retains its own operation and pricing tier.
 
-`Free Tier` and `Paid Tier` are account-eligibility dimensions. Only an exact official `Free of
+`Free Tier` and `Paid Tier` identify account relationships and retain native account-eligibility predicates. Only an exact official `Free of
 charge` cell becomes a zero rate. Standard/Flex/Priority and Batch remain execution dimensions. An
 adjacent per-image, per-minute, or explicit `Equivalent to` amount (including per-10-second TTS
 estimates) is treated as a usage equivalence when the same cell already

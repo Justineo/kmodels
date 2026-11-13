@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
-import CommercialChoices from "./CommercialChoices.vue";
+import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
 import {
   formatCategoricalValue,
   formatDimension,
@@ -32,8 +32,14 @@ import type {
 } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 import UiIcon from "./UiIcon.vue";
-import PricingConditions from "./PricingConditions.vue";
-import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
+import PricingControls from "./PricingControls.vue";
+import {
+  fixedPricingSelection,
+  pricingSelection,
+  retainCommercialChoices,
+  retainPricingInputs,
+  commercialControlChoices,
+} from "../catalog/pricing-selector-input.ts";
 import {
   linkedPricingSelections,
   serviceRegionPreference,
@@ -84,13 +90,13 @@ const inherited = computed(() => {
   );
 });
 const boundSelections = computed(() => [...(props.boundSelectors ?? []), ...inherited.value]);
-const commercialQuery = computed(() =>
-  queryWebsiteCommercialOffer(
+function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
+  return queryWebsiteCommercialOffer(
     unfilteredOffer.value,
     uniqueCanonicalValues([
       ...boundSelections.value,
       ...unfilteredOffer.value.selectors.flatMap((option) => {
-        const selected = pricingSelection(option, inputs.value[option.key] ?? "");
+        const selected = pricingSelection(option, values[option.key] ?? "");
         return selected === undefined ? [] : [selected];
       }),
       ...(props.modelRef === undefined
@@ -103,18 +109,59 @@ const commercialQuery = computed(() =>
             },
           ]),
     ]),
-    props.hideConditions ? [] : commercialChoices.value,
+    props.hideConditions ? [] : choices,
     viewingUpcoming.value && timeline.value.upcoming
       ? timeline.value.upcoming.effective_at
       : liveNow.value,
+  );
+}
+const commercialContext = computed(() => queryCommercial(commercialChoices.value));
+const commercialOptions = computed(() =>
+  commercialControlChoices(
+    queryCommercial([], {}).available_choices,
+    queryCommercial(commercialChoices.value, {}).available_choices,
+    commercialChoices.value,
   ),
+);
+const commercialQuery = computed(() =>
+  queryCommercial([
+    ...commercialChoices.value,
+    ...commercialContext.value.fixed_choices.filter(
+      (fixed) => !commercialChoices.value.some(({ dimension }) => dimension === fixed.dimension),
+    ),
+  ]),
 );
 const displayOffer = computed(() =>
   props.hideConditions ? unfilteredOffer.value : commercialQuery.value.offer,
 );
 function selectCommercial(choices: CommercialChoice[]): void {
-  commercialChoices.value = choices;
-  inputs.value = {};
+  commercialChoices.value = retainCommercialChoices(commercialChoices.value, choices, (next) => {
+    const result = queryCommercial(next, {});
+    return (
+      result.offer.rates.length > 0 ||
+      result.offer.states.length > 0 ||
+      result.offer.unnormalized.length > 0
+    );
+  });
+  const next = queryCommercial(commercialChoices.value, {}).offer;
+  const scopes = [...next.rates, ...next.states, ...next.allowances, ...next.contributions].map(
+    ({ applicability }) => applicability,
+  );
+  inputs.value = retainPricingInputs(
+    unfilteredOffer.value.selectors,
+    next.selectors,
+    inputs.value,
+    (selection) =>
+      next.unnormalized.length > 0 ||
+      scopes.some(
+        (scope) =>
+          scope.any_of.some(({ all_of }) =>
+            all_of.some(
+              ({ dimension }) => canonicalJson(dimension) === canonicalJson(selection.dimension),
+            ),
+          ) && evaluateApplicability(scope, [selection]).state !== "false",
+      ),
+  );
 }
 const selectors = computed(() => {
   if (props.hideConditions) return [];
@@ -122,8 +169,10 @@ const selectors = computed(() => {
   return displayOffer.value.selectors.filter(
     ({ dimension }) =>
       !bound.has(canonicalJson(dimension)) &&
-      !commercialQuery.value.available_choices.some(
-        (choice) => dimension.namespace === "kmodels" && dimension.value === choice.dimension,
+      !commercialOptions.value.some(
+        (choice) =>
+          dimension.namespace === "kmodels" &&
+          dimension.value === commercialConditionDimension(choice.dimension),
       ),
   );
 });
@@ -172,7 +221,9 @@ const rateSelectors = computed(() => {
       fixedSelectionValues.value,
     ).unresolved_dimensions.map(canonicalJson),
   );
-  return configurableSelectors.value.filter(({ key }) => keys.has(key));
+  return selectors.value.filter(
+    (selector) => fixedPricingSelection(selector) !== undefined || keys.has(selector.key),
+  );
 });
 const visibleRates = computed(() =>
   props.showCandidateRates
@@ -277,8 +328,8 @@ watch(
   { immediate: true },
 );
 
-watch(viewingUpcoming, () => {
-  inputs.value = {};
+watch(unfilteredOffer, (next, previous) => {
+  inputs.value = retainPricingInputs(previous.selectors, next.selectors, inputs.value);
 });
 
 watch(
@@ -494,22 +545,19 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </button>
     </div>
 
-    <CommercialChoices
-      v-if="!hideConditions"
-      :candidate-refs="[offer.id]"
-      :choices="commercialQuery.available_choices"
-      :selected="commercialChoices"
-      :prefix="`commercial-offer-${offer.id}`"
-      @change="selectCommercial"
-    />
     <p v-if="!hideConditions && commercialQuery.unresolved_choices.length">
       Commercial selection evidence is incomplete for this offer.
     </p>
-    <PricingConditions
+    <PricingControls
+      v-if="!hideConditions"
       :prefix="offer.id"
+      :fixed="commercialContext.fixed_choices"
+      :choices="commercialOptions"
+      :selected="commercialChoices"
       :selectors="rateSelectors"
       :inputs="inputs"
       :follow-region="followedRegion"
+      @change="selectCommercial"
       @input="setInput"
     />
     <p v-if="inherited.length" class="context-prompt">

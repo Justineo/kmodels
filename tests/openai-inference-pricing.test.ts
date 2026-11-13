@@ -13,7 +13,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -87,7 +87,7 @@ async function collect(
 }
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -95,12 +95,18 @@ function offer(candidate: CatalogPairCandidate, key: string, model = "openai/gpt
   const found = candidate.pricing.data.books.flatMap((book) =>
     book.offers.filter(
       (offer) =>
-        offer.offer_key === key && (offer.model_refs ?? book.scope.model_refs).includes(model),
+        offer.source_contexts?.some((context) => context.key === key) &&
+        (offer.model_refs ?? book.scope.model_refs).includes(model),
     ),
   )[0];
   if (!found) throw new Error(`Missing ${key} offer for ${model}`);
   return found.id;
 }
+const mode = (value: string): Selector => ({
+  kind: "categorical",
+  dimension: { namespace: "provider", provider_id: "openai", value: "invocation_mode" },
+  value: { namespace: "provider", provider_id: "openai", value },
+});
 const selectors: Selector[] = [
   {
     kind: "categorical",
@@ -120,9 +126,9 @@ it("joins exact request IDs to canonical synchronous and Batch prices without AP
   const query = lookup(candidate);
   const pending = query({ provider_id: "openai", model_id: "gpt-5.4" });
   expect(pending.status).toBe("candidates");
-  expect(pending.requires_offer_choice).toBe(true);
+  expect(pending.requires_offer_choice).toBe(false);
   expect(new Set(pending.candidates.map(({ offer }) => offer.offer_key))).toEqual(
-    new Set(["sync", "batch"]),
+    new Set(["public"]),
   );
   for (const [key, denominator] of [
     ["sync", "400000"],
@@ -131,7 +137,7 @@ it("joins exact request IDs to canonical synchronous and Batch prices without AP
     const result = query({
       provider_id: "openai",
       model_id: "gpt-5.4",
-      selectors,
+      selectors: [...selectors, mode(key)],
       offer_ref: offer(candidate, key),
     });
     expect(result.status).toBe("matched");
@@ -150,7 +156,11 @@ it("joins exact request IDs to canonical synchronous and Batch prices without AP
     ).toEqual([{ numerator: "1", denominator }]);
   }
   expect(
-    candidate.inference?.mapping.rules.every(({ fixed_selectors }) => fixed_selectors.length === 0),
+    candidate.inference?.mapping.rules.every(({ fixed_selectors }) =>
+      fixed_selectors.every((selector) =>
+        ["invocation_mode", "execution"].includes(selector.dimension.value),
+      ),
+    ),
   ).toBe(true);
   expect(query({ provider_id: "openai", model_id: "us.gpt-5.4" }).reason).toBe("unreviewed_id");
   expect(query({ provider_id: "openai", model_id: "ft:gpt-5.4:private:custom" }).reason).toBe(
@@ -174,6 +184,7 @@ it("keeps missing or excluded billing conditions distinct from an unknown ID", a
     query({
       ...args,
       selectors: [
+        mode("sync"),
         {
           kind: "categorical",
           dimension: { namespace: "kmodels", value: "served_service_tier" },
@@ -216,7 +227,7 @@ it("preserves independent snapshot identity without copying the series tariff", 
     lookup(explicit)({
       provider_id: "openai",
       model_id: "gpt-4.1-2025-04-14",
-      selectors,
+      selectors: [...selectors, mode("sync")],
       offer_ref: offer(explicit, "sync", "openai/gpt-4.1-2025-04-14"),
     }).status,
   ).toBe("matched");
@@ -273,7 +284,7 @@ it("rebuilds from independent current card and exact price-row evidence instead 
     lookup(pricesOnly)({
       provider_id: "openai",
       model_id: "gpt-5.4",
-      selectors,
+      selectors: [...selectors, mode("sync")],
       offer_ref: offer(pricesOnly, "sync"),
     }).status,
   ).toBe("matched");
@@ -305,7 +316,12 @@ it("projects the same ID, conditions and price selection to the website", async 
     ?.inference_prices?.find(({ model_id }) => model_id === "gpt-5.4");
   expect(price).toBeDefined();
   if (!price) throw new Error("Missing website ID price");
-  const result = queryWebsiteInferencePrice(price, selectors, at, offer(candidate, "sync"));
+  const result = queryWebsiteInferencePrice(
+    price,
+    [...selectors, mode("sync")],
+    at,
+    offer(candidate, "sync"),
+  );
   expect(result.status).toBe("matched");
   expect(result.missing_conditions).toEqual([]);
 });

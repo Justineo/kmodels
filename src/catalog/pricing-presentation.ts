@@ -711,6 +711,8 @@ export function formatDimension(value: PriceDimension): string {
   if (value.namespace === "provider") return formatSentenceCase(value.value);
   if (value.value === "cache_ttl_seconds") return "Cache TTL";
   if (value.value === "context_tokens") return "Context";
+  if (value.value === "execution") return "Request mode";
+  if (value.value === "served_service_tier") return "Billed service tier";
   return formatSentenceCase(value.value);
 }
 

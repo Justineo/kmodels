@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Online/Batch and live operation qualify the public Google model usage relationship. Region, resource ID, actual tier, modality and context qualify rates; publisher/model identity remains exact. Search/Maps/grounded-generation and partner search stay independent service subjects. Model-specific service rows become model conditions; shared allowances retain one pool and exact targets. Provisioned throughput, private agreements and account commitments remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 The exact Mistral OCR model-page companion owns page/token equivalence. Other pricing and
 accounting documents cannot supply that claim. Its
 parenthetical page prices normalize only when both input and output amounts exactly equal their
@@ -106,7 +118,7 @@ association. Catalog model-card IDs alone establish no Claude request associatio
 unrecognized table evidence leaves Claude online request lookup unknown while preserving catalog prices.
 The optional [Google Cloud Claude batch guide](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/batch)
 establishes the batch resource spelling through its request template and supported model-card
-links. Associate those resource IDs with existing batch offers for the listed Claude models.
+links. Associate those resource IDs with Batch execution conditions in the public relationship for the listed Claude models.
 
 The OpenAI-compatible APIs also use publisher-qualified request values. Extract those exact
 spellings from official request examples and join their model component exactly to an admitted
@@ -126,7 +138,7 @@ usage counter does not suppress an independently established ID-to-price associa
 Request location remains separate from the ID. The partner endpoint guide distinguishes `global`,
 `us`, `eu` and named regions, while commercial tables distinguish their own `region` and
 `deployment_scope` conditions. No regional-looking prefix, publisher prefix, available-region list
-or globally routed URL selects a tariff implicitly. Served tier, context, cache TTL and validity
+or globally routed URL selects a tariff implicitly. Served tier, context and validity
 also retain their existing conditions. Unfilled values produce candidates; incompatible known
 conditions produce no applicable prices. Known IDs with contradictory context footnotes, imprecise
 promotional dates or unknown units retain unresolved price evidence rather than invented amounts.
@@ -152,7 +164,7 @@ from source collection and mapping implementation.
   rates. New unrelated columns and sections are ignored locally.
 - Standard, Priority, Flex, and Batch are shared `service_tier` values. Online conditions become
   `served_service_tier`; `trafficType` or the equivalent partner response value selects Standard,
-  Priority, or Flex. Batch is a separate offer and uses successful result-item accounting.
+  Priority, or Flex. Batch is an execution condition and uses successful result-item accounting.
 - A Region column's Global and Non-global categories use `deployment_scope`. Named endpoint-location
   tabs use `region`, including `global`, `us`, `eu`, and explicit regional locations. The
   [partner endpoint contract](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/use-partner-models)
@@ -163,7 +175,7 @@ from source collection and mapping implementation.
   trusting synthetic attributes embedded in external HTML.
   A quote without a region stays unqualified. A separately priced location cannot establish a
   synthetic default region for another quote, including a globally routed or differently dated row.
-- Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
+- Context thresholds, modality, operation, resolution, audio and effective dates remain
   independent applicability dimensions.
   A dated ordinary price remains unqualified by promotion unless its own source establishes
   eligibility. A promotional quote cannot add `promotion=false` to a sibling price or date.
@@ -315,7 +327,12 @@ The current reviewed accounting surface is:
   successful row's `response`; failed rows do not contribute completed inference usage;
 - embeddings: total plus text, image, video, audio, and document prompt-token details;
 - Claude: input, cache-write, cache-read, output, and web-search-request counts from response usage
-  for non-streaming and streaming calls;
+  for non-streaming and streaming calls. Claude's exact five-minute and one-hour cache-write
+  columns retain TTL predicates on the same meter. The aggregate usage counter does not establish
+  a per-TTL breakdown, but that does not affect unit-price lookup. An overlapping unqualified
+  `Cache Write` quote is not an additional charge; unresolved overlap remains a bounded price
+  conflict until source evidence establishes its scope;
+
 - Grok Responses: input, cached input, output, reasoning, traffic type, server-side tool count, and
   source count from a response usage object, plus the same fields from a terminal
   `response.completed` event only while that document publishes it;
@@ -328,7 +345,7 @@ These are protocol contracts, not publisher-wide capabilities. Live-only models 
 quantities and selectors unless their own catalog evidence also establishes GenerateContent.
 Predict-only and embedding routes likewise cannot establish GenerateContent usage or grounding.
 GenerateContent inline-image counters and Imagen `predict` counters/resolution selectors bind only
-to models with the corresponding documented route. Model-specific grounding offers use the same
+to models with the corresponding documented route. Model-qualified grounding terms use the same
 protocol boundary as their model's inference book. Known arithmetic remains available even when
 no native acquisition is established.
 

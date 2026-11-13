@@ -2,6 +2,7 @@
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 import {
   decimalRangeLabel,
+  fixedPricingSelection,
   isIntegerSelector,
   pricingInputError,
 } from "../catalog/pricing-selector-input.ts";
@@ -56,100 +57,105 @@ function scheduleRows(selector: WebsitePricingSelector) {
 </script>
 
 <template>
-  <section v-if="selectors.length > 0" class="pricing-context" aria-label="Pricing options">
-    <div class="pricing-selector-grid">
-      <div v-for="(selector, index) in selectors" :key="selector.key">
-        <label :for="`${prefix}-selector-${index}`">
-          {{ selector.label }}
-          <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
-        </label>
-        <template v-if="selector.kind === 'categorical'">
-          <UiSelect
-            :id="`${prefix}-selector-${index}`"
-            :model-value="inputValue(selector.key)"
-            :options="
-              selector.values.map((option) => ({
-                value: option.key,
-                label: option.label,
-              }))
-            "
-            :placeholder="
-              followRegion?.key === selector.key
-                ? `Pricing region · ${followRegion.label}`
-                : 'Choose…'
-            "
-            @update:model-value="setInput(selector.key, $event)"
-          />
-          <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
-            <summary>
-              <span
-                >{{ scheduleRows(selector)[0]?.cadence }} rule ·
-                {{ scheduleRows(selector)[0]?.timeZone }}</span
-              >
-              <UiIcon name="chevron-right" />
-            </summary>
-            <dl>
-              <div
-                v-for="row in scheduleRows(selector)"
-                :key="row.key"
-                :data-selected="inputValue(selector.key) === row.key"
-              >
-                <dt>{{ row.label }}</dt>
-                <dd>{{ row.rule }}</dd>
-              </div>
-            </dl>
-          </details>
-        </template>
-        <UiSelect
-          v-else-if="selector.kind === 'boolean'"
-          :id="`${prefix}-selector-${index}`"
-          :model-value="inputValue(selector.key)"
-          :options="booleanOptions"
-          placeholder="Choose…"
-          @update:model-value="setInput(selector.key, $event)"
-        />
-        <UiSelect
-          v-else-if="selector.kind === 'decimal_values'"
-          :id="`${prefix}-selector-${index}`"
-          :model-value="inputValue(selector.key)"
-          :options="selector.values.map((value) => ({ value, label: value }))"
-          placeholder="Choose…"
-          @update:model-value="setInput(selector.key, $event)"
-        />
-        <UiSelect
-          v-else-if="selector.kind === 'decimal_buckets'"
-          :id="`${prefix}-selector-${index}`"
-          :model-value="inputValue(selector.key)"
-          :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-          placeholder="Choose…"
-          @update:model-value="setInput(selector.key, $event)"
-        />
-        <input
-          v-else-if="selector.kind === 'decimal_range'"
-          :id="`${prefix}-selector-${index}`"
-          :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
-          :value="inputValue(selector.key)"
-          :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
-          :aria-describedby="`${prefix}-selector-${index}-guidance`"
-          placeholder="Enter value"
-          @input="setDecimalInput(selector.key, $event)"
-        />
-        <small
-          v-if="selector.kind === 'decimal_range'"
-          :id="`${prefix}-selector-${index}-guidance`"
-          :class="decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'"
+  <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
+    <label :for="`${prefix}-selector-${index}`">
+      {{ selector.label }}
+      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
+    </label>
+    <output
+      v-if="fixedPricingSelection(selector) !== undefined"
+      :id="`${prefix}-selector-${index}`"
+      class="pricing-fixed-value"
+      >{{
+        selector.kind === "categorical" || selector.kind === "decimal_buckets"
+          ? selector.values[0]?.label
+          : selector.kind === "decimal_values"
+            ? selector.values[0]
+            : ""
+      }}</output
+    >
+    <template v-else-if="selector.kind === 'categorical'">
+      <UiSelect
+        :id="`${prefix}-selector-${index}`"
+        :model-value="inputValue(selector.key)"
+        :options="
+          selector.values.map((option) => ({
+            value: option.key,
+            label: option.label,
+          }))
+        "
+        :placeholder="
+          followRegion?.key === selector.key ? `Pricing region · ${followRegion.label}` : 'Choose…'
+        "
+        @update:model-value="setInput(selector.key, $event)"
+      />
+    </template>
+    <UiSelect
+      v-else-if="selector.kind === 'boolean'"
+      :id="`${prefix}-selector-${index}`"
+      :model-value="inputValue(selector.key)"
+      :options="booleanOptions"
+      placeholder="Choose…"
+      @update:model-value="setInput(selector.key, $event)"
+    />
+    <UiSelect
+      v-else-if="selector.kind === 'decimal_values'"
+      :id="`${prefix}-selector-${index}`"
+      :model-value="inputValue(selector.key)"
+      :options="selector.values.map((value) => ({ value, label: value }))"
+      placeholder="Choose…"
+      @update:model-value="setInput(selector.key, $event)"
+    />
+    <UiSelect
+      v-else-if="selector.kind === 'decimal_buckets'"
+      :id="`${prefix}-selector-${index}`"
+      :model-value="inputValue(selector.key)"
+      :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
+      placeholder="Choose…"
+      @update:model-value="setInput(selector.key, $event)"
+    />
+    <input
+      v-else-if="selector.kind === 'decimal_range'"
+      :id="`${prefix}-selector-${index}`"
+      :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
+      :value="inputValue(selector.key)"
+      :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
+      :aria-describedby="`${prefix}-selector-${index}-guidance`"
+      placeholder="Enter value"
+      @input="setDecimalInput(selector.key, $event)"
+    />
+    <small
+      v-if="selector.kind === 'decimal_range'"
+      :id="`${prefix}-selector-${index}-guidance`"
+      :class="decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'"
+    >
+      {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
+    </small>
+    <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
+      <summary>
+        <span
+          >{{ scheduleRows(selector)[0]?.cadence }} rule ·
+          {{ scheduleRows(selector)[0]?.timeZone }}</span
         >
-          {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
-        </small>
-      </div>
-    </div>
-  </section>
+        <UiIcon name="chevron-right" />
+      </summary>
+      <dl>
+        <div
+          v-for="row in scheduleRows(selector)"
+          :key="row.key"
+          :data-selected="
+            fixedPricingSelection(selector) !== undefined || inputValue(selector.key) === row.key
+          "
+        >
+          <dt>{{ row.label }}</dt>
+          <dd>{{ row.rule }}</dd>
+        </div>
+      </dl>
+    </details>
+  </div>
 </template>
 
 <style scoped>
-.pricing-context {
-  margin-top: var(--space-3);
-}
 .schedule-rule > summary {
   display: flex;
   align-items: center;
@@ -168,26 +174,19 @@ function scheduleRows(selector: WebsitePricingSelector) {
 .schedule-rule[open] > summary .ui-icon {
   transform: rotate(90deg);
 }
-.pricing-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: var(--space-2);
-}
-
-.pricing-selector-grid > div {
+.pricing-condition {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
 }
 
-.pricing-selector-grid > div > label {
+.pricing-condition > label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
 
-.pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid input {
+.pricing-condition :deep(.ui-select-control),
+.pricing-condition input {
   min-width: 0;
   height: var(--control-height-default);
   padding: 0 var(--space-2);
@@ -198,24 +197,24 @@ function scheduleRows(selector: WebsitePricingSelector) {
   font: inherit;
 }
 
-.pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid :deep(.ui-select option) {
+.pricing-condition :deep(.ui-select-control),
+.pricing-condition :deep(.ui-select option) {
   font-size: var(--font-size-meta);
 }
 
-.pricing-selector-grid :deep(.ui-select-control:has(.ui-select:focus-visible)),
-.pricing-selector-grid input:focus-visible {
+.pricing-condition :deep(.ui-select-control:has(.ui-select:focus-visible)),
+.pricing-condition input:focus-visible {
   border-color: var(--color-accent);
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: calc(var(--stroke-focus) * -1);
 }
 
-.pricing-selector-grid .selector-hint,
-.pricing-selector-grid .selector-error {
+.pricing-condition .selector-hint,
+.pricing-condition .selector-error {
   line-height: var(--line-height-tight);
 }
 
-.pricing-selector-grid .selector-error {
+.pricing-condition .selector-error {
   color: var(--color-status-danger);
 }
 
@@ -293,9 +292,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
 }
 
 @media (max-width: 640px) {
-  .pricing-selector-grid {
-    grid-template-columns: 1fr;
-  }
   .schedule-rule dl > div {
     grid-template-columns: var(--space-2) minmax(0, 1fr);
   }

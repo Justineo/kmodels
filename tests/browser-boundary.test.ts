@@ -15,7 +15,7 @@ function rejectNodeImports(): Plugin {
 }
 
 describe("browser module boundary", () => {
-  it("keeps the calculator independent of presentation and website modules", async () => {
+  it("keeps price lookup independent of presentation and website modules", async () => {
     await expect(
       build({
         configFile: false,
@@ -23,7 +23,7 @@ describe("browser module boundary", () => {
         plugins: [
           rejectNodeImports(),
           {
-            name: "reject-calculator-presentation-imports",
+            name: "reject-price-lookup-presentation-imports",
             enforce: "pre",
             resolveId(source, importer) {
               if (
@@ -31,7 +31,7 @@ describe("browser module boundary", () => {
                 source.includes("/components/")
               )
                 this.error(
-                  `${source} reached the calculator graph from ${importer ?? "the entry point"}`,
+                  `${source} reached the price lookup graph from ${importer ?? "the entry point"}`,
                 );
               return undefined;
             },

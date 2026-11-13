@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep exact Marketplace software listings, hosting instances, serverless execution and endpoint processing in their own charged-subject books. Their public list-rate relationships do not become new offers for region, instance type, endpoint mode or request protocol. Separately purchased publisher software and AWS infrastructure retain distinct subjects and billable quantities. Private Marketplace agreements and capacity commitments remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Catalog boundary
 
 `amazon-sagemaker` is a separate cloud-platform provider from Amazon Bedrock. Its public

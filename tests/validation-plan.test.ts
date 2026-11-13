@@ -6,7 +6,7 @@ const inputs: ValidationInputs = {
   full: false,
   generated: new Set(["src/catalog/pricing-schema.ts"]),
   build: new Set(["src/catalog/pricing-schema.ts", "src/App.vue"]),
-  package: new Set(["src/catalog/pricing-schema.ts", "tests/fixtures/calculator/"]),
+  package: new Set(["src/catalog/pricing-schema.ts", "tests/fixtures/pricing/"]),
 };
 
 it("limits documentation and collector changes to their affected checks", () => {
@@ -63,7 +63,7 @@ it("checks every affected pricing consumer once without a duplicate fixture suit
 
 it("uses the unit fallback for filesystem-loaded fixtures without also running related tests", () => {
   const commands = validationPlan(
-    ["tests/fixtures/calculator/case.json", "tests/pricing.test.ts"],
+    ["tests/fixtures/pricing/case.json", "tests/pricing.test.ts"],
     inputs,
   );
   expect(commands.filter(([command]) => command === "test")).toEqual([

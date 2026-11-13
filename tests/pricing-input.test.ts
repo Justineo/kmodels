@@ -1,5 +1,4 @@
 import { expect, it } from "vite-plus/test";
-import { evaluateChargeQuantity } from "../src/catalog/pricing-calculation.ts";
 import {
   calculatedQuantityMethods,
   indexPricingInputs,
@@ -8,9 +7,8 @@ import {
   subtractQuantityMethods,
   sumQuantityMethods,
 } from "../src/catalog/pricing-input.ts";
-import type { ChargeBinding, UsageSignal } from "../src/catalog/pricing-schema.ts";
+import type { UsageSignal } from "../src/catalog/pricing-schema.ts";
 import type { SourcePricingInputFact } from "../src/catalog/pricing-source.ts";
-
 const total: UsageSignal = { namespace: "kmodels", value: "input_tokens" };
 const cached: UsageSignal = { namespace: "kmodels", value: "cached_input_tokens" };
 const totalFact: SourcePricingInputFact = {
@@ -25,7 +23,6 @@ const cachedFact: SourcePricingInputFact = {
   key: "usage.cached",
   locator: { kind: "json_pointer", value: "/usage/cached" },
 };
-
 it("requires the exact owning model before exposing a scoped acquisition contract", () => {
   const scoped = { ...totalFact, model_refs: ["test/one"] };
   const other = {
@@ -39,7 +36,6 @@ it("requires the exact owning model before exposing a scoped acquisition contrac
   expect(pricingInputFacts(index, [totalFact.key], "test/missing")).toEqual([]);
   expect(pricingInputFacts(index, [cachedFact.key], "test/one")).toEqual([cachedFact]);
 });
-
 it("keeps known cache arithmetic and surviving evidence when a locator disappears", () => {
   const complete = subtractQuantityMethods(
     total,
@@ -69,25 +65,7 @@ it("keeps known cache arithmetic and surviving evidence when a locator disappear
     },
   ]);
   expect(partial.facts).toEqual([totalFact]);
-  const binding: ChargeBinding = {
-    signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-    aggregation: "request",
-    quantity_methods: partial.methods,
-    observations: [],
-  };
-  expect(
-    evaluateChargeQuantity(binding, [
-      { signal: total, value: { numerator: "100", denominator: "1" } },
-    ]),
-  ).toEqual({ kind: "missing_input", alternatives: [[cached]] });
-  expect(
-    evaluateChargeQuantity(binding, [
-      { signal: total, value: { numerator: "100", denominator: "1" } },
-      { signal: cached, value: { numerator: "30", denominator: "1" } },
-    ]),
-  ).toEqual({ kind: "resolved", value: { numerator: "70", denominator: "1" } });
 });
-
 it("keeps a known sum without inventing any provider locators", () => {
   const result = sumQuantityMethods(
     [
@@ -101,7 +79,6 @@ it("keeps a known sum without inventing any provider locators", () => {
   expect(result.methods[0]?.input_sources).toBeUndefined();
   expect(result.facts).toEqual([]);
 });
-
 it("omits a redundant bare formula while preserving distinct partial acquisition paths", () => {
   const complete = subtractQuantityMethods(
     total,
@@ -131,7 +108,6 @@ it("omits a redundant bare formula while preserving distinct partial acquisition
   expect(merged.facts).toEqual(complete.facts);
   expect(mergeQuantityMethods([partial, complete])).toEqual(merged);
 });
-
 it("preserves a source-independent constant without an empty acquisition contract", () => {
   const result = calculatedQuantityMethods(
     {

@@ -48,29 +48,27 @@ missing or conflicting model facts. The [collection contract](collection.md), th
 
 ## Extract and prove the result
 
-- Apply the offer/condition decision rules in [Commercial topology](commercial-topology.md#offers-and-dimensions)
-  before normalizing a price table. Record the exact source evidence for an independently selectable
-  mechanism, or explain why the distinction only qualifies an existing mechanism's rates. Provider
-  labels such as Standard, Online, Realtime and operation are not shared semantics by themselves.
-  Review the request/result aggregation and acquisition contracts when splitting an offer; Batch
-  cannot inherit synchronous response paths merely because its meters have the same names.
-  Verify both the producer's canonical offer boundary and selection through the public
-  `choices` query, including a sibling condition that must remain inside the offer. Emit evidenced
-  selection scope in the owning commercial adapter; model tasks, endpoint support and transport
-  tags are not tariff proof. Preserve partial coverage, native bindings and requested/served
-  distinctions as specified in [Commercial selection](offer-semantics-design.md).
+- Apply the [offer boundary](commercial-topology.md#offers-and-dimensions) before normalizing prices.
+  Record evidence of a separate enrollment, obligation, resource commitment, seller/account billing
+  relationship or data-use program. Separate tariffs, operation names and aggregation alone
+  establish conditions, not offers. Audit model, service and capacity subjects independently.
+  Preserve conditional quantity methods when combining contexts; never copy synchronous mappings
+  into Batch. Record each provider's relationships, conditions, source authority and evidence limits
+  in its guide. Verify extraction/replay through assembly, public lookup and UI, including
+  negative combinations and the declared book/offer/condition target of canonical choices.
 - Read only the fields a consumer needs. Validate external shapes at the boundary, anchor
   extraction to the owning table or schema operation, and preserve literal identifiers.
   Check the meaning of structured fields as well as their shape. An ignored OpenAPI
   compatibility parameter supplies no model limit. Keep identity, lifecycle, invocation,
   capabilities, and price evidence separable.
-- A normalized rate needs a currency, denominator, applicability, and a supported usage
-  binding. Join discounts only where exact eligibility and base rates are known. Keep
-  separately addressed offers such as Spot under their own IDs. Preserve estimates or
+- A normalized unit price needs an amount, denomination, denominator and applicability.
+  Usage-counter bindings are optional metadata, not a prerequisite for a known price. Join discounts only where exact eligibility and base rates are known. Keep
+  separately addressed Spot model IDs distinct; route identity alone does not establish a contract. Preserve estimates or
   unresolved units as raw evidence, with the known conditions and reason. Use the shared
-  pricing selectors and quantity model. See [pricing coverage](pricing-coverage.md).
+  pricing meters and conditions. Do not split a condition into separate terms merely because
+  different values can occur within one request. See [pricing coverage](pricing-coverage.md).
 - Exercise the normal collection entry point in a read-only replay, then trace the result
-  through canonical assembly and the relevant lookup, calculation, export, or website
+  through canonical assembly and the relevant lookup, export, or website
   projection. Compare before and after exact IDs, field coverage, dispositions, and selectors.
   Include neighboring rows that must stay separate, a malformed or unavailable source,
   and a realistic false-positive case. A parser count measures extraction, while a consumer

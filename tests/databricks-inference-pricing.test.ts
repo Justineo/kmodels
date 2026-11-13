@@ -15,7 +15,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -80,7 +80,7 @@ beforeAll(async () => {
 }, 15000);
 function lookup(candidate = baseline) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }

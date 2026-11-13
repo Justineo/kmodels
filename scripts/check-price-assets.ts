@@ -1,21 +1,20 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { calculationCoverage } from "../src/catalog/pricing-calculation-coverage.ts";
+import { priceDataCoverage } from "../src/catalog/pricing-coverage.ts";
 import {
-  createCalculator,
   createInferencePriceLookup,
   inferencePriceMappingSchema,
   validatePriceData,
 } from "../src/pricing/index.ts";
 
-const directory = join(import.meta.dirname, "../dist/pricing/calculation");
+const directory = join(import.meta.dirname, "../dist/pricing/lookup");
 async function readJson(file: string): Promise<unknown> {
   return JSON.parse(await readFile(join(directory, file), "utf8"));
 }
 
 const index = validatePriceData(await readJson("index.json"));
-assert.deepEqual(await readJson("coverage.json"), calculationCoverage(index));
+assert.deepEqual(await readJson("coverage.json"), priceDataCoverage(index));
 const inference = await readJson("../inference.json").then(
   (value) => inferencePriceMappingSchema.parse(value),
   (error: unknown) => {
@@ -26,7 +25,7 @@ const inference = await readJson("../inference.json").then(
 const providerIds = new Set(index.providers.map(({ snapshot }) => snapshot.provider_id));
 assert(
   (inference?.rules ?? []).every(({ provider_id }) => providerIds.has(provider_id)),
-  "Inference mappings reference absent calculation partitions",
+  "Inference mappings reference absent price partitions",
 );
 const summary = new Map<string, Record<string, number>>();
 const inferenceGaps: Array<{
@@ -40,7 +39,7 @@ for (const provider of index.providers) {
   const providerId = provider.snapshot.provider_id;
   const partition = await readJson(`providers/${providerId}.json`);
   assert.deepEqual(partition, { ...index, providers: [provider] });
-  createCalculator(partition);
+  validatePriceData(partition);
   if (inference === undefined) continue;
   const rules = inference.rules.filter(({ provider_id }) => provider_id === providerId);
   if (rules.length === 0) continue;
@@ -68,7 +67,7 @@ for (const provider of index.providers) {
   if (Object.keys(counts).length > 0) summary.set(providerId, counts);
 }
 console.log(
-  `Verified built calculation index, coverage and ${index.providers.length} usable provider partitions.`,
+  `Verified built price index, coverage and ${index.providers.length} usable provider partitions.`,
 );
 if (inference !== undefined) {
   console.log(

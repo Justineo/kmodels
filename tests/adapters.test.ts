@@ -1,3 +1,4 @@
+import { offerContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -2073,7 +2074,8 @@ describe("Cohere adapters", () => {
     const offerFor = (uid: string) =>
       chatPricing?.books
         .find(({ scope }) => scope.kind === "models" && scope.model_refs.includes(uid))
-        ?.offers.find(({ offer_key }) => offer_key === "hosted-inference");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "hosted-inference");
     const commandBindings = offerFor("cohere/command-a-03-2025")
       ?.terms.filter((term) => term.kind === "rate")
       .flatMap(({ variants }) => variants.map(({ charge_binding }) => charge_binding));
@@ -4642,7 +4644,10 @@ describe("Vertex AI adapters", () => {
         ),
       allowances: googleCommercial
         .flatMap(({ raw_price_facts }) => raw_price_facts)
-        .filter(({ term_key }) => term_key === "grounding_allowance").length,
+        .filter(
+          ({ term_key }) =>
+            term_key === "grounding_allowance" || term_key.endsWith("/" + "grounding_allowance"),
+        ).length,
       nativeAudio: googleCommercial
         .filter(({ offer_key }) => offer_key === `request:${nativeAudio?.uid}`)
         .flatMap(({ resource_key, price_facts }) =>
@@ -4743,12 +4748,14 @@ describe("Vertex AI adapters", () => {
       validateParsedPricing(value, source, models, partition);
       const pools =
         partition?.books.flatMap(({ offers }) =>
-          offers.filter(({ offer_key }) => offer_key.startsWith("allowance:")),
+          offers
+            .flatMap(offerContexts)
+            .filter(({ context_key: offer_key }) => offer_key.startsWith("allowance:")),
         ) ?? [];
       expect(pools).toHaveLength(5);
       const pool = (key: string) =>
         pools
-          .find(({ offer_key }) => offer_key === `allowance:${key}`)
+          .find(({ context_key }) => context_key === `allowance:${key}`)
           ?.terms.flatMap((term) => (term.kind === "allowance" ? term.variants : []))[0];
       expect(pool("gemini-3-web-monthly")).toMatchObject({
         benefit: { kind: "quantity", quantity: { value: { numerator: "5000", denominator: "1" } } },
@@ -4765,21 +4772,25 @@ describe("Vertex AI adapters", () => {
         reset: { value: "daily" },
       });
       expect(
-        pools.find(({ offer_key }) => offer_key === "allowance:google-search-flash-daily")
-          ?.model_refs,
+        pools.find(({ context_key }) => context_key === "allowance:google-search-flash-daily")
+          ?.context_model_refs,
       ).toHaveLength(3);
       expect(pool("google-search-pro-daily")).toMatchObject({
         benefit: { quantity: { value: { numerator: "10000" } } },
       });
       expect(
-        pools.find(({ offer_key }) => offer_key === "allowance:google-maps-flash-daily")
-          ?.model_refs,
+        pools.find(({ context_key }) => context_key === "allowance:google-maps-flash-daily")
+          ?.context_model_refs,
       ).toEqual(["vertex/gemini-2.0-flash"]);
       expect(pool("google-maps-pro-daily")).toBeUndefined();
       expect(
         (result.commercial_facts ?? [])
           .flatMap(({ raw_price_facts }) => raw_price_facts)
-          .some(({ term_key }) => term_key === "grounding_billing_rule"),
+          .some(
+            ({ term_key }) =>
+              term_key === "grounding_billing_rule" ||
+              term_key.endsWith("/" + "grounding_billing_rule"),
+          ),
       ).toBe(true);
       const driftedResult = await parse(
         pricing.replaceAll(
@@ -5708,7 +5719,11 @@ describe("Databricks adapters", () => {
     expect(
       changedPriority.every(
         ({ raw_price_facts }) =>
-          !raw_price_facts.some(({ term_key }) => term_key === "priority_pay_per_token"),
+          !raw_price_facts.some(
+            ({ term_key }) =>
+              term_key === "priority_pay_per_token" ||
+              term_key.endsWith("/" + "priority_pay_per_token"),
+          ),
       ),
     ).toBe(true);
     const imagePricing = await fixture("databricks/google-image-pricing.html");
@@ -5783,7 +5798,7 @@ describe("Databricks adapters", () => {
             scope.model_refs.includes("databricks/databricks-gte-large-en"),
         )
         ?.offers.flatMap(({ terms }) => terms)
-        .find(({ term_key }) => term_key === "embedding"),
+        .find(({ term_key }) => term_key === "embedding" || term_key.endsWith("/" + "embedding")),
     ).toMatchObject({
       kind: "rate",
       raw_variants: [expect.objectContaining({ reason: "conflicting_values" })],
@@ -6037,7 +6052,9 @@ describe("xAI adapter", () => {
       const book = partition?.books.find(
         ({ scope }) => scope.kind === "models" && scope.model_refs.includes(target.uid),
       );
-      const terms = book?.offers.find(({ offer_key }) => offer_key === "sync")?.terms;
+      const terms = book?.offers
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync")?.terms;
       const binding = (meter: string) =>
         terms
           ?.flatMap((term) =>
@@ -6938,12 +6955,18 @@ describe("xAI adapter", () => {
           ? [[atom.key, atom.label]]
           : [],
       ),
-    ).toEqual([...operationLabels].sort(([left], [right]) => left.localeCompare(right)));
+    ).toEqual(
+      [...operationLabels, ["rest", undefined], ["streaming", undefined]].sort(([left], [right]) =>
+        String(left).localeCompare(String(right)),
+      ),
+    );
     const modelBook = partition?.books.find(
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes("xai/grok-4.3@1.0"),
     );
-    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
-    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["public"]);
+    const sync = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     expect(
       sync?.terms
         .flatMap((term) => (term.kind === "rate" ? term.variants : []))
@@ -9758,7 +9781,8 @@ describe("Cerebras adapter", () => {
     if (gpt === undefined) throw new Error("Missing Cerebras GPT OSS model");
     const payg = pricing.books
       .find(({ scope }) => scope.kind === "models" && scope.model_refs.includes(gpt.uid))
-      ?.offers.find(({ offer_key }) => offer_key === "payg");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "payg");
     expect(payg?.settlement).toEqual([]);
     expect(
       payg?.terms.flatMap((term) =>
@@ -12810,7 +12834,8 @@ describe("Kimi adapters", () => {
     validateParsedPricing(value, configured, models, partition);
     const batch = partition?.books
       .find(({ book_key }) => book_key === "model:kimi/kimi-k2.7-code")
-      ?.offers.find(({ offer_key }) => offer_key === "batch");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const output = batch?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "output_text",
     );
@@ -12840,7 +12865,8 @@ describe("Kimi adapters", () => {
     const variants =
       partition?.books
         .find(({ book_key }) => book_key === "model:kimi/kimi-k2.6")
-        ?.offers.find(({ offer_key }) => offer_key === "batch")
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "batch")
         ?.terms.flatMap((term) =>
           term.kind === "rate" && term.meter.value === "output_text" ? term.variants : [],
         ) ?? [];
@@ -12925,7 +12951,8 @@ describe("Kimi adapters", () => {
         input.models,
       )
         ?.books.find(({ book_key }) => book_key === "model:kimi/kimi-k2.6")
-        ?.offers.find(({ offer_key }) => offer_key === "batch")
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "batch")
         ?.terms.flatMap((term) =>
           term.kind === "rate" ? term.variants.map(({ charge_binding }) => charge_binding) : [],
         );
@@ -13281,7 +13308,9 @@ describe("Kimi adapters", () => {
     const book = partition?.books.find(
       ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "web-search",
     );
-    const offer = book?.offers.find(({ offer_key }) => offer_key === "built-in:kimi/kimi-k2.6");
+    const offer = book?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "built-in:kimi/kimi-k2.6");
     const variants =
       offer?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])) ?? [];
     expect(variants).toHaveLength(2);
@@ -13323,9 +13352,13 @@ describe("Kimi adapters", () => {
     const k26 = books.find(
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes("kimi/kimi-k2.6"),
     );
-    expect(k26?.offers.map(({ offer_key }) => offer_key)).toEqual(["sync", "batch"]);
-    const sync = k26?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = k26?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(k26?.offers.map(({ offer_key }) => offer_key)).toEqual(["public"]);
+    const sync = k26?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = k26?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     expect(
       sync?.terms
         .filter((term) => term.kind === "rate")
@@ -13409,7 +13442,8 @@ describe("Kimi adapters", () => {
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes("kimi/kimi-k3"),
     );
     const k3Input = k3?.offers
-      .find(({ offer_key }) => offer_key === "sync")
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync")
       ?.terms.find((term) => term.kind === "rate" && term.meter.value === "input_text");
     const k3Methods =
       k3Input?.kind === "rate" ? k3Input.variants[0]?.charge_binding?.quantity_methods : undefined;
@@ -13447,7 +13481,8 @@ describe("Kimi adapters", () => {
     );
     expect(
       k27?.offers
-        .find(({ offer_key }) => offer_key === "batch")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "batch")
         ?.terms.filter((term) => term.kind === "rate")
         .every(
           (term) =>
@@ -13487,12 +13522,9 @@ describe("Kimi adapters", () => {
         }),
       ]),
     );
-    expect(sync?.relations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: "exclusive_with" })]),
-    );
-    expect(batch?.relations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: "exclusive_with" })]),
-    );
+    expect(sync?.relations).toEqual([]);
+    expect(batch?.relations).toEqual([]);
+    expect(sync?.id).toBe(batch?.id);
     expect(books.flatMap(({ offers }) => offers.flatMap(({ settlement }) => settlement))).toEqual(
       [],
     );
@@ -13500,7 +13532,9 @@ describe("Kimi adapters", () => {
     const resource = (key: string) =>
       books.find(({ scope }) => scope.kind === "provider_resource" && scope.resource_key === key);
     const search = resource("web-search");
-    const builtIn = search?.offers.find(({ offer_key }) => offer_key === "built-in:kimi/kimi-k2.6");
+    const builtIn = search?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "built-in:kimi/kimi-k2.6");
     const searchRate = builtIn?.terms.find((term) => term.kind === "rate");
     expect(searchRate).toMatchObject({
       kind: "rate",
@@ -13536,7 +13570,8 @@ describe("Kimi adapters", () => {
     );
     expect(
       search?.offers
-        .find(({ offer_key }) => offer_key === "formula")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "formula")
         ?.terms.find((term) => term.kind === "rate"),
     ).toMatchObject({
       meter: { namespace: "kmodels", value: "web_search" },
@@ -13562,12 +13597,14 @@ describe("Kimi adapters", () => {
       ]),
     });
     expect(
-      resource("formula")?.offers.find(({ offer_key }) => offer_key === "fiber:convert")?.states,
+      resource("formula")
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "fiber:convert")?.states,
     ).toEqual(expect.arrayContaining([expect.objectContaining({ state: "free" })]));
     expect(resource("files")?.offers[0]).toMatchObject({
       offer_key: "operations",
       states: [expect.objectContaining({ state: "free" })],
-      relations: [expect.objectContaining({ kind: "compatible_with" })],
+      relations: expect.arrayContaining([expect.objectContaining({ kind: "compatible_with" })]),
     });
   });
 
@@ -14127,7 +14164,9 @@ describe("Ollama adapters", () => {
     const pricedCloud = books.find(
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes("ollama/kimi-k3"),
     );
-    const cloudOffer = pricedCloud?.offers.find(({ offer_key }) => offer_key === "cloud-inference");
+    const cloudOffer = pricedCloud?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "cloud-inference");
     expect(cloudOffer).toMatchObject({ enrollment: [], relations: [], settlement: [] });
     expect(
       cloudOffer?.terms
@@ -14349,7 +14388,8 @@ describe("Ollama adapters", () => {
         ({ scope }) =>
           scope.kind === "models" && scope.model_refs.includes("ollama/deepseek-v4-flash"),
       )
-      ?.offers.find(({ offer_key }) => offer_key === "cloud-inference");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "cloud-inference");
     expect(
       offer?.terms
         .filter((term) => term.kind === "rate")

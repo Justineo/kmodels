@@ -1,5 +1,17 @@
 # Ollama
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep one evidenced public Cloud usage relationship per priced Cloud model. Library/local identities do not inherit it. Model-specific token, media and context facts qualify rates; local execution, subscriptions and account allowances remain outside the public rate book. Unpriced Cloud identities remain unknown.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Product boundary
 
 Ollama has two distinct catalog channels: a curated Library for models runnable by an operator and

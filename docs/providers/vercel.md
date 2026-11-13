@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Public Gateway usage is one relationship per exact routed model subject. Sync/Batch, actual tier/speed, endpoint and provider route qualify terms. Keep source operation evidence and conditional result-item quantities; do not inherit synchronous generation-lookup fields into Batch. Independent search and other service books remain separate charges; model-specific service contexts become model conditions within their public relationship. Included/contribution facts retain exact scopes and targets.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 The model-page `+N more` count can describe only the default no-video-input variants. When the
 reviewed pricing registry also contains video-input variants, validate the count against the
 default subset and retain both complete groups, including each quality, resolution, and
@@ -56,10 +68,10 @@ The official [Batch guide](https://vercel.com/docs/ai-gateway/models-and-provide
 establishes the exact `<model>-batch` relation to an independently listed base model. Both IDs can
 be used for Batch; the suffixed ID cannot be used synchronously. Preserve both catalog identities.
 Their model books share the published Batch rates through source-derived facts. Extraction retains
-`operation=batch/sync` as source evidence; canonical assembly promotes Batch into a `batch` offer
-and keeps ordinary invocation in the existing `usage` offer. The mechanism operation predicate is
-removed from canonical rates while unrelated operations, region and route conditions remain.
-A Batch ID references only the Batch offer and fixes the creator route. The base ID references
+`operation=batch/sync` as source evidence. Canonical assembly combines the `batch` and `usage`
+extraction contexts into one relationship, preserving exact execution predicates and the native
+invocation mode where ordinary/live classification remains incomplete. Unrelated operations,
+region and route conditions remain. A Batch ID fixes Batch execution and the creator route. The base ID references
 both mechanisms where evidenced. Consumers use canonical commercial choices. Batch is established
 by its owned tariff and result-item accounting; generic generation telemetry does not establish
 an ordinary-request versus live-session tariff. Those execution scopes remain partial, while exact

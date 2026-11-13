@@ -20,7 +20,7 @@ export const pricingLimits = {
   variantsPerProvider: 262_144,
   observationsPerProvider: 524_288,
   coreInputBytes: 134_217_728,
-  pricingInputBytes: 335_544_320,
+  pricingInputBytes: 436_207_616,
   // The atomic pre-compaction projection repeats each variant's applicability and observation, so a
   // large provider's input is routinely bigger than its compacted partition. It still needs a bound
   // of its own, but must leave room above the publication budget so compactable input is assembled
@@ -28,7 +28,7 @@ export const pricingLimits = {
   providerPrecompactionBytes: 268_435_456,
   providerPricingBytes: 134_217_728,
   // Scoped commercial claims add evidence and native bindings to the accepted price catalog.
-  pricingCatalogBytes: 335_544_320,
+  pricingCatalogBytes: 402_653_184,
 } as const;
 
 export const pricingDecimalPattern = /^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/;

@@ -626,6 +626,7 @@ export const commercialChoiceSchema = z.strictObject({
 });
 export const commercialSelectionScopeSchema = z.strictObject({
   dimension: commercialDimensionSchema,
+  target: z.enum(["book", "offer", "condition"]).optional(),
   coverage: z.enum(["complete", "partial", "not_applicable"]),
   excluded_values: z.array(priceCategoricalValueSchema).max(128).optional(),
   applicability: priceApplicabilitySchema,
@@ -672,6 +673,15 @@ const pricingOfferBaseShape = {
   model_refs: z.array(nonEmptyString).min(1).optional(),
   billing_mode: billingModeSchema,
   selection: z.array(commercialSelectionSchema).max(1024).optional(),
+  source_contexts: z
+    .array(
+      z.strictObject({
+        key: nonEmptyString,
+        applicability: priceApplicabilitySchema,
+      }),
+    )
+    .max(pricingLimits.offersPerProvider)
+    .optional(),
   states: z.array(priceStateVariantSchema),
   enrollment: z.array(priceEnrollmentVariantSchema),
   terms: z.array(pricingTermSchema),
@@ -750,17 +760,6 @@ export const providerAtomRegistryEntrySchema = z.union([
 export const providerPricingVocabularySchema = z.strictObject({
   provider_id: nonEmptyString,
   atoms: z.array(providerAtomRegistryEntrySchema),
-});
-
-export const calculationProviderVocabularySchema = providerPricingVocabularySchema.extend({
-  atoms: z.array(
-    z.union([
-      namedPricingAtomSchema,
-      pricingDimensionAtomSchema,
-      usageSignalAtomSchema,
-      categoricalValueAtomSchema,
-    ]),
-  ),
 });
 
 const providerPricingSnapshotBase = {

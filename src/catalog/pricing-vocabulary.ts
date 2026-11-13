@@ -1,5 +1,6 @@
 export const standardPriceDimensions = [
   "model",
+  "execution",
   "region",
   "endpoint",
   "deployment_type",

@@ -4,7 +4,7 @@
   "properties": {
     "schemaVersion": {
       "type": "string",
-      "const": "1.0"
+      "const": "2.0"
     },
     "snapshot": {
       "type": "object",
@@ -254,6 +254,10 @@
                         "resolution_phase": {
                           "type": "string",
                           "enum": ["publication", "request", "outcome", "account"]
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1
                         }
                       },
                       "required": ["kind", "key", "definition", "unit", "resolution_phase"],
@@ -283,6 +287,7 @@
                                   "type": "string",
                                   "enum": [
                                     "model",
+                                    "execution",
                                     "region",
                                     "endpoint",
                                     "deployment_type",
@@ -809,6 +814,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -941,6 +947,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -1029,6 +1036,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -1402,6 +1410,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -1534,6 +1543,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -1622,6 +1632,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -2008,6 +2019,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -2140,6 +2152,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -2228,6 +2241,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -2847,6 +2861,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -2982,6 +2997,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -3070,6 +3086,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -4167,6 +4184,7 @@
                                                       "type": "string",
                                                       "enum": [
                                                         "model",
+                                                        "execution",
                                                         "region",
                                                         "endpoint",
                                                         "deployment_type",
@@ -4528,6 +4546,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -4663,6 +4682,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -4751,6 +4771,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -5476,6 +5497,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -5611,6 +5633,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -5699,6 +5722,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6094,6 +6118,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6229,6 +6254,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6317,6 +6343,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6726,6 +6753,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6861,6 +6889,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -6949,6 +6978,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8107,6 +8137,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8242,6 +8273,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8330,6 +8362,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8756,6 +8789,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8891,6 +8925,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -8979,6 +9014,7 @@
                                                                     "type": "string",
                                                                     "enum": [
                                                                       "model",
+                                                                      "execution",
                                                                       "region",
                                                                       "endpoint",
                                                                       "deployment_type",
@@ -9374,6 +9410,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -9506,6 +9543,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -9594,6 +9632,7 @@
                                                           "type": "string",
                                                           "enum": [
                                                             "model",
+                                                            "execution",
                                                             "region",
                                                             "endpoint",
                                                             "deployment_type",
@@ -10015,6 +10054,7 @@
                                                     "type": "string",
                                                     "enum": [
                                                       "model",
+                                                      "execution",
                                                       "region",
                                                       "endpoint",
                                                       "deployment_type",
@@ -10139,6 +10179,7 @@
                                                     "type": "string",
                                                     "enum": [
                                                       "model",
+                                                      "execution",
                                                       "region",
                                                       "endpoint",
                                                       "deployment_type",
@@ -10223,6 +10264,7 @@
                                                     "type": "string",
                                                     "enum": [
                                                       "model",
+                                                      "execution",
                                                       "region",
                                                       "endpoint",
                                                       "deployment_type",

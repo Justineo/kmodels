@@ -1,23 +1,15 @@
+import { offerContexts, priceContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
-import {
-  createCalculator,
-  type Quantity,
-  type Selector,
-  type CalculationOffer,
-  type CalculationEnvelope,
-  type CalculationBinding,
-} from "../src/pricing/index.ts";
-import { canonicalJson } from "../src/catalog/canonical-json.ts";
+import { type PriceDataEnvelope } from "../src/pricing/index.ts";
 import { sonicDocuments, sonicBundle } from "./bedrock-sonic-fixtures.ts";
-
 // Native price rows: AmazonBedrock/current/index.json, observed 2026-10-19T06:49:30.039Z,
 // SHA256 f1a16e43dd44b6bc42d72cf41fd2a2cef2ed066f04373b424f3752aad7071d3a.
 // Cards below are synthetic catalog scaffolding; they establish no live availability assertion.
@@ -33,7 +25,6 @@ function configuration() {
 const { manifest, source, accountingSource } = configuration();
 const provider = { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) };
 const fixture = (path: string) => readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
-
 function card(id: string, name: string, publisher: string, api: string, audio = true) {
   return {
     url: `https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-${id.replace(/[^a-z0-9-]/g, "-")}.md`,
@@ -55,7 +46,6 @@ function card(id: string, name: string, publisher: string, api: string, audio = 
 | us-east-1 (N. Virginia) | ![Yes](icon-yes.png) | ![No](icon-no.png) | ![No](icon-no.png) |`,
   };
 }
-
 async function parsed(audio = true) {
   return parseSource({
     provider,
@@ -100,11 +90,13 @@ async function parsed(audio = true) {
     }),
   });
 }
-
 async function compiled(
   scope?: "same" | "region" | "currency" | "validity" | "batch",
   controls: {
-    documents?: Array<{ url: string; body: string }>;
+    documents?: Array<{
+      url: string;
+      body: string;
+    }>;
     apiPath?: string;
     priceEndpoint?: string;
     omitAudioRates?: boolean;
@@ -211,7 +203,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = calculationExport(
+  const exported = priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -223,119 +215,28 @@ async function compiled(
       core,
     ),
   );
-  return { partition, exported, calculator: createCalculator(exported) };
+  return { partition, exported };
 }
-
-function modelOffer(exported: CalculationEnvelope, model: string, mechanism = "on-demand") {
+function modelOffer(exported: PriceDataEnvelope, model: string, mechanism = "on-demand") {
   const offer = exported.providers[0]?.books
     .find(({ book_key }) => book_key === `model:amazon-bedrock/${model}`)
-    ?.offers.find(({ offer_key }) => offer_key === mechanism);
+    ?.offers.flatMap(priceContexts)
+    .find(({ context_key }) => context_key === mechanism);
   if (offer === undefined) throw new Error(`Missing ${model} ${mechanism} offer`);
   return offer;
 }
-
-function nativeEvent() {
-  const input: Record<string, number> = { textTokens: 1000, speechTokens: 1000 };
-  const output: Record<string, number> = { textTokens: 1000, speechTokens: 1000 };
-  return {
-    event: {
-      usageEvent: {
-        sessionId: "same-session",
-        promptName: "same-prompt",
-        completionId: "same-completion",
-        details: {
-          delta: { input, output },
-          total: {
-            input: { textTokens: 999999, speechTokens: 999999 },
-            output: { textTokens: 999999, speechTokens: 999999 },
-          },
-        },
-        totalInputTokens: 1999998,
-        totalOutputTokens: 1999998,
-        totalTokens: 3999996,
-      },
-    },
-  };
-}
-
-function eventComponent(offer: CalculationOffer, event: unknown, id: string) {
-  const quantities = new Map<string, Quantity>();
-  const selectors = new Map<string, Selector>();
-  let aggregation: CalculationBinding["aggregation"] | undefined;
-  for (const term of offer.terms) {
-    if (term.kind !== "rate") continue;
-    const variant = term.variants[0];
-    const binding = variant?.charge_binding;
-    if (variant === undefined || binding === undefined)
-      throw new Error("Missing native charge binding");
-    if (
-      aggregation !== undefined &&
-      canonicalJson(aggregation) !== canonicalJson(binding.aggregation)
-    )
-      throw new Error("Mixed event boundaries");
-    aggregation = binding.aggregation;
-    for (const method of binding.quantity_methods ?? [])
-      for (const source of method.input_sources ?? []) {
-        if (source.locator.kind !== "json_pointer") continue;
-        let value: unknown = event;
-        for (const key of source.locator.value.split("/").slice(1))
-          value =
-            value !== null && typeof value === "object" && Object.hasOwn(value, key)
-              ? Reflect.get(value, key)
-              : undefined;
-        if (typeof value !== "number") continue;
-        quantities.set(canonicalJson(source.signal), {
-          signal: source.signal,
-          value: { numerator: String(value), denominator: "1" },
-        });
-      }
-    for (const condition of variant.applicability.any_of[0]?.all_of ?? []) {
-      if (
-        condition.kind !== "categorical" ||
-        condition.values.length !== 1 ||
-        condition.values[0] === undefined
-      )
-        throw new Error("Unexpected native selector");
-      selectors.set(canonicalJson(condition.dimension), {
-        kind: "categorical",
-        dimension: condition.dimension,
-        value: condition.values[0],
-      });
-    }
-  }
-  return {
-    id,
-    offerRef: offer.id,
-    quantities: [...quantities.values()],
-    selectors: [...selectors.values()],
-    ...(aggregation === undefined ? {} : { aggregation }),
-  };
-}
-
 describe("Bedrock modality pricing", () => {
   it.each([false, true])(
     "keeps the quote's native text role independent of missing peers (generic=%s)",
     async (generic) => {
-      const { exported, calculator } = await compiled(generic ? "same" : undefined, {
+      const { exported } = await compiled(generic ? "same" : undefined, {
         documents: await sonicDocuments(),
         omitAudioRates: true,
       });
       const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
       expect(offer.terms.filter(({ kind }) => kind === "rate")).toHaveLength(2);
-      const result = calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          eventComponent(offer, nativeEvent(), "usage-0"),
-          eventComponent(offer, nativeEvent(), "usage-1"),
-        ],
-      });
-      expect(result).toMatchObject({
-        status: "calculated",
-        totals: [{ amount: { numerator: "77", denominator: generic ? "6250" : "12500" } }],
-      });
     },
   );
-
   it("does not borrow a generic invocation-log selector for a Bidi-only model", async () => {
     const { exported } = await compiled("same", { documents: await sonicDocuments() });
     const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
@@ -346,56 +247,23 @@ describe("Bedrock modality pricing", () => {
     );
     expect(sources.some(({ channel }) => channel === "invocation_log")).toBe(false);
   });
-  it.each([
-    ["amazon.nova-sonic-v1:0", { numerator: "173", denominator: "5000" }],
-    ["amazon.nova-2-sonic-v1:0", { numerator: "113", denominator: "3125" }],
-  ] as const)(
-    "prices repeated native deltas once each rather than cumulative totals (%s)",
-    async (model, amount) => {
-      const { exported, calculator } = await compiled(undefined, {
-        documents: await sonicDocuments(),
-      });
+  it.each(["amazon.nova-sonic-v1:0", "amazon.nova-2-sonic-v1:0"])(
+    "preserves the native event boundary in the price basis for %s",
+    async (model) => {
+      const { exported } = await compiled(undefined, { documents: await sonicDocuments() });
       const offer = modelOffer(exported, model);
-      const components = [0, 1].map((index) =>
-        eventComponent(offer, nativeEvent(), `usage-${index}`),
-      );
-      expect(
-        components.every(
-          ({ aggregation }) =>
-            canonicalJson(aggregation) ===
-            canonicalJson({
-              namespace: "provider",
-              provider_id: "amazon-bedrock",
-              value: "sonic_usage_event",
-            }),
-        ),
-      ).toBe(true);
-      const result = calculator.calculate({ evaluatedAt: observedAt, components });
-      expect(result).toMatchObject({
-        status: "calculated",
-        totals: [{ denomination: { kind: "fiat", currency: "USD" }, amount }],
-      });
-      expect(result.charges).toHaveLength(8);
+      for (const term of offer.terms) {
+        if (term.kind !== "rate") continue;
+        for (const variant of term.variants)
+          expect(variant.charge_binding?.aggregation).toEqual({
+            namespace: "provider",
+            provider_id: "amazon-bedrock",
+            value: "sonic_usage_event",
+          });
+      }
     },
   );
-
-  it("sums native text and speech deltas for explicitly unqualified synthetic token quotes", async () => {
-    const { exported, calculator } = await compiled("same", { documents: await sonicDocuments() });
-    const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
-    const result = calculator.calculate({
-      evaluatedAt: observedAt,
-      components: [
-        eventComponent(offer, nativeEvent(), "usage-0"),
-        eventComponent(offer, nativeEvent(), "usage-1"),
-      ],
-    });
-    expect(result).toMatchObject({
-      status: "calculated",
-      totals: [{ amount: { numerator: "529", denominator: "12500" } }],
-    });
-  });
-
-  it.each(["source", "runtime"])(
+  it.each(["source"])(
     "keeps a missing %s counter unknown and preserves native prices",
     async (missing) => {
       const documents = await sonicDocuments();
@@ -406,20 +274,11 @@ describe("Bedrock modality pricing", () => {
           '"speechTokens": number, // input speech tokens',
           '"renamed": number, // input speech tokens',
         );
-      const { exported, calculator } = await compiled(undefined, { documents });
+      const { exported } = await compiled(undefined, { documents });
       const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
       expect(offer.terms.filter(({ kind }) => kind === "rate")).toHaveLength(4);
-      const event = nativeEvent();
-      if (missing === "runtime") delete event.event.usageEvent.details.delta.input.speechTokens;
-      const result = calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [eventComponent(offer, event, "usage")],
-      });
-      expect(result.status).not.toBe("calculated");
-      expect(result.totals).toBeUndefined();
     },
   );
-
   it.each(["model", "api", "endpoint", "batch"])(
     "does not lend Sonic counters to another %s scope",
     async (boundary) => {
@@ -459,7 +318,6 @@ describe("Bedrock modality pricing", () => {
       ]);
     }
   });
-
   it("recognizes the native lowercase 1k token denominator without changing the amount", async () => {
     const result = await parsed();
     const sonic = result.models.find(({ model_id }) => model_id === "amazon.nova-2-5-sonic-v1:0");
@@ -474,57 +332,22 @@ describe("Bedrock modality pricing", () => {
     ]);
     expect(sonic?.raw_price_facts).toEqual([]);
   });
-
   it("preserves semantic audio token charges in the portable export without inventing locators", async () => {
-    const { exported, calculator } = await compiled();
+    const { exported } = await compiled();
     const book = exported.providers[0]?.books.find(({ book_key }) =>
       book_key.endsWith("amazon.nova-2-sonic-v1:0"),
     );
     const offer = book?.offers.find(({ offer_key }) => offer_key === "on-demand");
     if (offer === undefined) throw new Error("Missing Sonic offer");
-    const quantities: Quantity[] = [];
-    const selectors: Selector[] = [];
     for (const term of offer.terms) {
       if (term.kind !== "rate") continue;
       const variant = term.variants[0];
       const binding = variant?.charge_binding;
       if (variant === undefined || binding === undefined)
         throw new Error(`Missing ${term.meter.value} binding`);
-      quantities.push({ signal: binding.signal, value: { numerator: "1000", denominator: "1" } });
       expect(binding.quantity_methods).toBeUndefined();
-      const clause = variant.applicability.any_of[0];
-      for (const condition of clause?.all_of ?? []) {
-        if (condition.kind !== "categorical" || condition.values[0] === undefined)
-          throw new Error("Unexpected native selector");
-        selectors.push({
-          kind: "categorical",
-          dimension: condition.dimension,
-          value: condition.values[0],
-        });
-      }
     }
-    const unique = new Map(
-      selectors.map((selector) => [JSON.stringify(selector.dimension), selector]),
-    );
-    expect(
-      calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          { id: "sonic", offerRef: offer.id, quantities, selectors: [...unique.values()] },
-        ],
-      }),
-    ).toMatchObject({
-      status: "calculated",
-      charges: expect.any(Array),
-      totals: [
-        {
-          denomination: { kind: "fiat", currency: "USD" },
-          amount: { numerator: "113", denominator: "6250" },
-        },
-      ],
-    });
   });
-
   it("binds independently priced input-video seconds in existing native-shaped embedding fixtures", async () => {
     const result = parseSource({
       provider,
@@ -553,14 +376,14 @@ describe("Bedrock modality pricing", () => {
     });
     expect(video.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
   });
-
   it.each(["same", "region", "currency", "validity", "batch"] as const)(
     "keeps aggregate counters out of overlapping modality tariffs (%s control)",
     async (scope) => {
       const { exported } = await compiled(scope);
       const offer = exported.providers[0]?.books
         .find(({ book_key }) => book_key.endsWith("amazon.nova-2-sonic-v1:0"))
-        ?.offers.find(({ offer_key }) => offer_key === "on-demand");
+        ?.offers.flatMap(priceContexts)
+        .find(({ context_key }) => context_key === "on-demand");
       if (offer === undefined) throw new Error("Missing Sonic offer");
       const text = offer.terms.filter(
         (term) => term.kind === "rate" && ["input_text", "output_text"].includes(term.meter.value),
@@ -586,7 +409,6 @@ describe("Bedrock modality pricing", () => {
       }
     },
   );
-
   it.each(["same", "region", "currency", "batch"] as const)(
     "does not let an unrelated cache quote change the input quantity (%s control)",
     async (scope) => {
@@ -620,8 +442,8 @@ describe("Bedrock modality pricing", () => {
         [model],
       );
       const input = partition?.books
-        .flatMap(({ offers }) => offers)
-        .filter(({ offer_key }) => offer_key === "on-demand")
+        .flatMap(({ offers }) => offers.flatMap(offerContexts))
+        .filter(({ context_key }) => context_key === "on-demand")
         .flatMap(({ terms }) => terms)
         .find((term) => term.kind === "rate" && term.meter.value === "input_text");
       if (input?.kind !== "rate") throw new Error("Missing input tariff");

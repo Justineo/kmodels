@@ -1,5 +1,5 @@
 import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
-import { calculationExport } from "./pricing-calculator-export.ts";
+import { priceDataExport } from "./pricing-lookup-export.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { createInferencePriceLookup } from "../pricing/inference.ts";
@@ -75,10 +75,23 @@ export function inferencePricingPublication(
       throw new Error("Commercial selection projection is incomplete or repeats an offer");
   }
   for (const providerId of new Set(mapping.rules.map(({ provider_id }) => provider_id))) {
-    createInferencePriceLookup(calculationExport(catalog, pricing, [providerId]), {
+    const prices = priceDataExport(catalog, pricing, [providerId]);
+    const offerRefs = new Set<string>();
+    for (const provider of prices.providers)
+      for (const book of provider.books) for (const offer of book.offers) offerRefs.add(offer.id);
+    createInferencePriceLookup(prices, {
       ...mapping,
       rules: mapping.rules.filter(({ provider_id }) => provider_id === providerId),
       sources: mapping.sources.filter(({ provider_id }) => provider_id === providerId),
+      // Global completeness/equality was checked above. Lookup only consumes this
+      // partition's offers; do not schema-clone every other provider's selections.
+      ...(mapping.offer_selections === undefined
+        ? {}
+        : {
+            offer_selections: mapping.offer_selections.filter(({ offer_ref }) =>
+              offerRefs.has(offer_ref),
+            ),
+          }),
     });
   }
   const source = canonicalJson(mapping);

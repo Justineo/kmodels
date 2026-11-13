@@ -102,7 +102,10 @@ function indexCurrentChoices(
   return indexes;
 }
 
-function* evidenceScopes(offer: InferenceMatchOffer, candidate: InferenceMatchCandidate) {
+export function* inferenceCandidateScopes(
+  offer: InferenceMatchOffer,
+  candidate: InferenceMatchCandidate,
+) {
   // With terms present, a numeric state alone does not sustain a price candidate.
   for (const index of candidate.states) {
     const state = offer.states[index];
@@ -133,7 +136,7 @@ function indexOfferChoices(
   );
   const domains = new Map<string, ChoiceDomain>();
   let clauses = 0;
-  for (const scope of evidenceScopes(offer, candidate)) {
+  for (const scope of inferenceCandidateScopes(offer, candidate)) {
     for (const { all_of } of scope.any_of) {
       if (
         all_of.some(

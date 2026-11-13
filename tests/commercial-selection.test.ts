@@ -1,5 +1,9 @@
 import { expect, it } from "vite-plus/test";
 import { matchInferencePrices } from "../src/pricing/inference-matching.ts";
+import {
+  commercialBranchesCoverScopes,
+  resolveCommercialChoices,
+} from "../src/pricing/commercial-matching.ts";
 import { unconditionalApplicability as all } from "../src/catalog/pricing-canonical.ts";
 import type { CommercialChoice, PriceApplicability } from "../src/catalog/pricing-schema.ts";
 import type {
@@ -73,6 +77,39 @@ function data(offers: InferenceMatchOffer[]): InferenceMatchData {
 function query(input: InferenceMatchData, ...choices: CommercialChoice[]) {
   return matchInferencePrices(input, [], at, undefined, undefined, choices);
 }
+
+it("does not infer a sole speed when it would discard another execution context", () => {
+  const request = native("operation", "request");
+  const batch = native("operation", "batch");
+  const speed = native("speed", "default");
+  const online = {
+    any_of: request.any_of.map(({ all_of }) => ({
+      all_of: [...all_of, ...speed.any_of.flatMap((c) => c.all_of)],
+    })),
+  };
+  const subject = offer("public", [claim("speed", "standard", request, speed)]);
+  const proposed = choice("speed", "standard");
+  const current = resolveCommercialChoices(subject, [], [], at, at);
+  const selected = resolveCommercialChoices(subject, [], [proposed], at, at);
+  expect(commercialBranchesCoverScopes([online, batch], current.branches, selected.branches)).toBe(
+    false,
+  );
+  expect(commercialBranchesCoverScopes([online], current.branches, selected.branches)).toBe(true);
+  const supplied = [
+    {
+      kind: "categorical" as const,
+      dimension: { namespace: "kmodels" as const, value: "operation" as const },
+      value: { namespace: "provider" as const, provider_id: "fixture", value: "request" },
+    },
+  ];
+  expect(
+    commercialBranchesCoverScopes(
+      [online, batch],
+      resolveCommercialChoices(subject, supplied, [], at, at).branches,
+      resolveCommercialChoices(subject, supplied, [proposed], at, at).branches,
+    ),
+  ).toBe(true);
+});
 
 it("keeps identity independent of semantics, including one contract with several execution mechanisms", () => {
   const dual = offer("dual", [

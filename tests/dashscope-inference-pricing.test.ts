@@ -14,7 +14,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -96,7 +96,7 @@ beforeAll(async () => {
 }, 15000);
 function lookup(candidate = baseline) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -162,9 +162,13 @@ it("keeps literal IDs and published regional prices independent of inferred ID p
   for (const id of ["Qwen-plus", "us.qwen-plus", "qwen-plus-us", "my-deployment"]) {
     expect(query({ ...args, model_id: id }).reason).toBe("unreviewed_id");
   }
-  expect(baseline.inference?.mapping.rules.every((rule) => rule.fixed_selectors.length === 0)).toBe(
-    true,
-  );
+  expect(
+    baseline.inference?.mapping.rules.every((rule) =>
+      rule.fixed_selectors.every((selector) =>
+        ["invocation_mode", "execution"].includes(selector.dimension.value),
+      ),
+    ),
+  ).toBe(true);
 });
 
 it("preserves snapshot IDs and distinct on-demand and Batch offers", () => {
@@ -178,7 +182,7 @@ it("preserves snapshot IDs and distinct on-demand and Batch offers", () => {
   const result = lookup()({ provider_id: "dashscope", model_id: "qwen-flash" });
   expect(result.status).toBe("candidates");
   expect(new Set(result.candidates.map(({ offer }) => offer.name))).toEqual(
-    new Set(["On-demand inference", "Batch inference"]),
+    new Set(["Public rates"]),
   );
 });
 
@@ -230,7 +234,7 @@ it("publishes literal Beijing IDs and CNY rates from the mainland price book", a
     selectors: [condition("region", "China (Beijing)")],
   });
   expect(new Set(result.candidates.map(({ offer }) => offer.name))).toEqual(
-    new Set(["Batch inference", "On-demand inference"]),
+    new Set(["Public rates"]),
   );
   expect(inputPrices(result)).toEqual(
     expect.arrayContaining([

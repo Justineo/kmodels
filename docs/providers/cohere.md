@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Retain one public hosted-inference relationship per priced model. Published existing-customer eligibility qualifies access to legacy rates; it does not itself prove a separately enrolled contract. Model-specific free access remains a price state. Trial balances, Model Vault and Fixed/Flex commitments are excluded; Batch and Embed Jobs do not inherit online prices.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 Cohere contributes only public rates for Cohere-hosted inference that an AI Gateway can attribute

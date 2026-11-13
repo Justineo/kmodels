@@ -12,7 +12,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { InferencePriceQuery } from "../src/pricing/inference-schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -89,7 +89,7 @@ async function collect(
 }
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -172,24 +172,25 @@ function selectors(region: string, ttl?: string): NonNullable<InferencePriceQuer
 function offerRef(candidate: CatalogPairCandidate, id: string, key: string): string {
   const offer = candidate.pricing.data.books
     .find(({ scope }) => scope.kind === "models" && scope.model_refs.includes(`kimi/${id}`))
-    ?.offers.find(({ offer_key }) => offer_key === key);
+    ?.offers.find((offer) => offer.source_contexts?.some((context) => context.key === key));
   if (!offer) throw new Error(`Missing ${id} ${key} offer`);
   return offer.id;
 }
 
-it("keeps region, inference offer and cache TTL explicit for an exact Kimi ID", async () => {
+it("keeps region, request mode and TTL explicit for unit-price selection", async () => {
   const candidate = await collect();
   const query = lookup(candidate);
   const args = { provider_id: "kimi", model_id: "kimi-k3" };
   const pending = query(args);
   expect(pending.status).toBe("candidates");
-  expect(pending.requires_offer_choice).toBe(true);
+  expect(pending.requires_offer_choice).toBe(false);
   expect(pending.missing_conditions).toEqual(
-    expect.arrayContaining([
-      { namespace: "kmodels", value: "region" },
-      { namespace: "kmodels", value: "cache_ttl_seconds" },
-    ]),
+    expect.arrayContaining([{ namespace: "kmodels", value: "region" }]),
   );
+  expect(pending.missing_conditions).toContainEqual({
+    namespace: "kmodels",
+    value: "cache_ttl_seconds",
+  });
   for (const [region, key, numerator, denominator] of [
     ["China", "sync", "1", "50000"],
     ["International", "sync", "3", "1000000"],
@@ -200,6 +201,7 @@ it("keeps region, inference offer and cache TTL explicit for an exact Kimi ID", 
     const result = query({
       ...args,
       offer_ref: offerRef(candidate, args.model_id, key),
+      execution_mode: key === "batch" ? "batch" : "request",
       selectors: selectors(region, "300"),
     });
     expect(result.status).toBe("matched");
@@ -215,7 +217,9 @@ it("keeps region, inference offer and cache TTL explicit for an exact Kimi ID", 
     ).toEqual([{ numerator, denominator }]);
   }
   expect(
-    candidate.inference?.mapping.rules.every(({ fixed_selectors }) => fixed_selectors.length === 0),
+    candidate.inference?.mapping.rules.every(({ fixed_selectors }) =>
+      fixed_selectors.every((selector) => selector.dimension.value === "execution"),
+    ),
   ).toBe(true);
 });
 
@@ -235,6 +239,7 @@ it("keeps highspeed as a distinct request ID and omits unpublished cache-write r
     model_id: "kimi-k2.6",
     selectors: selectors("International"),
     offer_ref: offerRef(candidate, "kimi-k2.6", "batch"),
+    execution_mode: "batch",
   });
   expect(batch.status).toBe("matched");
   expect(
@@ -332,6 +337,7 @@ it("uses the same regional and offer matching in static UI output without protoc
       selectors("International", "3600"),
       at,
       offerRef(candidate, "kimi-k3", "batch"),
+      "batch",
     ).status,
   ).toBe("matched");
   expect(JSON.stringify(price)).not.toContain("content_hash");

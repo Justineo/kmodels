@@ -13,7 +13,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -104,7 +104,7 @@ const selectors: Selector[] = [
 ];
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -112,7 +112,7 @@ function offer(candidate: CatalogPairCandidate, key: string) {
   const found = candidate.pricing.data.books.flatMap((book) =>
     book.offers.filter(
       (offer) =>
-        offer.offer_key === key &&
+        offer.source_contexts?.some((context) => context.key === key) &&
         (offer.model_refs ?? book.scope.model_refs).includes("anthropic/claude-opus-4-7"),
     ),
   )[0];
@@ -128,11 +128,11 @@ it("publishes direct ID/alias prices and distinguishes Messages from Batch witho
     selectors,
   });
   expect(ambiguousPlan.status).toBe("candidates");
-  expect(ambiguousPlan.requires_offer_choice).toBe(true);
+  expect(ambiguousPlan.requires_offer_choice).toBe(false);
   expect(ambiguousPlan.execution_modes).toEqual(["batch", "request"]);
   expect(ambiguousPlan.requires_execution_mode_choice).toBe(true);
   expect(new Set(ambiguousPlan.candidates.map(({ offer }) => offer.offer_key))).toEqual(
-    new Set(["sync", "batch"]),
+    new Set(["public"]),
   );
   for (const [key, denominator] of [
     ["sync", "200000"],
@@ -161,10 +161,13 @@ it("publishes direct ID/alias prices and distinguishes Messages from Batch witho
     model_id: "claude-opus-4-7",
     selectors,
     offer_ref: offer(candidate, "sync"),
+    execution_mode: "request" as const,
   });
   expect(result.candidates[0]?.model_ref).toBe("anthropic/claude-opus-4-7");
   expect(
-    candidate.inference?.mapping.rules.every(({ fixed_selectors }) => fixed_selectors.length === 0),
+    candidate.inference?.mapping.rules.every(({ fixed_selectors }) =>
+      fixed_selectors.every((selector) => selector.dimension.value === "execution"),
+    ),
   ).toBe(true);
   expect(query({ provider_id: "anthropic", model_id: "us.claude-opus-4-7" }).reason).toBe(
     "unreviewed_id",
@@ -195,6 +198,7 @@ it("uses the same selected offer in public static output and the interactive UI"
       model_id: id.model_id,
       selectors,
       offer_ref: offer(candidate, key),
+      execution_mode: key === "batch" ? "batch" : "request",
     });
     const ui = queryWebsiteInferencePrice(
       id,
@@ -213,14 +217,100 @@ it("uses the same selected offer in public static output and the interactive UI"
     prices: detail?.inference_prices,
     offers,
   });
-  expect(html).toMatch(/<label\b[^>]*>Execution<\/label>/);
-  expect(html).toContain("Ordinary request");
+  expect(html).toMatch(/<label\b[^>]*>Request mode<\/label>/);
+  const usageGroups = [...html.matchAll(/<fieldset\b[^>]*>[\s\S]*?<\/fieldset>/g)].filter(
+    ([group]) => /<legend\b[^>]*>Usage conditions<\/legend>/.test(group),
+  );
+  expect(usageGroups).toHaveLength(1);
+  expect(usageGroups[0]?.[0]).toContain("Request mode");
+  expect(usageGroups[0]?.[0]).toContain("inference-price-selector-");
+  expect(html).toMatch(/<span\b[^>]*>Request<\/span>/);
   expect(html).toContain("Batch");
-  expect(html).toContain("Served speed");
-  expect(html).toContain("All applicable options");
+  expect(html).toContain("Speed");
+  expect(html).toContain("Choose…");
+  expect(html).toContain("Cache TTL");
   expect(html).not.toContain("Message Batches");
   expect(html).not.toContain("Inspect target");
   expect(JSON.stringify(id)).not.toContain("content_hash");
+});
+
+it("keeps TTL selectable after geography and resolves unit prices without quantities", async () => {
+  const candidate = await collect();
+  const query = lookup(candidate);
+  const base = {
+    provider_id: "anthropic",
+    model_id: "claude-opus-4-7",
+    evaluated_at: at,
+    execution_mode: "request" as const,
+  };
+  const ttlDimension = { namespace: "kmodels", value: "cache_ttl_seconds" };
+  const pending = query({ ...base, selectors: [select("speed", "standard")] });
+  expect(pending.missing_conditions).toEqual(
+    expect.arrayContaining([ttlDimension, { namespace: "kmodels", value: "inference_geo" }]),
+  );
+  for (const geo of ["global", "us"]) {
+    const scoped = [select("speed", "standard"), select("inference_geo", geo)];
+    expect(query({ ...base, selectors: scoped }).missing_conditions).toEqual([ttlDimension]);
+    const input = query({
+      ...base,
+      selectors: scoped,
+      meter: { namespace: "kmodels", value: "input_text" },
+    });
+    expect(input.status).toBe("matched");
+    expect(input.missing_conditions).toEqual([]);
+    expect(
+      input.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .every((term) => term.kind === "rate" && term.meter.value === "input_text"),
+    ).toBe(true);
+    for (const [ttl, denominator] of [
+      ["300", "160000"],
+      ["3600", "100000"],
+    ] as const) {
+      const selected: Selector[] = [
+        ...scoped,
+        {
+          kind: "decimal",
+          dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+          value: ttl,
+          unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+        },
+      ];
+      const result = query({
+        ...base,
+        selectors: selected,
+        meter: { namespace: "kmodels", value: "cache_write_text" },
+      });
+      expect(result.status).toBe("matched");
+      expect(result.missing_conditions).toEqual([]);
+      const terms = result.candidates.flatMap(({ offer }) => offer.terms);
+      expect(terms).toHaveLength(1);
+      expect(terms[0]).toMatchObject({
+        kind: "rate",
+        variants: [
+          {
+            price: {
+              value:
+                geo === "global"
+                  ? { numerator: "1", denominator }
+                  : { numerator: "11", denominator: String(Number(denominator) * 10) },
+            },
+          },
+        ],
+      });
+      expect(
+        query({
+          ...base,
+          selectors: selected.toReversed(),
+          meter: { namespace: "kmodels", value: "cache_write_text" },
+        }),
+      ).toMatchObject({
+        status: result.status,
+        missing_conditions: [],
+        candidates: result.candidates.map(({ offer }) => ({ offer })),
+      });
+    }
+  }
 });
 it("moves or withdraws explicit aliases independently of equal prices or retained display aliases", async () => {
   const previous = await collect();
@@ -272,7 +362,7 @@ it.each(["identity", "batch"])(
     if (kind === "identity") expect(result.reason).toBe("unreviewed_id");
     else {
       expect(result.status).toBe("matched");
-      expect(result.candidates.map(({ offer }) => offer.offer_key)).toEqual(["sync"]);
+      expect(result.candidates.map(({ offer }) => offer.offer_key)).toEqual(["public"]);
     }
     expect(candidate.pricing.data.books.length).toBeGreaterThan(0);
   },
@@ -285,6 +375,7 @@ it("requires served speed rather than deriving it from a requested mode or model
     provider_id: "anthropic",
     model_id: "claude-opus-4-7",
     offer_ref: offer(candidate, "sync"),
+    execution_mode: "request" as const,
   };
   expect(
     query({ ...scope, selectors: selectors.filter(({ dimension }) => dimension.value !== "speed") })
@@ -324,6 +415,7 @@ it("retains conflicting alias owners and excludes placeholder aliases", async ()
       provider_id: "anthropic",
       model_id: "claude-opus-legacy",
       offer_ref: offer(candidate, "sync"),
+      execution_mode: "request" as const,
     }).reason,
   ).toBe("ambiguous_identity");
   expect(lookup(candidate)({ provider_id: "anthropic", model_id: "N/A" }).reason).toBe(

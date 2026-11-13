@@ -6,8 +6,11 @@ import {
   pricingOfferId,
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
-import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
+import { pricingCatalogSchema, type PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import {
+  validatePricingCatalogInParallel,
+  validatePricingCatalogForRead,
+} from "../src/catalog/pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
@@ -265,6 +268,122 @@ describe("canonical pricing serialized catalog validation", () => {
     );
   });
 
+  it.each(["valid", "unscoped_raw", "id", "duplicate", "ownership", "ijson"])(
+    "keeps mirror and worker validation equivalent for %s input",
+    async (kind) => {
+      const data = catalog();
+      const ownedCore = structuredClone(core);
+      const book = data.books[0];
+      const source = ownedCore.sources[0];
+      const observation = book?.scope_observations[0];
+      if (!book || !source || !observation) throw new Error("Missing validation fixture");
+      if (kind === "id") book.id = "0".repeat(64);
+      else if (kind === "duplicate") data.books.push(structuredClone(book));
+      else if (kind === "ownership") source.provider_id = "other";
+      else if (kind === "ijson") observation.raw = { label: "\ud800" };
+      else if (kind === "unscoped_raw") {
+        const term = book.offers[0]?.terms[0];
+        if (term?.kind !== "rate") throw new Error("Missing rate fixture");
+        term.raw_variants.push({
+          impact: "informational",
+          reason: "superseded_value",
+          resolution_policy: "provider_revision",
+          observations: [observation],
+        });
+      }
+      const original = structuredClone(data);
+      async function failure(operation: () => void | Promise<void>) {
+        try {
+          await operation();
+          return undefined;
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      }
+      const local = await failure(() => validatePricingCatalogForRead(data, ownedCore));
+      const parallel = await failure(() => validatePricingCatalogInParallel(data, ownedCore));
+      expect(local).toBe(parallel);
+      if (kind === "valid" || kind === "unscoped_raw") expect(local).toBeUndefined();
+      else expect(local).toBeTypeOf("string");
+      expect(data).toEqual(original);
+    },
+  );
+
+  it.each(["valid", "local", "remote", "both", "both_reordered"])(
+    "validates both execution paths and preserves error precedence for %s providers",
+    async (kind) => {
+      const local = catalog();
+      const remote = pricingCatalogSchema.parse(
+        JSON.parse(JSON.stringify(catalog()).replaceAll("test", "other")),
+      );
+      const remoteBook = remote.books[0];
+      const localBook = local.books[0];
+      if (!remoteBook || !localBook) throw new Error("Missing provider fixture");
+      const extra = structuredClone(remoteBook);
+      extra.book_key = "extra";
+      remote.books.push(extra);
+      for (const book of remote.books) {
+        book.id = pricingBookId("other", book.book_key);
+        for (const offer of book.offers) {
+          offer.id = pricingOfferId(book.id, offer.offer_key);
+          for (const term of offer.terms)
+            term.id = pricingTermId(offer.id, term.kind, term.term_key);
+        }
+      }
+      if (kind === "local" || kind === "both" || kind === "both_reordered")
+        localBook.id = "e".repeat(64);
+      if (kind === "remote" || kind === "both" || kind === "both_reordered")
+        remoteBook.id = "f".repeat(64);
+      if (kind === "both_reordered") {
+        const term = localBook.offers[0]?.terms[0];
+        if (term?.kind !== "rate" || !term.variants[0]) throw new Error("Missing numeric fixture");
+        term.variants[0].applicability = {
+          any_of: [
+            {
+              all_of: [
+                {
+                  kind: "categorical",
+                  dimension: { namespace: "kmodels", value: "region" },
+                  values: Array.from({ length: 100 }, (_, index) => ({
+                    namespace: "provider",
+                    provider_id: "test",
+                    value: `region-${index}`,
+                  })),
+                },
+              ],
+            },
+          ],
+        };
+      }
+      const data: PricingCatalog = {
+        provider_vocabularies: [...remote.provider_vocabularies, ...local.provider_vocabularies],
+        provider_snapshots: [...remote.provider_snapshots, ...local.provider_snapshots],
+        model_dispositions: [],
+        books: [...remote.books, ...local.books].sort((a, b) => a.id.localeCompare(b.id)),
+      };
+      const combinedCore = {
+        providers: [
+          ...core.providers.map((value) => ({ ...value, id: "other" })),
+          ...core.providers,
+        ],
+        models: [
+          ...core.models.map((value) => ({ ...value, uid: "other/model", provider_id: "other" })),
+          ...core.models,
+        ],
+        sources: [
+          ...core.sources.map((value) => ({ ...value, id: "other-pricing", provider_id: "other" })),
+          ...core.sources,
+        ],
+      };
+      const validation = validatePricingCatalogForRead(data, combinedCore);
+      if (kind === "valid") await expect(validation).resolves.toBeUndefined();
+      else
+        await expect(validation).rejects.toThrow(
+          kind === "local" ? /^test:.*ID recipe mismatch/ : /^other:.*ID recipe mismatch/,
+        );
+    },
+  );
+
   it("rejects evidence widening and cross-provider source ownership", () => {
     const widened = catalog();
     widened.books[0]!.scope.model_refs.push("test/other");
@@ -497,16 +616,15 @@ describe("canonical pricing serialized catalog validation", () => {
     );
 
     const wrongCalculationUnit = structuredClone(calculated);
-    const wrongCalculationTerm = wrongCalculationUnit.books[0]!.offers.find(
+    const wrongPriceDataTerm = wrongCalculationUnit.books[0]!.offers.find(
       ({ offer_key }) => offer_key === "usage",
     )?.terms[0];
-    if (wrongCalculationTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
-    wrongCalculationTerm.variants[0]!.charge_binding!.quantity_methods![0]!.calculation!.nodes[0] =
-      {
-        op: "signal",
-        signal: { namespace: "kmodels", value: "accepted_requests" },
-      };
-    wrongCalculationTerm.variants[0]!.charge_binding!.quantity_methods![0]!.input_sources![1]!.signal =
+    if (wrongPriceDataTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    wrongPriceDataTerm.variants[0]!.charge_binding!.quantity_methods![0]!.calculation!.nodes[0] = {
+      op: "signal",
+      signal: { namespace: "kmodels", value: "accepted_requests" },
+    };
+    wrongPriceDataTerm.variants[0]!.charge_binding!.quantity_methods![0]!.input_sources![1]!.signal =
       {
         namespace: "kmodels",
         value: "accepted_requests",

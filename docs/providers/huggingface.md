@@ -2,6 +2,15 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+The admitted subject is HF-operated HF Inference, not partner routing. Public hardware/compute billing prose does not identify a request SKU or measured duration, so there is no established public per-model offer to normalize. Keep pricing unknown. Do not recreate router partner offers, infer free usage from credits, or admit dedicated/account products through this boundary change.
+
+The source authorities and evidence limits below remain authoritative. This catalog-only provider
+has no admitted price partition or source offer contexts to migrate.
+
 Kmodels covers [HF Inference](https://huggingface.co/docs/inference-providers/en/providers/hf-inference),
 the Hugging Face-operated serverless inference provider. A Hub repository qualifies when an exact
 concrete mapping names `hf-inference` with status `live`, a provider model ID, and a task.

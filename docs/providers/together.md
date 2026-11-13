@@ -2,6 +2,18 @@
 
 Status: implemented
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Standard and the documented discounted Batch audio operation share the public Serverless usage relationship. Execution and endpoint geography qualify rates; Batch keeps successful-result-item accounting and never inherits synchronous source paths. Preserve exact source operation evidence in context mappings. Dedicated inference, commitments, unproved Batch prices and estimated media quotes are not promoted into offers.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 The [Serverless model catalog](https://docs.together.ai/docs/serverless/models) owns public
 admission. Accept exact API model strings from the model tables. When Chat and Vision list
 the same ID, retain one model and add image input from Vision. The dedicated catalog is a
@@ -48,8 +60,7 @@ specific configuration and does not supply a current tariff across supported con
 
 The [Batch overview](https://docs.together.ai/docs/inference/batch/overview) joins an exact
 discounted audio ID to its Serverless per-minute rate. The standard and discounted rates
-are extracted with separate source operation selectors and assembled into independent `usage`
-and `batch` offers. Their canonical selection claims describe `request` and `batch` execution; mechanism
+are extracted with separate source operation selectors and assembled as `usage` and `batch` extraction contexts, then combined into one relationship offer. Their canonical selection claims describe `request` and `batch` execution; mechanism
 operation predicates are removed from rate applicability and retained in raw evidence. Endpoint
 geography remains a price condition. Batch bills successful result items and the discount
 excludes dedicated inference. The guide also establishes the audio translation route where

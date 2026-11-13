@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Messages and Message Batches share the public API usage relationship. Execution, actual Standard/Fast speed, geography, context and cache-write TTL qualify rate variants. Each branch retains its request/result-item accounting. Web search and code execution remain service books. Standalone versus web-assisted code execution selects numeric or included terms by operation; it is not a separate enrollment. Preserve the shared container allowance and successful-search accounting.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The Anthropic partition describes rates that an AI Gateway can attribute to direct Claude API
@@ -142,7 +154,7 @@ Messages associates with the model's canonical `sync` offer. The
 independently establishes active-model coverage and that each item's `params` uses standard Messages
 parameters. Those statements establish a separate `batch` association for active models.
 This prices the actual model ID in each batch item; it does not treat a batch ID as a model.
-When both offers apply, the lookup returns candidates and requires an explicit offer choice.
+When both invocation contexts apply, the lookup requires an execution condition within the same offer.
 The UI presents their existing names as a pricing option; it does not ask for an HTTP protocol.
 
 ID matching has no dependency on authentication, API version headers, request templates,
@@ -151,7 +163,7 @@ joined to the model ID. Managed Agents and private configuration IDs remain outs
 The original catalog endpoint/capability metadata and accounting contracts retain their separate
 responsibilities.
 
-The ID does not fix speed, inference geography, context or cache TTL. Existing canonical price
+The ID does not fix speed, inference geography or context. Existing canonical price
 conditions determine which inputs are needed. Global routing cannot be assumed from an omitted
 request field because workspace defaults can differ. Fast request intent is not served speed;
 consumers use the actual commercial value, including the documented standard-speed outcome of
@@ -166,7 +178,7 @@ prices into the checked-in catalog.
 
 ## Model rates and dimensions
 
-Each exact model has two offers when supported:
+Each exact model has two source invocation contexts when supported:
 
 - `sync`: ordinary Messages inference;
 - `batch`: Message Batches.
@@ -175,12 +187,16 @@ Unqualified public model prices remain unqualified by service tier. A separate B
 manufacture Standard applicability on synchronous prices. Private Priority capacity commitments
 remain outside this public-list partition.
 
-Fast speed, inference geography, and dated validity are shared rate dimensions. Exact five-minute
-and one-hour cache-write rates become separate logical terms with TTL-specific quantity signals,
-because one request may contain both TTLs. A global TTL selector must not select only one charge.
-Unrecognized TTL prices keep their original qualified/raw scope. Batch is an offer because it is a
-distinct asynchronous execution mechanism; separate offers already express the caller's choice, so no redundant
-exclusivity relation is emitted. The US-only inference multiplier is applied only when the
+Fast speed, inference geography, cache-write TTL and dated validity qualify rate variants.
+Five-minute and one-hour writes remain variants of `cache_write_text`, qualified by 300 and 3600
+seconds. Lookup can select either TTL without token quantities. Mixed TTLs in a request do not
+change that contract. Selecting geography must not hide a still-required TTL; input/output-only
+lookup does not depend on it. Numeric state summaries do not add extra dependencies, while rate
+variants retain their required conditions. Non-exact or unclassified TTL evidence keeps its
+qualified/raw scope. Batch is a rate condition with optional asynchronous accounting metadata.
+Disjoint applicability expresses price scope, so no redundant exclusivity relation is emitted.
+
+The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
 The unique `Data residency pricing` subsection owns the price rule, and the unique `Inference geo`
 section in the data-residency guide owns model eligibility. Quoted/code examples and declarations
@@ -211,9 +227,9 @@ response field is asserted for that total: the calculator requires the caller's 
 `context_tokens` selector, separately from the billable uncached/cache quantities. Uncached
 `usage.input_tokens` alone must not select the prompt-length band.
 
-The same bucket distinction applies to a raw price in an explicitly reviewed five-minute or
-one-hour column: its term key and native evidence retain the bucket, but a global TTL selector cannot
-dismiss that potentially simultaneous charge. Unreviewed TTL scopes remain qualified.
+A raw price in a reviewed five-minute or one-hour column retains that TTL predicate. Selecting
+another TTL excludes it from that lookup without making claims about the consumer's other usage.
+Unreviewed TTL scopes retain their uncertainty.
 
 Rows explicitly marked `retired, except on … Claude Models on Google Cloud (Google managed)` with
 Bedrock named either before or after that phrase describe surviving partner availability, not current
@@ -383,3 +399,8 @@ reject the provider.
 
 `models.dev` and LiteLLM are useful comparison inputs for detecting possible coverage gaps. They do
 not create Anthropic IDs or prices and never override a current official conflict.
+
+The canonical `speed` condition is displayed as **Speed** (Standard/Fast). It represents the
+actual performance class used for pricing, independently of service-tier dimensions. Changing it
+uses the shared selection-preservation rule: still-applicable cache TTL and inference geography
+remain selected. Neither the parser nor UI defines an Anthropic-specific reset policy.

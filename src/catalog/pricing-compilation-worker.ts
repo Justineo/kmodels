@@ -6,9 +6,11 @@ import {
 } from "./pricing-adapter.ts";
 import type { PricingCategoricalLabel } from "./manifests.ts";
 import type { ProviderPricingSnapshot } from "./pricing-schema.ts";
+import { providerPricingPartitionHash } from "./pricing-assembly.ts";
 
 interface CompilationTask {
   providerId: string;
+  acceptedPartitionHash: string;
   snapshot: ProviderPricingSnapshot;
   sources: ParsedPricingSource[];
   models: PublishedPricingModel[];
@@ -28,10 +30,16 @@ port.on("message", (message: unknown) => {
       message.models,
       message.categoricalLabels,
     );
-    port.postMessage({
-      providerId: message.providerId,
-      partition: partition === undefined ? null : { ...partition, snapshot: message.snapshot },
-    });
+    const complete = partition === undefined ? null : { ...partition, snapshot: message.snapshot };
+    if (
+      complete !== null &&
+      providerPricingPartitionHash(complete) === message.acceptedPartitionHash
+    )
+      port.postMessage({
+        providerId: message.providerId,
+        acceptedPartitionHash: message.acceptedPartitionHash,
+      });
+    else port.postMessage({ providerId: message.providerId, partition: complete });
   } catch (error) {
     port.postMessage({
       providerId: message.providerId,
@@ -46,6 +54,8 @@ function isCompilationTask(value: unknown): value is CompilationTask {
     typeof value === "object" &&
     "providerId" in value &&
     typeof value.providerId === "string" &&
+    "acceptedPartitionHash" in value &&
+    typeof value.acceptedPartitionHash === "string" &&
     "snapshot" in value &&
     value.snapshot !== null &&
     typeof value.snapshot === "object" &&

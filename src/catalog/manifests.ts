@@ -1,5 +1,5 @@
 import type { PriceDimension } from "./pricing-schema.ts";
-import { bedrockMeteredRatesUrl } from "./bedrock-nova-pricing.ts";
+import { bedrockMeteredRatesUrl, bedrockFoundationMeteredRatesUrl } from "./bedrock-geo-pricing.ts";
 import { ollamaUsageRelease, ollamaUsageSourceBase } from "./ollama-accounting.ts";
 import type { SourcePricingEvidence } from "./source-pricing-policy.ts";
 import { sagemakerCatalogUrl } from "./sagemaker.ts";
@@ -1349,7 +1349,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v50",
+        extractorVersion: "bedrock-catalog-v52",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1451,6 +1451,7 @@ export const manifests = [
             ],
             ["bedrock-public-pricing", "https://aws.amazon.com/bedrock/pricing/", 8, "html", true],
             ["bedrock-metered-rates", bedrockMeteredRatesUrl, 4, "json", true],
+            ["bedrock-foundation-metered-rates", bedrockFoundationMeteredRatesUrl, 8, "json", true],
             [
               "bedrock-cohere-embed-v4-marketplace",
               "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",

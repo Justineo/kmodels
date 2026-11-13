@@ -88,7 +88,7 @@ Status: implemented
   schedule. UTC days rotate deterministically over sorted manifest providers,
   then a global architecture review: currently 20 providers plus one global slot per 21-day cycle.
   Provider reviews inspect current first-party discovery, identity/lifecycle, complete price/service
-  inventory and scopes, quantity/selector acquisition, retention/replay, calculator/display parity
+  inventory and scopes, quantity/selector acquisition, retention/replay, lookup/display parity
   and simplicity. The global slot examines shared model consistency and collection/repair feedback.
   Both schedules share the serialized workflow and evidence artifacts. Eight prepared coverage
   areas require concrete conclusions and hashed evidence. Publication and consumer areas additionally require successful transition and

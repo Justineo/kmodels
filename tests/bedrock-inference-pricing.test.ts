@@ -7,7 +7,10 @@ import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { bedrockInferencePrices } from "../src/catalog/bedrock-inference-pricing.ts";
-import { bedrockMeteredRatesUrl } from "../src/catalog/bedrock-nova-pricing.ts";
+import {
+  bedrockMeteredRatesUrl,
+  bedrockFoundationMeteredRatesUrl,
+} from "../src/catalog/bedrock-geo-pricing.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { composeCatalogPair, coreCatalogVersion } from "../src/catalog/pricing-pair-transition.ts";
 import {
@@ -16,7 +19,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -45,7 +48,26 @@ const priceListSchema = z.object({
   terms: z.object({ OnDemand: z.record(z.string(), z.unknown()) }),
 });
 type Bundle = z.infer<typeof bundleSchema>;
-async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPairCandidate) {
+function overlayDocuments(bundle: Bundle, documents: Bundle["documents"]) {
+  for (const doc of documents) {
+    const old = bundle.documents.find(({ url }) => url === doc.url);
+    if (!old) bundle.documents.push({ ...doc });
+    else if (!doc.url.includes("pricing.us-east-1")) old.body = doc.body;
+    else {
+      const combined = priceListSchema.parse(JSON.parse(old.body));
+      const additional = priceListSchema.parse(JSON.parse(doc.body));
+      Object.assign(combined.products, additional.products);
+      Object.assign(combined.terms.OnDemand, additional.terms.OnDemand);
+      old.body = JSON.stringify(combined);
+    }
+  }
+}
+
+async function collect(
+  change?: (bundle: Bundle) => void,
+  previous?: CatalogPairCandidate,
+  observedAt = at,
+) {
   const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
   const source = manifest?.sources.find(({ id }) => id === "bedrock-models");
   if (!manifest || !source) throw new Error("Missing Bedrock source");
@@ -115,12 +137,12 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
     { ...manifest, sources: [source] },
     previous?.catalog,
     { sources: {} },
-    at,
+    observedAt,
   );
   if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
   const catalog: Catalog = {
     catalog_version: coreCatalogVersion([result.provider]),
-    generated_at: at,
+    generated_at: observedAt,
     providers: [result.provider],
     models: result.models,
     sources: result.sources,
@@ -139,7 +161,10 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
     previous,
   );
 }
-function select(key: "region" | "operation" | "service_tier" | "speed", value: string): Selector {
+function select(
+  key: "region" | "operation" | "service_tier" | "speed" | "modality",
+  value: string,
+): Selector {
   return {
     kind: "categorical",
     dimension: { namespace: "kmodels", value: key },
@@ -165,10 +190,107 @@ const conditions: Selector[] = [
 ];
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
+
+it("repairs shared Geo tariffs across Anthropic profiles without borrowing another profile's source region", async () => {
+  const reviewed = bundleSchema.parse(
+    JSON.parse(await fixture("bedrock/anthropic-geo-pricing.json")),
+  );
+  const overlay = (bundle: Bundle, includeMap: boolean) => {
+    overlayDocuments(
+      bundle,
+      reviewed.documents.filter(
+        (doc) => includeMap || doc.url !== bedrockFoundationMeteredRatesUrl,
+      ),
+    );
+  };
+  const before = await collect((bundle) => overlay(bundle, false));
+  const provider_id = "amazon-bedrock";
+  expect(lookup(before)({ provider_id, model_id: "au.anthropic.claude-sonnet-5-5" }).reason).toBe(
+    "no_applicable_price",
+  );
+  const candidate = await collect((bundle) => overlay(bundle, true), before);
+  const query = lookup(candidate);
+  for (const [model_id, region, numerator, denominator] of [
+    ["au.anthropic.claude-sonnet-5-5", "ap-southeast-2", "11", "5000000"],
+    ["au.anthropic.claude-sonnet-5-5", "ap-southeast-4", "11", "5000000"],
+    ["us.anthropic.claude-sonnet-5-5", "us-east-1", "11", "5000000"],
+    ["eu.anthropic.claude-sonnet-5-5", "eu-central-1", "11", "5000000"],
+    ["au.anthropic.claude-opus-4-6-v1", "ap-southeast-2", "11", "2000000"],
+    ["au.anthropic.claude-haiku-4-5-20251001-v1:0", "ap-southeast-2", "11", "10000000"],
+  ] as const) {
+    const result = query({
+      provider_id,
+      model_id,
+      meter: { namespace: "kmodels", value: "input_text" },
+      selectors: [select("region", region), select("service_tier", "standard")],
+    });
+    expect(result.status, model_id).toBe("matched");
+    expect(
+      result.candidates.flatMap((c) =>
+        c.offer.terms.flatMap((t) =>
+          t.kind === "rate" ? t.variants.map((v) => v.price.value) : [],
+        ),
+      ),
+    ).toEqual([{ numerator, denominator }]);
+  }
+  for (const [ttl, denominator] of [
+    [300, "4000000"],
+    [3600, "2500000"],
+  ] as const) {
+    const result = query({
+      provider_id,
+      model_id: "au.anthropic.claude-sonnet-5-5",
+      meter: { namespace: "kmodels", value: "cache_write_text" },
+      selectors: [
+        select("region", "ap-southeast-2"),
+        select("service_tier", "standard"),
+        {
+          kind: "decimal",
+          dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+          value: String(ttl),
+          unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+        },
+      ],
+    });
+    expect(result.status).toBe("matched");
+    expect(
+      result.candidates.flatMap((c) =>
+        c.offer.terms.flatMap((t) =>
+          t.kind === "rate" ? t.variants.map((v) => v.price.value) : [],
+        ),
+      ),
+    ).toEqual([{ numerator: "11", denominator }]);
+  }
+  expect(
+    query({
+      provider_id,
+      model_id: "au.anthropic.claude-sonnet-5-5",
+      selectors: [select("region", "us-east-1")],
+    }).reason,
+  ).toBe("no_applicable_price");
+  // Global pricing and the separate Mantle bare ID remain available.
+  for (const model_id of ["global.anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5-5"])
+    expect(
+      query({ provider_id, model_id, selectors: [select("region", "ap-southeast-2")] }).reason,
+    ).not.toBe("no_applicable_price");
+  if (!candidate.inference) throw new Error("Missing inference mapping");
+  const rows = websiteInferencePrices(
+    candidate.catalog,
+    candidate.pricing,
+    candidate.inference.mapping,
+  );
+  const row = rows
+    .get("amazon-bedrock/anthropic.claude-sonnet-5-5")
+    ?.find((row) => row.model_id === "au.anthropic.claude-sonnet-5-5");
+  if (!row) throw new Error("Missing AU website price");
+  expect(
+    queryWebsiteInferencePrice(row, [select("region", "ap-southeast-2")], at).candidates.length,
+  ).toBeGreaterThan(0);
+}, 30_000);
 
 it("resolves India Kimi rates by the literal profile without borrowing other geographies' tier multipliers", async () => {
   const body = await fixture("bedrock/invocation-model-card-moonshot-ai-kimi-k3.md");
@@ -179,9 +301,29 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
     });
   });
   const query = lookup(candidate);
-  const selectors = [select("service_tier", "standard")];
+  const selectors: Selector[] = [
+    select("service_tier", "standard"),
+    {
+      kind: "decimal",
+      dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+      value: "1800",
+      unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+    },
+  ];
   const provider_id = "amazon-bedrock";
   const model_id = "in.moonshotai.kimi-k3";
+  expect(
+    query({ provider_id, model_id, selectors: [select("service_tier", "standard")] })
+      .missing_conditions,
+  ).toEqual([{ namespace: "kmodels", value: "cache_ttl_seconds" }]);
+  expect(
+    query({
+      provider_id,
+      model_id,
+      selectors: [select("service_tier", "standard")],
+      meter: { namespace: "kmodels", value: "input_text" },
+    }).status,
+  ).toBe("matched");
   const result = query({ provider_id, model_id, selectors });
   expect(result.status).toBe("matched");
   const rates = result.candidates.flatMap(({ offer }) =>
@@ -228,7 +370,7 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
   if (price === undefined) throw new Error("Missing Kimi K3 India website price");
   expect(
     price.pricing_options?.some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
-  ).toBe(false);
+  ).toBe(true);
   const projected = queryWebsiteInferencePrice(price, selectors, at);
   expect(projected.status).toBe("matched");
   const visibleRates = projected.candidates.flatMap(
@@ -239,7 +381,7 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
         ?.rates.filter(({ key }) => row_keys?.includes(key)) ?? [],
   );
   expect(visibleRates).toContainEqual(
-    expect.objectContaining({ label: "Cache write (30 min)", amount: "$4.125" }),
+    expect.objectContaining({ label: "Cache write text", amount: "$4.125" }),
   );
   for (const tier of ["priority", "flex"]) {
     const paid = [select("service_tier", tier), select("operation", "chat_completions")];
@@ -380,7 +522,7 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
   const rateCode = `${sku}.JRTCKXETXF.6YS6EN2CT7`;
   const token = "jAqLUFZWnT3mWI7H1MUtAWVOngCMiV5V5M6X59_t_VU";
   const location = "US East (N. Virginia)";
-  const build = (amount: string) =>
+  const build = (amount: string, optimized = false) =>
     collect((bundle) => {
       for (const doc of reviewed.documents) {
         const old = bundle.documents.find(({ url }) => url === doc.url);
@@ -394,10 +536,10 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
           combined.products[sku] = {
             sku,
             attributes: {
-              model: "Nova 2.0 Lite",
+              model: `Nova 2.0 Lite${optimized ? " Latency Optimized" : ""}`,
               location,
               regionCode: "us-east-1",
-              usagetype: "USE1-Nova2.0Lite-input-tokens",
+              usagetype: `USE1-Nova2.0Lite-input-tokens${optimized ? "-latency-optimized" : ""}`,
               feature: "On-demand Inference",
               inferenceType: "Input tokens",
             },
@@ -418,7 +560,7 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
           old.body = JSON.stringify(combined);
         }
       }
-      const markup = `<h3>Standard Tier</h3><table><thead><tr><th>Amazon Nova models</th><th>Price per 1M input tokens</th><th>Price per 1M output tokens</th></tr></thead><tbody><tr><td>Amazon Nova 2 Lite</td><td>{priceOf!bedrock/bedrock!${token}!*!1000}</td><td>—</td></tr></tbody></table>`;
+      const markup = `<h3>Standard Tier</h3><table><thead><tr><th>Amazon Nova models</th><th>Price per 1M input tokens</th><th>Price per 1M output tokens</th></tr></thead><tbody><tr><td>Amazon Nova 2 Lite${optimized ? " (w/ latency optimized inference)" : ""}</td><td>{priceOf!bedrock/bedrock!${token}!*!1000}</td><td>—</td></tr></tbody></table>`;
       bundle.documents.push(
         {
           url: "https://aws.amazon.com/bedrock/pricing/",
@@ -459,6 +601,19 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
   expect(lookup(await build("0.0003400000"))({ provider_id, model_id, selectors }).reason).toBe(
     "no_applicable_price",
   );
+  const optimized = lookup(await build("0.0003300000", true));
+  expect(
+    optimized({
+      provider_id,
+      model_id,
+      meter: { namespace: "kmodels", value: "input_text" },
+      selectors: [
+        select("region", "us-east-1"),
+        select("service_tier", "standard"),
+        select("speed", "optimized"),
+      ],
+    }).status,
+  ).toBe("matched");
 }, 20_000);
 
 it("collects actual IDs through static output and uses the same commercial conditions in the UI", async () => {
@@ -612,6 +767,107 @@ it("does not infer private resource IDs, regional prefixes, or reranker ARNs", a
   ])
     expect(query({ provider_id: "amazon-bedrock", model_id }).reason).toBe("unreviewed_id");
 });
+
+it("publishes residual Geo prices without borrowing commercial, Mantle, or Global tariffs", async () => {
+  const reviewed = bundleSchema.parse(
+    JSON.parse(await fixture("bedrock/residual-route-pricing.json")),
+  );
+  const observedAt = "2026-11-13T00:00:00.000Z";
+  const candidate = await collect(
+    (bundle) => overlayDocuments(bundle, reviewed.documents),
+    undefined,
+    observedAt,
+  );
+  const query = lookup(candidate);
+  const provider_id = "amazon-bedrock";
+  const context: Selector = {
+    kind: "decimal",
+    dimension: { namespace: "kmodels", value: "context_tokens" },
+    value: "1000",
+    unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+  };
+  for (const [model_id, region, meter, numerator, denominator] of [
+    ["us-gov.nvidia.nemotron-nano-3-30b", "us-gov-east-1", "input_text", "9", "125000000"],
+    ["us-gov.nvidia.nemotron-super-3-120b", "us-gov-east-1", "input_text", "9", "50000000"],
+    ["us-gov.nvidia.nemotron-nano-12b-v2", "us-gov-east-1", "input_text", "3", "12500000"],
+    ["us-gov.nvidia.nemotron-nano-9b-v2", "us-gov-east-1", "input_text", "9", "125000000"],
+    ["us-gov.openai.gpt-oss-120b-1:0", "us-gov-east-1", "input_text", "9", "50000000"],
+    ["us-gov.openai.gpt-oss-20b-1:0", "us-gov-east-1", "input_text", "21", "250000000"],
+    ["us-gov.openai.gpt-5.6-luna", "us-gov-east-1", "input_text", "27", "100000000"],
+    ["us-gov.openai.gpt-5.6-terra", "us-gov-west-1", "input_text", "27", "10000000"],
+    ["us.openai.gpt-5.4", "us-east-1", "input_text", "11", "4000000"],
+    ["us.openai.gpt-5.5", "us-east-1", "input_text", "11", "2000000"],
+    ["us.twelvelabs.marengo-embed-3-0-v1:0", "us-east-1", "input_video", "7", "10000"],
+    ["eu.twelvelabs.marengo-embed-3-0-v1:0", "eu-west-1", "input_image", "1", "10000"],
+    ["us.twelvelabs.marengo-embed-2-7-v1:0", "us-east-1", "input_audio", "7", "50000"],
+    ["eu.twelvelabs.marengo-embed-2-7-v1:0", "eu-west-1", "embedding", "7", "100000"],
+    ["us.twelvelabs.pegasus-1-5-v1:0", "us-east-1", "input_video", "49", "100000"],
+  ] as const) {
+    const result = query({
+      provider_id,
+      model_id,
+      meter: { namespace: "kmodels", value: meter },
+      selectors: [
+        select("region", region),
+        select("service_tier", "standard"),
+        select("speed", "standard"),
+        ...(meter === "embedding" ? [select("modality", "text")] : []),
+        context,
+      ],
+    });
+    expect(result.status, model_id).toBe("matched");
+    expect(
+      result.candidates.flatMap((c) =>
+        c.offer.terms.flatMap((t) =>
+          t.kind === "rate" ? t.variants.map((v) => v.price.value) : [],
+        ),
+      ),
+      model_id,
+    ).toEqual([{ numerator, denominator }]);
+  }
+  for (const [model_id, region] of [
+    ["us-gov.openai.gpt-5.6-luna", "us-east-1"],
+    ["us.openai.gpt-5.5", "us-gov-west-1"],
+    ["us.twelvelabs.pegasus-1-5-v1:0", "eu-west-1"],
+    ["eu.twelvelabs.marengo-embed-3-0-v1:0", "us-east-1"],
+  ] as const)
+    expect(query({ provider_id, model_id, selectors: [select("region", region)] }).status).toBe(
+      "unknown",
+    );
+  for (const model_id of [
+    "global.openai.gpt-5.4",
+    "us-gov.openai.gpt-5.4",
+    "global.openai.gpt-5.5",
+    "us.openai.gpt-5.6-cyber",
+    "global.openai.gpt-5.6-cyber",
+    "us.openai.gpt-daybreak-blue-5.6-sol",
+    "global.openai.gpt-daybreak-blue-5.6-sol",
+    "us.anthropic.claude-3-haiku-20240307-v1:0",
+    "eu.anthropic.claude-3-haiku-20240307-v1:0",
+  ]) {
+    expect(query({ provider_id, model_id }).status, model_id).toBe("unknown");
+  }
+  expect(query({ provider_id, model_id: "cohere.rerank-v3-5:0" }).reason).toBe("unreviewed_id");
+  expect(
+    query({
+      provider_id,
+      model_id: "arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0",
+    }).status,
+  ).not.toBe("unknown");
+  if (!candidate.inference) throw new Error("Missing mapping");
+  const rows = websiteInferencePrices(
+    candidate.catalog,
+    candidate.pricing,
+    candidate.inference.mapping,
+  );
+  const row = rows
+    .get("amazon-bedrock/twelvelabs.pegasus-1-5-v1:0")
+    ?.find((r) => r.model_id === "us.twelvelabs.pegasus-1-5-v1:0");
+  if (!row) throw new Error("Missing website Geo ID");
+  expect(
+    queryWebsiteInferencePrice(row, [select("region", "us-east-1")], observedAt).status,
+  ).not.toBe("unknown");
+}, 30_000);
 it.each(["geography", "source billing", "request meaning"])(
   "withdraws an association when %s evidence changes, keeping canonical prices",
   async (kind) => {

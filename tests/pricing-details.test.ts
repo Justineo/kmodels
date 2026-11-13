@@ -566,7 +566,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("$9");
   });
 
-  it("resolves fixed request context without surfacing non-actionable metadata", async () => {
+  it("resolves fixed request context and displays its value without a selector", async () => {
     const pricedOffer = offer([{ amount: "$2", scope: region("us") }]);
     const selector = pricedOffer.selectors[0];
     if (selector?.kind !== "categorical") throw new Error("Missing categorical test selector");
@@ -575,9 +575,11 @@ describe("model pricing details", () => {
     const html = await render([pricedOffer]);
 
     expect(html).toContain("$2");
-    expect(html).not.toContain("Region");
+    expect(html).toContain("Region");
+    expect(html).toMatch(/<output\b[^>]*>US<\/output>/);
+    expect(html).not.toContain("<select");
     expect(html).not.toContain("Billing details");
-    expect(html).not.toContain("Usage");
+    expect(html).toContain("Usage conditions");
   });
 
   it("shows linked capacity separately from model rates", async () => {

@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Ordinary requests, Batch and live operation qualify the same public model usage relationship. Grok-4.7 therefore has one public model offer, with synchronous Standard/Priority and separately evidenced Batch branches; no Priority Batch combination is invented. Preserve endpoint availability, context, media and conditional accounting. Speech-to-text REST/streaming are operation conditions inside its service relationship. Other tools and the pre-generation violation charge retain independent service books and exact triggers.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The xAI partition contains only public first-party rates that an AI Gateway can
@@ -106,7 +118,7 @@ amounts. Internal cluster names are absent from these prices and their lookup co
 selects Global endpoint or US endpoint only where it changes price applicability. Endpoint URLs
 remain exact values in the exported conditions.
 
-Synchronous and Batch offers remain separate. Global Batch requires positive model availability
+Synchronous and Batch rates retain disjoint execution conditions within one relationship. Global Batch requires positive model availability
 and the published discount rules. US Batch applicability has not been established and supplies no
 candidate. Requested Priority is not a substitute for the realized response tier. Context length
 and endpoint remain separate conditions; none is inferred from a model ID without an owned rule.
@@ -148,9 +160,9 @@ refresh mechanically while preserving their exact applicability.
 
 ## Shared price projection
 
-- Text Chat Completions and Responses use one synchronous offer. Streaming and
+- Text Chat Completions and Responses share the public usage offer. Streaming and
   response retrieval are delivery behavior unless xAI publishes a distinct rate.
-- Batch is a separate execution offer. Explicit per-model, per-region `batchEnabled` flags own
+- Batch is an execution condition with independently evidenced rates. Explicit per-model, per-region `batchEnabled` flags own
   availability. A published exclusion list is a fallback only for unflagged rows; a guide that
   delegates eligibility to model pages leaves those rows unknown. Published discounts apply to
   exact listed text models and token types. Media Batch prices additionally require the independent
@@ -162,22 +174,22 @@ refresh mechanically while preserving their exact applicability.
   with Standard processing. Commercial topology partitions Batch and projects the served-tier
   dimension; it cannot add a missing default predicate or an unobserved vocabulary value.
   The commercial selection projection normalizes this evidenced native `default` value to
-  canonical `standard`, returning the original native selector for exact calculation. Priority
+  canonical `standard`, returning the original native selector for exact unit-price selection. Priority
   remains a distinct observed class; this does not create a global Fast/Priority alias.
-- Image and video books use direct and, when supported, Batch offers. Output resolution,
+- Image and video books use direct and, when supported, Batch execution conditions. Output resolution,
   quality, and duration select rate variants; input media components remain additive. The
   unqualified summary is a consistency check against the explicit resolution rates, not an
   additional tariff or an assertion about the default resolution. A matching published tier is
   consistent regardless of list order. Deprecated `imagePrice` neither supplies prices nor
   invalidates a model whose resolution tariffs remain readable.
-- Speech to Speech is a model-bound realtime offer. xAI publishes one audio-duration
+- Speech to Speech is a model-bound public relationship with realtime execution. xAI publishes one audio-duration
   rate rather than separate input/output audio rates, plus a per-text-input-event rate. An exact
   `Deprecated` suffix on a pricing row changes neither its ID nor its still-published numeric rate.
   The audio-duration row accepts the current layout without the redundant `audio` word before the
   line break. The minute amount and text-input-event amount remain separate charges; the adjacent
   hourly equivalent is not charged again.
 - TTS and STT tariffs are provider-resource books. The optional STT model selector does not scope
-  the public price rows, which distinguish REST from streaming mode. These remain distinct offers
+  the public price rows, which distinguish REST from streaming mode. These remain distinct operation conditions
   because their published rates differ; the partition does not turn shared service prices into
   engine-specific model rates.
 - Each paid server-side tool is a provider-resource book. A Responses endpoint alone does not

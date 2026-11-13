@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Public Foundry inference uses one admitted relationship per exact model/version subject. Sync, Batch and router rows are source contexts, not account-plan identities. Preserve deployment scope, endpoint geography, actual tier and conditional job/result accounting. Router downstream inference and independent services retain their exact composition. Marketplace enrollment, PTU, reservations, CCU conversion and private settlement remain outside admission.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The Azure catalog contains first-party documented model identities that can be invoked through a
@@ -204,8 +216,13 @@ telemetry. Kmodels does not invent a JSON path to make a list price appear execu
 
 Within an offer, retain only conditions that select or establish the applied rate: model/version,
 region, deployment scope, served service tier, context tier, modality, operation, quality,
-resolution, cache TTL, and validity when first-party evidence supplies them. Equal prices are not
+resolution and validity when first-party evidence supplies them. Equal prices are not
 expanded into a synthetic Cartesian product.
+
+Exact cache-write TTL columns qualify variants of `cache_write_text`. Preserve 300/3600-second
+conditions alongside region, deployment and context. No usage quantity is required for their unit
+prices. Reviewed Azure accounting sources do not establish per-TTL response counters; this optional
+acquisition gap does not justify splitting terms or suppressing known prices.
 
 Explicit ShortCo/short-context and LongCo/long-context labels establish their respective native
 context classes. A quote without such a declaration stays unqualified; another long-context price
@@ -316,7 +333,7 @@ placeholders such as `Pending` before they can enter a numeric fact.
   assigning an ambiguous family rate to every version, or lowering `minHandledRatio`.
   Azure OpenAI's compact GPT numbers (`54`, `55`, `56luna`, `61 terra`) and `ShCo`/`LoCo`/`Fl`
   labels are expanded only inside the OpenAI product family. Standard, Priority and Flex remain
-  disjoint served tiers within synchronous inference; Batch stays a separate mechanism. Microsoft's
+  disjoint served tiers within synchronous inference; Batch remains a distinct rate condition. Microsoft's
   [Flex guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/flex-processing) and
   [Priority guide](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/priority-processing)
   establish standard processing as the default tariff and Flex as a Global Standard processing

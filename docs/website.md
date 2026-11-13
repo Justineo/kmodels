@@ -16,12 +16,30 @@ Use associations for the selected catalog entry. When mapping is unknown,
 keep ordinary catalog prices with an explicit notice. A catalog alias can also be an inference ID
 when its pricing association is independently evidenced.
 The shared commercial controls expose execution, billing basis and evidenced tier/speed options.
+Use **Request mode** for execution, with **Request**, **Batch**, and **Realtime** options matching
+the canonical values directly. Request includes streaming responses; Realtime denotes a live-session
+API rather than a latency guarantee. Use **Billed service tier** for the observed tier. Group canonical controls into
+**Plan** and **Usage conditions** using their declared ownership. Account plan identifies the active
+pricing program; request mode and billed tier qualify its rates. Canonical condition choices and
+native price selectors share one **Usage conditions** fieldset and one continuous two-column grid.
+The canonical mapping is an input convenience, not a separate category of pricing condition.
+Use consistent control heights and borders, collapsing to one column on narrow
+screens. Keep labels above controls and definitions in their titles, without persistent help text.
+Automatically apply a sole condition value only when its mapping covers every remaining price
+context, not merely every offer ID. A Standard speed scoped to Request cannot silently discard
+Batch while Request mode is still unselected. Show fixed
+values as read-only fields in the same grid, with the same label position, height and padding as
+editable controls, a subtle background and no dropdown arrow. Recompute these values from the
+current options rather than storing them as user selections, so switching request mode or plan can
+restore alternatives. A sole account plan still requires an explicit choice; availability alone
+does not establish enrollment.
 Served fields are labeled as observed outcomes or explicit planning estimates. Options retain
 correlations; selecting Batch does not invent Fast support. Provider-specific residuals remain
 readable and unresolved coverage is explicit. Resource and fallback offer controls use the same
 canonical-to-native resolver. Services and capacity retain their existing groups and composition.
-When multiple offers remain within the selected semantics, a **Pricing plan** radio group uses
-their existing names and starts unselected. Selecting an offer retains compatible condition inputs
+When multiple offers remain without a canonical account-plan control, a **Pricing plan** radio
+group uses their existing names and starts unselected. Do not duplicate account-plan selection
+with another offer picker or native account-eligibility control. Selecting an offer retains compatible condition inputs
 and limits the displayed conditions and rates to that offer. Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
 and audit-free matching conditions in optional `inference_prices` detail metadata. The existing offer
@@ -179,9 +197,15 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   filtering never hides or reorders the choices above it. Each related offer owns its local
   conditions and overrides. Categorical conditions with multiple values use the shared customizable-select
   component, with an empty choice and labels from reviewed vocabulary or projection data.
+  Changing any condition preserves other selections whose meaning and applicable domain survive.
+  The edited value takes precedence over conflicting earlier choices; there are no field-name reset
+  lists. This rule applies to both model and provider-resource pricing, including plan and offer
+  changes. Inapplicable values are removed individually. Speed labels performance classes such as
+  Standard/Fast; Service tier labels service classes such as Standard/Priority/Flex. Requested and
+  billed service tiers remain distinct when the provider distinguishes them.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
-  validation text. A categorical dimension or exact decimal selector with one possible value
-  resolves internally. Inference-ID prices show applied fixed values as rate context.
+  validation text. A categorical dimension, exact decimal selector, or decimal bucket with one
+  possible value resolves internally and appears as a read-only field in the condition grid.
   A categorical selector whose values carry a recurring daily or weekly billing rule exposes one
   compact UTC rule disclosure below the control. Its values render as separated marker rows rather
   than an undifferentiated text list. Selecting a value highlights its row and filters rates; the
@@ -222,10 +246,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
-  remains in the canonical audit; a missing driver never hides a rate. When one meter charges
-  distinct named quantities within an offer, use those quantity names to distinguish its rate rows
-  (for example, separate cache-write lifetimes). This consumes the shared charge binding rather
-  than interpreting provider-specific term keys in the UI.
+  remains in the canonical audit; a missing driver never hides a rate. Labels identify the meter,
+  not an optional usage counter. TTL and other rate-changing facts remain conditions. Selecting
+  geography must not hide a still-required TTL; a sole proven value uses the same field layout
+  as a selectable value, rendered readonly. The UI must not interpret provider-specific term keys.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,
@@ -360,6 +384,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   retain the right-edge transition only for the desktop side panel.
 - Up/Down selects the previous/next visible model unless focus is in a control that owns arrow keys. Selection resets inspector scroll. Explicit close and Escape dismiss it.
 - Focus styles use `:focus-visible`, including containers with a focus-visible descendant.
+- Catalog and inference model ID copy controls show success for two seconds, restarting that
+  interval on each successful copy. Changing the model or selected inference ID clears the feedback.
 - The appearance button switches directly between light and dark, labels the destination, and persists the explicit choice. Initial appearance follows the OS.
 - Provider and pricing-context selection reuse one progressively enhanced
   `UiSelect` component using `appearance: base-select`; the browser owns

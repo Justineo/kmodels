@@ -4,10 +4,13 @@ import { evaluateApplicability, type PricingSelection } from "./pricing-applicab
 import type { WebsitePricingOffer } from "./website-schema.ts";
 import {
   intersectCommercialScope,
+  commercialBranchesCoverScopes,
   resolveCommercialChoices,
   type AvailableCommercialChoice,
 } from "../pricing/commercial-matching.ts";
 import type { InferenceMatchOffer } from "../pricing/inference-matching-schema.ts";
+import { fixedCommercialChoices } from "./pricing-selector-input.ts";
+import { unconditionalApplicability } from "./pricing-canonical.ts";
 
 /** Resource and fallback offer controls use the same canonical-to-native resolver as ID lookup. */
 export function queryWebsiteCommercialOffer(
@@ -49,7 +52,19 @@ export function queryWebsiteCommercialOffer(
         ? offer.rates.some(({ applicability }) => applicable(applicability, probe.branches))
         : offer.states.some(({ applicability }) => applicable(applicability, probe.branches));
     })
-    .map((choice) => ({ ...choice, offer_refs: [offer.id] }));
+    .map((choice) => ({
+      ...choice,
+      offer_refs: [offer.id],
+      targets: [
+        ...new Set(
+          (subject.selection ?? []).flatMap((claim) =>
+            claim.dimension === choice.dimension && claim.target !== undefined
+              ? [claim.target]
+              : [],
+          ),
+        ),
+      ],
+    }));
   const selectors = resolved.branches[0]?.selectors.filter((selector) =>
     resolved.branches.every((branch) =>
       branch.selectors.some((other) => canonicalJson(other) === canonicalJson(selector)),
@@ -57,6 +72,30 @@ export function queryWebsiteCommercialOffer(
   ) ?? [...supplied];
   return {
     available_choices: available,
+    fixed_choices: fixedCommercialChoices(available, [offer.id]).filter((choice) => {
+      const proposed = resolve([
+        ...choices.filter(({ dimension }) => dimension !== choice.dimension),
+        choice,
+      ]);
+      return (
+        proposed.unresolved.length === 0 &&
+        commercialBranchesCoverScopes(
+          [
+            ...offer.rates.map(({ applicability }) => applicability),
+            ...offer.states
+              .filter(({ state }) => state !== "numeric" || offer.rates.length === 0)
+              .map(({ applicability }) => applicability),
+            ...offer.allowances.map(({ applicability }) => applicability),
+            ...offer.contributions.map(({ applicability }) => applicability),
+            ...offer.unnormalized
+              .filter(({ impact }) => impact !== "informational")
+              .map(({ possible_scope }) => possible_scope ?? unconditionalApplicability),
+          ],
+          resolved.branches,
+          proposed.branches,
+        )
+      );
+    }),
     unresolved_choices: resolved.unresolved,
     selectors,
     offer: {

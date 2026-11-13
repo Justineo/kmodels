@@ -1,6 +1,6 @@
 import { createInferencePriceLookup, type InferencePriceResult } from "../pricing/inference.ts";
 import type { InferencePriceMapping } from "../pricing/inference-schema.ts";
-import { calculationExport } from "./pricing-calculator-export.ts";
+import { priceDataExport } from "./pricing-lookup-export.ts";
 import { formatDimension } from "./pricing-presentation.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
@@ -19,7 +19,7 @@ export function websiteInferencePrices(
   const results = new Map<string, WebsiteInferencePrice[]>();
   for (const provider of pricing.data.provider_snapshots) {
     const providerId = provider.provider_id;
-    const prices = calculationExport(catalog, pricing, [providerId]);
+    const prices = priceDataExport(catalog, pricing, [providerId]);
     const rules = mapping.rules.filter(({ provider_id }) => provider_id === providerId);
     const sources = mapping.sources.filter(({ provider_id }) => provider_id === providerId);
     const lookup = createInferencePriceLookup(prices, { ...mapping, rules, sources });

@@ -6,6 +6,7 @@ import {
   normalizeUnitExpression,
   selectorWeight,
   unionApplicabilities,
+  withPricingCanonicalCache,
 } from "../src/catalog/pricing-canonical.ts";
 import {
   pricingBookId,
@@ -44,6 +45,31 @@ function applicability(...clauses: PriceCondition[][]): PriceApplicability {
 }
 
 describe("canonical pricing canonical primitives", () => {
+  it("does not reuse applicability indexes or relations across scoped phases", () => {
+    const condition = categorical(region, "US");
+    const left = applicability([condition]);
+    const right = applicability([categorical(region, "US")]);
+    withPricingCanonicalCache(() => {
+      expect(applicabilitiesOverlap(left, right)).toBe(true);
+      expect(applicabilityContainedIn(left, right)).toBe(true);
+      withPricingCanonicalCache(() => {
+        expect(applicabilityContainedIn(right, left)).toBe(true);
+      });
+    });
+    if (condition.kind !== "categorical") throw new Error("Missing categorical fixture");
+    condition.values = [{ namespace: "provider", provider_id: "test", value: "EU" }];
+    expect(() =>
+      withPricingCanonicalCache(() => {
+        expect(applicabilitiesOverlap(left, right)).toBe(false);
+        expect(applicabilityContainedIn(left, right)).toBe(false);
+        throw new Error("Rejected provider");
+      }),
+    ).toThrow("Rejected provider");
+    condition.values = [{ namespace: "provider", provider_id: "test", value: "US" }];
+    expect(applicabilitiesOverlap(left, right)).toBe(true);
+    expect(applicabilityContainedIn(left, right)).toBe(true);
+  });
+
   it("derives stable domain-separated resource IDs", () => {
     const book = pricingBookId("test", "public");
     const offer = pricingOfferId(book, "usage");

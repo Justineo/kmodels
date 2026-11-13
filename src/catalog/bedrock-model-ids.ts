@@ -21,29 +21,66 @@ export function bedrockProfileGeography(label: string): string | undefined {
   return profileGeographies.get(label);
 }
 
+function aliasGeography(alias: string): string | undefined {
+  const [prefix] = alias.split(".", 1);
+  return prefix !== undefined && geographyCodes.has(prefix) ? prefix : undefined;
+}
+
 export function bedrockAliasGeographies(aliases: ReadonlySet<string>): Set<string> {
   const result = new Set<string>();
   for (const alias of aliases) {
-    const [prefix] = alias.split(".", 1);
-    if (prefix !== undefined && geographyCodes.has(prefix)) result.add(prefix);
+    const geography = aliasGeography(alias);
+    if (geography !== undefined) result.add(geography);
   }
   return result;
 }
 
+/** Only call with literal IDs from the card's owned profile columns. */
+export function bedrockSoleGeoProfile(
+  id: string,
+  aliases: ReadonlySet<string>,
+): string | undefined {
+  const geography = aliasGeography(id);
+  if (geography === undefined) return;
+  const samePartition = [...aliases].filter((alias) => {
+    const candidate = aliasGeography(alias);
+    return candidate === undefined
+      ? !alias.startsWith("global.")
+      : (candidate === "us-gov") === (geography === "us-gov");
+  });
+  return samePartition.length === 1 && samePartition[0] === id ? geography : undefined;
+}
+
 export function bedrockGeoProfiles(regional: string) {
-  const headings = [...regional.matchAll(/^\*\*Geo: ([^*\n]+)\*\*$/gm)];
+  const headings = [...regional.matchAll(/^\*\*(?:Geo: ([^*\n]+)|US GovCloud CRIS)\*\*$/gm)];
   const profiles = new Map<string, { geography: string; body: string } | undefined>();
   for (const [index, heading] of headings.entries()) {
     const body = regional.slice(heading.index + heading[0].length, headings[index + 1]?.index);
-    const ids = [...body.matchAll(/^Geo [Ii]nference ID: `([^`]+)`\s*$/gm)];
+    const ids = [
+      ...body.matchAll(/^(?:Geo [Ii]nference|US GovCloud CRIS Inference) ID: `([^`]+)`\s*$/gm),
+    ];
     const id = ids.length === 1 ? ids[0]?.[1] : undefined;
-    const geography = bedrockProfileGeography(heading[1] ?? "");
+    const geography = bedrockProfileGeography(heading[1] ?? "US-GOV");
     if (id !== undefined)
       profiles.set(
         id,
         profiles.has(id) || geography === undefined ? undefined : { geography, body },
       );
   }
+  // Some cards explicitly define the overview's Region column as the source Region.
+  // Their destination list is not a source-region list.
+  if (regional.includes("The Region you call is the source Region."))
+    for (const match of regional.matchAll(
+      /^[+*-] The ([A-Za-z-]+) geographic inference profile \(`([^`]+)`\) routes requests to [^.]+\.$/gm,
+    )) {
+      const geography = bedrockProfileGeography(match[1] ?? "");
+      const id = match[2];
+      if (id !== undefined)
+        profiles.set(
+          id,
+          profiles.has(id) || geography === undefined ? undefined : { geography, body: regional },
+        );
+    }
   return profiles;
 }
 

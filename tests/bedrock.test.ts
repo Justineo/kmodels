@@ -1,3 +1,4 @@
+import { offerContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -6,39 +7,31 @@ import { extractBedrockPricingInputs } from "../src/catalog/bedrock-accounting.t
 import { formatPricingInterpretationSample } from "../src/catalog/bedrock.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import type { Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
-
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
-
 function manifest(providerId: string): ProviderManifest {
   const value = manifests.find((item) => item.provider.id === providerId);
   if (value === undefined) throw new Error(`Missing manifest ${providerId}`);
   return value;
 }
-
 function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
-
 const linkedBundleFixtureSchema = z.object({
   index: z.object({ url: z.string(), body: z.string() }),
   documents: z.array(z.object({ url: z.string(), body: z.string() })),
 });
-
 function linkedBundle(body: string): z.infer<typeof linkedBundleFixtureSchema> {
   return linkedBundleFixtureSchema.parse(JSON.parse(body));
 }
-
 async function bedrockFixture(path: string, sourceId?: string): Promise<ProviderModel[]> {
   const value = manifest("amazon-bedrock");
   const source =
@@ -47,11 +40,9 @@ async function bedrockFixture(path: string, sourceId?: string): Promise<Provider
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt })
     .models;
 }
-
 function bedrockModels(bundle: z.infer<typeof linkedBundleFixtureSchema>): ProviderModel[] {
   return bedrockResult(bundle).models;
 }
-
 function bedrockResult(bundle: z.infer<typeof linkedBundleFixtureSchema>): SourceParseResult {
   const value = manifest("amazon-bedrock");
   const source = value.sources[0];
@@ -63,7 +54,6 @@ function bedrockResult(bundle: z.infer<typeof linkedBundleFixtureSchema>): Sourc
     observedAt,
   });
 }
-
 async function contextBundle() {
   return {
     index: {
@@ -86,7 +76,6 @@ async function contextBundle() {
     ],
   };
 }
-
 async function latencyBundle() {
   return {
     index: {
@@ -105,7 +94,6 @@ async function latencyBundle() {
     ],
   };
 }
-
 function priceDimension(unit: string, usage: string) {
   return {
     url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
@@ -136,7 +124,6 @@ function priceDimension(unit: string, usage: string) {
     }),
   };
 }
-
 describe("Bedrock adapters", () => {
   it.each(["-cross-region-global-preview", "-turbo-cross-region-global"])(
     "does not default an unreviewed Global token SKU suffix to Standard (%s)",
@@ -167,12 +154,11 @@ describe("Bedrock adapters", () => {
       );
     },
   );
-
   it("binds each native token SKU to its owning model-card context range", async () => {
     const models = bedrockModels(await contextBundle());
     for (const [id, threshold] of [
-      ["anthropic.claude-haiku-5-5", 100_000],
-      ["openai.gpt-6-astra", 272_000],
+      ["anthropic.claude-haiku-5-5", 100000],
+      ["openai.gpt-6-astra", 272000],
     ] as const) {
       const model = models.find(({ model_id }) => model_id === id);
       expect(model).toBeDefined();
@@ -197,7 +183,6 @@ describe("Bedrock adapters", () => {
       ).toBe(true);
     }
   });
-
   it.each(["short", "long"])(
     "does not infer a missing native context-band definition (%s)",
     async (removed) => {
@@ -220,8 +205,8 @@ describe("Bedrock adapters", () => {
       expect(
         haiku?.price_facts.every(({ conditions }) =>
           removed === "short"
-            ? conditions.context_min_tokens === 100_001
-            : conditions.context_max_tokens === 100_000,
+            ? conditions.context_min_tokens === 100001
+            : conditions.context_max_tokens === 100000,
         ),
       ).toBe(true);
       expect(
@@ -231,7 +216,6 @@ describe("Bedrock adapters", () => {
       ).toHaveLength(4);
     },
   );
-
   it.each(["fenced", "quoted", "unowned", "contradictory", "invalid", "duplicate"])(
     "does not acquire context scope from %s card claims",
     async (change) => {
@@ -279,7 +263,6 @@ describe("Bedrock adapters", () => {
       ).toHaveLength(4);
     },
   );
-
   it("ignores example headings and fenced duplicate owners while retaining real native bounds", async () => {
     const bundle = await contextBundle();
     for (const card of bundle.documents.filter(({ url }) => url.endsWith(".md")))
@@ -300,7 +283,6 @@ describe("Bedrock adapters", () => {
       ),
     ).toBe(true);
   });
-
   it.each([
     {
       name: "prose cannot restore a renamed counter",
@@ -377,7 +359,6 @@ describe("Bedrock adapters", () => {
     expect(inputs.some(({ key }) => key === retained)).toBe(true);
     expect(bedrockModels(bundle).some(({ price_facts }) => price_facts.length > 0)).toBe(true);
   });
-
   it("does not use request fields as a Converse response contract", async () => {
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const doc = bundle.documents.find(({ url }) => url.endsWith("API_runtime_Converse.html"));
@@ -401,7 +382,6 @@ describe("Bedrock adapters", () => {
       ),
     ).toBe(true);
   });
-
   it.each([
     [
       "batch-inference-results.html",
@@ -440,7 +420,6 @@ describe("Bedrock adapters", () => {
     expect(inputs.some(({ key }) => key === missing)).toBe(false);
     expect(inputs.some(({ key }) => key === retained)).toBe(true);
   });
-
   it("retains an unrecognized invocation unit as bounded raw evidence", async () => {
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     bundle.documents.push(priceDimension("Unreviewed units", "USE1-CommandR-input-tokens"));
@@ -465,7 +444,8 @@ describe("Bedrock adapters", () => {
     const terms =
       partition?.books
         .find(({ book_key }) => book_key === `model:${command.uid}`)
-        ?.offers.find(({ offer_key }) => offer_key === "on-demand")?.terms ?? [];
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "on-demand")?.terms ?? [];
     expect(terms).toContainEqual(
       expect.objectContaining({
         kind: "raw",
@@ -475,7 +455,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("reads an explicit thirty-minute TTL from a Price List dimension", async () => {
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     bundle.documents.push(priceDimension("1K tokens", "USE1-CommandR-cache-write-tokens-30m"));
@@ -489,7 +468,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it.each([
     ["API_runtime_Converse.html", "response", "stream_event"],
     ["API_runtime_ConverseStreamMetadataEvent.html", "stream_event", "response"],
@@ -501,7 +479,6 @@ describe("Bedrock adapters", () => {
     expect(ttl.some(({ channel }) => channel === missing)).toBe(false);
     expect(ttl.some(({ channel }) => channel === available)).toBe(true);
   });
-
   it("isolates a duplicated optional accounting document from catalog and sibling inputs", async () => {
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const token = bundle.documents.find(({ url }) => url.endsWith("TokenUsage.html"));
@@ -515,7 +492,6 @@ describe("Bedrock adapters", () => {
     expect(inputs.some(({ key }) => key === "guardrails.apply.contentPolicyUnits")).toBe(true);
     expect(models.some(({ price_facts }) => price_facts.length > 0)).toBe(true);
   });
-
   it("keeps an unsupported cache TTL distinct from the aggregate write counter", async () => {
     const models = await bedrockFixture("document/bedrock.json");
     const model = models.find(
@@ -539,19 +515,28 @@ describe("Bedrock adapters", () => {
     );
     const term = partition?.books
       .find(({ book_key }) => book_key === `model:${model.uid}`)
-      ?.offers.find(({ offer_key }) => offer_key === "on-demand")
-      ?.terms.find(({ term_key }) => term_key === "cache_write_text");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "on-demand")
+      ?.terms.find(
+        ({ term_key }) => term_key === "cache_write_text" || term_key.endsWith("/cache_write_text"),
+      );
     if (term?.kind !== "rate") throw new Error("Missing cache write term");
     const unsupported = term.variants.find(({ applicability }) =>
       applicability.any_of.some(({ all_of }) =>
         all_of.some(
           (condition) =>
-            condition.kind === "decimal_range" &&
             condition.dimension.value === "cache_ttl_seconds" &&
+            condition.kind === "decimal_range" &&
             condition.lower?.value === "1800",
         ),
       ),
     );
+    expect(unsupported, JSON.stringify(term)).toBeDefined();
+    expect(
+      unsupported?.applicability.any_of
+        .flatMap(({ all_of }) => all_of)
+        .some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
+    ).toBe(true);
     expect(unsupported?.charge_binding).toMatchObject({
       signal: {
         namespace: "provider",
@@ -561,20 +546,7 @@ describe("Bedrock adapters", () => {
     });
     expect(unsupported?.charge_binding?.quantity_methods).toBeUndefined();
     if (unsupported === undefined) throw new Error("Missing thirty-minute cache-write rate");
-    expect(
-      evaluateRateCost(unsupported, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "amazon-bedrock",
-            value: "cache_write_1800s_input_tokens",
-          },
-          value: { numerator: "1000000", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "2", denominator: "1" } });
   });
-
   it.each([false, true])(
     "retains conflicting public-page observations (reverse=%s)",
     async (reverse) => {
@@ -603,18 +575,20 @@ describe("Bedrock adapters", () => {
       );
       const term = partition?.books
         .find(({ book_key }) => book_key === `model:${model?.uid}`)
-        ?.offers.find(({ offer_key }) => offer_key === "on-demand")
-        ?.terms.find(({ term_key }) => term_key === "input_text");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "on-demand")
+        ?.terms.find(
+          ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+        );
       if (term?.kind !== "rate") throw new Error("Missing input price term");
       expect(term.raw_variants.some(({ reason }) => reason === "conflicting_values")).toBe(true);
     },
   );
-
   it("uses only first-party Bedrock catalog and invocation-pricing inputs", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v50");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v52");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -631,6 +605,7 @@ describe("Bedrock adapters", () => {
       ["bedrock-invocation-rerank-use", true, true],
       ["bedrock-public-pricing", true, undefined],
       ["bedrock-metered-rates", true, undefined],
+      ["bedrock-foundation-metered-rates", true, undefined],
       ["bedrock-cohere-embed-v4-marketplace", true, undefined],
       ["pricing-bedrock", true, undefined],
       ["pricing-foundation-models", true, undefined],
@@ -648,7 +623,6 @@ describe("Bedrock adapters", () => {
       ["bedrock-guardrail-usage", true, true],
       ["bedrock-invoke-guardrail-checks", true, true],
     ]);
-
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const parsed = parseSource({
       provider: provider(value),
@@ -697,7 +671,6 @@ describe("Bedrock adapters", () => {
         }),
       ]),
     );
-
     const drifted = linkedBundle(await fixture("document/bedrock.json"));
     const tokenUsage = drifted.documents.find(({ url }) => url.endsWith("TokenUsage.html"));
     if (tokenUsage === undefined) throw new Error("Missing Bedrock TokenUsage fixture");
@@ -726,7 +699,6 @@ describe("Bedrock adapters", () => {
       reason_code: "pricing_input_contract_partial",
       sample: "30/32 Bedrock pricing inputs",
     });
-
     const mantle = bundle.documents.find(({ url }) => url.endsWith("inference-responses-api.md"));
     if (mantle === undefined) throw new Error("Missing Bedrock Mantle fixture");
     bundle.documents.push({ ...mantle });
@@ -747,7 +719,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("keeps Ray v2 native Standard and HD usage types distinct despite the shared HD label", async () => {
     const bundle = linkedBundle(await fixture("bedrock/ray-resolutions.json"));
     const model = bedrockModels(bundle).find(({ model_id }) => model_id === "luma.ray-v2:0");
@@ -780,7 +751,6 @@ describe("Bedrock adapters", () => {
     );
     expect(raw?.filter(({ impact }) => impact === "base_price")).toEqual([]);
   });
-
   it("reads relocated Mantle regions without requiring the optional Price List", async () => {
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const responses = bundle.documents.find(({ url }) =>
@@ -852,7 +822,6 @@ describe("Bedrock adapters", () => {
       expect.objectContaining({ reason_code: "optional_catalog_source_drifted" }),
     );
   });
-
   it("parses separate Bedrock endpoint and API support tables", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -881,7 +850,6 @@ describe("Bedrock adapters", () => {
       ],
     });
   });
-
   it("uses a model card's exact scoped token table when the price lists have no model rate", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -958,6 +926,7 @@ describe("Bedrock adapters", () => {
           endpoint: "bedrock-runtime",
           deployment_scope: "global_cross_region",
           service_tier: "standard",
+          cache_ttl_seconds: 1800,
         },
       ],
       [
@@ -967,6 +936,7 @@ describe("Bedrock adapters", () => {
           deployment_scope: "geo_cross_region",
           service_tier: "standard",
           inference_geo: "us",
+          cache_ttl_seconds: 1800,
         },
       ],
     ]);
@@ -1076,7 +1046,6 @@ describe("Bedrock adapters", () => {
       ]),
     );
   });
-
   it("uses Grok's Runtime card for Geo and Global tiers without borrowing Mantle prices", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1117,7 +1086,6 @@ describe("Bedrock adapters", () => {
       ]),
     );
   });
-
   it("uses the Bedrock OpenAI card's short and long context prices without inventing cache writes", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1145,15 +1113,14 @@ describe("Bedrock adapters", () => {
           conditions.context_min_tokens,
         ]),
     ).toEqual([
-      ["5.50", 272_000, undefined],
-      ["11.00", undefined, 272_001],
+      ["5.50", 272000, undefined],
+      ["11.00", undefined, 272001],
     ]);
     expect(model?.price_facts.some(({ meter }) => meter === "cache_write_text")).toBe(false);
     expect(
       model?.price_facts.every(({ conditions }) => conditions.endpoint === "bedrock-mantle"),
     ).toBe(true);
   });
-
   it("keeps OpenAI card Geo and Global cross-Region rates on Bedrock Runtime", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1187,7 +1154,6 @@ describe("Bedrock adapters", () => {
       ["10.00", "bedrock-runtime", "global_cross_region"],
     ]);
   });
-
   it("keeps Bedrock Runtime and Mantle availability separate on modern model cards", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1250,7 +1216,6 @@ describe("Bedrock adapters", () => {
     });
     expect(models.some(({ model_id }) => model_id === "N/A")).toBe(false);
   });
-
   it("adds officially supported Bedrock rerank models absent from model cards", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1299,7 +1264,6 @@ describe("Bedrock adapters", () => {
         }),
       },
     );
-
     const model = parseSource({
       provider: provider(value),
       source,
@@ -1328,7 +1292,6 @@ describe("Bedrock adapters", () => {
       { region: "us-west-2", deployment_type: "bedrock-agent-runtime/in-region" },
     ]);
   });
-
   it("parses escaped Bedrock Markdown pipes and isolates an irregular model card", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1372,11 +1335,10 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("bounds Bedrock aggregate pricing diagnostics to the reconciliation schema", () => {
     const sample = formatPricingInterpretationSample(
-      20_437,
-      20_543,
+      20437,
+      20543,
       new Set([
         "Grok 4.7 (APS3-xai.grok-4.7-mantle-cache-read-tokens-priority)",
         "Grok 4.7 (APS6-xai.grok-4.7-mantle-output-tokens-priority)",
@@ -1385,7 +1347,6 @@ describe("Bedrock adapters", () => {
     );
     expect(sample).toHaveLength(256);
   });
-
   it("uses the current public Bedrock page when the structured price lists lag", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1456,7 +1417,10 @@ describe("Bedrock adapters", () => {
         },
       ],
     });
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: {
+      disposition: string;
+      reason_code: string;
+    }[] = [];
     const parsed = parseSource({
       provider: provider(value),
       source,
@@ -1477,7 +1441,7 @@ describe("Bedrock adapters", () => {
       conditions: {
         deployment_scope: "in_region",
         service_tier: "standard",
-        context_max_tokens: 272_000,
+        context_max_tokens: 272000,
       },
     });
     const stability = models.find(
@@ -1507,7 +1471,6 @@ describe("Bedrock adapters", () => {
       })),
       { disposition: "normalized", reason_code: "pricing_page_cell_bound" },
     ]);
-
     const withoutOpenAiTables: PricingReconciliationItem[] = [];
     const isolated = parseSource({
       provider: provider(value),
@@ -1526,7 +1489,6 @@ describe("Bedrock adapters", () => {
       sample: "Bedrock public pricing page: contained no reviewed OpenAI model tables",
     });
   });
-
   it("preserves Bedrock OpenAI short- and long-context price ranges", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1580,15 +1542,14 @@ describe("Bedrock adapters", () => {
     expect(
       model?.price_facts.find(
         ({ meter, conditions }) =>
-          meter === "input_text" && conditions.context_min_tokens === 272_001,
+          meter === "input_text" && conditions.context_min_tokens === 272001,
       ),
     ).toMatchObject({
       price: "11.00",
       raw_unit: "Long Context Window (1M): Price per 1M input tokens",
-      conditions: { context_min_tokens: 272_001, context_max_tokens: 1_000_000 },
+      conditions: { context_min_tokens: 272001, context_max_tokens: 1000000 },
     });
   });
-
   it("uses reviewed Bedrock pricing-page values when AWS price-list values disagree", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1626,7 +1587,10 @@ describe("Bedrock adapters", () => {
         </tbody></table>
       </li>`,
     });
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: {
+      disposition: string;
+      reason_code: string;
+    }[] = [];
     const models = parseSource({
       provider: provider(value),
       source,
@@ -1659,7 +1623,6 @@ describe("Bedrock adapters", () => {
       reason_code: "pricing_page_cell_overrode_price_list",
     });
   });
-
   it.each(["existing", "expanded", "asymmetric", "reordered", "current-title"])(
     "uses a complete Cohere Embed 4 Marketplace inventory (%s)",
     async (shape) => {
@@ -1786,7 +1749,6 @@ describe("Bedrock adapters", () => {
       ]);
     },
   );
-
   it.each([false, true])(
     "owns ordinary SKU speed independently of an optimized peer (%s)",
     async (withOptimized) => {
@@ -1814,7 +1776,6 @@ describe("Bedrock adapters", () => {
       );
     },
   );
-
   it("binds native Llama ordinary and latency-optimized SKUs to the same callable model", async () => {
     const models = bedrockModels(await latencyBundle());
     const model = models.find(({ model_id }) => model_id === "meta.llama3-1-70b-instruct-v1:0");
@@ -1835,7 +1796,6 @@ describe("Bedrock adapters", () => {
     expect(model?.price_facts).toHaveLength(4);
     expect(model?.raw_price_facts).toEqual([]);
   });
-
   it.each(["-latency-turbo", "-priority"])(
     "does not remove an optimized label for an unrelated native SKU (%s)",
     async (suffix) => {
@@ -1851,7 +1811,6 @@ describe("Bedrock adapters", () => {
       expect(model?.price_facts.every(({ price }) => price === "0.72")).toBe(true);
     },
   );
-
   it("keeps Bedrock latency configuration separate from service tier and context tier", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1880,7 +1839,6 @@ describe("Bedrock adapters", () => {
       },
     });
   });
-
   it("uses an explicit model-card route for Bedrock Responses variants", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -1911,7 +1869,6 @@ describe("Bedrock adapters", () => {
     }).models.find(({ model_id }) => model_id === "openai.gpt-5.6-sol");
     expect(model?.api_endpoints).toEqual([{ name: "Responses", path: "openai/v1/responses" }]);
   });
-
   it("uses unique catalog identities and provider-native units for Bedrock prices", async () => {
     const parsed = bedrockResult(
       linkedBundle(await fixture("document/bedrock-pricing-identity.json")),
@@ -1921,7 +1878,6 @@ describe("Bedrock adapters", () => {
       ({ model_id }) => model_id === "amazon.nova-2-multimodal-embeddings-v1:0",
     );
     const rerank = models.find(({ model_id }) => model_id === "cohere.rerank-v3-5:0");
-
     expect(nova?.price_facts).toContainEqual(
       expect.objectContaining({
         meter: "input_text",
@@ -1981,7 +1937,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("ignores an out-of-scope AgentCore price list without rejecting Bedrock", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2000,7 +1955,6 @@ describe("Bedrock adapters", () => {
       onPricingReconciliation: (item) => findings.push(item),
     });
     const { models } = result;
-
     expect(models).toHaveLength(2);
     expect(
       (result.commercial_facts ?? []).some(({ book_key }) => book_key.includes("agentcore")),
@@ -2012,7 +1966,6 @@ describe("Bedrock adapters", () => {
         "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockAgentCore/current/index.json",
     });
   });
-
   it("classifies Bedrock Flow execution as outside the gateway invocation boundary", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2024,7 +1977,9 @@ describe("Bedrock adapters", () => {
     if (priceList === undefined) throw new Error("Missing Bedrock price-list fixture");
     const list = JSON.parse(priceList.body) as {
       products: Record<string, unknown>;
-      terms: { OnDemand: Record<string, unknown> };
+      terms: {
+        OnDemand: Record<string, unknown>;
+      };
     };
     list.products["FLOW"] = {
       sku: "FLOW",
@@ -2071,7 +2026,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("does not bind Automatic Prompt Optimization charges to a numeric model identity", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2094,7 +2048,9 @@ describe("Bedrock adapters", () => {
     if (priceList === undefined) throw new Error("Missing Bedrock price-list fixture");
     const list = JSON.parse(priceList.body) as {
       products: Record<string, unknown>;
-      terms: { OnDemand: Record<string, unknown> };
+      terms: {
+        OnDemand: Record<string, unknown>;
+      };
     };
     list.products["DEEPSEEK"] = {
       sku: "DEEPSEEK",
@@ -2151,7 +2107,6 @@ describe("Bedrock adapters", () => {
       observedAt,
       onPricingReconciliation: (item) => findings.push(item),
     }).models.find(({ model_id }) => model_id === "deepseek.v3-v1:0");
-
     expect(
       model?.price_facts
         .filter(
@@ -2167,7 +2122,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("keeps embedding invocation dimensions and excludes provisioned capacity", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2175,7 +2129,6 @@ describe("Bedrock adapters", () => {
     const models = await bedrockFixture("document/bedrock-embedding-pricing.json");
     const titan = models.find(({ model_id }) => model_id === "amazon.titan-embed-image-v1");
     if (titan === undefined) throw new Error("Missing Titan embedding fixture model");
-
     expect(titan.price_facts.every(({ conditions }) => conditions.modality === undefined)).toBe(
       true,
     );
@@ -2213,7 +2166,6 @@ describe("Bedrock adapters", () => {
         },
       },
     ]);
-
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
@@ -2238,7 +2190,6 @@ describe("Bedrock adapters", () => {
       ["input_image", 1, 0],
       ["input_text", 1, 0],
     ]);
-
     const marengo = models.find(({ model_id }) => model_id === "twelvelabs.marengo-embed-3-0-v1:0");
     expect(
       marengo?.price_facts.map(({ meter, unit, conditions }) => ({
@@ -2251,7 +2202,6 @@ describe("Bedrock adapters", () => {
       { meter: "input_video", unit: "second", modality: undefined },
     ]);
   });
-
   it("reconciles endpoint-equivalent Marketplace and service token prices", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2271,7 +2221,6 @@ describe("Bedrock adapters", () => {
         .filter(({ conditions }) => conditions.service_tier === "batch")
         .every(({ conditions }) => conditions.endpoint === "bedrock-runtime"),
     ).toBe(true);
-
     const partition = assembleParsedProviderPricing(
       value.provider.id,
       observedAt,
@@ -2283,8 +2232,12 @@ describe("Bedrock adapters", () => {
         scope.kind === "models" &&
         scope.model_refs.includes("amazon-bedrock/anthropic.claude-sonnet-4-20250514-v1:0"),
     );
-    const onDemand = modelBook?.offers.find(({ offer_key }) => offer_key === "on-demand");
-    const batchOffer = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    const onDemand = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "on-demand");
+    const batchOffer = modelBook?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const terms = onDemand?.terms ?? [];
     expect(
       terms
@@ -2298,8 +2251,8 @@ describe("Bedrock adapters", () => {
     ).toEqual([
       ["cache_read_text", 1, 0],
       ["cache_write_text", 1, 0],
-      ["input_text", 1, 0],
-      ["output_text", 1, 0],
+      ["on-demand/input_text", 1, 0],
+      ["on-demand/output_text", 1, 0],
     ]);
     const unresolved = terms.flatMap((term) => (term.kind === "raw" ? term.variants : []));
     expect(unresolved).toHaveLength(4);
@@ -2314,11 +2267,12 @@ describe("Bedrock adapters", () => {
         .map((term) => [term.term_key, term.kind === "rate" ? term.variants.length : 0])
         .sort(([left], [right]) => String(left).localeCompare(String(right))),
     ).toEqual([
-      ["input_text", 1],
-      ["output_text", 1],
+      ["batch/input_text", 1],
+      ["batch/output_text", 1],
     ]);
-
-    const input = terms.find(({ term_key }) => term_key === "input_text");
+    const input = terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
     if (input?.kind !== "rate") throw new Error("Missing input price term");
     const standard = input.variants.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "3.0000000000"),
@@ -2326,7 +2280,9 @@ describe("Bedrock adapters", () => {
     const longContext = unresolved.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "0.0060000000"),
     );
-    const batchInput = batchOffer?.terms.find(({ term_key }) => term_key === "input_text");
+    const batchInput = batchOffer?.terms.find(
+      ({ term_key }) => term_key === "input_text" || term_key.endsWith("/" + "input_text"),
+    );
     const batch = batchInput?.kind === "rate" ? batchInput.variants[0] : undefined;
     expect(
       modelBook?.offers.every(({ states }) =>
@@ -2359,7 +2315,6 @@ describe("Bedrock adapters", () => {
       ),
     ).toBe(false);
   });
-
   it("pairs Bedrock display names with official endpoint model IDs", async () => {
     const models = await bedrockFixture("document/bedrock.json");
     expect(models.map(({ model_id, id_kind, name }) => ({ model_id, id_kind, name }))).toEqual([
@@ -2408,7 +2363,7 @@ describe("Bedrock adapters", () => {
     expect(mantle?.availability).toEqual([
       { region: "us-east-1", deployment_type: "bedrock-mantle/in-region" },
     ]);
-    expect(models[0]?.limits).toEqual({ context_tokens: 200_000, max_output_tokens: 64_000 });
+    expect(models[0]?.limits).toEqual({ context_tokens: 200000, max_output_tokens: 64000 });
     expect(models[0]?.release_date).toBe("2025-10-15");
     expect(models[0]?.capabilities.reasoning).toBe(true);
     expect(models[0]?.capabilities.prompt_cache).toBe(true);
@@ -2465,7 +2420,6 @@ describe("Bedrock adapters", () => {
     expect(models[2]?.status).toBe("legacy");
     expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
   });
-
   it("treats an effective Bedrock EOL date as retired despite a stale Legacy card label", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2479,7 +2433,6 @@ describe("Bedrock adapters", () => {
     );
     expect(model).toMatchObject({ status: "retired", retired_at: "2026-06-20" });
   });
-
   it("keeps a Bedrock card when an optional lifecycle date is invalid", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2508,7 +2461,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("preserves an explicit Mantle endpoint on service token prices", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2524,7 +2476,6 @@ describe("Bedrock adapters", () => {
       observedAt,
     }).models;
     const mantle = models.find((model) => model.model_id === "anthropic.claude-haiku-4-5");
-
     expect(mantle?.price_facts).toContainEqual(
       expect.objectContaining({
         meter: "input_text",
@@ -2533,7 +2484,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("keeps API evidence positive and isolates unknown labels", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2549,7 +2499,6 @@ describe("Bedrock adapters", () => {
       observedAt,
     }).models.find(({ model_id }) => model_id === "cohere.command-r-v1:0");
     expect(command?.api_endpoints).toBeUndefined();
-
     const withChat = (await fixture("document/bedrock.json")).replace(
       "![Yes](icon-yes.png) Messages",
       "![Yes](icon-yes.png) Chat Completions",
@@ -2565,7 +2514,6 @@ describe("Bedrock adapters", () => {
         name: "Chat Completions",
         path: "v1/chat/completions",
       });
-
     const sharedId = withChat.replace(
       "`bedrock-mantle` | `anthropic.claude-haiku-4-5`",
       "`bedrock-mantle` | `anthropic.claude-haiku-4-5-20251001-v1:0`",
@@ -2579,7 +2527,6 @@ describe("Bedrock adapters", () => {
     expect(sharedModel?.api_endpoints?.filter(({ name }) => name === "Chat Completions")).toEqual([
       { name: "Chat Completions", path: "v1/chat/completions" },
     ]);
-
     const body = (await fixture("document/bedrock.json")).replace(
       "![Yes](icon-yes.png) Invoke",
       "![Yes](icon-yes.png) Transform",
@@ -2602,7 +2549,6 @@ describe("Bedrock adapters", () => {
       }),
     );
   });
-
   it("merges additive evidence for an exact model ID repeated across cards", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -2632,7 +2578,6 @@ describe("Bedrock adapters", () => {
       { name: "Chat Completions", path: "v1/chat/completions" },
     ]);
   });
-
   it("parses the signed regional inventory as a scoped structured overlay", async () => {
     const model = (await bedrockFixture("document/bedrock-api.json", "bedrock-api-us-east-1"))[0];
     expect({
@@ -2653,7 +2598,6 @@ describe("Bedrock adapters", () => {
       status: "active",
     });
   });
-
   it("normalizes live inventory enums and signals unknown additions without dropping rows", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources.find(({ id }) => id === "bedrock-api-us-east-1");

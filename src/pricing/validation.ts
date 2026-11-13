@@ -1,15 +1,15 @@
 import { assertIJsonValue, canonicalJson } from "../catalog/canonical-value.ts";
 import { pricingLimits } from "../catalog/pricing-constants.ts";
 import {
-  calculationEnvelopeSchema,
-  calculationSchemaVersion,
-  type CalculationAllowance,
-  type CalculationBook,
-  type CalculationContribution,
-  type CalculationEnvelope,
-  type CalculationOffer,
-  type CalculationProvider,
-  type CalculationTerm,
+  priceDataEnvelopeSchema,
+  priceDataSchemaVersion,
+  type PriceDataAllowance,
+  type PriceDataBook,
+  type PriceDataContribution,
+  type PriceDataEnvelope,
+  type PriceDataOffer,
+  type PriceDataProvider,
+  type PriceDataTerm,
 } from "./schema.ts";
 import { PricingError } from "./errors.ts";
 import { pricingSemantics } from "./selection.ts";
@@ -21,28 +21,28 @@ import {
 } from "./validation-vocabulary.ts";
 
 interface ProviderReferences {
-  provider: CalculationProvider;
+  provider: PriceDataProvider;
   modelIds: Set<string>;
   bookIds: Set<string>;
   offerIds: Set<string>;
-  terms: Map<string, CalculationTerm>;
+  terms: Map<string, PriceDataTerm>;
   exposedModelIds: Set<string>;
   variantCount: number;
   globalIds: Set<string>;
 }
 
-export function validatePriceData(input: unknown): CalculationEnvelope {
+export function validatePriceData(input: unknown): PriceDataEnvelope {
   if (
     typeof input === "object" &&
     input !== null &&
     "schemaVersion" in input &&
-    input.schemaVersion !== calculationSchemaVersion
+    input.schemaVersion !== priceDataSchemaVersion
   ) {
-    throw new PricingError("UNSUPPORTED_SCHEMA", "Supported calculation schema: 1.0");
+    throw new PricingError("UNSUPPORTED_SCHEMA", "Supported price data schema: 2.0");
   }
   try {
     assertIJsonValue(input);
-    const parsed = calculationEnvelopeSchema.safeParse(input);
+    const parsed = priceDataEnvelopeSchema.safeParse(input);
     if (!parsed.success) throw new Error(parsed.error.message);
     requireUniqueIds(parsed.data.providers.map(({ snapshot }) => snapshot.provider_id));
     const globalIds = new Set<string>();
@@ -56,7 +56,7 @@ export function validatePriceData(input: unknown): CalculationEnvelope {
   }
 }
 
-function validateProvider(provider: CalculationProvider, globalIds: Set<string>): void {
+function validateProvider(provider: PriceDataProvider, globalIds: Set<string>): void {
   validateProviderIdentities(provider);
   const references = collectProviderReferences(provider, globalIds);
   validateProviderLimits(references);
@@ -65,7 +65,7 @@ function validateProvider(provider: CalculationProvider, globalIds: Set<string>)
   validateProviderProperties(provider);
 }
 
-function validateProviderIdentities(provider: CalculationProvider): void {
+function validateProviderIdentities(provider: PriceDataProvider): void {
   if (provider.vocabulary.provider_id !== provider.snapshot.provider_id) {
     throw new Error("Vocabulary belongs to another provider");
   }
@@ -78,7 +78,7 @@ function validateProviderIdentities(provider: CalculationProvider): void {
 }
 
 function collectProviderReferences(
-  provider: CalculationProvider,
+  provider: PriceDataProvider,
   globalIds: Set<string>,
 ): ProviderReferences {
   const references: ProviderReferences = {
@@ -114,7 +114,7 @@ function validateProviderLimits(references: ProviderReferences): void {
     references.terms.size > pricingLimits.termsPerProvider ||
     references.variantCount > pricingLimits.variantsPerProvider
   ) {
-    throw new Error("Provider calculation budget exceeded");
+    throw new Error("Provider price-data budget exceeded");
   }
 }
 
@@ -129,7 +129,7 @@ function validateModelDispositions(references: ProviderReferences): void {
   }
 }
 
-function validateBook(book: CalculationBook, references: ProviderReferences): void {
+function validateBook(book: PriceDataBook, references: ProviderReferences): void {
   registerIdentity(references.globalIds, book.id);
   if (book.provider_id !== references.provider.snapshot.provider_id)
     throw new Error("Book belongs to another provider");
@@ -147,8 +147,8 @@ function validateBook(book: CalculationBook, references: ProviderReferences): vo
 }
 
 function validateOffer(
-  offer: CalculationOffer,
-  book: CalculationBook,
+  offer: PriceDataOffer,
+  book: PriceDataBook,
   references: ProviderReferences,
 ): void {
   registerIdentity(references.globalIds, offer.id);
@@ -164,7 +164,7 @@ function validateOffer(
   for (const term of offer.terms) validateTerm(term, references);
 }
 
-function validateTerm(term: CalculationTerm, references: ProviderReferences): void {
+function validateTerm(term: PriceDataTerm, references: ProviderReferences): void {
   registerIdentity(references.globalIds, term.id);
   if (term.kind === "raw") return;
   if (term.variants.length + term.raw_variants.length === 0) throw new Error("Empty term");
@@ -186,7 +186,7 @@ function validateTerm(term: CalculationTerm, references: ProviderReferences): vo
 }
 
 function validateContribution(
-  contribution: CalculationContribution,
+  contribution: PriceDataContribution,
   references: ProviderReferences,
 ): void {
   const bindingKeys = new Set<string>();
@@ -206,7 +206,7 @@ function validateContribution(
   }
 }
 
-function validateAllowance(allowance: CalculationAllowance, references: ProviderReferences): void {
+function validateAllowance(allowance: PriceDataAllowance, references: ProviderReferences): void {
   if (allowance.target.kind === "offers") {
     if (allowance.target.offer_refs.some((ref) => !references.offerIds.has(ref)))
       throw new Error("Missing allowance offer");

@@ -10,7 +10,7 @@ import {
   prepareCatalogPair,
   type CatalogPairCandidate,
 } from "../src/catalog/pricing-publication.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import {
@@ -70,7 +70,7 @@ async function collect(previous?: CatalogPairCandidate) {
 
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }

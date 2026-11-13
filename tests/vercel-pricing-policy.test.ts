@@ -3,15 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.ts";
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { normalizeVercelModelPage, normalizeVercelPricingScript } from "../src/catalog/fetch.ts";
 import { vercelPageSearchPrices } from "../src/catalog/vercel-pricing-contracts.ts";
 import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
-import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
-
 const manifest = manifests.find((m) => m.provider.id === "vercel");
 const configured = manifest?.sources[0];
 if (manifest === undefined || configured?.extractor.kind !== "vercel-catalog")
@@ -166,28 +163,6 @@ describe("Vercel price authority", () => {
       if (rate === undefined) throw new Error("Missing exact duration tariff");
       expect(rate.price.value).toEqual({ numerator, denominator });
       if (rate.charge_binding === undefined) throw new Error("Missing generated-seconds binding");
-      expect(
-        evaluateRateCost(rate, [
-          {
-            signal: {
-              namespace: "provider",
-              provider_id: "vercel",
-              value: "requested_video_seconds",
-            },
-            value: rationalFromDecimal(seconds),
-          },
-          {
-            signal: { namespace: "kmodels", value: "generated_items" },
-            value: { numerator: "1", denominator: "1" },
-          },
-        ]),
-      ).toMatchObject({
-        kind: "resolved",
-        amount: {
-          numerator: seconds === "15" ? "3" : "1359",
-          denominator: seconds === "15" ? "20" : "2000",
-        },
-      });
     }
     const reference = term.variants.filter(
       ({ applicability }) =>
@@ -203,7 +178,6 @@ describe("Vercel price authority", () => {
     expect(reference).toHaveLength(1);
     expect(reference[0]?.price.value).toEqual({ numerator: "7", denominator: "200" });
   });
-
   it("preserves the hourly transcription denominator and audio quantity through assembly", async () => {
     const fixture = await readFile(
       new URL("./fixtures/vercel/unpriced-transcription.json", import.meta.url),
@@ -282,22 +256,6 @@ describe("Vercel price authority", () => {
     });
     const variant = terms?.[0]?.kind === "rate" ? terms[0].variants[0] : undefined;
     if (variant === undefined) throw new Error("Missing speech output rate");
-    expect(
-      evaluateRateCost(variant, [
-        {
-          signal: { namespace: "kmodels", value: "generated_seconds" },
-          value: { numerator: "10", denominator: "1" },
-        },
-      ]),
-    ).toEqual({
-      kind: "resolved",
-      amount: { numerator: "1", denominator: "100" },
-      denomination: { kind: "fiat", currency: "USD" },
-    });
-    expect(evaluateRateCost(variant, [])).toEqual({
-      kind: "missing_input",
-      alternatives: [[{ namespace: "kmodels", value: "generated_seconds" }]],
-    });
   });
   it("keeps independently callable search tools outside model inference-price resolution", () => {
     const { result } = parse({});
@@ -513,14 +471,6 @@ describe("Vercel price authority", () => {
       )
       .find((v) => v.price.value.numerator === "1" && v.price.value.denominator === "500000");
     if (variant?.charge_binding === undefined) throw new Error("Missing peak input rate");
-    expect(
-      evaluateRateCost(variant, [
-        {
-          signal: variant.charge_binding.signal,
-          value: { numerator: "1000000", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "2", denominator: "1" } });
     const drift = normalizeVercelPricingScript(
       body.replace(
         "Listed prices are the off-peak rate.",

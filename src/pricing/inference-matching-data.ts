@@ -2,17 +2,23 @@ import { canonicalJson } from "../catalog/canonical-value.ts";
 import type { InferencePriceMapping } from "./inference-schema.ts";
 import type { InferenceMatchData, InferenceMatchTerm } from "./inference-matching-schema.ts";
 import { pricingSemantics, type Qualified } from "./selection.ts";
-import type { CalculationTerm } from "./schema.ts";
+import type { PriceDataTerm } from "./schema.ts";
 import type { PricingSnapshot } from "./snapshot.ts";
+import type { PriceMeter } from "../catalog/pricing-schema.ts";
 
 export function inferenceMatchData(
   snapshot: PricingSnapshot,
   rules: readonly InferenceMatchData["rules"][number][],
   selections: InferencePriceMapping["offer_selections"] = [],
+  meter?: PriceMeter,
 ): InferenceMatchData {
+  const includesTerm = (value: PriceDataTerm) =>
+    meter === undefined ||
+    value.kind === "raw" ||
+    (value.kind === "rate" && canonicalJson(value.meter) === canonicalJson(meter));
   const semantics = new Map<string, number>();
-  function qualified(value: Qualified) {
-    const key = canonicalJson(pricingSemantics(value));
+  function qualified(value: Qualified, meaning: unknown = value) {
+    const key = canonicalJson(pricingSemantics(meaning));
     let index = semantics.get(key);
     if (index === undefined) {
       index = semantics.size;
@@ -24,7 +30,7 @@ export function inferenceMatchData(
       semantics: index,
     };
   }
-  function term(value: CalculationTerm): InferenceMatchTerm {
+  function term(value: PriceDataTerm): InferenceMatchTerm {
     return {
       id: value.id,
       kind: value.kind,
@@ -32,7 +38,8 @@ export function inferenceMatchData(
         value.kind === "raw"
           ? []
           : value.variants.map((variant) => ({
-              ...qualified(variant),
+              // Accounting metadata does not change the quoted unit price.
+              ...qualified(variant, "price" in variant ? { price: variant.price } : variant),
               ...("target_rate_refs" in variant
                 ? { target_rate_refs: variant.target_rate_refs }
                 : {}),
@@ -52,11 +59,13 @@ export function inferenceMatchData(
   });
   const rateRefs = new Set(
     offers.flatMap(({ offer }) =>
-      offer.terms.flatMap((value) =>
-        value.kind === "contribution"
-          ? value.variants.flatMap(({ target_rate_refs }) => target_rate_refs)
-          : [],
-      ),
+      offer.terms
+        .filter(includesTerm)
+        .flatMap((value) =>
+          value.kind === "contribution"
+            ? value.variants.flatMap(({ target_rate_refs }) => target_rate_refs)
+            : [],
+        ),
     ),
   );
   return {
@@ -96,9 +105,12 @@ export function inferenceMatchData(
               ],
             })),
         ),
-      states: offer.states.map((state) => ({ ...qualified(state), state: state.state })),
-      relations: offer.relations.map(qualified),
-      terms: offer.terms.map(term),
+      states:
+        meter !== undefined && !offer.terms.some(includesTerm)
+          ? []
+          : offer.states.map((state) => ({ ...qualified(state), state: state.state })),
+      relations: meter === undefined ? offer.relations.map((relation) => qualified(relation)) : [],
+      terms: offer.terms.filter(includesTerm).map(term),
     })),
     referenced_rates: [...rateRefs].map((ref) => {
       const rate = snapshot.rates.get(ref);

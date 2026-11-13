@@ -15,7 +15,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -98,7 +98,7 @@ beforeAll(async () => {
 }, 15000);
 function lookup(candidate = baseline) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -177,7 +177,7 @@ it("binds documented dated Claude request IDs to their existing online offers", 
     provider_id: "vertex",
     model_id: "publishers/anthropic/models/claude-haiku-4-5",
   });
-  expect(batch.candidates.map(({ offer }) => offer.offer_key)).toEqual(["batch"]);
+  expect(batch.candidates.map(({ offer }) => offer.offer_key)).toEqual(["public"]);
   expect(
     query({
       provider_id: "vertex",
@@ -215,12 +215,22 @@ it("keeps context, served tier and published geography separate from request ID 
       model_id: "gemini-3.5-flash",
       selectors: [standard, condition("deployment_scope", scope), context("1000")],
     });
-    const sync = result.candidates.find(({ offer }) => offer.offer_key === "sync");
+    const sync = result.candidates.find(({ selectors }) =>
+      selectors.some(
+        (selector) =>
+          selector.kind === "categorical" &&
+          selector.dimension.value === "invocation_mode" &&
+          selector.value.value === "sync",
+      ),
+    );
     if (!sync) throw new Error("Missing online offer");
     const selected = query({
       provider_id: "vertex",
       model_id: "gemini-3.5-flash",
       offer_ref: sync.offer.id,
+      choices: [
+        { dimension: "served_service_tier", value: { namespace: "kmodels", value: "standard" } },
+      ],
       selectors: [standard, condition("deployment_scope", scope), context("1000")],
     });
     expect(selected.status).toBe("matched");
@@ -257,7 +267,13 @@ it("distinguishes evidence gaps and excluded known conditions from guessed or pr
     }).status,
   ).toBe("matched");
   const batch = query({ provider_id: "vertex", model_id: "deepseek-v3.2-maas" }).candidates.find(
-    ({ offer }) => offer.offer_key === "batch",
+    ({ selectors }) =>
+      selectors.some(
+        (selector) =>
+          selector.kind === "categorical" &&
+          selector.dimension.value === "execution" &&
+          selector.value.value === "batch",
+      ),
   );
   if (!batch) throw new Error("Missing Batch offer");
   expect(
@@ -265,6 +281,7 @@ it("distinguishes evidence gaps and excluded known conditions from guessed or pr
       provider_id: "vertex",
       model_id: "deepseek-ai/deepseek-v3.2-maas",
       offer_ref: batch.offer.id,
+      execution_mode: "batch",
     }),
   ).toMatchObject({ status: "unknown", reason: "no_applicable_price" });
 });
@@ -334,7 +351,7 @@ it("keeps base associations when optional protocol guides disappear and withdraw
     current.pricing.data.books.some(
       ({ scope, offers }) =>
         scope.model_refs.includes("vertex/claude-haiku-4-5") &&
-        offers.some(({ offer_key }) => offer_key === "sync"),
+        offers.some((offer) => offer.source_contexts?.some((context) => context.key === "sync")),
     ),
   ).toBe(true);
   expect(

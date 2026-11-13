@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const commercialDimensionSchema = z.enum([
   "execution",
+  "account_plan",
   "billing_mode",
   "resource_kind",
   "service_tier",
@@ -10,18 +11,24 @@ export const commercialDimensionSchema = z.enum([
   "speed",
 ]);
 export type CommercialDimension = z.infer<typeof commercialDimensionSchema>;
+export function commercialConditionDimension(dimension: CommercialDimension): string {
+  return dimension === "account_plan" ? "account_eligibility" : dimension;
+}
 export const commercialDimensionLabels: Record<CommercialDimension, string> = {
-  execution: "Execution",
+  execution: "Request mode",
+  account_plan: "Account plan",
   billing_mode: "Billing basis",
   resource_kind: "Resource kind",
   service_tier: "Service tier",
   requested_service_tier: "Requested service tier",
-  served_service_tier: "Served service tier",
-  speed: "Served speed",
+  served_service_tier: "Billed service tier",
+  speed: "Speed",
 };
 export const commercialDefinitions: Record<CommercialDimension, string> = {
   execution:
     "The commercially evidenced request, Batch or live-session mechanism; transport alone does not establish it.",
+  account_plan:
+    "The enrolled account pricing program, including its billing or data-use obligations.",
   billing_mode:
     "The charging basis; usage and running capacity do not imply a service tier or execution mechanism.",
   resource_kind: "The subject class of an independently priced provider resource.",
@@ -35,9 +42,15 @@ export const commercialDefinitions: Record<CommercialDimension, string> = {
 };
 export function commercialValueLabel(value: string): string {
   const labels: Record<string, string> = {
-    request: "Ordinary request",
+    request: "Request",
+    free_tier: "Free tier",
+    paid_tier: "Paid tier",
+    free_tier_contributor: "Contributor free tier",
+    paid_tier_contributor: "Contributor paid tier",
+    data_sharing: "Data sharing",
+    default: "Standard account",
     batch: "Batch",
-    realtime: "Live session",
+    realtime: "Realtime",
     usage: "Usage",
     capacity: "Running capacity",
     service: "Service",

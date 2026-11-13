@@ -3,6 +3,7 @@ import {
   canonicalJsonKey as canonicalKey,
   compareUtf8,
   uniqueCanonicalValues,
+  withCanonicalKeyCache,
 } from "./canonical-value.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
@@ -51,11 +52,29 @@ export function contributionVariantValue(
   ];
 }
 
-const exactClauseIndexes = new WeakMap<PriceApplicability, ReadonlySet<string>>();
-const overlapResults = new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>();
-const containmentResults = new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>();
-const conditionIndexes = new WeakMap<PriceCondition[], ReadonlyMap<string, PriceCondition>>();
-const categoricalIndexes = new WeakMap<PriceCondition, ReadonlySet<string>>();
+function applicabilityCaches() {
+  return {
+    exactClauseIndexes: new WeakMap<PriceApplicability, ReadonlySet<string>>(),
+    overlapResults: new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>(),
+    containmentResults: new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>(),
+    conditionIndexes: new WeakMap<PriceCondition[], ReadonlyMap<string, PriceCondition>>(),
+    categoricalIndexes: new WeakMap<PriceCondition, ReadonlySet<string>>(),
+  };
+}
+
+let caches = applicabilityCaches();
+
+// Keep memoization within a synchronous provider phase, without tying its cached
+// strings and indexes to the full lifetime of an accepted or previous price graph.
+export function withPricingCanonicalCache<T>(operation: () => T): T {
+  const previous = caches;
+  caches = applicabilityCaches();
+  try {
+    return withCanonicalKeyCache(operation);
+  } finally {
+    caches = previous;
+  }
+}
 
 export function normalizeUnitExpression(expression: UnitExpression): UnitExpression {
   const factors = new Map<string, UnitExpression["factors"][number]>();
@@ -101,13 +120,13 @@ export function applicabilitiesOverlap(
   left: PriceApplicability,
   right: PriceApplicability,
 ): boolean {
-  const cached = overlapResults.get(left)?.get(right);
+  const cached = caches.overlapResults.get(left)?.get(right);
   if (cached !== undefined) return cached;
   const result = left.any_of.some((leftClause) =>
     right.any_of.some((rightClause) => clausesOverlap(leftClause.all_of, rightClause.all_of)),
   );
-  cacheRelation(overlapResults, left, right, result);
-  cacheRelation(overlapResults, right, left, result);
+  cacheRelation(caches.overlapResults, left, right, result);
+  cacheRelation(caches.overlapResults, right, left, result);
   return result;
 }
 
@@ -115,7 +134,7 @@ export function applicabilityContainedIn(
   child: PriceApplicability,
   parent: PriceApplicability,
 ): boolean {
-  const cached = containmentResults.get(child)?.get(parent);
+  const cached = caches.containmentResults.get(child)?.get(parent);
   if (cached !== undefined) return cached;
   const exactParentClauses = exactClauseIndex(parent);
   const result = child.any_of.every(
@@ -125,15 +144,15 @@ export function applicabilityContainedIn(
         clauseContainedIn(childClause.all_of, parentClause.all_of),
       ),
   );
-  cacheRelation(containmentResults, child, parent, result);
+  cacheRelation(caches.containmentResults, child, parent, result);
   return result;
 }
 
 function exactClauseIndex(value: PriceApplicability): ReadonlySet<string> {
-  const current = exactClauseIndexes.get(value);
+  const current = caches.exactClauseIndexes.get(value);
   if (current !== undefined) return current;
   const created = new Set(value.any_of.map(canonicalKey));
-  exactClauseIndexes.set(value, created);
+  caches.exactClauseIndexes.set(value, created);
   return created;
 }
 
@@ -217,7 +236,7 @@ function clausesOverlap(left: PriceCondition[], right: PriceCondition[]): boolea
   });
 }
 
-function clauseContainedIn(child: PriceCondition[], parent: PriceCondition[]): boolean {
+export function clauseContainedIn(child: PriceCondition[], parent: PriceCondition[]): boolean {
   const childByDimension = conditionIndex(child);
   return parent.every((condition) => {
     const childCondition = childByDimension.get(canonicalKey(condition.dimension));
@@ -356,22 +375,22 @@ function categoricalKey(value: PriceCategoricalValue): string {
 }
 
 function conditionIndex(conditions: PriceCondition[]): ReadonlyMap<string, PriceCondition> {
-  const current = conditionIndexes.get(conditions);
+  const current = caches.conditionIndexes.get(conditions);
   if (current !== undefined) return current;
   const created = new Map(
     conditions.map((condition) => [canonicalKey(condition.dimension), condition]),
   );
-  conditionIndexes.set(conditions, created);
+  caches.conditionIndexes.set(conditions, created);
   return created;
 }
 
 function categoricalIndex(
   condition: Extract<PriceCondition, { kind: "categorical" }>,
 ): ReadonlySet<string> {
-  const current = categoricalIndexes.get(condition);
+  const current = caches.categoricalIndexes.get(condition);
   if (current !== undefined) return current;
   const created = new Set(condition.values.map(canonicalKey));
-  categoricalIndexes.set(condition, created);
+  caches.categoricalIndexes.set(condition, created);
   return created;
 }
 

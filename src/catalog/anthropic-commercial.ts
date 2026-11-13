@@ -7,6 +7,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
+import { exactCacheTtl } from "./cache-ttl.ts";
 import { compareUtf8 } from "./canonical-value.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import {
@@ -109,17 +110,7 @@ function partitionTerm(
   inputIndex: PricingInputIndex,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
-    const variants = term.variants
-      .flatMap((variant) => partitionRaw(variant, mechanism))
-      .map((variant) => {
-        const ttl =
-          variant.possible_scope === undefined ? undefined : exactCacheTtl(variant.possible_scope);
-        return ttl !== undefined &&
-          variant.possible_scope !== undefined &&
-          term.term_key === `unparsed:cache_write_text:${ttl}`
-          ? { ...variant, possible_scope: withoutCacheTtl(variant.possible_scope) }
-          : variant;
-      });
+    const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
     return variants.length === 0 ? [] : [{ ...term, variants }];
   }
   if (term.kind !== "rate") return mechanism === "sync" ? [term] : [];
@@ -142,56 +133,7 @@ function partitionTerm(
     ];
   });
   const raw_variants = term.raw_variants.flatMap((variant) => partitionRaw(variant, mechanism));
-  if (term.meter.namespace === "kmodels" && term.meter.value === "cache_write_text") {
-    return partitionCacheWriteTerms(term, variants, raw_variants);
-  }
   return variants.length + raw_variants.length === 0 ? [] : [{ ...term, variants, raw_variants }];
-}
-
-function partitionCacheWriteTerms(
-  term: Extract<AtomicPricingTerm, { kind: "rate" }>,
-  variants: AtomicRateVariant[],
-  raw_variants: AtomicRawVariant[],
-): AtomicPricingTerm[] {
-  const ttlTerms: AtomicPricingTerm[] = [];
-  for (const ttl of [300, 3600] as const) {
-    const bucket = variants
-      .filter((variant) => exactCacheTtl(variant.applicability) === ttl)
-      .map(removeCacheTtlSelector);
-    if (bucket.length > 0)
-      ttlTerms.push({
-        ...term,
-        term_key: `${term.term_key}:${ttl === 300 ? "5m" : "1h"}`,
-        variants: bucket,
-        raw_variants: [],
-      });
-  }
-  const remaining = variants.filter(
-    (variant) => exactCacheTtl(variant.applicability) === undefined,
-  );
-  if (remaining.length + raw_variants.length > 0)
-    ttlTerms.push({ ...term, variants: remaining, raw_variants });
-  return ttlTerms;
-}
-
-function removeCacheTtlSelector(variant: AtomicRateVariant): AtomicRateVariant {
-  const applicability = withoutCacheTtl(variant.applicability);
-  return {
-    ...variant,
-    applicability,
-    observation: withApplicability(variant.observation, applicability),
-  };
-}
-
-function withoutCacheTtl(applicability: PriceApplicability): PriceApplicability {
-  const clauses = applicability.any_of.map(({ all_of }) => ({
-    all_of: all_of.filter(
-      (condition) =>
-        condition.dimension.namespace !== "kmodels" ||
-        condition.dimension.value !== "cache_ttl_seconds",
-    ),
-  }));
-  return canonicalizeApplicability({ any_of: clauses });
 }
 
 function partitionRaw(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {
@@ -294,7 +236,7 @@ function modelSignal(
   if (signal === undefined) return;
   if (signal === "cache_write_tokens") {
     const ttl = exactCacheTtl(variant.applicability);
-    if (ttl === undefined) return;
+    if (ttl !== 300 && ttl !== 3600) return;
     const suffix = ttl === 300 ? "5m" : "1h";
     return {
       key: `cache_write_${suffix}_input_tokens`,
@@ -321,24 +263,6 @@ function tokenSignal(
   if (meter.value === "cache_read_text") return "cached_input_tokens";
   if (meter.value === "cache_write_text") return "cache_write_tokens";
   if (meter.value === "output_text") return "output_tokens";
-}
-
-function exactCacheTtl(applicability: PriceApplicability): 300 | 3600 | undefined {
-  const values = new Set<number>();
-  for (const { all_of } of applicability.any_of)
-    for (const condition of all_of)
-      if (
-        condition.kind === "decimal_range" &&
-        condition.dimension.namespace === "kmodels" &&
-        condition.dimension.value === "cache_ttl_seconds" &&
-        condition.lower?.inclusive === true &&
-        condition.upper?.inclusive === true &&
-        condition.lower.value === condition.upper.value
-      )
-        values.add(Number(condition.lower.value));
-  if (values.size !== 1) return;
-  const value = [...values][0];
-  return value === 300 || value === 3600 ? value : undefined;
 }
 
 function bindRequestService(

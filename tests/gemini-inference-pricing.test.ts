@@ -15,7 +15,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
@@ -83,7 +83,7 @@ beforeAll(async () => {
 }, 20000);
 function lookup(candidate = baseline) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -106,12 +106,44 @@ const context: Selector = {
 };
 const paid = condition("account_eligibility", "paid_tier");
 const standard = condition("served_service_tier", "standard");
-function offer(model_id: string, key: string, candidate = baseline) {
-  const result = lookup(candidate)({ provider_id: "gemini", model_id });
-  const selected = result.candidates.find(({ offer }) => offer.offer_key === key);
-  if (!selected) throw new Error("Missing Gemini offer");
-  return selected.offer.id;
-}
+
+it("selects independent account programs with canonical ownership and preserves their execution choices", () => {
+  const query = lookup();
+  const args = { provider_id: "gemini", model_id: "gemini-3.1-pro-preview", selectors: [context] };
+  const choose = (plan: string, execution: string) =>
+    query({
+      ...args,
+      choices: [
+        { dimension: "account_plan", value: { namespace: "kmodels", value: plan } },
+        { dimension: "execution", value: { namespace: "kmodels", value: execution } },
+        ...(plan === "paid_tier" && execution === "request"
+          ? [
+              {
+                dimension: "served_service_tier" as const,
+                value: { namespace: "kmodels" as const, value: "standard" },
+              },
+            ]
+          : []),
+      ],
+    });
+  const paidRequest = choose("paid_tier", "request");
+  const paidBatch = choose("paid_tier", "batch");
+  const contributor = choose("paid_tier_contributor", "request");
+  for (const result of [paidRequest, paidBatch, contributor]) expect(result.status).toBe("matched");
+  expect(paidRequest.candidates[0]?.offer.id).toBe(paidBatch.candidates[0]?.offer.id);
+  expect(contributor.candidates[0]?.offer.id).not.toBe(paidRequest.candidates[0]?.offer.id);
+  expect(
+    query(args)
+      .available_choices.filter((c) => c.dimension === "account_plan")
+      .every((c) => c.targets?.includes("offer")),
+  ).toBe(true);
+  expect(query(args).requires_offer_choice).toBe(true);
+  expect(query(args).missing_conditions).toContainEqual({
+    namespace: "kmodels",
+    value: "account_eligibility",
+  });
+});
+
 function rates(result: ReturnType<ReturnType<typeof lookup>>, meter: string) {
   return result.candidates.flatMap(({ offer }) =>
     offer.terms.flatMap((term) =>
@@ -132,7 +164,7 @@ it("matches exact price-table IDs, the documented alias and resource-name form",
     const result = lookup()({
       provider_id: "gemini",
       model_id,
-      offer_ref: offer(model_id, "sync"),
+      execution_mode: "request",
       selectors: [paid, standard, context],
     });
     expect(result.status).toBe("matched");
@@ -148,11 +180,12 @@ it("keeps account eligibility, served tier, context and Batch as commercial choi
   expect(unresolved.missing_conditions.map(({ value }) => value).sort()).toEqual([
     "account_eligibility",
     "context_tokens",
+    "execution",
     "served_service_tier",
   ]);
   const batch = lookup()({
     ...args,
-    offer_ref: offer(args.model_id, "batch"),
+    execution_mode: "batch",
     selectors: [paid, context],
   });
   expect(batch.status).toBe("matched");
@@ -179,7 +212,7 @@ it("treats Contributor as an invitation and data-sharing pricing program, not an
   const result = lookup()({
     provider_id: "gemini",
     model_id,
-    offer_ref: offer(model_id, "sync"),
+    execution_mode: "request" as const,
     selectors: [condition("account_eligibility", "paid_tier_contributor"), context],
   });
   expect(result.status).toBe("matched");
@@ -210,7 +243,7 @@ it("treats Contributor as an invitation and data-sharing pricing program, not an
   const free = lookup()({
     provider_id: "gemini",
     model_id: freeModel,
-    offer_ref: offer(freeModel, "sync"),
+    execution_mode: "request" as const,
     selectors: [condition("account_eligibility", "free_tier_contributor")],
   });
   expect(free.status).toBe("matched");
@@ -224,7 +257,7 @@ it("leaves Contributor raw when its required program evidence changes while pres
     bundle.index.body = bundle.index.body.replaceAll("invite-only basis", "open enrollment basis");
   });
   const model_id = "gemini-3.1-pro-preview";
-  const args = { provider_id: "gemini", model_id, offer_ref: offer(model_id, "sync", candidate) };
+  const args = { provider_id: "gemini", model_id, execution_mode: "request" as const };
   expect(
     lookup(candidate)({
       ...args,
@@ -238,7 +271,7 @@ it("leaves Contributor raw when its required program evidence changes while pres
     lookup(candidate)({
       provider_id: "gemini",
       model_id: "gemini-3.5-flash-lite",
-      offer_ref: offer("gemini-3.5-flash-lite", "sync", candidate),
+      execution_mode: "request" as const,
       selectors: [condition("account_eligibility", "free_tier_contributor")],
     }).reason,
   ).toBe("unresolved_price");
@@ -247,7 +280,7 @@ it("returns date-only promotion rates with unresolved effective time", () => {
   const result = lookup()({
     provider_id: "gemini",
     model_id: "gemini-4-argon",
-    offer_ref: offer("gemini-4-argon", "sync"),
+    execution_mode: "request" as const,
     selectors: [paid, standard],
   });
   expect(result.status).toBe("candidates");
@@ -308,8 +341,16 @@ it("removes optional resource-name proofs independently of literal ID tariffs", 
     lookup(candidate)({
       provider_id: "gemini",
       model_id,
-      offer_ref: offer(model_id, "sync", candidate),
-      selectors: [paid, standard, context],
+      selectors: [
+        paid,
+        standard,
+        context,
+        {
+          kind: "categorical",
+          dimension: { namespace: "provider", provider_id: "gemini", value: "invocation_mode" },
+          value: { namespace: "provider", provider_id: "gemini", value: "sync" },
+        },
+      ],
     }).status,
   ).toBe("matched");
 }, 15000);
@@ -345,10 +386,10 @@ it("uses the same conditions in compact website data", async () => {
     .find(({ model_ref }) => model_ref === "gemini/gemini-3.1-pro-preview")
     ?.inference_prices?.find(({ model_id }) => model_id === "models/gemini-3.1-pro-preview");
   if (!price) throw new Error("Missing Gemini website association");
-  const ref = offer(price.model_id, "sync");
-  expect(queryWebsiteInferencePrice(price, [paid, standard, context], at, ref).status).toBe(
-    "matched",
-  );
+  const ref = undefined;
+  expect(
+    queryWebsiteInferencePrice(price, [paid, standard, context], at, ref, "request").status,
+  ).toBe("matched");
   expect(JSON.stringify(price)).not.toMatch(
     /content_hash|invocation_target|GenerateContentResponse/,
   );

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { captureInferencePriceSources } from "./inference-pricing-source.ts";
@@ -14,10 +15,10 @@ import {
   type ParsedPricingSource,
   type PublishedPricingModel,
 } from "./pricing-adapter.ts";
-import type { ProviderPricingPartition } from "./pricing-assembly.ts";
+import { providerPricingPartitionHash, type ProviderPricingPartition } from "./pricing-assembly.ts";
 import { adoptedTopologies, validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import { pricingLimits } from "./pricing-constants.ts";
-import { prepareCatalogPairInParallel, type CatalogPairCandidate } from "./pricing-publication.ts";
+import { prepareRecompiledCatalogPair, type CatalogPairCandidate } from "./pricing-publication.ts";
 import {
   emptyPricingCatalog,
   pricingCatalogSchema,
@@ -136,6 +137,7 @@ export interface PricingCompilationResult {
 
 interface CompilationTask {
   providerId: string;
+  acceptedPartitionHash: string;
   snapshot: ProviderPricingSnapshot;
   sources: ParsedPricingSource[];
   models: PublishedPricingModel[];
@@ -144,6 +146,7 @@ interface CompilationTask {
 
 type CompilationTaskResult =
   | { providerId: string; partition: ProviderPricingPartition | null }
+  | { providerId: string; acceptedPartitionHash: string }
   | { providerId: string; error: string };
 
 export const pricingCompilationPath = join(rootDirectory, "data/pricing-inputs.json.gz");
@@ -328,6 +331,7 @@ export async function compilePricingSnapshot(
 
     tasks.push({
       providerId,
+      acceptedPartitionHash: providerPricingPartitionHash(acceptedPartition(providerId, false)),
       snapshot: providerSnapshot,
       sources: replaySources(replay, manifest, providerSnapshot, current),
       models: current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
@@ -340,6 +344,7 @@ export async function compilePricingSnapshot(
       .map((task) => ({ task, weight: compilationWeight(task) }))
       .sort((left, right) => right.weight - left.weight)
       .map(({ task }) => task),
+    (providerId) => acceptedPartition(providerId, false),
   )) {
     if (partition === null) {
       const reason = `Pricing replay for ${providerId} produced nothing`;
@@ -382,9 +387,7 @@ export async function compilePricingSnapshot(
     }),
   );
   const prepared =
-    replayedProviders.length === 0
-      ? current
-      : await prepareCatalogPairInParallel(current.catalog, pricing);
+    replayedProviders.length === 0 ? current : await prepareRecompiledCatalogPair(current, pricing);
   const inferenceSources = tasks
     .filter(({ providerId }) => replayedProviders.includes(providerId))
     .flatMap(({ providerId, sources }) =>
@@ -444,21 +447,51 @@ function compilationWeight(task: CompilationTask): number {
 
 async function compileProviderPricing(
   tasks: readonly CompilationTask[],
+  acceptedPartition: (providerId: string) => ProviderPricingPartition,
 ): Promise<Extract<CompilationTaskResult, { partition: unknown }>[]> {
   return runWorkerPool(
     tasks,
     new URL("./pricing-compilation-worker.ts", import.meta.url),
-    compilationResult,
+    (message, task) => {
+      const result = compilationResult(message, task);
+      if ("acceptedPartitionHash" in result) {
+        if (result.acceptedPartitionHash !== task.acceptedPartitionHash)
+          throw new Error("Pricing compilation worker returned the wrong accepted partition hash");
+        return { providerId: task.providerId, partition: acceptedPartition(task.providerId) };
+      }
+      if (result.partition === null) return result;
+      const previous = acceptedPartition(task.providerId);
+      const books = new Map(previous.books.map((book) => [book.id, book]));
+      // Drop equivalent worker copies at receipt, before the pool retains results
+      // from other providers. Compare full values, including evidence and metadata.
+      return {
+        ...result,
+        partition: {
+          ...result.partition,
+          vocabulary: reuseEqual(result.partition.vocabulary, previous.vocabulary),
+          snapshot: reuseEqual(result.partition.snapshot, previous.snapshot),
+          model_dispositions: reuseEqual(
+            result.partition.model_dispositions,
+            previous.model_dispositions,
+          ),
+          books: result.partition.books.map((book) => reuseEqual(book, books.get(book.id))),
+        },
+      };
+    },
   );
+}
+
+function reuseEqual<T>(value: T, previous: T | undefined): T {
+  return previous !== undefined && isDeepStrictEqual(value, previous) ? previous : value;
 }
 
 function compilationResult(
   message: unknown,
   task: CompilationTask,
-): Extract<CompilationTaskResult, { partition: unknown }> {
+): Exclude<CompilationTaskResult, { error: string }> {
   if (!isCompilationTaskResult(message) || message.providerId !== task.providerId)
     throw new Error("Pricing compilation worker returned an invalid result");
-  if ("partition" in message) return message;
+  if ("partition" in message || "acceptedPartitionHash" in message) return message;
   throw new Error(message.error);
 }
 
@@ -472,6 +505,7 @@ function isCompilationTaskResult(value: unknown): value is CompilationTaskResult
     return false;
   return (
     ("partition" in value && typeof value.partition === "object") ||
+    ("acceptedPartitionHash" in value && typeof value.acceptedPartitionHash === "string") ||
     ("error" in value && typeof value.error === "string")
   );
 }

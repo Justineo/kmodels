@@ -4,8 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { extractDeepseekPricingInputs } from "../src/catalog/deepseek-accounting.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
-import { createCalculator } from "../src/pricing/index.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
@@ -18,7 +16,6 @@ import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricin
 import type { Catalog, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
 function contractPaths(findings: readonly SourceContractEvidence[]): string[] {
   return findings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path));
@@ -69,7 +66,6 @@ async function parsed(
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt })
     .models;
 }
-
 function validateParsedPricing(
   value: ProviderManifest,
   source: SourceManifest,
@@ -115,7 +111,6 @@ function validateParsedPricing(
   );
   return core;
 }
-
 async function deepseekSource(
   options: {
     chat?: string;
@@ -195,13 +190,11 @@ async function deepseekSource(
     ...(onPricingDependencyFailure === undefined ? {} : { onPricingDependencyFailure }),
   });
 }
-
 async function deepseekCatalog(
   options: Parameters<typeof deepseekSource>[0] = {},
 ): Promise<ProviderModel[]> {
   return (await deepseekSource(options)).models;
 }
-
 it("reads DeepSeek terminal usage through inline HTML and preserves nested cache ownership", async () => {
   const chat = await fixture("deepseek/chat-accounting-inline.html");
   const responses = await fixture("deepseek/responses-accounting-nested.html");
@@ -252,7 +245,6 @@ it("reads DeepSeek terminal usage through inline HTML and preserves nested cache
     true,
   );
 });
-
 describe("DeepSeek adapters", () => {
   it("separates FIM response fields by the owning MIME tab", async () => {
     const original = await fixture("deepseek/fim.html");
@@ -291,7 +283,6 @@ describe("DeepSeek adapters", () => {
       extract(body).filter((key) => key.startsWith("fim.stream.")),
     );
   });
-
   it("accepts additive public inventory metadata without treating it as catalog authority", async () => {
     const inventory = (await fixture("deepseek/list-models.html")).replaceAll(
       '"owned_by":"deepseek"',
@@ -311,7 +302,6 @@ describe("DeepSeek adapters", () => {
       "untrusted example label",
     );
   });
-
   it("reads Anthropic stream support from its owned table without inter-cell whitespace", async () => {
     const chat = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       $(".mime strong.openapi-schema__property")
@@ -331,7 +321,6 @@ describe("DeepSeek adapters", () => {
     });
     expect(wrong.every(({ capabilities }) => capabilities.streaming === "unknown")).toBe(true);
   });
-
   it("does not borrow the inventory response schema from request data", async () => {
     const inventory = (await fixture("deepseek/list-models.html")).replace(
       "openapi-markdown__details response",
@@ -364,7 +353,6 @@ describe("DeepSeek adapters", () => {
     ).toBe(true);
     expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
   });
-
   it("keeps the request model enumeration when a nested lookalike has other values", async () => {
     const chat = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       $(".mime").append(
@@ -378,7 +366,6 @@ describe("DeepSeek adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("cannot acquire model compatibility from a quoted enumeration", async () => {
     const chat = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       const model = $(".mime strong.openapi-schema__property")
@@ -395,7 +382,6 @@ describe("DeepSeek adapters", () => {
     ).toBe(true);
     expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
   });
-
   it("keeps catalog diagnostics outside the native pricing denominator", async () => {
     const normal: PricingReconciliationItem[] = [],
       changed: PricingReconciliationItem[] = [];
@@ -415,7 +401,6 @@ describe("DeepSeek adapters", () => {
     ).toHaveLength(3);
     expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
   });
-
   it.each(["request", "nested", "quoted", "blockquote"])(
     "cannot acquire a response usage path from %s data",
     async (owner) => {
@@ -444,7 +429,6 @@ describe("DeepSeek adapters", () => {
       expect(inputs.filter(({ key }) => !key.startsWith("chat."))).toHaveLength(12);
     },
   );
-
   it.each(["string", "number", "object"])("withholds only a retyped counter (%s)", async (type) => {
     const body = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       $(".response strong.openapi-schema__property")
@@ -460,7 +444,6 @@ describe("DeepSeek adapters", () => {
     ).toBe(false);
     expect(inputs.filter(({ key }) => key.startsWith("chat."))).toHaveLength(4);
   });
-
   it.each(["integer", "string"])(
     "does not select one of duplicate counter declarations (%s)",
     async (type) => {
@@ -481,7 +464,6 @@ describe("DeepSeek adapters", () => {
       expect(inputs.filter(({ key }) => key.startsWith("chat."))).toHaveLength(4);
     },
   );
-
   it("rejects duplicate response usage roots", async () => {
     const body = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       const usage = $(".response strong.openapi-schema__property")
@@ -491,7 +473,6 @@ describe("DeepSeek adapters", () => {
     });
     expect((await accountingInputs(body)).filter(({ key }) => key.startsWith("chat."))).toEqual([]);
   });
-
   it("keeps a direct counter when an unrelated nested lookalike is retyped", async () => {
     const body = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       const usage = $(".response strong.openapi-schema__property")
@@ -503,7 +484,6 @@ describe("DeepSeek adapters", () => {
     });
     expect(await accountingInputs(body)).toHaveLength(18);
   });
-
   it("cannot replace a missing direct counter with a nested lookalike", async () => {
     const body = changedHtml(await fixture("deepseek/chat.html"), ($) => {
       const field = $(".response strong.openapi-schema__property")
@@ -525,7 +505,6 @@ describe("DeepSeek adapters", () => {
       ),
     ).toEqual([]);
   });
-
   it("does not acquire fields through a different operation", async () => {
     const body = (await fixture("deepseek/chat.html")).replace(
       "/chat/completions",
@@ -533,7 +512,6 @@ describe("DeepSeek adapters", () => {
     );
     expect((await accountingInputs(body)).filter(({ key }) => key.startsWith("chat."))).toEqual([]);
   });
-
   it("does not recover a retyped Responses cache field from a dotted prose marker", async () => {
     const body = changedHtml(await fixture("deepseek/responses.html"), ($) => {
       $(".response strong.openapi-schema__property")
@@ -551,7 +529,6 @@ describe("DeepSeek adapters", () => {
     ).toEqual([]);
     expect(inputs.filter(({ key }) => key.startsWith("responses."))).toHaveLength(4);
   });
-
   it.each(["outside", "string"])(
     "does not acquire Chat streaming from %s usage prose",
     async (change) => {
@@ -569,7 +546,6 @@ describe("DeepSeek adapters", () => {
       ).toHaveLength(3);
     },
   );
-
   it.each(["result", "metadata"])(
     "requires the actual Responses stream wrapper (%s)",
     async (wrapper) => {
@@ -586,7 +562,6 @@ describe("DeepSeek adapters", () => {
       ).toHaveLength(3);
     },
   );
-
   it("accepts the reviewed partial stream example without rewriting quoted property names", async () => {
     const body = (await fixture("deepseek/responses.html")).replace(
       '"object":"response","usage":{}',
@@ -600,7 +575,6 @@ describe("DeepSeek adapters", () => {
       ),
     ).toEqual([]);
   });
-
   it("withholds duplicated companion paths in either order", async () => {
     const good = await fixture("deepseek/chat.html");
     const bad = good.replace("prompt_cache_hit_tokens", "unbilled_tokens");
@@ -618,7 +592,6 @@ describe("DeepSeek adapters", () => {
       expect(inputs.filter(({ key }) => key.startsWith("chat."))).toEqual([]);
     }
   });
-
   it("keeps rates, quantity equations and pricing-row accounting when one usage field drifts", async () => {
     const normal: PricingReconciliationItem[] = [],
       changed: PricingReconciliationItem[] = [];
@@ -665,13 +638,11 @@ describe("DeepSeek adapters", () => {
         ),
     ).toBe(true);
   });
-
   function source(id: string): SourceManifest {
     const configured = manifest("deepseek").sources.find((item) => item.id === id);
     if (configured === undefined) throw new Error(`Missing DeepSeek source ${id}`);
     return configured;
   }
-
   it("keeps explicitly accepted legacy request IDs with the current redirect target's rates", async () => {
     const catalog = await fixture("deepseek/redirects.html");
     const vision = (await fixture("deepseek/vision.html"))
@@ -724,7 +695,6 @@ describe("DeepSeek adapters", () => {
       "deepseek-v4-pro",
     ]);
   });
-
   it("retains explicit legacy redirects when the served model version has a dated suffix", async () => {
     const catalog = (await fixture("deepseek/redirects.html")).replaceAll(
       "DeepSeek-V4.1-Flash",
@@ -769,7 +739,6 @@ describe("DeepSeek adapters", () => {
       );
     }
   });
-
   it("reads the current callable catalog without a product-name allowlist", async () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
@@ -867,7 +836,7 @@ describe("DeepSeek adapters", () => {
         streaming: true,
         prompt_cache: true,
       },
-      limits: { context_tokens: 1_000_000, max_output_tokens: 384_000 },
+      limits: { context_tokens: 1000000, max_output_tokens: 384000 },
       pricing_state: "numeric",
       price_facts: expect.arrayContaining([
         expect.objectContaining({
@@ -909,7 +878,6 @@ describe("DeepSeek adapters", () => {
       pricing_state: "numeric",
     });
   });
-
   it("keeps price-table rows when interface claims drift", async () => {
     const chat = await fixture("deepseek/chat.html");
     const operationFindings: SourceContractEvidence[] = [];
@@ -928,7 +896,6 @@ describe("DeepSeek adapters", () => {
     expect(contractPaths(operationFindings)).toContain(
       "/deepseek/chat_operation_contract_drift/Chat Completions",
     );
-
     const findings: SourceContractEvidence[] = [];
     const changedUsageSource = await deepseekSource({
       chat: chat.replace("prompt_cache_hit_tokens", "cached_tokens"),
@@ -1020,7 +987,6 @@ describe("DeepSeek adapters", () => {
         }),
       ]),
     );
-
     const changedAnthropic = await deepseekCatalog({
       overrides: {
         "guides/anthropic_api": (await fixture("deepseek/anthropic.html")).replace(
@@ -1037,7 +1003,6 @@ describe("DeepSeek adapters", () => {
           api_endpoints?.some(({ path }) => path === "/anthropic/v1/messages") !== true,
       ),
     ).toBe(true);
-
     const responses = await fixture("deepseek/responses.html");
     const responseFindings: SourceContractEvidence[] = [];
     await expect(
@@ -1048,7 +1013,6 @@ describe("DeepSeek adapters", () => {
     ).resolves.toHaveLength(3);
     expect(contractPaths(responseFindings)).toContain("/deepseek/responses_inventory_disagreement");
   });
-
   it("parses model columns and price records independently", async () => {
     const catalog = await fixture("deepseek/catalog.html");
     const reconciliation: PricingReconciliationItem[] = [];
@@ -1071,7 +1035,6 @@ describe("DeepSeek adapters", () => {
         expect.objectContaining({ reason_code: "price_cell_preserved", disposition: "raw" }),
       ]),
     );
-
     expect(contractPaths(findings)).toContain("/deepseek/catalog_row_unhandled/NEW FACT");
     const cny = await fixture("deepseek/catalog-cny.html");
     const cnyModels = await deepseekCatalog({
@@ -1082,7 +1045,6 @@ describe("DeepSeek adapters", () => {
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "CNY"),
     ).toHaveLength(5);
-
     const scheduledReconciliation: PricingReconciliationItem[] = [];
     const scheduledDrift = await deepseekCatalog({
       catalog: catalog.replace("$1.98", "TBD"),
@@ -1096,7 +1058,6 @@ describe("DeepSeek adapters", () => {
     expect(scheduledReconciliation).toContainEqual(
       expect.objectContaining({ reason_code: "price_cell_preserved", disposition: "raw" }),
     );
-
     const oneColumn = await deepseekCatalog({
       catalog: catalog.replace("deepseek-v4-pro</td>", "invalid model id</td>"),
     });
@@ -1105,7 +1066,6 @@ describe("DeepSeek adapters", () => {
       "deepseek-v4-flash-vision-exp",
     ]);
   });
-
   it("preserves an unreadable quote with its exact known scope and usable siblings", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const failures: string[] = [];
@@ -1141,7 +1101,6 @@ describe("DeepSeek adapters", () => {
       [{ source: configured, ...modelsSource }],
       models,
     );
-    const core = validateParsedPricing(manifest("deepseek"), configured, models, partition);
     const raw = partition?.books
       .flatMap(({ offers }) => offers)
       .flatMap(({ terms }) => terms)
@@ -1157,81 +1116,7 @@ describe("DeepSeek adapters", () => {
     const offer = partition.books.find(({ scope }) => scope.model_refs.includes(pro.uid))
       ?.offers[0];
     if (offer === undefined) throw new Error("Missing Pro offer");
-    const calculator = createCalculator(
-      calculationExport(core, {
-        core_catalog_version: core.catalog_version,
-        core_data_sha256: "c".repeat(64),
-        pricing_data_version: "b".repeat(64),
-        generated_at: observedAt,
-        data: {
-          books: partition.books,
-          provider_snapshots: [partition.snapshot],
-          provider_vocabularies: [partition.vocabulary],
-          model_dispositions: partition.model_dispositions,
-        },
-      }),
-    );
-    const calculate = (currency: string, period: string) =>
-      calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          {
-            id: "request",
-            offerRef: offer.id,
-            selectors: [
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "billing_currency" },
-                value: { namespace: "provider", provider_id: "deepseek", value: currency },
-              },
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "billing_period" },
-                value: { namespace: "provider", provider_id: "deepseek", value: period },
-              },
-            ],
-            quantities: [
-              {
-                signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-                value: { numerator: "1000000", denominator: "1" },
-              },
-              {
-                signal: { namespace: "kmodels", value: "cached_input_tokens" },
-                value: { numerator: "1000000", denominator: "1" },
-              },
-              {
-                signal: { namespace: "kmodels", value: "output_tokens" },
-                value: { numerator: "0", denominator: "1" },
-              },
-            ],
-          },
-        ],
-      });
-    const partial = calculate("USD", "off_peak");
-    expect(partial.status).toBe("partial");
-    expect(partial.unresolved).toContainEqual(
-      expect.objectContaining({ code: "unsupported_structure", reason: "unknown_amount" }),
-    );
-    expect(calculate("USD", "peak")).toMatchObject({
-      status: "calculated",
-      totals: [
-        {
-          denomination: { kind: "fiat", currency: "USD" },
-          amount: { numerator: "341", denominator: "250" },
-        },
-      ],
-    });
-    expect(calculate("CNY", "off_peak")).toMatchObject({
-      status: "calculated",
-      totals: [
-        {
-          denomination: { kind: "fiat", currency: "CNY" },
-          amount: { numerator: "93", denominator: "20" },
-        },
-      ],
-    });
   });
-
   it("withholds every conflicting inline quote independently of source order", async () => {
     const original = await fixture("deepseek/catalog.html");
     const duplicate =
@@ -1284,7 +1169,6 @@ describe("DeepSeek adapters", () => {
     }
     expect(books[0]).toEqual(books[1]);
   });
-
   it("withholds conflicting separate-table quotes instead of selecting the first row", async () => {
     const catalog = changedHtml(await fixture("deepseek/catalog-transition.html"), ($) => {
       $("table")
@@ -1312,7 +1196,6 @@ describe("DeepSeek adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("preserves the exact validity of a damaged pre-transition quote", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await deepseekCatalog({
@@ -1336,7 +1219,6 @@ describe("DeepSeek adapters", () => {
       diagnostic_count: 0,
     });
   });
-
   it("localizes malformed inline billing-period labels", async () => {
     const catalog = await fixture("deepseek/catalog.html");
     const reconciliation: PricingReconciliationItem[] = [];
@@ -1346,7 +1228,6 @@ describe("DeepSeek adapters", () => {
         .replaceAll("<td>PEAK</td>", "<td>INVALID</td>"),
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-
     expect(
       models.flatMap(({ price_facts }) => price_facts).filter(({ currency }) => currency === "USD"),
     ).toEqual([]);
@@ -1368,7 +1249,6 @@ describe("DeepSeek adapters", () => {
       expect(model.price_facts.filter(({ currency }) => currency === "CNY")).toHaveLength(6);
     }
   });
-
   it.each([
     "CNY time",
     "currency policy",
@@ -1421,7 +1301,6 @@ describe("DeepSeek adapters", () => {
       items.some(({ disposition }) => disposition === "unresolved" || disposition === "unbound"),
     ).toBe(true);
   });
-
   it("derives historical schedules from the proven rule rather than the compilation date", async () => {
     const dailySource = await deepseekSource({
       catalog: await fixture("deepseek/catalog-transition.html"),
@@ -1442,7 +1321,6 @@ describe("DeepSeek adapters", () => {
     );
     expect(peak).toMatchObject({ schedule: { kind: "daily_time_windows" } });
   });
-
   it("requires the current weekend rule after its published effective instant", async () => {
     await expect(deepseekCatalog({ observedAt: "2026-08-23T00:00:00.000Z" })).resolves.toHaveLength(
       3,
@@ -1463,7 +1341,6 @@ describe("DeepSeek adapters", () => {
       changed.every(({ price_facts }) => price_facts.every(({ currency }) => currency !== "USD")),
     ).toBe(true);
   });
-
   it("accepts the recurring weekday form after the weekend transition", async () => {
     const catalog = (await fixture("deepseek/catalog.html")).replace(
       /Off-peak rates are half of the peak rates\.[\s\S]*?on weekends \(Saturdays and Sundays, Beijing Time\)\./,
@@ -1481,7 +1358,6 @@ describe("DeepSeek adapters", () => {
       }),
     ).resolves.toHaveLength(3);
   });
-
   it("preserves holiday peak applicability as a caller-selected category without a calendar", async () => {
     const rule =
       "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays. All other hours are off-peak, including weekends and Chinese public holidays in full.";
@@ -1533,7 +1409,6 @@ describe("DeepSeek adapters", () => {
     expect(changed).toHaveLength(3);
     expect(failures).toContain(configured.url);
   });
-
   it("preserves exact validity across a separately published price transition", async () => {
     const models = await deepseekCatalog({
       catalog: await fixture("deepseek/catalog-transition.html"),
@@ -1542,7 +1417,6 @@ describe("DeepSeek adapters", () => {
       },
     });
     const rates = models[0]?.price_facts ?? [];
-
     expect(rates.filter(({ currency }) => currency === "USD")).toHaveLength(9);
     expect(rates.filter(({ currency }) => currency === "CNY")).toHaveLength(9);
     expect(rates.map(({ conditions }) => conditions)).toEqual(
@@ -1555,7 +1429,6 @@ describe("DeepSeek adapters", () => {
       ]),
     );
   });
-
   it("uses public inventory as a non-destructive witness", async () => {
     const inventory = await fixture("deepseek/list-models.html");
     const findings: SourceContractEvidence[] = [];
@@ -1566,7 +1439,6 @@ describe("DeepSeek adapters", () => {
       }),
     ).resolves.toHaveLength(3);
     expect(contractPaths(findings)).toContain("/deepseek/model_inventory_disagreement");
-
     const withoutCompanions = await deepseekCatalog({ withoutDocuments: true });
     expect(withoutCompanions.map(({ model_id }) => model_id)).toEqual([
       "deepseek-v4-flash",
@@ -1575,7 +1447,6 @@ describe("DeepSeek adapters", () => {
     ]);
     expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 6)).toBe(true);
   });
-
   it("keeps the rate book limited to current request-attributable inference", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const findings: SourceContractEvidence[] = [];
@@ -1596,7 +1467,6 @@ describe("DeepSeek adapters", () => {
     expect(models.every((model) => !Object.hasOwn(model, "commercial_facts"))).toBe(true);
     expect(contractPaths(findings)).toContain("/deepseek/fim_inventory_disagreement");
   });
-
   it("assembles only PAYG inference rates and observable token accounting", async () => {
     const modelsSource = await deepseekSource();
     const models = modelsSource.models;
@@ -1728,7 +1598,6 @@ describe("DeepSeek adapters", () => {
         .every(({ relations }) => relations.length === 0),
     ).toBe(true);
   });
-
   it("treats the documented inventory owner as opaque metadata", async () => {
     const value = manifest("deepseek");
     const configured = source("deepseek-api");
@@ -1777,7 +1646,6 @@ describe("DeepSeek adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("uses exact change-log evidence for release and update dates", async () => {
     const models = await parsed("deepseek", "deepseek/updates.html", "deepseek-updates");
     const flash = models.find(({ model_id }) => model_id === "deepseek-v4-flash");
@@ -1823,7 +1691,6 @@ describe("DeepSeek adapters", () => {
       contractPaths(findings).some((path) => path.startsWith("/deepseek/update_date_invalid/")),
     ).toBe(true);
   });
-
   it("reads the Chinese change log with section-wide release evidence", async () => {
     const models = await parsed("deepseek", "deepseek/updates-zh.html", "deepseek-updates");
     expect(models.find(({ model_id }) => model_id === "deepseek-flash")).toMatchObject({
@@ -1853,7 +1720,6 @@ describe("DeepSeek adapters", () => {
     expect(models.some(({ model_id }) => model_id.startsWith("/"))).toBe(false);
     expect(models.some(({ model_id }) => model_id.includes("base_url"))).toBe(false);
   });
-
   it("retains catalog, change-log, and authenticated API observations", async () => {
     const catalogSource = source("deepseek-catalog");
     const updateSource = source("deepseek-updates");

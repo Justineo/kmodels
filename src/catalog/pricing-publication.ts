@@ -1,5 +1,6 @@
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import {
@@ -8,10 +9,18 @@ import {
   type AssetPackManifest,
   type EncodedAssetPack,
 } from "./asset-pack.ts";
-import { assertCanonicalJson, canonicalJson, parseIJson } from "./canonical-json.ts";
+import { assertCanonicalJson, canonicalJson, parseIJson, readIJson } from "./canonical-json.ts";
 import { assertIJsonValue, canonicalJsonChunksFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
-import { atomicWrite, rootDirectory, sha256, sha256Chunks, stableJson } from "./io.ts";
+import {
+  atomicWrite,
+  fileHandleMatchesCanonicalChunks,
+  rootDirectory,
+  sha256,
+  sha256Chunks,
+  stableJson,
+  writeCanonicalChunksIfChanged,
+} from "./io.ts";
 import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
 import {
   createPricingCatalogEnvelope,
@@ -28,7 +37,10 @@ import {
   type PricingCatalog,
   type PricingCatalogEnvelope,
 } from "./pricing-schema.ts";
-import { validatePricingCatalogInParallel } from "./pricing-validation-parallel.ts";
+import {
+  validatePricingCatalogInParallel,
+  validatePricingCatalogForRead,
+} from "./pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
 import { projectCatalogPair, websiteDataVersion, type PairProjections } from "./projections.ts";
@@ -68,6 +80,7 @@ export interface CatalogPairCandidate {
   catalogStorageSource: string;
   catalogAssetSource: string;
   pricingAssetSource: string;
+  pricingAssetChunks: readonly string[];
   identity: CatalogPairIdentity;
   pairId: string;
   inference?: InferencePricingPublication;
@@ -82,6 +95,9 @@ const defaultCatalogPairPaths: CatalogPairPaths = {
 };
 const preparedCandidates = new WeakSet<CatalogPairCandidate>();
 const pricingHeaderSchema = pricingCatalogSchema.extend({ books: z.array(z.unknown()) });
+const storedPricingHeaderSchema = pricingCatalogEnvelopeSchema.extend({
+  data: pricingHeaderSchema,
+});
 
 export function prepareCatalogPair(
   catalog: Catalog,
@@ -110,11 +126,42 @@ export async function prepareCatalogPairInParallel(
   pricing: PricingCatalog | PricingCatalogEnvelope,
   inference?: unknown,
 ): Promise<CatalogPairCandidate> {
+  pricingData(pricing);
+  return prepareStructurallyValidatedPair(catalog, pricing, inference);
+}
+
+// Replay may rebuild the same values in different objects. Only an immutable,
+// locally prepared candidate can supply already-validated pricing and source bytes.
+export async function prepareRecompiledCatalogPair(
+  current: CatalogPairCandidate,
+  pricing: PricingCatalog,
+): Promise<CatalogPairCandidate> {
+  if (preparedCandidates.has(current) && isDeepStrictEqual(pricing, current.pricing.data))
+    return current;
+  return prepareCatalogPairInParallel(current.catalog, pricing);
+}
+
+// Only local storage decoding and the public preparation boundary may enter here.
+// Structural validation is already complete; semantic, identity and resource checks
+// still run on every preparation. No validation result is cached on mutable inputs.
+async function prepareStructurallyValidatedPair(
+  catalog: Catalog,
+  pricing: PricingCatalog | PricingCatalogEnvelope,
+  inference?: unknown,
+  mode: "regular" | "recovery" | "mirror" = "regular",
+): Promise<CatalogPairCandidate> {
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  const data = pricingData(pricing);
-  const validation = validatePricingCatalogInParallel(data, parsedCatalog);
+  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  const validation =
+    mode === "mirror"
+      ? validatePricingCatalogForRead(data, parsedCatalog)
+      : validatePricingCatalogInParallel(data, parsedCatalog, mode === "recovery" ? 2 : 3);
+  // Owned reads release workers and temporary validation caches before allocating
+  // the canonical source. Public preparation retains its serialization-before-await
+  // boundary for caller input.
+  if (mode !== "regular") await validation;
   const canonicalDataChunks = canonicalJsonChunksFromValidated(data);
   const canonicalDataHash = sha256Chunks(canonicalDataChunks);
   await validation;
@@ -196,6 +243,7 @@ function catalogPairCandidate(
     catalogStorageSource,
     catalogAssetSource,
     pricingAssetSource,
+    pricingAssetChunks: pricingChunks,
     identity,
     pairId: catalogPairId(identity),
     ...(inference === undefined ? {} : { inference }),
@@ -223,36 +271,61 @@ export async function recoverCatalogPair(
     throw new Error("Accepted catalog pair manifest identity is invalid");
 
   const snapshot = snapshotDirectory(paths, manifest.pair_id);
-  const [catalogBytes, catalogAssetBytes, pricingAssetBytes] = await Promise.all([
-    readFile(join(snapshot, "catalog.json")),
-    readFile(join(snapshot, "catalog-asset.json")),
-    readFile(join(snapshot, "pricing.json")),
-  ]);
-  const catalog = decodeCatalogStorage(catalogBytes);
-  const pricing = decodePricingCatalogStorage(pricingAssetBytes);
-  const inference =
-    manifest.inference_asset_sha256 === undefined
-      ? undefined
-      : assertCanonicalJson(
-          await readFile(join(snapshot, "inference-pricing.json")),
-          inferencePricingMaxBytes,
-        );
-  const candidate = await prepareCatalogPairInParallel(catalog, pricing, inference);
-  if (
-    candidate.pairId !== manifest.pair_id ||
-    candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
-    candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256
-  )
-    throw new Error("Accepted catalog pair snapshot does not match its manifest");
-  if (!bytesEqual(catalogAssetBytes, utf8.encode(candidate.catalogAssetSource)))
-    throw new Error("Accepted catalog asset bytes do not match the snapshot catalog");
-  if (!bytesEqual(pricingAssetBytes, utf8.encode(candidate.pricingAssetSource)))
-    throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
+  const candidate = await readSnapshotCandidate(snapshot, manifest);
 
   const projections = await ensurePairProjections(candidate, snapshotProjectionPaths(snapshot));
   await writePairMirrors(candidate, projections, paths);
   await pruneSnapshots(paths, candidate.pairId);
   return candidate;
+}
+
+async function readSnapshotCandidate(
+  snapshot: string,
+  manifest: AcceptedPairManifest,
+): Promise<CatalogPairCandidate> {
+  const pricingFile = await open(join(snapshot, "pricing.json"), "r");
+  try {
+    const [catalog, catalogAssetBytes, pricing] = await Promise.all([
+      readFile(join(snapshot, "catalog.json")).then(decodeCatalogStorage),
+      readFile(join(snapshot, "catalog-asset.json")),
+      readPricingSnapshot(pricingFile),
+    ]);
+    const inference =
+      manifest.inference_asset_sha256 === undefined
+        ? undefined
+        : assertCanonicalJson(
+            await readFile(join(snapshot, "inference-pricing.json")),
+            inferencePricingMaxBytes,
+          );
+    const candidate = await prepareStructurallyValidatedPair(
+      catalog,
+      pricing,
+      inference,
+      "recovery",
+    );
+    if (
+      candidate.pairId !== manifest.pair_id ||
+      candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
+      candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256
+    )
+      throw new Error("Accepted catalog pair snapshot does not match its manifest");
+    if (!bytesEqual(catalogAssetBytes, utf8.encode(candidate.catalogAssetSource)))
+      throw new Error("Accepted catalog asset bytes do not match the snapshot catalog");
+    if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingAssetChunks)))
+      throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
+    return candidate;
+  } finally {
+    await pricingFile.close();
+  }
+}
+
+async function readPricingSnapshot(file: FileHandle): Promise<PricingCatalogEnvelope> {
+  // Resume with only the owned header. Awaiting the raw parse tree here would keep
+  // its original book array alive while the schema clones replace header entries.
+  const header = await readIJson(file, pricingLimits.pricingInputBytes).then((input) =>
+    storedPricingHeaderSchema.parse(input),
+  );
+  return decodePricingStorageBooks(header);
 }
 
 /** Attach a checked ID mapping while preserving the exact already-validated canonical bytes. */
@@ -283,7 +356,7 @@ export async function commitCatalogPair(
   await Promise.all([
     writeIfChanged(join(snapshot, "catalog.json"), candidate.catalogStorageSource),
     writeIfChanged(join(snapshot, "catalog-asset.json"), candidate.catalogAssetSource),
-    writeIfChanged(join(snapshot, "pricing.json"), candidate.pricingAssetSource),
+    writeCanonicalChunksIfChanged(join(snapshot, "pricing.json"), candidate.pricingAssetChunks),
     ...(candidate.inference === undefined
       ? []
       : [writeIfChanged(join(snapshot, "inference-pricing.json"), candidate.inference.source)]),
@@ -314,12 +387,13 @@ export async function readCatalogPairMirrors(
       : decodePricingCatalogStorage(decompressPricing(pricingBytes));
   const inferenceBytes =
     paths.inferenceMirror === undefined ? undefined : await optionalRead(paths.inferenceMirror);
-  return prepareCatalogPairInParallel(
+  return prepareStructurallyValidatedPair(
     catalog,
     pricing,
     inferenceBytes === undefined
       ? undefined
       : assertCanonicalJson(inferenceBytes, inferencePricingMaxBytes),
+    "mirror",
   );
 }
 
@@ -330,7 +404,32 @@ function decodeCatalogStorage(input: Uint8Array): Catalog {
 }
 
 function decodePricingCatalogStorage(input: Uint8Array): PricingCatalogEnvelope {
-  return pricingCatalogEnvelopeSchema.parse(parseIJson(input, pricingLimits.pricingInputBytes));
+  return decodePricingStorageBooks(decodePricingStorageHeader(input));
+}
+
+function decodePricingStorageHeader(input: Uint8Array) {
+  return storedPricingHeaderSchema.parse(parseIJson(input, pricingLimits.pricingInputBytes));
+}
+
+function decodePricingStorageBooks(
+  envelope: z.infer<typeof storedPricingHeaderSchema>,
+): PricingCatalogEnvelope {
+  const books: PricingCatalog["books"] = [];
+  for (let index = 0; index < envelope.data.books.length; index += 1) {
+    const parsed = pricingBookSchema.safeParse(envelope.data.books[index]);
+    if (!parsed.success)
+      throw new z.ZodError(
+        parsed.error.issues.map((issue) => ({
+          ...issue,
+          path: ["data", "books", index, ...issue.path],
+        })),
+      );
+    books.push(parsed.data);
+    // This array belongs to the locally decoded header. Release each unvalidated
+    // book as soon as its checked replacement exists, instead of retaining two graphs.
+    envelope.data.books[index] = undefined;
+  }
+  return { ...envelope, data: { ...envelope.data, books } };
 }
 
 function manifestPath(paths: CatalogPairPaths): string {
@@ -511,7 +610,7 @@ export async function readPricingMirrorSource(
 }
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  return left.length === right.length && left.every((byte, index) => byte === right[index]);
+  return Buffer.compare(left, right) === 0;
 }
 
 function deepFreeze(value: unknown): void {

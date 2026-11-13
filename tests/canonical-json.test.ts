@@ -7,6 +7,8 @@ import {
 } from "../src/catalog/canonical-json.ts";
 import {
   canonicalJsonChunksFromValidated,
+  canonicalJsonKey,
+  withCanonicalKeyCache,
   canonicalValuesEqual,
   compareCanonicalValues,
   compareUtf8,
@@ -21,6 +23,20 @@ function encoded(value: string): Uint8Array {
 }
 
 describe("RFC 8785 JSON", () => {
+  it("does not retain scoped canonical keys after success or failure", () => {
+    const value = { amount: "1" };
+    expect(withCanonicalKeyCache(() => canonicalJsonKey(value))).toBe('{"amount":"1"}');
+    value.amount = "2";
+    expect(() =>
+      withCanonicalKeyCache(() => {
+        expect(canonicalJsonKey(value)).toBe('{"amount":"2"}');
+        throw new Error("Rejected provider");
+      }),
+    ).toThrow("Rejected provider");
+    value.amount = "3";
+    expect(canonicalJsonKey(value)).toBe('{"amount":"3"}');
+  });
+
   it("canonicalizes object members, strings, and binary64 numbers", () => {
     expect(
       canonicalJson({
@@ -85,6 +101,38 @@ describe("RFC 8785 JSON", () => {
 
   it("rejects duplicate decoded member names", () => {
     expect(() => parseIJson(encoded('{"a":1,"\\u0061":2}'), 100)).toThrow("Duplicate JSON member");
+  });
+
+  it.each([
+    "",
+    " ",
+    "/* comment */ null",
+    "[1,]",
+    '{"a":1,}',
+    "null true",
+    "[01]",
+    "[NaN]",
+    "{a:1}",
+    '"unterminated',
+    '"line\nbreak"',
+    "[1",
+  ])("rejects malformed JSON: %j", (source) => {
+    expect(() => parseIJson(encoded(source), 100)).toThrow("Invalid JSON");
+  });
+
+  it("keeps duplicate checks scoped to each object and preserves special member names", () => {
+    const value = parseIJson(
+      encoded('{"__proto__":{"safe":true},"rows":[{"a":1},{"a":2}],"n":-0}'),
+      200,
+    );
+    expect(value).toEqual({ ["__proto__"]: { safe: true }, rows: [{ a: 1 }, { a: 2 }], n: -0 });
+    if (value === null || typeof value !== "object") throw new Error("Expected an object");
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(Object.hasOwn(value, "__proto__")).toBe(true);
+    expect(() => parseIJson(encoded('{"rows":[{"a":1,"a":2}]}'), 100)).toThrow(
+      "Duplicate JSON member",
+    );
+    expect(() => parseIJson(new Uint8Array([0xc3, 0x28]), 100)).toThrow();
   });
 
   it("rejects invalid I-JSON strings and non-finite numbers", () => {

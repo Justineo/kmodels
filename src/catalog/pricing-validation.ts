@@ -24,7 +24,7 @@ import {
   requiredUsageSignals,
   requiredUsageSignalsForMethod,
   validateUsageQuantityCalculation,
-} from "./pricing-calculation.ts";
+} from "./pricing-quantity-contract.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   type ModelPricingDisposition,
@@ -430,7 +430,22 @@ function validateOffer(
   if (context.offers.has(offer.id)) fail(path, "duplicate offer ID");
   context.offers.set(offer.id, offer);
   assertSourceRefs(offer.source_refs, context, path);
+  const contextKeys = new Set<string>();
+  for (const source of offer.source_contexts ?? []) {
+    assertNormalizedSemantic(source.key, `${path} source context`);
+    if (contextKeys.has(source.key)) fail(path, "duplicate source context key");
+    contextKeys.add(source.key);
+    validateApplicability(source.applicability, book, context, path);
+  }
   for (const claim of offer.selection ?? []) {
+    const target =
+      claim.dimension === "resource_kind"
+        ? "book"
+        : ["billing_mode", "account_plan"].includes(claim.dimension)
+          ? "offer"
+          : "condition";
+    if (claim.target !== undefined && claim.target !== target)
+      fail(path, "commercial selection has incorrect ownership");
     validateApplicability(claim.applicability, book, context, path);
     validateValidity(claim.validity, path);
     for (const alternative of claim.alternatives)
@@ -1328,6 +1343,12 @@ function validateCondition(
             !book.scope.model_refs.includes(value.value)
           )
             fail(path, "standard model condition is not an exact in-scope core ref");
+        } else if (dimension.value === "execution") {
+          if (
+            value.namespace !== "kmodels" ||
+            !["request", "batch", "realtime"].includes(value.value)
+          )
+            fail(path, "execution condition is not a canonical request mode");
         } else {
           if (value.namespace !== "provider")
             fail(path, "non-model standard categorical value must be provider-qualified");

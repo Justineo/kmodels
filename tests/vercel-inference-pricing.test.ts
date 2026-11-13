@@ -14,7 +14,7 @@ import {
 } from "../src/catalog/pricing-publication.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -86,7 +86,7 @@ beforeAll(async () => {
 
 function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   );
 }
@@ -212,10 +212,13 @@ it("keeps native Fast context tiers and regional amounts instead of extending th
     const result = query({
       provider_id: "vercel",
       model_id: "openai/gpt-6-astra",
-      offer_ref: query({ provider_id: "vercel", model_id: "openai/gpt-6-astra" }).candidates.find(
-        ({ offer }) => offer.offer_key === "usage",
-      )?.offer.id,
+
       selectors: [
+        {
+          kind: "categorical",
+          dimension: { namespace: "provider", provider_id: "vercel", value: "invocation_mode" },
+          value: { namespace: "provider", provider_id: "vercel", value: "usage" },
+        },
         condition("speed", "fast"),
         condition("served_service_tier", "standard"),
         condition("region", region),
@@ -254,7 +257,7 @@ it("associates Batch IDs and base IDs with the same published Batch rates", asyn
         selectors: [condition("route_provider", "anthropic"), condition("region", region)],
       });
       expect(result.status).toBe("matched");
-      expect(result.candidates.every(({ offer }) => offer.offer_key === "batch")).toBe(true);
+      expect(result.execution_modes).toEqual(["batch"]);
       expect(
         result.candidates.every(({ selectors }) =>
           selectors.every(({ dimension }) => dimension.value !== "operation"),

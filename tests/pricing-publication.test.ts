@@ -1,13 +1,14 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { gzipSync, gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import {
   commitCatalogPair,
   prepareCatalogPair,
   prepareCatalogPairInParallel,
+  prepareRecompiledCatalogPair,
   readCatalogPairMirrors,
   recoverCatalogPair,
   type CatalogPairPaths,
@@ -41,6 +42,20 @@ const pricing: PricingCatalog = {
   model_dispositions: [],
   books: [],
 };
+
+it("does not reuse an unprepared candidate even when its pricing values match", async () => {
+  const prepared = prepareCatalogPair(catalog(), pricing);
+  const copied = { ...prepared };
+  const result = await prepareRecompiledCatalogPair(copied, structuredClone(pricing));
+  expect(result).not.toBe(copied);
+  expect(result.pairId).toBe(prepared.pairId);
+  await expect(
+    prepareRecompiledCatalogPair(
+      { ...copied, catalog: { ...copied.catalog, generated_at: "invalid" } },
+      pricing,
+    ),
+  ).rejects.toThrow();
+});
 
 async function paths(): Promise<CatalogPairPaths> {
   const directory = await mkdtemp(join(tmpdir(), "kmodels-pair-"));
@@ -169,6 +184,38 @@ describe("crash-consistent catalog pair publication", () => {
     await expectProjectionPair(output.projections, candidate.pairId);
   });
 
+  it("does not replace an unchanged canonical snapshot on recommit", async () => {
+    const output = await paths();
+    const candidate = prepareCatalogPair(catalog(), pricing);
+    await commitCatalogPair(candidate, output);
+    const path = join(output.stateDirectory, "snapshots", candidate.pairId, "pricing.json");
+    await utimes(path, 0, 0);
+    const before = await stat(path, { bigint: true });
+    await commitCatalogPair(candidate, output);
+    const after = await stat(path, { bigint: true });
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeNs).toBe(before.mtimeNs);
+  });
+
+  it.each(["prefix", "suffix"])(
+    "rejects noncanonical %s bytes even when the pricing value and manifest match",
+    async (kind) => {
+      const output = await paths();
+      const candidate = prepareCatalogPair(catalog(), pricing);
+      await commitCatalogPair(candidate, output);
+      const path = join(output.stateDirectory, "snapshots", candidate.pairId, "pricing.json");
+      const pointer = await readFile(join(output.stateDirectory, "current.json"));
+      await writeFile(
+        path,
+        kind === "prefix"
+          ? ` ${candidate.pricingAssetSource}`
+          : `${candidate.pricingAssetSource}\n`,
+      );
+      await expect(recoverCatalogPair(output)).rejects.toThrow("canonical pricing asset bytes");
+      expect(await readFile(join(output.stateDirectory, "current.json"))).toEqual(pointer);
+    },
+  );
+
   it("keeps only the current crash-recovery snapshot", async () => {
     const output = await paths();
     const initial = prepareCatalogPair(catalog(), pricing);
@@ -211,6 +258,32 @@ describe("crash-consistent catalog pair publication", () => {
     const recovered = await recoverCatalogPair(output);
     expect(recovered?.pairId).toBe(candidate.pairId);
     expect(recovered?.pricingAssetSource).toBe(candidate.pricingAssetSource);
+  });
+
+  it("retains nested book error paths when reading stored pricing", async () => {
+    const output = await paths();
+    const candidate = prepareCatalogPair(catalog(), pricing);
+    await writeFile(output.catalogMirror, candidate.catalogStorageSource);
+    const invalid = { ...candidate.pricing, data: { ...candidate.pricing.data, books: [{}] } };
+    await writeFile(output.pricingMirrorGzip, gzipSync(JSON.stringify(invalid)));
+    await expect(readCatalogPairMirrors(output)).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: ["data", "books", 0, "id"] }),
+      ]),
+    });
+  });
+
+  it.each(["envelope", "data", "hash"])("rejects stored pricing with invalid %s", async (kind) => {
+    const output = await paths();
+    const candidate = prepareCatalogPair(catalog(), pricing);
+    await writeFile(output.catalogMirror, candidate.catalogStorageSource);
+    const invalid = structuredClone(candidate.pricing);
+    if (kind === "hash") invalid.pricing_data_version = "0".repeat(64);
+    else Reflect.set(kind === "data" ? invalid.data : invalid, "unrecognized", true);
+    await writeFile(output.pricingMirrorGzip, gzipSync(JSON.stringify(invalid)));
+    await expect(readCatalogPairMirrors(output)).rejects.toThrow(
+      kind === "hash" ? "does not match canonical data" : "Unrecognized key",
+    );
   });
 
   it("reads checked-in mirrors independently of stale local pair state", async () => {

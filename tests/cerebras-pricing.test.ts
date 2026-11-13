@@ -4,17 +4,14 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
 import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
-import { createCalculator } from "../src/pricing/index.ts";
-
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/cerebras/${name}`, import.meta.url), "utf8");
 const observedAt = "2026-10-19T00:00:00.000Z";
-
 async function compiled(publicPrices: boolean) {
   const manifest: ProviderManifest | undefined = manifests.find(
     ({ provider }) => provider.id === "cerebras",
@@ -100,19 +97,18 @@ async function compiled(publicPrices: boolean) {
     provider_vocabularies: [partition.vocabulary],
     model_dispositions: partition.model_dispositions,
   };
-  const exported = calculationExport(core, createPricingCatalogEnvelope(pricing, core));
+  const exported = priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
   const offer = exported.providers[0]?.books.find(({ scope }) =>
     scope.model_refs.includes("cerebras/gemma-4-31b"),
   )?.offers[0];
   if (offer === undefined) throw new Error("Missing Gemma offer");
-  return { offer, calculator: createCalculator(exported), core, pricing };
+  return { offer, core, pricing };
 }
-
 describe("Cerebras standard input pricing", () => {
   it.each([true, false])(
     "charges the whole prompt at the selected input rate (public=%s)",
     async (publicPrices) => {
-      const { offer, calculator, core, pricing } = await compiled(publicPrices);
+      const { offer, core, pricing } = await compiled(publicPrices);
       expect(
         offer.terms.flatMap((term) => (term.kind === "rate" ? [term.meter.value] : [])),
       ).toEqual(["input_text", "output_text"]);
@@ -144,42 +140,6 @@ describe("Cerebras standard input pricing", () => {
           }),
         ]),
       );
-      for (const cached of [undefined, 0, 900000, 1000000]) {
-        const nativeUsage = {
-          prompt_tokens: 1000000,
-          completion_tokens: 0,
-          ...(cached === undefined ? {} : { prompt_tokens_details: { cached_tokens: cached } }),
-        };
-        const result = calculator.calculate({
-          evaluatedAt: observedAt,
-          components: [
-            {
-              id: "request",
-              offerRef: offer.id,
-              quantities: [
-                {
-                  signal: { namespace: "kmodels", value: "input_tokens" },
-                  value: { numerator: String(nativeUsage.prompt_tokens), denominator: "1" },
-                },
-                {
-                  signal: { namespace: "kmodels", value: "output_tokens" },
-                  value: { numerator: String(nativeUsage.completion_tokens), denominator: "1" },
-                },
-              ],
-            },
-          ],
-        });
-        expect(result.status).toBe("calculated");
-        expect(result.totals).toEqual([
-          {
-            denomination: { kind: "fiat", currency: "USD" },
-            amount: {
-              numerator: publicPrices ? "99" : "43",
-              denominator: publicPrices ? "100" : "20",
-            },
-          },
-        ]);
-      }
       const website = websitePublication(core, pricing, "b".repeat(64));
       const summary = parseWebsiteCatalog(website.catalog, website.pricing).models.find(
         ({ uid }) => uid === "cerebras/gemma-4-31b",

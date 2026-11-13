@@ -1,0 +1,23 @@
+import { createInferencePriceLookup, createCommercialPriceLookup, type InferencePriceMapping, type InferencePriceResult, type CommercialPriceQuery, type PriceDataEnvelope } from "@kmodels/pricing";
+
+declare const data: PriceDataEnvelope;
+declare const mapping: InferencePriceMapping;
+const lookup = createInferencePriceLookup(data, mapping);
+const result: InferencePriceResult = lookup({ provider_id: "example", model_id: "actual-model-id", meter: { namespace: "kmodels", value: "cache_write_text" }, selectors: [{ dimension: { namespace: "kmodels", value: "cache_ttl_seconds" }, kind: "decimal", value: "300", unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] } }] });
+for (const candidate of result.candidates) {
+  candidate.missing_conditions;
+  candidate.evidence;
+  for (const term of candidate.offer.terms) {
+    if (term.kind === "rate") for (const variant of term.variants) {
+      variant.price.value.numerator;
+      variant.price.per.factors;
+      variant.applicability;
+    }
+  }
+}
+const query: CommercialPriceQuery = { subject: { kind: "model", provider_id: "example", model_id: "actual-model-id" }, choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "request" } }] };
+createCommercialPriceLookup(data, mapping)(query);
+// @ts-expect-error Unit-price queries do not accept usage quantities.
+lookup({ provider_id: "example", model_id: "actual-model-id", quantities: [] });
+// @ts-expect-error Unit-price results have no total cost.
+result.totals;

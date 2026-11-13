@@ -1,5 +1,17 @@
 const utf8 = new TextEncoder();
-const canonicalKeys = new WeakMap<object, string>();
+let canonicalKeys = new WeakMap<object, string>();
+
+// Synchronous phases can discard their keys while their input graph remains live.
+// Restore an enclosing cache even when validation throws; never span an await.
+export function withCanonicalKeyCache<T>(operation: () => T): T {
+  const previous = canonicalKeys;
+  canonicalKeys = new WeakMap<object, string>();
+  try {
+    return operation();
+  } finally {
+    canonicalKeys = previous;
+  }
+}
 
 export function canonicalJson(value: unknown): string {
   assertIJsonValue(value);

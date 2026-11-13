@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep one public PAYG relationship per model. Regional origin, currency, context, cache and dated tariff conditions do not create agreements. Search and Fetch keep separate service books, with standalone API versus server-tool invocation as operation conditions. Preserve successful-request quantities and date scopes. Harness/Codex labels do not establish additional account enrollment.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Sources and identity
 
 The exhaustive global catalog and current public rates come from the official

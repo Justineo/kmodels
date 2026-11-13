@@ -5,13 +5,11 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { linkedBundleSchema } from "../src/catalog/bundle.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { rateVariantIdentity } from "../src/catalog/pricing-canonical.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
 const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
 const source = manifest?.sources.find(({ id }) => id === "bedrock-models");
@@ -62,7 +60,6 @@ const rows = [
     description: "$0.001 per Search Unit",
   },
 ];
-
 async function bundle() {
   const value = linkedBundleSchema.parse(
     JSON.parse(
@@ -95,7 +92,6 @@ async function bundle() {
   list.body = JSON.stringify(body);
   return value;
 }
-
 function parse(
   body: Awaited<ReturnType<typeof bundle>>,
   findings?: PricingReconciliationItem[],
@@ -108,7 +104,6 @@ function parse(
     ...(findings === undefined ? {} : { onPricingReconciliation: (item) => findings.push(item) }),
   });
 }
-
 function assemble(parsed: SourceParseResult) {
   const result = assembleParsedProviderPricing(
     provider.id,
@@ -119,7 +114,6 @@ function assemble(parsed: SourceParseResult) {
   if (result === undefined) throw new Error("Missing Bedrock partition");
   return result;
 }
-
 function rate(parsed: SourceParseResult, resource: string, key: string) {
   const term = assemble(parsed)
     .books.find(
@@ -130,7 +124,6 @@ function rate(parsed: SourceParseResult, resource: string, key: string) {
   if (term?.kind !== "rate") throw new Error(`Missing ${resource}/${key} rate`);
   return term;
 }
-
 describe("Bedrock native request services", () => {
   it("uses machine unit amounts once and returns independent typed service facts", async () => {
     const parsed = parse(await bundle());
@@ -168,11 +161,6 @@ describe("Bedrock native request services", () => {
     });
     if (content === undefined || content.charge_binding === undefined)
       throw new Error("Missing content binding");
-    expect(
-      evaluateRateCost(content, [
-        { signal: content.charge_binding.signal, value: { numerator: "1000", denominator: "1" } },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "20" } });
     expect(rate(parsed, "guardrails", "contentpolicyimage").variants[0]?.price.value).toEqual({
       numerator: "1",
       denominator: "1250",
@@ -200,7 +188,6 @@ describe("Bedrock native request services", () => {
       });
     }
   });
-
   it("does not rescale prices when descriptive prose changes", async () => {
     const input = await bundle();
     const parsed = parse(input);
@@ -217,7 +204,6 @@ describe("Bedrock native request services", () => {
       rate(changed, "guardrails", "contentpolicyimage").variants.map(rateVariantIdentity),
     ).toEqual(rate(parsed, "guardrails", "contentpolicyimage").variants.map(rateVariantIdentity));
   });
-
   it("withholds a missing acquisition contract without changing service rates or quantities", async () => {
     const input = await bundle();
     input.documents = input.documents.filter(({ url }) => !url.endsWith("GuardrailUsage.html"));
@@ -229,7 +215,6 @@ describe("Bedrock native request services", () => {
     });
     expect(variant?.charge_binding?.quantity_methods).toBeUndefined();
   });
-
   it("reports and preserves an unknown native unit beside valid sibling services", async () => {
     const input = await bundle();
     const list = input.documents.find(({ url }) => url.includes("/AmazonBedrock/current/"));
@@ -242,7 +227,7 @@ describe("Bedrock native request services", () => {
         ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "guardrails",
       )
       ?.offers.flatMap(({ terms }) => terms)
-      .find(({ term_key }) => term_key === "content");
+      .find(({ term_key }) => term_key === "content" || term_key.endsWith("/" + "content"));
     expect(raw?.kind).toBe("raw");
     expect(findings).toContainEqual(
       expect.objectContaining({
@@ -252,7 +237,6 @@ describe("Bedrock native request services", () => {
     );
     expect(rate(parsed, "web-search", "queries").variants).toHaveLength(1);
   });
-
   it("captures and replays service terms and vocabulary without a model carrier", async () => {
     const parsed = { ...parse(await bundle()), models: [] };
     const record = {
@@ -288,7 +272,6 @@ describe("Bedrock native request services", () => {
       { providers: [provider], models: [], sources: [record] },
     );
   });
-
   it("checks canonical source rate identity and nested binding provenance", async () => {
     const parsed = parse(await bundle());
     const fact = parsed.commercial_facts?.find(({ resource_key }) => resource_key === "guardrails");
@@ -326,7 +309,6 @@ describe("Bedrock native request services", () => {
     ];
     expect(() => assemble(parsed)).toThrow("mixed sources");
   });
-
   it("preserves explicit numeric zero without inventing a free offer", async () => {
     const input = await bundle();
     const list = input.documents.find(({ url }) => url.includes("/AmazonBedrock/current/"));
@@ -344,7 +326,6 @@ describe("Bedrock native request services", () => {
       ?.offers.flatMap(({ states }) => states);
     expect(states?.every(({ state }) => state === "numeric")).toBe(true);
   });
-
   it("scales a denominator explicitly encoded in the machine unit", async () => {
     const input = await bundle();
     const list = input.documents.find(({ url }) => url.includes("/AmazonBedrock/current/"));
@@ -354,7 +335,6 @@ describe("Bedrock native request services", () => {
     expect(variant?.price.value).toEqual({ numerator: "1", denominator: "1000000" });
     expect(variant?.charge_binding?.signal.value).toBe("prompt_routing_requests");
   });
-
   it("keeps unequal native observations as a localized rate conflict", async () => {
     const input = await bundle();
     const list = input.documents.find(({ url }) => url.includes("/AmazonBedrock/current/"));
@@ -390,7 +370,6 @@ describe("Bedrock native request services", () => {
     );
     expect(rate(parsed, "web-search", "queries").variants).toHaveLength(1);
   });
-
   it("does not reinterpret changed raw audit payloads inside typed rate terms", async () => {
     const parsed = parse(await bundle());
     const before = rate(parsed, "guardrails", "content").variants.map(rateVariantIdentity);
@@ -406,7 +385,6 @@ describe("Bedrock native request services", () => {
         }
     expect(rate(parsed, "guardrails", "content").variants.map(rateVariantIdentity)).toEqual(before);
   });
-
   it("cannot create a grounding service from a model-local raw marker", async () => {
     const parsed = parse(await bundle());
     const model = parsed.models[0];

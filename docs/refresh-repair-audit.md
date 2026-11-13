@@ -58,7 +58,7 @@ reviewing unrelated providers. For each affected claim, establish:
   known siblings and explicit unknowns. Validate fields actually consumed by those facts; do not
   add audit-only fetches or make a service fact depend on an arbitrary model carrier.
 - **Consumer behavior:** follow parsed facts through canonical scope, retention, persisted revisions,
-  calculation exports and UI projection. Confirm the original defect disappears without changing
+  unit-price exports and UI projection. Confirm the original defect disappears without changing
   unrelated facts. When quantity or scope changes, exercise both a known calculation and a relevant
   unknown/missing-input or disjoint-scope control. Use distinct quantities where totals overlap cache
   or modalities so a superficially plausible total cannot hide a wrong mapping.
@@ -176,7 +176,7 @@ no-defect conclusion for every admitted candidate.
 The serialized repair job also rotates one provider review per UTC day, followed by
 a global architecture review. The current 20 providers therefore form a nominal 21-day cycle.
 This review is independent of error-triggered candidates and examines discovery, identity,
-lifecycle, pricing inventory and scopes, accounting, retention, replay, calculator/display behavior
+lifecycle, pricing inventory and scopes, accounting, retention, replay, lookup/display behavior
 and simplicity against current first-party evidence.
 
 A calendar slot is an attempt, not proof of completed coverage. Failed or unfinished reviews remain

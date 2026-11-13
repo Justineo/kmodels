@@ -3,10 +3,11 @@ import { executionModeSchema } from "./execution-mode.ts";
 import {
   commercialChoiceSchema,
   commercialSelectionScopeSchema,
+  priceMeterSchema,
 } from "../catalog/pricing-schema.ts";
 import {
-  calculationProviderSchema,
-  calculationRequestSchema,
+  priceDataProviderSchema,
+  evaluationTimeSchema,
   evidenceSchema,
   selectorSchema,
 } from "./schema.ts";
@@ -44,7 +45,7 @@ export const inferencePriceMappingSchema = z.strictObject({
   core_catalog_version: hash,
   pricing_data_version: hash,
   sources: z.array(
-    calculationProviderSchema.shape.sources.element.extend({ provider_id: identifier }),
+    priceDataProviderSchema.shape.sources.element.extend({ provider_id: identifier }),
   ),
   rules: z.array(inferencePriceRuleSchema),
   offer_selections: z
@@ -62,11 +63,12 @@ export const inferencePriceMappingSchema = z.strictObject({
 export const inferencePriceQuerySchema = z.strictObject({
   provider_id: identifier,
   model_id: identifier,
+  meter: priceMeterSchema.optional(),
   offer_ref: hash.optional(),
   execution_mode: executionModeSchema.optional(),
-  choices: z.array(commercialChoiceSchema).max(7).default([]),
+  choices: z.array(commercialChoiceSchema).max(8).default([]),
   selectors: z.array(selectorSchema).max(128).default([]),
-  evaluated_at: calculationRequestSchema.shape.evaluatedAt.optional(),
+  evaluated_at: evaluationTimeSchema.optional(),
 });
 
 export type InferencePriceRule = z.infer<typeof inferencePriceRuleSchema>;

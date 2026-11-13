@@ -18,10 +18,10 @@ import {
 import { parseEvaluationTime, parseRequest, validateSelectorVocabulary } from "./request.ts";
 import {
   selectorSchema,
-  type CalculationEnvelope,
-  type CalculationOffer,
-  type CalculationProvider,
-  type CalculationTerm,
+  type PriceDataEnvelope,
+  type PriceDataOffer,
+  type PriceDataProvider,
+  type PriceDataTerm,
   type Selector,
 } from "./schema.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
@@ -36,8 +36,8 @@ import { createPricingSnapshot, offerApplicabilities, type PricingSnapshot } fro
 export interface InferencePriceCandidate {
   model_ref: string;
   book_ref: string;
-  offer: CalculationOffer;
-  referenced_rates: Extract<CalculationTerm, { kind: "rate" }>[];
+  offer: PriceDataOffer;
+  referenced_rates: Extract<PriceDataTerm, { kind: "rate" }>[];
   selectors: Selector[];
   evidence: InferencePriceRule["evidence"];
   missing_conditions: PriceDimension[];
@@ -46,7 +46,7 @@ export interface InferencePriceCandidate {
 
 export interface InferencePriceResult {
   query: InferencePriceQuery;
-  snapshot: CalculationEnvelope["snapshot"];
+  snapshot: PriceDataEnvelope["snapshot"];
   evaluated_at: string;
   status: "matched" | "candidates" | "unknown";
   reason?: InferencePriceReason;
@@ -59,7 +59,7 @@ export interface InferencePriceResult {
   available_choices: AvailableCommercialChoice[];
   missing_choices: CommercialChoice["dimension"][];
   unresolved_choices: UnresolvedCommercialChoice[];
-  freshness?: CalculationProvider["snapshot"];
+  freshness?: PriceDataProvider["snapshot"];
 }
 
 /** Exact ID lookup over existing prices; no invocation protocol or account configuration. */
@@ -212,7 +212,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
       result.freshness = provider.snapshot;
     }
     const matched = matchInferencePrices(
-      inferenceMatchData(snapshot, rules, mapping.offer_selections),
+      inferenceMatchData(snapshot, rules, mapping.offer_selections, query.meter),
       query.selectors,
       evaluatedAt,
       query.offer_ref,
@@ -317,7 +317,13 @@ function validateRule(
       ),
     );
     if (rule.fixed_selectors.some(({ dimension }) => !dimensions.has(canonicalJson(dimension))))
-      throw new PricingError("INVALID_DATA", "Inference mapping fixes an unused price condition");
+      throw new PricingError(
+        "INVALID_DATA",
+        `Inference mapping fixes an unused price condition (${rule.provider_id}/${rule.model_id}/${owner.offer.offer_key}: ${rule.fixed_selectors
+          .filter(({ dimension }) => !dimensions.has(canonicalJson(dimension)))
+          .map(({ dimension }) => dimension.value)
+          .join(", ")})`,
+      );
   }
   for (const choice of rule.execution_choices ?? []) {
     if (!rule.offer_refs.includes(choice.offer_ref))
@@ -344,10 +350,7 @@ function isModelDimension(dimension: PriceDimension): boolean {
   return dimension.namespace === "kmodels" && dimension.value === "model";
 }
 
-export function selectedTerm(
-  term: CalculationTerm,
-  selected: InferenceTermSelection,
-): CalculationTerm {
+export function selectedTerm(term: PriceDataTerm, selected: InferenceTermSelection): PriceDataTerm {
   if (term.kind === "raw")
     return {
       ...term,

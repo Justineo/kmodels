@@ -17,7 +17,7 @@ import {
 } from "../src/catalog/pricing-compilation.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
 import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset, type EncodedAssetPack } from "../src/catalog/asset-pack.ts";
@@ -103,7 +103,7 @@ function pair(
 
 function lookup(candidate: CatalogPairCandidate, model_id: string) {
   return createInferencePriceLookup(
-    calculationExport(candidate.catalog, candidate.pricing),
+    priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
   )({ provider_id: "typesafe", model_id });
 }
@@ -122,7 +122,7 @@ describe("direct inference price source-to-consumer compilation", () => {
     const candidate = pair(result);
     const projected = await projectCatalogPair(candidate);
     const mapping = asset(projected.exports, "pricing/inference.json");
-    const prices = asset(projected.exports, "pricing/calculation/providers/typesafe.json");
+    const prices = asset(projected.exports, "pricing/lookup/providers/typesafe.json");
     const publicLookup = createInferencePriceLookup(prices, mapping);
     for (const model_id of ["jev-1.13.0", "jev-1.14.0", "jev-latest", "jev-preview"]) {
       const match = publicLookup({ provider_id: "typesafe", model_id });
@@ -186,6 +186,27 @@ describe("direct inference price source-to-consumer compilation", () => {
     expect(lookup(compiled.candidate, "jev-latest").candidates[0]?.model_ref).toBe(
       "typesafe/jev-1.14.0",
     );
+  });
+
+  it("rebuilds changed ID associations when replay reuses the accepted pricing graph", async () => {
+    const collected = await collect();
+    const current = pair(collected);
+    const snapshot = createPricingCompilationSnapshot(
+      current,
+      pricingCompilationEntries(current, [collected], new Set(), undefined),
+    );
+    const association = snapshot.providers
+      .flatMap(({ sources }) => sources)
+      .flatMap(({ inference_prices = [] }) => inference_prices)
+      .find(({ model_id }) => model_id === "jev-latest");
+    if (association === undefined) throw new Error("Missing replay alias");
+    association.model_ref = "typesafe/jev-1.13.0";
+    const compiled = await compilePricingSnapshot(current, snapshot);
+    expect(compiled.candidate.pricing).toBe(current.pricing);
+    expect(lookup(compiled.candidate, "jev-latest").candidates[0]?.model_ref).toBe(
+      "typesafe/jev-1.13.0",
+    );
+    expect(lookup(current, "jev-latest").candidates[0]?.model_ref).toBe("typesafe/jev-1.14.0");
   });
 
   it("replaces a moved or withdrawn alias independently of equal prices and retained display aliases", async () => {

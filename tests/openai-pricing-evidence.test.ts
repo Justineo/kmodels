@@ -117,7 +117,7 @@ it("signals an unreadable owned price table without admitting an unreviewed new 
   expect(result.models[0]?.price_facts).toHaveLength(2);
 });
 
-it("retains the two native write lifetimes and context bands as independent charge partitions", () => {
+it("retains both native write lifetimes and context bands as rate conditions", () => {
   const result = parse(
     [
       "Flagship models",
@@ -150,13 +150,13 @@ it("retains the two native write lifetimes and context bands as independent char
   const writes = offer?.terms.filter(
     (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
   );
-  expect(writes).toHaveLength(2);
+  expect(writes).toHaveLength(1);
   expect(
     writes
       ?.flatMap((term) => (term.kind === "rate" ? term.variants : []))
       .every((variant) =>
         variant.applicability.any_of.every(({ all_of }) =>
-          all_of.every(({ dimension }) => dimension.value !== "cache_ttl_seconds"),
+          all_of.some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
         ),
       ),
   ).toBe(true);

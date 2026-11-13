@@ -1,9 +1,9 @@
 import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
-  calculationBookSchema,
-  calculationSchemaVersion,
-  type CalculationEnvelope,
-  type CalculationProvider,
+  priceDataBookSchema,
+  priceDataSchemaVersion,
+  type PriceDataEnvelope,
+  type PriceDataProvider,
 } from "../pricing/schema.ts";
 import type {
   PricingCatalogEnvelope,
@@ -11,27 +11,27 @@ import type {
   ProviderPricingSnapshot,
 } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
-import { calculationCoverage } from "./pricing-calculation-coverage.ts";
+import { priceDataCoverage } from "./pricing-coverage.ts";
 import { snapshotSourceRecords } from "./pricing-source-records.ts";
 import { validatePriceData } from "../pricing/validation.ts";
 
-export function calculationExport(
+export function priceDataExport(
   catalog: Catalog,
   pricing: PricingCatalogEnvelope,
   providerIds?: readonly string[],
-): CalculationEnvelope {
+): PriceDataEnvelope {
   const selectedProviders = selectProviderIds(pricing, providerIds);
   const notApplicableModels = new Set(
     pricing.data.model_dispositions.map((model) => model.model_ref),
   );
-  const providers: CalculationProvider[] = [];
+  const providers: PriceDataProvider[] = [];
   for (const snapshot of pricing.data.provider_snapshots) {
     if (selectedProviders.has(snapshot.provider_id)) {
       providers.push(exportProvider(catalog, pricing, snapshot, notApplicableModels));
     }
   }
   return {
-    schemaVersion: calculationSchemaVersion,
+    schemaVersion: priceDataSchemaVersion,
     snapshot: {
       pricingDataVersion: pricing.pricing_data_version,
       coreCatalogVersion: pricing.core_catalog_version,
@@ -62,7 +62,7 @@ function exportProvider(
   pricing: PricingCatalogEnvelope,
   snapshot: ProviderPricingSnapshot,
   notApplicableModels: Set<string>,
-): CalculationProvider {
+): PriceDataProvider {
   const providerId = snapshot.provider_id;
   const vocabulary = pricing.data.provider_vocabularies.find(
     (vocabulary) => vocabulary.provider_id === providerId,
@@ -92,14 +92,7 @@ function exportProvider(
             publication: snapshot.publication,
             refresh_failure: snapshot.refresh_failure,
           },
-    vocabulary: {
-      ...vocabulary,
-      atoms: vocabulary.atoms.map((atom) => {
-        if (atom.kind !== "usage_signal" || atom.label === undefined) return atom;
-        const { label: _, ...quantity } = atom;
-        return quantity;
-      }),
-    },
+    vocabulary,
     books: books.map(exportBook),
     models: models.map((model) => ({
       model_ref: model.uid,
@@ -123,17 +116,19 @@ function modelDisposition(
   modelRef: string,
   modelsWithOffers: Set<string>,
   notApplicableModels: Set<string>,
-): CalculationProvider["models"][number]["disposition"] {
+): PriceDataProvider["models"][number]["disposition"] {
   if (modelsWithOffers.has(modelRef)) return "offers";
   if (notApplicableModels.has(modelRef)) return "not_applicable";
   return "unknown";
 }
 
-function exportBook(book: PricingBook): CalculationProvider["books"][number] {
-  return calculationBookSchema.parse(
+function exportBook(book: PricingBook): PriceDataProvider["books"][number] {
+  return priceDataBookSchema.parse(
     replaceObservationsWithEvidence({
       ...book,
-      offers: book.offers.map(({ selection: _selection, ...offer }) => offer),
+      offers: book.offers.map(
+        ({ selection: _selection, source_contexts: _contexts, ...offer }) => offer,
+      ),
     }),
   );
 }
@@ -168,20 +163,20 @@ function evidenceReference(observation: unknown) {
   return { source_ref: observation.source_ref, locator: observation.locator };
 }
 
-export function calculationExportAssets(
+export function priceDataExportAssets(
   catalog: Catalog,
   pricing: PricingCatalogEnvelope,
 ): Array<{ fileName: string; source: string }> {
   if (pricing.data.provider_snapshots.length === 0) return [];
-  const envelope = validatePriceData(calculationExport(catalog, pricing));
+  const envelope = validatePriceData(priceDataExport(catalog, pricing));
   return [
-    { fileName: "pricing/calculation/index.json", source: canonicalJson(envelope) },
+    { fileName: "pricing/lookup/index.json", source: canonicalJson(envelope) },
     {
-      fileName: "pricing/calculation/coverage.json",
-      source: canonicalJson(calculationCoverage(envelope)),
+      fileName: "pricing/lookup/coverage.json",
+      source: canonicalJson(priceDataCoverage(envelope)),
     },
     ...envelope.providers.map((provider) => ({
-      fileName: `pricing/calculation/providers/${provider.snapshot.provider_id}.json`,
+      fileName: `pricing/lookup/providers/${provider.snapshot.provider_id}.json`,
       source: canonicalJson({ ...envelope, providers: [provider] }),
     })),
   ];

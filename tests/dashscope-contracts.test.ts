@@ -1,3 +1,4 @@
+import { offerContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
@@ -6,14 +7,12 @@ import { manifests } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import type {
   ParsedProviderModel,
   SourceCommercialPricingFact,
   SourcePricingInputFact,
 } from "../src/catalog/pricing-source.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
-
 function configuration() {
   const manifest = manifests.find((m) => m.provider.id === "dashscope");
   const source = manifest?.sources.find((s) => s.id === "dashscope-pricing");
@@ -303,7 +302,6 @@ Models: qwen3.7-plus
     );
   });
 });
-
 const reportedAudio: SourcePricingInputFact = {
   key: "native.input_audio_tokens",
   source_ref: source.id,
@@ -694,7 +692,6 @@ The value is fixed to response_api.
     expect(term.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
   });
 });
-
 describe("DashScope native tool tariffs", () => {
   it("uses video columns to retain audio and mode price selection under a family heading", () => {
     const index = `<main><h2>Wan</h2><h3>Singapore</h3><table>
@@ -838,10 +835,12 @@ The count field usage.plugins.search.count indicates intent detection and is not
     const book = partition?.books.find(({ book_key }) => book_key === "service:web-search");
     expect(book?.scope.model_refs).toEqual(modelRefs("agent"));
     expect(
-      book?.offers.map(({ offer_key, model_refs }) => [
-        offer_key,
-        model_refs ?? book.scope.model_refs,
-      ]),
+      book?.offers
+        .flatMap(offerContexts)
+        .map(({ context_key, context_model_refs }) => [
+          context_key,
+          context_model_refs.length ? context_model_refs : book.scope.model_refs,
+        ]),
     ).toEqual([
       ["built-in:singapore:agent", modelRefs("agent")],
       ["built-in:singapore:agent_max", modelRefs("agent_max")],
@@ -937,11 +936,5 @@ The count field usage.plugins.search.count indicates intent detection and is not
     );
     if (experience?.charge_binding === undefined)
       throw new Error("Missing Directing world duration rate");
-    expect(
-      evaluateRateCost(experience, [
-        { signal: experience.charge_binding.signal, value: { numerator: "12", denominator: "1" } },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "1287", denominator: "1250" } });
-    expect(evaluateRateCost(experience, [])).toMatchObject({ kind: "missing_input" });
   });
 });

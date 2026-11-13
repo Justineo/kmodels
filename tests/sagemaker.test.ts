@@ -9,7 +9,6 @@ import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { summarizeRefresh } from "../src/catalog/summary.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { websiteModelDetail, websitePublication } from "../src/catalog/website-data.ts";
@@ -20,18 +19,16 @@ import PricingDetails from "../src/components/PricingDetails.vue";
 import { captureInferencePriceSources } from "../src/catalog/inference-pricing-source.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
-
 const pricingDetailsContext = {
   provider: undefined,
   dataVersion: "a".repeat(64),
   loading: false,
   error: undefined,
 };
-
 const aws = vi.hoisted(() => ({ send: vi.fn(), destroy: vi.fn() }));
 vi.mock("@aws-sdk/client-sagemaker", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@aws-sdk/client-sagemaker")>()),
@@ -40,7 +37,6 @@ vi.mock("@aws-sdk/client-sagemaker", async (importOriginal) => ({
     destroy = aws.destroy;
   },
 }));
-
 const manifest = manifests.find(({ provider }) => provider.id === "amazon-sagemaker");
 if (manifest === undefined) throw new Error("SageMaker manifest missing");
 const provider = { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) };
@@ -60,7 +56,6 @@ const specs = [
   { model_id: "fixture-speech", version: "0.0.1", listing_id: "prodview-speech" },
   { model_id: "fixture-embedding", version: "LLM 1.14", listing_id: "prodview-embedding" },
 ];
-
 function card(price: string, overrides: object = {}) {
   return {
     dimensionKey: "inference.count.m.i.c",
@@ -127,7 +122,6 @@ function parsePricing(body = bundle(), items: PricingReconciliationItem[] = []) 
     };
   return parsed;
 }
-
 function assemblePricing(parsed: ReturnType<typeof parsePricing>) {
   const partition = assembleParsedProviderPricing(
     provider.id,
@@ -139,7 +133,6 @@ function assemblePricing(parsed: ReturnType<typeof parsePricing>) {
   if (partition === undefined) throw new Error("Missing SageMaker pricing partition");
   return partition;
 }
-
 describe("SageMaker foundation catalog", () => {
   it("admits only the two foundation sections and preserves unknown task semantics", () => {
     const models = parseSource({
@@ -168,7 +161,6 @@ describe("SageMaker foundation catalog", () => {
       ),
     ).toBe(true);
   });
-
   it("rejects missing sections, duplicate identities and truncated tables", () => {
     expect(() =>
       sagemakerRows(catalog.replace("open-weight-models-(2)", "open-weight-models-(3)")),
@@ -180,7 +172,6 @@ describe("SageMaker foundation catalog", () => {
       "duplicated",
     );
   });
-
   it("uses the SDK version resolver only to discover exact listing-spec paths", () => {
     const headers = specs.map(({ model_id, version }) => ({
       model_id,
@@ -215,7 +206,6 @@ describe("SageMaker foundation catalog", () => {
     expect(resolve(["1.0.0", "1.0", "1.0.0"])).toBe("1.0.0");
   });
 });
-
 describe("SageMaker price books", () => {
   it("keeps numeric and raw infrastructure rates in their respective service books", () => {
     const items: PricingReconciliationItem[] = [];
@@ -270,7 +260,6 @@ describe("SageMaker price books", () => {
       { disposition: "normalized", reason_code: "sagemaker_public_invocation_meter" },
     ]);
   });
-
   it("publishes hosting and software capacity alongside request charges", async () => {
     const items: PricingReconciliationItem[] = [];
     const parsed = parsePricing(bundle(), items);
@@ -342,11 +331,11 @@ describe("SageMaker price books", () => {
     );
     expect(pair.inference?.mapping.rules).toEqual([]);
     const lookup = createInferencePriceLookup(
-      calculationExport(pair.catalog, pair.pricing),
+      priceDataExport(pair.catalog, pair.pricing),
       pair.inference?.mapping,
     );
     const commercial = createCommercialPriceLookup(
-      calculationExport(pair.catalog, pair.pricing),
+      priceDataExport(pair.catalog, pair.pricing),
       pair.inference?.mapping,
     );
     const capacity = pair.pricing.data.books.find(
@@ -364,6 +353,25 @@ describe("SageMaker price books", () => {
     });
     expect(canonical.candidates).toEqual(native.candidates);
     expect(canonical.candidates.length).toBeGreaterThan(0);
+    const capacityRate = capacity.offers
+      .flatMap(({ terms }) => terms)
+      .find((term) => term.kind === "rate");
+    if (!capacityRate) throw new Error("Missing capacity rate");
+    const metered = commercial({ subject, meter: capacityRate.meter });
+    expect(metered.status).toBe(native.status);
+    expect(metered.candidates.length).toBeGreaterThan(0);
+    expect(
+      metered.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .every(
+          (term) =>
+            term.kind === "rate" &&
+            JSON.stringify(term.meter) === JSON.stringify(capacityRate.meter),
+        ),
+    ).toBe(true);
+    expect(
+      commercial({ subject, meter: { namespace: "kmodels", value: "cache_write_text" } }),
+    ).toMatchObject({ status: "unknown", reason: "no_applicable_price", candidates: [] });
     expect(
       commercial({
         subject,
@@ -449,14 +457,6 @@ describe("SageMaker price books", () => {
       "instance",
       "second",
     ]);
-    expect(
-      evaluateRateCost(hostingRate, [
-        {
-          signal: hostingRate.charge_binding.signal,
-          value: { numerator: "3600", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "38", denominator: "25" } });
     const software = partition.books.find(
       (book) =>
         book.scope.kind === "provider_resource" &&
@@ -470,14 +470,6 @@ describe("SageMaker price books", () => {
       throw new Error("Missing Marketplace hourly binding");
     expect(softwareRate.charge_binding.aggregation).toBe("resource");
     expect(softwareRate.charge_binding.signal).not.toEqual(hostingRate.charge_binding.signal);
-    expect(
-      evaluateRateCost(softwareRate, [
-        {
-          signal: softwareRate.charge_binding.signal,
-          value: { numerator: "3600", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "2", denominator: "1" } });
     const speech = partition.books.find(
       (book) =>
         book.scope.kind === "models" &&
@@ -488,12 +480,6 @@ describe("SageMaker price books", () => {
       .flatMap(({ terms }) => terms)
       .flatMap((term) => (term.kind === "rate" ? term.variants : []))[0];
     if (rate?.charge_binding === undefined) throw new Error("Missing inference charge binding");
-    expect(
-      evaluateRateCost(rate, [
-        { signal: rate.charge_binding.signal, value: { numerator: "3", denominator: "1" } },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "18", denominator: "1" } });
-    expect(evaluateRateCost(rate, [])).toMatchObject({ kind: "missing_input" });
     expect(models.every(({ pricing_state }) => pricing_state === "unknown")).toBe(true);
     for (const modelId of ["fixture-speech", "fixture-embedding"]) {
       const model = providerModelSchema.parse(models.find((model) => model.model_id === modelId));
@@ -562,7 +548,6 @@ describe("SageMaker price books", () => {
     expect(openHtml).not.toContain("No base model rate");
     expect(openHtml).not.toContain("Usage add-on");
   });
-
   it("gives each exactly linked model its own software offer when they share a listing", () => {
     const parsed = parsePricing(
       bundle({
@@ -586,7 +571,6 @@ describe("SageMaker price books", () => {
       }
     }
   });
-
   it("keeps unavailable public pricing unknown and preserves an unsupported inference unit as raw", () => {
     const items: PricingReconciliationItem[] = [];
     const parsed = parsePricing(
@@ -617,7 +601,6 @@ describe("SageMaker price books", () => {
     expect(modelBooks[0]?.scope.model_refs).toEqual(["amazon-sagemaker/fixture-embedding"]);
     expect(modelBooks[0]?.offers.flatMap(({ terms }) => terms)).toMatchObject([{ kind: "raw" }]);
   });
-
   it("retains unreviewed real-time Marketplace meters as bounded raw prices", () => {
     const items: PricingReconciliationItem[] = [];
     const parsed = parsePricing(
@@ -649,7 +632,6 @@ describe("SageMaker price books", () => {
       ),
     ).toBe(true);
   });
-
   it("rejects version-dependent listing joins, incomplete bundles, and truncated rate cards", () => {
     expect(() =>
       parsePricing(
@@ -679,7 +661,6 @@ describe("SageMaker price books", () => {
       1,
     );
   });
-
   it("extracts only the exact pricing query from Marketplace SSR state", () => {
     const state = {
       routeParams: { listingId: "prodview-speech" },
@@ -724,7 +705,6 @@ describe("SageMaker price books", () => {
     });
   });
 });
-
 describe("SageMaker public-hub projection", () => {
   it("links SDK-only foundation models to service pricing without admitting classic ML", () => {
     const openManifest = JSON.stringify([
@@ -763,7 +743,6 @@ describe("SageMaker public-hub projection", () => {
     expect(book).toBeDefined();
     expect(book?.scope.model_refs).toContain("amazon-sagemaker/new-video");
   });
-
   it("paginates and projects only admitted model metadata without account resource fields", async () => {
     aws.send.mockReset();
     aws.destroy.mockClear();
@@ -828,7 +807,6 @@ describe("SageMaker public-hub projection", () => {
         }).models,
     ).toThrow("changed region");
   });
-
   it("rejects repeated pagination and always releases the AWS client", async () => {
     aws.send.mockReset();
     aws.destroy.mockClear();

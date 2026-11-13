@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep one public pay-per-token relationship per model, denominated in the published DBU unit. Actual Priority tier, endpoint geography, context and promotion/validity qualify rates. Do not turn DBU-to-currency settlement into a request price. Provisioned throughput, job-duration Batch compute and account commitments remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Product boundary
 
 Kmodels publishes Databricks-hosted Foundation Model API rates that an AI Gateway can attribute to
@@ -232,8 +244,9 @@ The same fields do not become cache acquisition paths for OpenAI, Google, Grok, 
 the official reference qualifies the top-level cache fields specifically to hosted Claude
 endpoints. Their cache rates retain quantity semantics but remain without an acquisition method.
 Likewise, the aggregate usage object does not split modality or cache-retention subsets. Separate
-text/image/audio and default/one-hour cache-write rates use provider-owned subset quantities without
-an acquisition method. They never bind the aggregate response count to every partition.
+text/image/audio meters remain distinct; default/one-hour cache-write prices retain the provider
+`cache_retention` condition. The native `default` label does not establish a numeric TTL. Optional
+quantity mappings never bind an aggregate count to every subset and are not needed for unit-price lookup.
 
 `usage.prompt_tokens` also resolves context-length conditions. Numeric Standard and Priority
 variants use `served_service_tier`. The documented response `service_tier` only echoes whether

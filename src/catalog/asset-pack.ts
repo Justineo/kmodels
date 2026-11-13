@@ -1,10 +1,14 @@
 import { promisify } from "node:util";
-import { gzip as gzipCallback } from "node:zlib";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createHash } from "node:crypto";
+import { createGzip, gzip as gzipCallback } from "node:zlib";
 import { z } from "zod";
 import { canonicalJsonBytes, parseIJson } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
 import { sha256 } from "./io.ts";
 import { pricingLimits } from "./pricing-constants.ts";
+import { mapConcurrent } from "./concurrency.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const utf8Decoder = new TextDecoder();
@@ -56,6 +60,11 @@ export interface AssetSource {
   source: string;
 }
 
+interface ChunkedAssetSource {
+  fileName: string;
+  sourceChunks: readonly string[];
+}
+
 export interface EncodedAssetPack {
   manifest: AssetPackManifest;
   manifestSource: string;
@@ -78,28 +87,41 @@ export async function createAssetPack(
   profile: AssetPackProfile,
   pairId: string,
   dataVersion: string,
-  sourceAssets: AssetSource[],
+  sourceAssets: (AssetSource | ChunkedAssetSource)[],
 ): Promise<EncodedAssetPack> {
   const assets = [...sourceAssets].sort((left, right) =>
     compareUtf8(left.fileName, right.fileName),
   );
-  const chunks = await Promise.all(
-    assets.map(async ({ fileName, source }) => {
-      const sourceBytes = utf8Encoder.encode(source);
-      if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES[profile])
+  // Encode only active jobs rather than retaining a UTF-8 copy for every queued
+  // compression. Four jobs match the default libuv worker pool.
+  const chunks = await mapConcurrent(assets, 4, async (asset) => {
+    const { fileName } = asset;
+    let chunk: Buffer;
+    let sourceLength: number;
+    let sourceHash: string;
+    if ("sourceChunks" in asset) {
+      ({ chunk, sourceLength, sourceHash } = await compressChunks(
+        asset,
+        ASSET_SOURCE_MAX_BYTES[profile],
+      ));
+    } else {
+      if (Buffer.byteLength(asset.source) > ASSET_SOURCE_MAX_BYTES[profile])
         throw new Error(`${fileName} exceeds the decoded asset limit`);
-      const chunk = await gzip(sourceBytes);
-      // Asset hashes must not depend on zlib's host-specific gzip metadata.
-      chunk[GZIP_OS_OFFSET] = CANONICAL_GZIP_OS;
-      return {
-        fileName,
-        chunk,
-        sourceLength: sourceBytes.byteLength,
-        sourceHash: sha256(sourceBytes),
-        gzipHash: sha256(chunk),
-      };
-    }),
-  );
+      const sourceBytes = utf8Encoder.encode(asset.source);
+      chunk = await gzip(sourceBytes);
+      sourceLength = sourceBytes.byteLength;
+      sourceHash = sha256(sourceBytes);
+    }
+    // Asset hashes must not depend on zlib's host-specific gzip metadata.
+    chunk[GZIP_OS_OFFSET] = CANONICAL_GZIP_OS;
+    return {
+      fileName,
+      chunk,
+      sourceLength,
+      sourceHash,
+      gzipHash: sha256(chunk),
+    };
+  });
   let offset = 0;
   const manifest = assetPackManifestSchema.parse({
     schema_version: 1,
@@ -127,6 +149,43 @@ export async function createAssetPack(
     manifestSource: utf8Decoder.decode(canonicalJsonBytes(manifest)),
     pack,
   };
+}
+
+async function compressChunks({ fileName, sourceChunks }: ChunkedAssetSource, maxBytes: number) {
+  const hash = createHash("sha256");
+  let sourceLength = 0;
+  function* encode() {
+    let pending = "";
+    for (const chunk of sourceChunks) {
+      const source = pending + chunk;
+      const last = source.charCodeAt(source.length - 1);
+      const splitSurrogate = last >= 0xd800 && last <= 0xdbff;
+      pending = splitSurrogate ? source.slice(-1) : "";
+      const complete = splitSurrogate ? source.slice(0, -1) : source;
+      sourceLength += Buffer.byteLength(complete);
+      if (sourceLength > maxBytes) throw new Error(`${fileName} exceeds the decoded asset limit`);
+      const bytes = utf8Encoder.encode(complete);
+      hash.update(bytes);
+      yield bytes;
+    }
+    if (pending !== "") {
+      const bytes = utf8Encoder.encode(pending);
+      sourceLength += bytes.byteLength;
+      if (sourceLength > maxBytes) throw new Error(`${fileName} exceeds the decoded asset limit`);
+      hash.update(bytes);
+      yield bytes;
+    }
+  }
+  const compressed: Uint8Array[] = [];
+  // Backpressure bounds encoded input to the active stream buffers. No flushes
+  // between chunks: compression sees exactly the same byte sequence as one buffer.
+  await pipeline(Readable.from(encode()), createGzip(), async (output: AsyncIterable<unknown>) => {
+    for await (const chunk of output) {
+      if (!(chunk instanceof Uint8Array)) throw new Error("Unexpected gzip output");
+      compressed.push(chunk);
+    }
+  });
+  return { chunk: Buffer.concat(compressed), sourceLength, sourceHash: hash.digest("hex") };
 }
 
 export function decodeAssetPackManifest(input: Uint8Array): AssetPackManifest {

@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Use one public AWS inference relationship per model. On-demand and Batch are execution conditions; Standard/Priority/Flex, resolved speed, geography and routing qualify rates. Keep Converse, Sonic, invocation-log and Batch-manifest quantities on their own scoped variants. Guardrails, routing and grounding retain separate service books. AWS Price List product offers and SKUs are source identities, not Kmodels account contracts. Reserved and provisioned commitments remain excluded.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The Bedrock catalog represents public models and public rates that an AI Gateway can use to price an
@@ -64,12 +76,97 @@ informational Price List differs, so an exact page row may replace only the same
 The losing Price List amount remains informational evidence. Unequal observations within the same
 reviewed page retain equal authority and become a bounded canonical conflict; their order cannot
 select a winner.
-The Nova `Geo Cross-region inference and in-region` token tables also establish route scope.
-The optional [metered unit map](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrock/USD/current/bedrock.json)
-resolves their price tokens to native rate codes by billing Region. A Geo rate requires the same
-model, Region, tier, meter, native unit and amount in the Price List plus positive Runtime
-availability and the profile's own Source Region row. An exact join can keep both routes if
-both are documented. Unqualified SKUs without that join retain their existing interpretation.
+The Nova `Geo Cross-region inference and in-region` tables and Anthropic's owned
+`Geo and In-region Cross-region Inference` on-demand table establish shared route scope.
+Their optional [Bedrock](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrock/USD/current/bedrock.json)
+and [Foundation Models](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrockfoundationmodels/USD/current/bedrockfoundationmodels.json)
+metered unit maps resolve page tokens to exact native rate codes. Join by that code, not a region
+display name: AWS uses both `EU (Frankfurt)` and `Europe (Frankfurt)` for the same billing Region.
+The Anthropic table can reference separately published map names. Discover these names from that
+owned table instead of assuming all tokens use the default map. Acquisition is bounded to eight
+maps, four MiB each, under the reviewed AWS USD/current map origin; failures remain priced-source
+dependencies. Each token resolves only in its own map, with its exact `RegionlessRateCode`.
+The native SKU owns the billing Region. The join must also agree on model identity, tier, meter,
+native unit, amount, cache TTL and any explicitly qualified speed. A rate code can be published for
+multiple exact model labels without making their identities interchangeable. Nova's latency-optimized
+page suffix qualifies speed and requires the native optimized SKU; it is not another model.
+
+Geo applicability requires positive Runtime source-region evidence. Prefer the profile's own Source
+Region row. A sole published Geo ID within an AWS partition can use the card's Runtime Geo
+availability rows without discovering its destination topology. This requires a literal ID in the
+owned programmatic table and AWS's documented geography-prefix vocabulary; a guessed prefix or
+two competing profiles cannot establish the mapping. An explicitly present but malformed profile
+table never falls back to the overview. Destination Regions never establish billing applicability.
+Cards can also explicitly define their availability table as source Regions and name the geographic
+profile in prose, as Pegasus 1.5 does. Apply this evidence before
+excluding profile-only models that have no in-Region Runtime ID. Preserve a separate in-Region rate
+only where that exact model access and endpoint support it, including Mantle where documented.
+Keep unresolved source-region applicability as raw evidence instead of inventing an in-Region route.
+For models outside the owned Amazon/Anthropic tables, the current cross-Region guide's explicit
+comparison (`Geographic: Standard pricing`, separately from Global savings), together with its
+source-Region billing statement, establishes ordinary Standard geographic pricing. This policy
+qualifies otherwise unmarked Runtime SKUs independently of their billing unit, including per-image,
+per-second and embedding-request prices. It cannot override explicit in-Region labels,
+non-Standard tiers or a conflicting page join. GovCloud requires its own native regional quote
+and documented GovCloud profile; commercial prices cannot cross the partition boundary.
+The dedicated `US GovCloud CRIS` Source Region table takes precedence over the less specific
+overview's unsupported icons. Explicit regional EOL dates still exclude expired routes.
+Missing policy evidence withholds the SKU extension. Missing `geo` text or
+equal amounts alone never establish a shared tariff. Global discounts, Batch and reserved prices
+are not derived from this rule. Price context bounds still come from the native SKU and reviewed card;
+the page's `Long Context` label does not supply a numerical threshold.
+
+OpenAI model cards can nest short/long-context tables under a GovCloud heading. Retain the parent
+partition, child context bounds, endpoint, tier and cache TTL together. These explicit Geo prices
+do not depend on the generic Standard SKU policy. Duplicate headings preserve quoted amounts as
+raw evidence instead of admitting executable prices. Native SKU identity can also use the complete
+model name between the region prefix and meter suffix of a usage type. Keep variant and precision
+tokens (for example, Nemotron Nano 12B v2 VL BF16); an abbreviated display label alone cannot join it.
+
+The regression fixture covers Sonnet 5.5, Opus 4.6 and Haiku 4.5, including a synthetic catalog key
+whose literal Runtime request IDs are profiles. It checks AU/US/EU, both AU source Regions, cache TTLs,
+Global and Mantle, as well as mismatched evidence and missing source-region rows. Provider-wide
+migration checks compare every mapped ID before and after publication; a successful parser alone
+does not prove that retained canonical data or the website has adopted the correction.
+Meta Llama 4 Scout and Writer Palmyra X5 fixtures also exercise the Standard policy and its absence;
+map acquisition tests cover custom paths, deduplication, failed dependencies and the owned host.
+Residual-route fixtures cover all six GovCloud Nemotron/GPT-OSS IDs, Luna/Terra's nested GovCloud
+prices, GPT-5.4/5.5's single commercial Geo profile, and all five TwelveLabs Geo IDs listed below.
+They test numeric lookup and website projection, distinct context bands and units, expired source
+Regions, missing policy evidence, ambiguous profiles, duplicate sections and variant-name mismatches.
+`GetInferenceProfile` describes destination routing; it is not a prerequisite when the public card
+already determines the source Region and rate. The source limits below remain explicit.
+
+### Exact-ID evidence and remaining limits
+
+The following cases distinguish extraction coverage from missing route-specific public quotes.
+An amount for Mantle in-Region is not an amount for Runtime Geo or Global. The reviewed sources
+are each model's owned card, the current Bedrock pricing page and all three native Price List feeds.
+Absence here does not establish that AWS never charges for the route or that a private quote is absent.
+
+| Exact published IDs                                                                                                                                            | Price evidence and handling                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `us-gov.nvidia.nemotron-nano-3-30b`, `us-gov.nvidia.nemotron-super-3-120b`, `us-gov.nvidia.nemotron-nano-12b-v2`, `us-gov.nvidia.nemotron-nano-9b-v2`          | Native GovCloud Standard SKUs plus the dedicated GovCloud CRIS source-region table. The 12B model also requires the complete native usage-type name join; its abbreviated price-list label is insufficient.                                                                                                                         |
+| `us-gov.openai.gpt-oss-120b-1:0`, `us-gov.openai.gpt-oss-20b-1:0`                                                                                              | Native GovCloud Standard SKUs plus the dedicated GovCloud CRIS source-region table; commercial and Mantle rates remain separate.                                                                                                                                                                                                    |
+| `us-gov.openai.gpt-5.6-luna`, `us-gov.openai.gpt-5.6-terra`                                                                                                    | Explicit Geo rows under nested GovCloud short/long-context headings, including 30-minute cache writes.                                                                                                                                                                                                                              |
+| `us.openai.gpt-5.4`, `us.openai.gpt-5.5`                                                                                                                       | Native source-region Standard quotes and the sole commercial Geo ID in each card. Public Runtime availability establishes source Regions; authenticated destination discovery is unnecessary.                                                                                                                                       |
+| `us.twelvelabs.marengo-embed-3-0-v1:0`, `eu.twelvelabs.marengo-embed-3-0-v1:0`, `us.twelvelabs.marengo-embed-2-7-v1:0`, `eu.twelvelabs.marengo-embed-2-7-v1:0` | Native per-second, per-image and per-text-request quotes plus explicit profile source Regions. Geo pricing policy is independent of billing unit.                                                                                                                                                                                   |
+| `us.twelvelabs.pegasus-1-5-v1:0`                                                                                                                               | Native source-region quotes plus the card's named US profile and explicit source-region overview. The three destination Regions do not restrict the source list.                                                                                                                                                                    |
+| `cohere.rerank-v3-5:0`                                                                                                                                         | Prices exist, but the generic card's Runtime row conflicts with the Rerank operation's required `modelArn`. Do not publish this bare ID as a callable price mapping. The explicitly documented `arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0` remains mapped and priced; do not synthesize other regional ARNs. |
+| `us.anthropic.claude-3-haiku-20240307-v1:0`, `eu.anthropic.claude-3-haiku-20240307-v1:0`                                                                       | The relevant Geo routes reached EOL on 2026-09-10. Historical numeric quotes exist; they cannot authorize current source-region applicability.                                                                                                                                                                                      |
+| `global.openai.gpt-5.4`, `us-gov.openai.gpt-5.4`, `global.openai.gpt-5.5`                                                                                      | Reviewed public sources lack an applicable quote for these routes. Commercial Geo quotes do not establish Global prices; the GPT-5.4 GovCloud card row explicitly prices Mantle in-Region. Keep these unresolved.                                                                                                                   |
+| `us.openai.gpt-5.6-cyber`, `global.openai.gpt-5.6-cyber`, `us.openai.gpt-daybreak-blue-5.6-sol`, `global.openai.gpt-daybreak-blue-5.6-sol`                     | Cards publish route identifiers but their price tables contain only in-Region rows. The price page and native feeds supply no independently applicable Geo/Global quote. Keep these unresolved rather than copying Mantle amounts or deriving a Global discount.                                                                    |
+
+The relevant owned cards are [Claude 3 Haiku](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-3-haiku.html),
+[GPT-5.4](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html),
+[GPT-5.5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html),
+[GPT-5.6 Cyber](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-cyber.html)
+and [Daybreak Blue GPT-5.6 Sol](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-daybreak-blue-56-sol.html).
+For reranking, the [required modelArn field](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.html)
+and [Rerank usage guide](https://docs.aws.amazon.com/bedrock/latest/userguide/rerank-use.html) own request addressing.
+
+### Additional native price joins
+
 The Embed 4 reader accepts the current product-name-first Marketplace title only alongside its
 exact product heading and listing ID. A title-layout change cannot disable the authoritative
 product tariff while leaving conflicting bulk SKUs as the only visible current rates.
@@ -88,13 +185,13 @@ assembly together: equal amounts combine their evidence, while unequal overlappi
 bounded conflicts. A card does not silently override a native SKU. Kimi K3 publishes
 Global, US and India cross-Region input, output, 30-minute cache-write,
 and cache-read rates in its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html).
-The card's single 30-minute cache-write column names a billable token quantity. Bedrock documents
-minimum retention and shows explicit cache requests without a TTL argument in its
-[Kimi K3 launch example](https://aws.amazon.com/blogs/machine-learning/introducing-kimi-k3-on-amazon-bedrock/).
-When the card and
-normalized rates identify only that duration, extraction binds cache writes to the named 30-minute
-quantity and omits TTL from rate applicability. Other models retain evidenced duration selectors.
-The existing Bedrock quantity signal identifies the tariff without claiming an acquisition method.
+The card's single 30-minute cache-write column establishes a fixed 1800-second rate condition.
+Keep that predicate even when the runtime API has no configurable TTL. Display a proven single
+value as a readonly field in the same layout as selectable conditions. Other exact durations
+likewise remain variants of `cache_write_text`. Consumers can query each duration independently.
+Known `cacheDetails` mappings remain optional metadata; unsupported durations must not borrow an
+aggregate counter or lose a known price.
+
 These card rows are scoped to Bedrock Runtime, the published geography, and Standard tier. Named
 CRIS price rows use the reviewed Bedrock geography vocabulary and require a matching profile alias
 on the card. Unqualified `Geo CRIS` requires one evidenced alias geography. Unknown row labels and
@@ -236,7 +333,7 @@ Region/scope claims remain rejected.
 
 ### Inference model ID pricing
 
-The direct association reader joins literal request IDs to canonical `on-demand` offers.
+The direct association reader joins literal request IDs to the public relationship through exact `on-demand` source-context predicates.
 It reads each model card's Programmatic Access table and its explicit request-ID statement.
 It does not require API request syntax, capability matrices, protocol selection, or account-resource
 configuration. The catalog display, aliases, name comparison, and downstream Kong compatibility
@@ -262,7 +359,7 @@ The request Region remains a separate caller-supplied price condition. For profi
 prices, this interpretation requires the [cross-Region guide](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.md)
 statement that billing uses the Region from which the profile is called. Routing geography is
 not a physical residency guarantee; the reader does not infer execution locations.
-Context length, cache TTL, served service tier and priced operation remain ordinary commercial
+Context length, served service tier and priced operation remain ordinary commercial
 conditions. Requested tier is not substituted for served tier.
 
 The [Rerank model configuration](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md)
@@ -310,8 +407,7 @@ a separately authorized refresh.
 
 ## Rate normalization
 
-A model book contains separate on-demand and batch offers. Batch is removed from the service-tier
-dimension after it becomes the offer mechanism. Standard, Priority, Flex, resolved speed, Region,
+A model book combines on-demand and Batch tariff contexts under one public relationship. Batch is an execution condition; source tier labels remain evidence. Standard, Priority, Flex, resolved speed, Region,
 routing scope, cache behavior, and context thresholds remain ordinary applicability dimensions.
 
 Native Global token SKUs ending in `input-tokens-cross-region-global`,
@@ -440,7 +536,7 @@ counters cannot supply it. Related media prices in overlapping currency, applica
 execution mechanism can also withhold an unproved aggregate acquisition path; they do not change
 an unqualified quote's quantity into text-only usage. Disjoint modality quotes do not affect its
 acquisition. Cache-dependent invocation-log eligibility uses the same tariff scopes,
-rather than another Region, currency or Batch offer's cache policy. Rates survive these acquisition
+rather than another Region, currency or Batch branch's cache policy. Rates survive these acquisition
 gaps; consumers can supply exact billable partitions themselves.
 
 For independently owned Sonic models on the Runtime bidirectional API, each `usageEvent` supplies

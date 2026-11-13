@@ -75,11 +75,14 @@ an independently reviewed provider pricing rule explains why it is necessary to 
 
 Input is `provider_id`, `model_id`, optional `choices`, exact native `selectors`, `evaluated_at`,
 and an optional `offer_ref`. A choice is `{ dimension, value }`, where values use the existing
-canonical/provider categorical atom shape. Registered dimensions are execution, billing mode,
+canonical/provider categorical atom shape. Registered dimensions are account plan, execution, billing mode,
 resource kind, service tier, requested service tier, served service tier and speed.
 
 The result exposes `available_choices`, `missing_choices` and `unresolved_choices`, together with
-native missing conditions and exact candidate selectors. Available choices are probed under the
+native missing conditions and exact candidate selectors. Each choice exposes its book, offer or
+condition ownership in `targets`. Account plan identifies a separately evidenced agreement;
+execution and actual tier select conditional rates inside it. Model IDs never establish account
+enrollment. Available choices are probed under the
 other current choices and native constraints; they are not a Cartesian product. Only the chosen
 value's native binding is filled in. Context such as region or context length stays unresolved
 until supplied; it is never guessed from the source row used to normalize a tier.
@@ -89,25 +92,25 @@ compatibility conveniences; current storage uses `offer.selection` and root `off
 
 `createCommercialPriceLookup` uses the same matching implementation for either
 `{ kind: "model", provider_id, model_id }` or `{ kind: "resource", provider_id, book_ref }` subjects.
-A resource subject identifies a charge family, not a fabricated model ID. Applicable `requires`,
-`incurs`, compatibility and exclusion relationships remain on returned offers. They identify other
-components; the caller still supplies those components and quantities to exact calculation.
-No lookup silently drops an additive charge or treats unrelated services as competing plans.
+A resource subject identifies a price family, not a fabricated model ID. Without a `meter`, lookup
+returns the applicable schedule and its relationships. With a `meter`, both lookup APIs resolve
+only that meter's rates and required conditions. Unrelated terms and service relationships do not
+create dependencies. Unclassified raw evidence remains conservatively relevant because its meter
+is unknown. An unknown meter is not a zero price.
 
-Original IDs remain exact calculation and evidence references. An unrelated offer reference cannot
-disambiguate conflicting model identities. Lookup never consults an invocation graph or executes a
-request. Exact calculation remains responsible for quantities, aggregation and totals.
+Original IDs remain evidence references. An unrelated offer reference cannot disambiguate conflicting
+model identities. Lookup requires no billable quantities and performs no total-cost aggregation.
+Consumers may invoke it separately for different conditions within the same request.
 
 Return the original query, evidence status and all surviving commercial candidates:
 
 - `matched`: the mapping and supplied conditions establish applicability for the returned prices.
-  Several meters or additive charges may apply; this does not promise one scalar price or a complete
-  monetary total without billable quantities.
+  Without a meter filter, several meters may be returned. This is a price schedule, not a monetary total.
 - `candidates`: evidenced price rules remain possible, but additional commercial conditions or an
   explicit commercial offer choice are needed. Return the candidates with their applicability and
   missing conditions. Published numeric rates with imprecise validity remain visible as candidates
   with an `unresolved_validity` gap. Their original validity labels accompany the amounts, and the
-  calculator still requires an exact effective time. Do not collapse them into a quote or select an
+  lookup still reports the unresolved effective time. Do not collapse them into a quote or select an
   arbitrary representative.
 - `unknown`: no reliable mapping or usable price evidence establishes an answer. Include the reason,
   such as unreviewed ID, ambiguous identity, withdrawn mapping evidence or unresolved raw pricing.
@@ -124,33 +127,35 @@ never defaults to `request`; a known unsupported mode returns `no_applicable_pri
 The last two reasons display **No applicable prices**, separately from **Price mapping unknown**.
 They describe the available snapshot, not provider support or account eligibility. Preserve
 association evidence even when conditions exclude every candidate. Region, endpoint/API,
-context length, cache TTL, quality, speed or service tier belongs in the query only if the provider's
+context length, retention policy, quality, speed or service tier belongs in the query only if the provider's
 commercial evidence makes it relevant. Preserve existing validity, conflict and freshness semantics.
-Equal visible amounts alone do not erase different commercial conditions or accounting rules.
+Equal visible amounts alone do not erase different commercial conditions. Optional accounting
+bindings do not make otherwise equivalent unit-price quotes conflict.
+
+Exact cache-write TTL columns qualify variants of the same meter. Selecting geography must retain
+TTL when the surviving cache-write variants require it. Input/output-only lookup must not require
+cache-write TTL. Numeric states summarize coverage; rate variants own condition dependencies.
+Non-numeric and raw scopes retain their own uncertainty. An absent selector never proves that a
+provider does not support caching.
 
 Observed charge selectors remain observed: a requested route does not establish the served tier.
 The matcher can report the missing commercial value and its reviewed acquisition source without
 requiring a full protocol model. Never use an arbitrary model row to attach a provider-wide fee.
 
-## Runtime handoff
+## Runtime queries
 
-Lookup returns the calculation `snapshot` identity and canonical `evaluated_at` even for an unknown
-ID. Evaluation time accepts the same RFC 3339 input as the calculator, normalizes offsets to UTC
-without losing sub-millisecond precision, and defaults to the snapshot generation time when omitted.
-The original query remains unchanged. Each candidate includes its owning `book_ref`, selected
-`offer` with applicable terms/variants, referenced contribution
-rates, effective `selectors`, mapping evidence and remaining gaps. Effective selectors include both
-ID-fixed and caller-supplied values. Preserve them when passing `offer.id` to calculator discovery
-or calculation; passing only the original query selectors would lose the conditions fixed by the ID.
+Lookup returns snapshot identity and canonical `evaluated_at` even for an unknown ID. Evaluation
+time accepts RFC 3339, normalizes offsets to UTC without losing fractional precision, and defaults
+to the snapshot generation time. The original query remains unchanged. Each candidate includes its
+owning `book_ref`, selected offer with applicable terms/variants, referenced contribution rates,
+effective selectors, mapping evidence and remaining gaps. Effective selectors include both
+ID-fixed and caller-supplied facts.
 
-Initialize lookup and calculator from the same complete calculation export and its bound mapping.
-The application supplies the request's evaluation instant to lookup and passes the returned
-`evaluated_at` to calculation. It resolves offer choices and missing pricing conditions before
-treating candidates as applicable prices, then
-supplies separately observed billable quantities. A matched mapping is not a complete cost result.
-The application replaces lookup and calculator together after validating a refreshed pair and may
-retain the snapshot identity with its request accounting record. No second price store, universal
-invocation registry, account discovery or model-name resolution is required for this handoff.
+Initialize lookup from a complete portable price-data export and its bound mapping. Resolve missing
+pricing conditions before treating candidates as applicable unit prices. Query different groups
+of usage independently when their conditions differ. No billable quantity or cost component is
+supplied. Replace price data and mapping together; consumers may retain the returned snapshot
+identity for their own accounting. There is no request ledger or cost evaluator in Kmodels.
 
 ## Provider evidence requirements
 
@@ -162,6 +167,11 @@ or geographic information, unknown mappings, and known conditions excluding all 
 TypeSafe's model/alias tables establish direct request identifiers. Bedrock's published profile IDs
 must be joined to separately evidenced commercial scope and source-Region tariffs. OpenAI served
 tier and Anthropic served speed/geography remain observed commercial inputs.
+For a literal Bedrock Geo ID that is unambiguous within its AWS partition, the card's Runtime
+availability can establish source Regions without fetching destination topology. Multiple Geo
+profiles still require profile-specific scope, and malformed explicit evidence cannot fall back to
+a broader overview. Request-field authority also matters: the Rerank API's required `modelArn`
+supersedes a generic model-card Runtime template; a bare model ID must not masquerade as that ARN.
 
 Identity and price evidence may come from different official sources. Provider parsers emit direct
 ID/offer-key facts, and assembly resolves those keys against canonical offers for the evidenced
@@ -188,7 +198,8 @@ record's catalog ID. Catalog aliases remain searchable and available in the cata
 
 The matcher retains candidate rates for programmatic resolution. The inspector uses the sole
 published categorical or exact decimal value for a required condition when it agrees with the
-remaining candidates' fixed selectors. The applied value appears beside the rates as context.
+remaining candidates' fixed selectors. The applied value appears as a read-only field in the same
+condition grid as editable inputs.
 The inspector prompts for any remaining choices before displaying rates and explains unresolved
 evidence after those choices are complete. Unknown mappings are labeled unknown. Condition controls
 offer published values that the shared matcher can still consider for the selected ID, pricing
@@ -197,10 +208,20 @@ the remaining prices. Explicit user selections remain visible and editable. If a
 excludes every price, the controls remain available so the viewer can revise their inputs.
 Switching a tier can reveal its newly required conditions without a separate invocation
 configuration step.
-Commercial controls use shared labels such as Ordinary request, Batch, Live session and Served
-speed. A sole fully classified execution/billing/resource value appears as context; scoped rate
-qualifiers remain explicit choices. Residual offer ambiguity uses the existing offer picker.
-Changing execution clears the selected offer and dependent condition inputs.
+Commercial controls use shared labels such as Request, Batch, Realtime and Served
+speed. A sole canonical condition value is applied automatically only when its mapped scope covers
+all remaining price contexts. Sharing one offer ID is insufficient: a speed specific to Request
+must not eliminate Batch before the viewer chooses the request mode.
+Inferred values are derived afresh from explicit choices, so a changed plan or request mode can
+restore alternatives. Fixed and editable conditions share the same label-above-value layout;
+fixed values have a subtle background and no dropdown arrow. Multiple scoped
+rate qualifier values remain explicit choices and share one Usage conditions fieldset and grid with native
+selectors such as context and endpoint. Canonical mapping does not create a separate UI category.
+Account-plan choices remain in Plan. Residual offer ambiguity uses the existing offer picker only
+when no canonical account-plan control exists. Changing execution preserves the account plan and
+clears the selected offer and dependent condition inputs. Changing the account plan clears dependent
+execution and tier selections. Account-plan alternatives remain available across usage filters;
+execution alternatives remain available within the selected account plan.
 When a model has no verified ID association, preserve its ordinary catalog prices and explicitly
 state that those prices are not verified for the requested inference ID.
 Known associations with no applicable price do not fall back to unfiltered catalog rates.
@@ -212,13 +233,21 @@ templates are outside this lookup UI.
 
 ## Compatibility and implementation limits
 
-Preserve existing catalog identities, v1 catalog/pricing payloads, calculation schemas and exact
-arithmetic. The independent `createInferencePriceLookup` is additive; it does not replace the original
-calculator. The mapping is `/pricing/inference.json`, not a second price-book format.
+Canonical catalog identities and audit payloads remain independent of the portable package.
+The unit-price package uses schema `2.0`; retired calculator inputs are unsupported. The mapping is
+`/pricing/inference.json`, not a second price-book format.
 
 When present, its hash participates in the existing accepted-pair identity, recovery journal and
 UI data version. Without a mapping, legacy pair identities and canonical payloads remain unchanged.
 The optional `data/inference-pricing.json` mirror is recovered from the same accepted transaction.
+
+Pair preparation validates the complete mapping's schema, evidence, snapshot identity and
+commercial-selection equality/completeness before checking provider lookups. Each lookup receives
+only selections for offers in its complete price-data partition, including unmapped offers.
+This avoids repeatedly schema-cloning other providers' selections. Global checks still reject
+missing, duplicate, unknown or mismatched selections, including for providers without ID rules.
+The published mapping remains complete. Public lookup input isolation and independent price-data
+schema/semantic validation remain unchanged; producer validation does not replace consumer checks.
 
 Website publication validates mappings through the public lookup and emits compact ID/candidate
 references plus the matching conditions. The public lookup and interactive website execute the same

@@ -1,3 +1,4 @@
+import { offerContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
@@ -118,9 +119,9 @@ describe("Vertex native grounding contracts", () => {
     const partition = assemble(parsed);
     expect(allowances(partition)).toHaveLength(5);
     const flash = partition.books
-      .flatMap(({ offers }) => offers)
-      .find(({ offer_key }) => offer_key === "allowance:google-search-flash-daily");
-    expect(flash?.model_refs).toEqual([
+      .flatMap(({ offers }) => offers.flatMap(offerContexts))
+      .find(({ context_key }) => context_key === "allowance:google-search-flash-daily");
+    expect(flash?.context_model_refs).toEqual([
       "vertex/gemini-2.0-flash",
       "vertex/gemini-2.5-flash",
       "vertex/gemini-2.5-flash-lite",
@@ -272,7 +273,9 @@ describe("Vertex native grounding contracts", () => {
     expect(parsed.models).toEqual([]);
     const partition = assemble(parsed);
     const maps = partition.books.find(({ book_key }) => book_key === "service:google-maps");
-    const affected = maps?.offers.filter(({ offer_key }) => offer_key.includes("gemini-3-"));
+    const affected = maps?.offers
+      .flatMap(offerContexts)
+      .filter(({ context_key }) => context_key.includes("gemini-3-"));
     expect(affected).toHaveLength(2);
     for (const offer of affected ?? []) {
       expect(offer.terms.some((term) => term.kind === "rate" && term.variants.length > 0)).toBe(
@@ -295,7 +298,8 @@ describe("Vertex native grounding contracts", () => {
     );
     const maps = partition.books.find(({ book_key }) => book_key === "service:google-maps");
     const rates = maps?.offers
-      .filter(({ offer_key }) => offer_key.includes("gemini-3-"))
+      .flatMap(offerContexts)
+      .filter(({ context_key }) => context_key.includes("gemini-3-"))
       .flatMap(({ terms }) => terms.filter((term) => term.kind === "rate"));
     expect(rates?.flatMap(({ variants }) => variants.map(({ price }) => price.per))).toEqual([
       { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },

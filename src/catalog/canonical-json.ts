@@ -1,24 +1,33 @@
-import { parse, printParseErrorCode, visit, type ParseError } from "jsonc-parser";
+import type { FileHandle } from "node:fs/promises";
+import { printParseErrorCode, visit, type ParseError } from "jsonc-parser";
 import { assertIJsonValue, canonicalJsonBytes } from "./canonical-value.ts";
 import { sha256 } from "./io.ts";
 
 export { canonicalJson, canonicalJsonBytes } from "./canonical-value.ts";
 
 export function parseIJson(input: Uint8Array, maxBytes: number): unknown {
+  return parseIJsonText(decodeIJsonText(input, maxBytes));
+}
+
+function decodeIJsonText(input: Uint8Array, maxBytes: number): string {
   if (input.byteLength > maxBytes) throw new Error(`JSON input exceeds the ${maxBytes}-byte limit`);
+  return new TextDecoder("utf-8", { fatal: true }).decode(input);
+}
 
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(input);
-  rejectDuplicateMembers(text);
+// The caller owns a newly opened handle. Resume with only decoded text, so the
+// complete byte buffer is no longer retained while parsing and validating the graph.
+export async function readIJson(file: FileHandle, maxBytes: number): Promise<unknown> {
+  if ((await file.stat()).size > maxBytes)
+    throw new Error(`JSON input exceeds the ${maxBytes}-byte limit`);
+  const text = await file.readFile().then((input) => decodeIJsonText(input, maxBytes));
+  return parseIJsonText(text);
+}
 
-  const errors: ParseError[] = [];
-  const value: unknown = parse(text, errors, {
-    allowEmptyContent: false,
-    allowTrailingComma: false,
-    disallowComments: true,
-  });
-  const error = errors[0];
-  if (error !== undefined)
-    throw new Error(`Invalid JSON at offset ${error.offset}: ${printParseErrorCode(error.error)}`);
+function parseIJsonText(text: string): unknown {
+  validateJsonText(text);
+  // The visitor checks syntax and duplicate decoded keys without constructing a
+  // graph. Let the native parser build the one graph consumed by validation.
+  const value: unknown = JSON.parse(text);
 
   assertIJsonValue(value);
   return value;
@@ -36,9 +45,10 @@ export function assertCanonicalJson(input: Uint8Array, maxBytes: number): unknow
   return value;
 }
 
-function rejectDuplicateMembers(text: string): void {
+function validateJsonText(text: string): void {
   const members: Array<Set<string>> = [];
   let duplicate: string | undefined;
+  let firstError: ParseError | undefined;
   visit(
     text,
     {
@@ -53,8 +63,15 @@ function rejectDuplicateMembers(text: string): void {
       onObjectEnd() {
         members.pop();
       },
+      onError(error, offset, length) {
+        firstError ??= { error, offset, length };
+      },
     },
-    { allowTrailingComma: false, disallowComments: true },
+    { allowEmptyContent: false, allowTrailingComma: false, disallowComments: true },
   );
   if (duplicate !== undefined) throw new Error(`Duplicate JSON member: ${duplicate}`);
+  if (firstError !== undefined)
+    throw new Error(
+      `Invalid JSON at offset ${firstError.offset}: ${printParseErrorCode(firstError.error)}`,
+    );
 }

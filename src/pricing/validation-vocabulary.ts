@@ -15,16 +15,16 @@ import {
   type UnitExpression,
   type UsageSignal,
 } from "../catalog/pricing-schema.ts";
-import type { CalculationProvider, CalculationRate } from "./schema.ts";
+import type { PriceDataProvider, PriceDataRate } from "./schema.ts";
 import { PricingError } from "./errors.ts";
 
 interface VocabularyContext {
-  provider: CalculationProvider;
+  provider: PriceDataProvider;
   sourceIds: Set<string>;
   dimensionShapes: Map<string, string>;
 }
 
-export function validateProviderProperties(provider: CalculationProvider): void {
+export function validateProviderProperties(provider: PriceDataProvider): void {
   const context: VocabularyContext = {
     provider,
     sourceIds: new Set(provider.sources.map((source) => source.id)),
@@ -110,7 +110,7 @@ function validateApplicability(value: unknown, context: VocabularyContext): void
   }
 }
 
-export function validateCondition(condition: PriceCondition, provider: CalculationProvider): void {
+export function validateCondition(condition: PriceCondition, provider: PriceDataProvider): void {
   const dimension = condition.dimension;
   validateAtom(dimension, "dimension", provider);
   if (dimension.namespace === "kmodels") validateStandardCondition(condition, dimension.value);
@@ -120,10 +120,7 @@ export function validateCondition(condition: PriceCondition, provider: Calculati
   }
 }
 
-export function validateSelectorSources(
-  rate: CalculationRate,
-  provider: CalculationProvider,
-): void {
+export function validateSelectorSources(rate: PriceDataRate, provider: PriceDataProvider): void {
   for (const source of rate.selector_sources ?? []) {
     const dimensionKey = canonicalJson(source.dimension);
     const conditions = rate.applicability.any_of.flatMap(({ all_of }) =>
@@ -172,7 +169,7 @@ function validateStandardCondition(
 function validateCategoricalValue(
   value: PriceCategoricalValue,
   dimension: PriceDimension,
-  provider: CalculationProvider,
+  provider: PriceDataProvider,
 ): void {
   if (dimension.namespace === "kmodels" && dimension.value === "model") {
     if (
@@ -180,6 +177,11 @@ function validateCategoricalValue(
       !provider.models.some((model) => model.model_ref === value.value)
     )
       throw new Error("Missing model selector reference");
+    return;
+  }
+  if (dimension.namespace === "kmodels" && dimension.value === "execution") {
+    if (value.namespace !== "kmodels" || !["request", "batch", "realtime"].includes(value.value))
+      throw new Error("Invalid canonical execution condition");
     return;
   }
   if (value.namespace !== "provider" || value.provider_id !== provider.snapshot.provider_id)
@@ -193,7 +195,7 @@ function validateCategoricalValue(
   if (!registered) throw new Error("Unregistered categorical value");
 }
 
-function validateAtom(value: unknown, kind: string, provider: CalculationProvider): void {
+function validateAtom(value: unknown, kind: string, provider: PriceDataProvider): void {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -209,7 +211,7 @@ function validateAtom(value: unknown, kind: string, provider: CalculationProvide
   if (!belongsToProvider || !registered) throw new Error(`Unregistered ${kind}`);
 }
 
-function validateCreditDenomination(value: unknown, provider: CalculationProvider): void {
+function validateCreditDenomination(value: unknown, provider: PriceDataProvider): void {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -227,15 +229,15 @@ function validateCreditDenomination(value: unknown, provider: CalculationProvide
   if (!belongsToProvider || !registered) throw new Error("Unregistered credit denomination");
 }
 
-export function signalUnit(signal: UsageSignal, provider: CalculationProvider): UnitExpression {
+export function signalUnit(signal: UsageSignal, provider: PriceDataProvider): UnitExpression {
   if (signal.namespace === "kmodels") return standardUsageSignalUnit(signal);
   if (signal.provider_id !== provider.snapshot.provider_id)
-    throw new PricingError("INCOMPATIBLE_QUANTITY", "Usage signal belongs to another provider");
+    throw new PricingError("INVALID_DATA", "Usage signal belongs to another provider");
   const atom = provider.vocabulary.atoms.find(
     (atom) => atom.kind === "usage_signal" && atom.key === signal.value,
   );
   if (atom?.kind !== "usage_signal")
-    throw new PricingError("INCOMPATIBLE_QUANTITY", "Unregistered usage signal");
+    throw new PricingError("INVALID_DATA", "Unregistered usage signal");
   return atom.unit;
 }
 

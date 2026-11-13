@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { commercialChoiceSchema } from "../catalog/pricing-schema.ts";
+import { commercialChoiceSchema, priceMeterSchema } from "../catalog/pricing-schema.ts";
 import { createInferencePriceLookup, selectedTerm } from "./inference.ts";
 import { inferencePriceMappingSchema } from "./inference-schema.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
 import { matchInferencePrices } from "./inference-matching.ts";
 import { createPricingSnapshot } from "./snapshot.ts";
-import { calculationRequestSchema, selectorSchema } from "./schema.ts";
+import { evaluationTimeSchema, selectorSchema } from "./schema.ts";
 import { parseEvaluationTime, parseRequest, validateSelectorVocabulary } from "./request.ts";
 import { PricingError } from "./errors.ts";
 
@@ -22,17 +22,18 @@ export const commercialPriceQuerySchema = z.strictObject({
       book_ref: z.string().regex(/^[0-9a-f]{64}$/),
     }),
   ]),
-  choices: z.array(commercialChoiceSchema).max(7).default([]),
+  choices: z.array(commercialChoiceSchema).max(8).default([]),
+  meter: priceMeterSchema.optional(),
   selectors: z.array(selectorSchema).max(128).default([]),
   offer_ref: z
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .optional(),
-  evaluated_at: calculationRequestSchema.shape.evaluatedAt.optional(),
+  evaluated_at: evaluationTimeSchema.optional(),
 });
 export type CommercialPriceQuery = z.input<typeof commercialPriceQuerySchema>;
 
-/** Subjects select a charge family; related services remain separate calculation components. */
+/** Resolve unit prices for a model or resource; no usage quantities or cost aggregation. */
 export function createCommercialPriceLookup(priceData: unknown, mappingData: unknown) {
   const inference = createInferencePriceLookup(priceData, mappingData);
   const snapshot = createPricingSnapshot(priceData);
@@ -66,6 +67,7 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
       snapshot,
       [{ offer_refs: book.offers.map(({ id }) => id), fixed_selectors: [] }],
       mapping.offer_selections,
+      query.meter,
     );
     const matched = matchInferencePrices(
       matching,

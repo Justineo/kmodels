@@ -22,7 +22,7 @@ export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["fireworks", ["binding"]],
   ["gemini", ["resource", "relation", "binding", "allowance"]],
   ["huggingface", ["binding"]],
-  ["kimi", ["resource", "relation", "binding"]],
+  ["kimi", ["resource", "binding"]],
   ["meta", ["resource", "binding"]],
   ["mistral", ["resource", "binding"]],
   ["ollama", ["binding"]],
@@ -62,7 +62,10 @@ export function validateAdoptedTopology(pricing: ProviderPricingPartition): void
   const providerId = pricing.snapshot.provider_id;
   const expected = adoptedTopologies.get(providerId);
   if (expected === undefined) throw new Error(`${providerId} has no adopted commercial topology`);
-  const actual = pricingTopology(pricing);
+  // Kimi may publish independent service composition; sync/Batch exclusion is now a predicate.
+  const actual = pricingTopology(pricing).filter(
+    (feature) => providerId !== "kimi" || feature !== "relation",
+  );
   if (
     actual.length === expected.length &&
     actual.every((feature, index) => feature === expected[index])

@@ -161,8 +161,28 @@ export function matchInferencePrices(
             item.dimension === choice.dimension &&
             canonicalJson(item.value) === canonicalJson(choice.value),
         );
-        if (previous === undefined) result.available_choices.push({ ...choice, offer_refs: [ref] });
-        else if (!previous.offer_refs.includes(ref)) previous.offer_refs.push(ref);
+        const targets = [
+          ...new Set(
+            (offer.selection ?? []).flatMap((claim) =>
+              claim.dimension === choice.dimension &&
+              claim.target !== undefined &&
+              claim.alternatives.some((a) => canonicalJson(a.value) === canonicalJson(choice.value))
+                ? [claim.target]
+                : [],
+            ),
+          ),
+        ];
+        if (previous === undefined)
+          result.available_choices.push({
+            ...choice,
+            offer_refs: [ref],
+            ...(targets.length ? { targets } : {}),
+          });
+        else {
+          if (!previous.offer_refs.includes(ref)) previous.offer_refs.push(ref);
+          if (targets.length)
+            previous.targets = [...new Set([...(previous.targets ?? []), ...targets])];
+        }
         if (
           choice.dimension === "execution" &&
           choice.value.namespace === "kmodels" &&
@@ -323,6 +343,13 @@ function selectOffer(
     let competingSemantics = false;
     const indexes: number[] = [];
     for (const [index, variant] of variants.entries()) {
+      // Numeric states summarize price coverage. The selected rate variants own their
+      // conditions; a summary of other meters must not add dependencies to this query.
+      const needsConditions = !(
+        "state" in variant &&
+        variant.state === "numeric" &&
+        offer.terms.some(({ kind }) => kind === "rate")
+      );
       const match = evaluateApplicability(variant.applicability, selectors);
       if (match.state === "false") continue;
       const gap = validityGap(variant, evaluatedAt, data.observed_at);
@@ -330,7 +357,7 @@ function selectOffer(
         if (gap === "outside_validity") outsideValidity = true;
         else candidate.gaps.push({ offerRef, ...(termRef ? { termRef } : {}), code: gap });
         if (retainUnresolvedRates && gap === "unresolved_validity") {
-          candidate.missing_conditions.push(...match.missing_dimensions);
+          if (needsConditions) candidate.missing_conditions.push(...match.missing_dimensions);
           indexes.push(index);
         }
         continue;
@@ -338,7 +365,7 @@ function selectOffer(
       if (match.state === "true") matchedCount += 1;
       firstSemantics ??= variant.semantics;
       competingSemantics ||= variant.semantics !== firstSemantics;
-      candidate.missing_conditions.push(...match.missing_dimensions);
+      if (needsConditions) candidate.missing_conditions.push(...match.missing_dimensions);
       indexes.push(index);
     }
     if (indexes.length === 0 && outsideValidity)

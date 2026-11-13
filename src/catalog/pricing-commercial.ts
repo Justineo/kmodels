@@ -1,6 +1,6 @@
 import { canonicalJson } from "./canonical-json.ts";
 import { compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
-import { requiredUsageSignals } from "./pricing-calculation.ts";
+import { requiredUsageSignals } from "./pricing-quantity-contract.ts";
 import type {
   ChargeBinding,
   PriceApplicability,

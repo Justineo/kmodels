@@ -14,7 +14,7 @@ const instant = z.string().refine(isCanonicalInstant);
 const qualified = {
   applicability: priceApplicabilitySchema,
   validity: publishedValiditySchema.optional(),
-  // Local equivalence classes preserve accounting conflicts without copying prices or evidence.
+  // Local equivalence classes preserve price conflicts without copying prices or evidence.
   semantics: z.number().int().nonnegative(),
 };
 const variant = z.strictObject({

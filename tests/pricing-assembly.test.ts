@@ -630,4 +630,54 @@ describe("provider precompaction book budget", () => {
       assembleProviderPricing(gatewaySource(pricingLimits.booksPerProvider + 1)),
     ).toThrow("Provider precompaction resource limit exceeded");
   });
+
+  it.each([
+    ["offersPerProvider", 1],
+    ["termsPerProvider", 1],
+    ["variantsPerProvider", 2],
+    ["observationsPerProvider", 2],
+  ] as const)("preserves the %s admission boundary", (key, count) => {
+    const original = pricingLimits[key];
+    try {
+      Reflect.set(pricingLimits, key, count);
+      expect(() => assembleProviderPricing(gatewaySource(1))).not.toThrow();
+      Reflect.set(pricingLimits, key, count - 1);
+      expect(() => assembleProviderPricing(gatewaySource(1))).toThrow(
+        "Provider precompaction resource limit exceeded",
+      );
+    } finally {
+      Reflect.set(pricingLimits, key, original);
+    }
+  });
+
+  it("rejects invalid Unicode before measuring ordinary JSON", () => {
+    const source = gatewaySource(1);
+    const book = source.books[0];
+    if (book === undefined) throw new Error("Missing test book");
+    book.name = "\ud800";
+    expect(() => assembleProviderPricing(source)).toThrow("lone surrogate");
+  });
+
+  // Byte boundaries captured from the original full canonical projection. Include
+  // empty arrays, separators across books, reordered atoms, escaping and UTF-8.
+  it.each([
+    [0, 629],
+    [1, 2274],
+    [2, 3874],
+  ])("preserves the exact byte boundary for %i books", (books, bytes) => {
+    const source = gatewaySource(books);
+    source.vocabulary.atoms.reverse();
+    if (source.books[0]) source.books[0].name = 'Unicode: 日本語 🎯; escaped: "\\\n';
+    const original = pricingLimits.providerPrecompactionBytes;
+    try {
+      Reflect.set(pricingLimits, "providerPrecompactionBytes", bytes);
+      expect(() => assembleProviderPricing(source)).not.toThrow();
+      Reflect.set(pricingLimits, "providerPrecompactionBytes", bytes - 1);
+      expect(() => assembleProviderPricing(source)).toThrow(
+        "Provider precompaction byte limit exceeded",
+      );
+    } finally {
+      Reflect.set(pricingLimits, "providerPrecompactionBytes", original);
+    }
+  });
 });

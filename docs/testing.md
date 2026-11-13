@@ -91,7 +91,7 @@ after each test, including failures.
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.
 - Keep equal-price accounting contracts scoped through assembly: different signals, formulas, or
   mappings must survive, and an unbound scope must not inherit a sibling's binding. Drift tests
-  preserve independently known calculations and partial input mappings, while quantity evaluation
+  preserve independently known calculations and partial input mappings, while graph validation
   still reports every missing signal.
 - Treat projection closure and interaction budgets as behavior: shared resource books must not leak
   sibling-model offers, every provider pricing row must expose readable applicability, model-detail
@@ -108,7 +108,7 @@ after each test, including failures.
   Changes to service discovery must also exercise the model inspector's real disclosure, deferred
   resource and offer loading, currency selection and current/upcoming rates in the browser. Check
   note grouping against complete offer coverage and partial or unknown scopes; keep canonical facts
-  intact. A completion claim distinguishes data/calculator support from a reachable UI flow.
+  intact. A completion claim distinguishes data/lookup support from a reachable UI flow.
 - Unification requires a common interaction path as well as common rate objects. Exercise a model-linked
   service and an independent provider service through the same other-charges disclosure and offer-card
   renderer. Preserve exact model/mechanism scope while checking deduplication, bounded offer loading,
@@ -124,6 +124,77 @@ after each test, including failures.
   and malformed owned semantics must reject the complete provider candidate.
 
 ## Required validation
+
+For read-only offline performance comparisons, run `vp node scripts/benchmark-catalog.ts`
+in a fresh process against the same hydrated snapshot and runtime. It measures pair reading
+and validation, replay-input validation, compilation/preparation, and projection/packing;
+it never publishes data or fetches provider sources. Results include replayed and preserved
+providers, pair identity, pack/manifest hashes, output sizes, CPU time and memory observations.
+It also reports reference reuse for the pricing graph and books. An unchanged replay measures
+the equal-value reuse path; changed-price and changed-evidence controls are required before
+generalizing its memory or latency gains to refreshes that replace pricing content.
+Compare hashes before interpreting timing improvements. Repeat samples sequentially and report
+their spread; do not run tests or other benchmarks concurrently. `process_max_rss_bytes` is
+the process high-water mark including worker threads, while heap/Buffer measurements are
+end-of-stage observations for the main thread. Neither is a per-stage allocation counter.
+Network acquisition, source parsing and browser interaction need separate measurements; this
+benchmark starts with accepted parsed inputs and cannot establish those costs.
+
+Use `vp node scripts/benchmark-publication.ts` to measure cold mirror reads, actual projection
+and snapshot commit, and accepted-snapshot recovery in a fresh process. Commit and recovery
+always receive explicit paths in a temporary directory that is removed afterward; the script
+never changes the checked-in snapshot or default journal. It records every committed file's
+hash and size, provider coverage, recovered identity, stage time/CPU and process high-water
+RSS. It releases the original candidate before recovery and hashes files with bounded streams
+to avoid adding a measurement-only full-buffer allocation. The commit stage includes projection
+work, not just filesystem writes; RSS high-water marks are cumulative, not stage-local peaks.
+Cold reads mean a fresh Node process; filesystem caches are not flushed.
+To isolate recovery from prior publication's process high-water mark, create a validated
+temporary fixture with this flow, then recover a private copy in each fresh process. Exclude
+fixture copying from the timed stage and compare identities, provider coverage and committed
+file hashes against the original flow. Never recover benchmark fixtures through default paths.
+File-reader controls cover large multibyte input, malformed/truncated UTF-8, duplicate decoded
+keys, syntax and I-JSON rejection and encoded byte limits. Exact-comparison controls cover
+cursor independence and atomic path replacement. Buffer lifetime changes must report both recovery
+peak RSS and first-read latency; endpoint external memory alone is not proof of peak savings.
+For peak attribution, keep diagnostic instrumentation in an isolated checkout. Sample process
+RSS from another thread so synchronous parsing/serialization cannot hide the peak, and record
+main/worker heap and external memory at decoding, schema cloning, worker dispatch/receipt,
+semantic validation, canonical serialization and candidate construction. Correlate timestamps;
+RSS is process-wide, while heap/external observations are isolate-local. Do not sum different
+stages or charge external strings twice as heap and external memory. Separate forced-GC live
+ownership diagnostics from ordinary runs, and use repeated uninstrumented processes for
+acceptance: instrumentation itself can change allocation and GC timing. A cold-read gain does
+not imply a recovery gain, or the reverse; keep each ownership path's comparison separate.
+For inference publication, distinguish price-data projection, price data schema cloning,
+semantic validation and mapping schema cloning. Count the selection records submitted across
+all provider lookups rather than treating one small provider as representative. Partitioning
+internal validation inputs must retain global negative controls for selections belonging to
+providers without mapping rules, plus complete-output and caller-mutation checks.
+Mirror and worker validation must agree on valid inputs and on global duplicate/I-JSON
+failures, provider identity failures and foreign evidence ownership, including error context.
+Cover failures in either execution path and both together, including a remote task selected
+later than a failing local task in the original order. Scoped memoization controls must cover
+nested calls, thrown errors and reuse of an object with changed values in a later scope.
+Report wall time and CPU time separately when removing worker transport: lower CPU work and
+peak residency can still increase elapsed time by giving up parallelism.
+Keep graphs intentionally alive for live-cache diagnostics, then drop their owning scope and
+use weak references after separate event-loop turns to distinguish strong retention from GC/OS
+residency. Forced-GC observations are ownership evidence only. Repeat the complete publication
+flow as well as its first-read stage; a lower live heap or first-read RSS does not establish a
+lower cumulative publication peak. Freeze code and input identities, and retain any samples
+excluded because an observed external validation overlapped the measurement.
+
+At performance-series closure, verify the latest combined source rather than relying only on
+earlier isolated candidates. Exercise offline replay and real temporary publication/recovery,
+then check provider coverage, accepted/recovered identities, all published file hashes and the
+actual generated/static/portable consumers. Keep unchanged-price, changed-price/evidence,
+caller-mutation and failure/recovery controls. Report preserved obsolete-extractor partitions
+separately from successful current-extractor replay. Freeze source and input fingerprints and
+verify the stored publication and prepared package contract remain unchanged by verification.
+Aggregate cumulative gains only within the same snapshot and workload; do not multiply
+percentages across stages, diagnostics or independent schema/data migrations. State which costs
+remain by design and the concrete evidence required to reopen them.
 
 Use `vp node scripts/validate-changes.ts BASE_SHA` (or `HEAD` for uncommitted work). `--plan`
 prints the paths and selected commands. Ordinary CI compares against the push's previous commit
@@ -175,18 +246,13 @@ pending work. Workflow tests verify trusted post-execution checking, detector in
 retention. These are deterministic harness regressions. They do not measure whether the model chose
 or interpreted the right evidence. Review real agent traces to assess investigation quality.
 
-Calculator/package inputs select `vp run package:build` and `vp run package:check`.
-Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
-checks pack an allowlisted artifact, reject frontend/collection/transport dependencies and real
-provider data, and execute the same vectors in Node and a browser-like ESM context with network
-access blocked. `tests/pricing-calculator-data.test.ts` belongs to the generated project and verifies
-all provider exports against the canonical pair. `vp run test:data` runs that project explicitly.
+Portable pricing inputs select `vp run package:build` and `vp run package:check`.
+Synthetic fixtures exercise unit-price queries, conditions, unknowns, validation and mutation
+isolation. Package checks pack an allowlisted artifact, reject frontend/collection/transport
+dependencies, and execute identical queries in Node and a browser-like ESM context with network
+access blocked. Consumer fixtures compile against packed declarations in NodeNext and bundler
+modes and reject usage quantities and total-cost fields. No cost conformance suite is retained.
 
-The package checker also compiles consumer fixtures against the packed declarations using NodeNext
-and bundler-compatible module modes. These assertions cover optional input arrays and discriminated
-result/requirement types, including invalid complete and incomplete result mocks. The additive
-inference lookup is exercised through the packed declarations and Node/browser runtimes with known
-and unreviewed literal IDs. Publication tests cover the optional mapping's accepted-pair binding,
-recovery, missing evidence revisions and unchanged canonical payloads. Production builds
-verify the materialized calculation endpoints, coverage parity and initialization of every provider
-partition, so checking the exporter in memory cannot hide a stale checked-in export pack.
+`tests/pricing-lookup-data.test.ts` verifies all provider exports against the canonical pair.
+Production builds verify materialized lookup endpoints, coverage parity and every provider
+partition, preventing a stale export pack from passing an in-memory exporter test.

@@ -6,6 +6,7 @@ import type {
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
+import { exactCacheTtl } from "./cache-ttl.ts";
 import { compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
 import { bedrockCacheWriteQuantity, bedrockModelQuantity } from "./bedrock-commercial-source.ts";
 import {
@@ -710,24 +711,6 @@ function permitsRuntimeUsage(applicability: PriceApplicability): boolean {
         endpoint.values.some(({ value }) => value === "bedrock-runtime"))
     );
   });
-}
-
-function exactCacheTtl(applicability: PriceApplicability): number | undefined {
-  const values = new Set<number>();
-  for (const { all_of } of applicability.any_of)
-    for (const condition of all_of)
-      if (
-        condition.kind === "decimal_range" &&
-        condition.dimension.namespace === "kmodels" &&
-        condition.dimension.value === "cache_ttl_seconds" &&
-        condition.lower?.inclusive === true &&
-        condition.upper?.inclusive === true &&
-        condition.lower.value === condition.upper.value
-      )
-        values.add(Number(condition.lower.value));
-  if (values.size !== 1) return;
-  const value = [...values][0];
-  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 function addUsageSignal(

@@ -524,6 +524,56 @@ it("fetches ARM model inventory without spending the public Retail Prices quota"
 });
 
 describe("linked source fetch", () => {
+  it.each([true, false])(
+    "captures page-owned Bedrock unit maps and their failures (available: %s)",
+    async (available) => {
+      const configured = reviewedPublicSource("bedrock-models");
+      const pageUrl = "https://aws.amazon.com/bedrock/pricing/";
+      const mapUrl =
+        "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrockfoundationmodels/USD/current/reviewed-map.json";
+      const body = `<li role="tabpanel"><h2 id="Anthropic">Anthropic</h2><div data-pricing-markup='<h2>Geo and In-region Cross-region Inference</h2>{priceOf!bedrockfoundationmodels/reviewed-map!token}{priceOf!bedrockfoundationmodels/reviewed-map!other}'></div></li>`;
+      const source: SourceManifest = {
+        ...configured,
+        linkedDocuments: {
+          path: /$^/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: [
+            { id: "pricing-page", url: pageUrl, format: "html", maxResponseBytes: 10000 },
+          ],
+        },
+      };
+      transport.responses.set("docs.aws.amazon.com", ["HTTP/1.1 200 OK\r\n\r\n# Models"]);
+      transport.responses.set("aws.amazon.com", [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+      transport.responses.set("b0.p.awsstatic.com", [
+        available
+          ? 'HTTP/1.1 200 OK\r\n\r\n{"regions":{}}'
+          : "HTTP/1.1 404 Not Found\r\n\r\nmissing",
+      ]);
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url === mapUrl)
+          return available
+            ? Response.json({ regions: {} })
+            : new Response("missing", { status: 404 });
+        return new Response(url === pageUrl ? body : "# Models");
+      });
+      const result = await fetchSource(source);
+      const documents = JSON.parse(result.body).documents;
+      if (available) {
+        expect(documents.filter((d: { url: string }) => d.url === mapUrl)).toHaveLength(1);
+        expect(result.dependencies.some((d) => d.key.includes("geo-map/"))).toBe(true);
+      } else {
+        expect(result.dependencyFailures).toContainEqual(
+          expect.objectContaining({
+            dependency_id: expect.stringContaining("geo-map/"),
+            impact: "bundle",
+          }),
+        );
+      }
+    },
+  );
   it.each(["recover", "exhaust", "oversize"])(
     "handles SageMaker body-stream failures with bounded retries: %s",
     async (scenario) => {

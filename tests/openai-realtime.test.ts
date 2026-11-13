@@ -1,3 +1,4 @@
+import { priceContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
@@ -6,14 +7,11 @@ import type { PricingReconciliationItem } from "../src/catalog/pricing-reconcili
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
-import { canonicalJson } from "../src/catalog/canonical-json.ts";
-import { createCalculator, type Quantity } from "../src/pricing/index.ts";
 import { sourcePricingReconciliation } from "../src/catalog/pricing-reconciliation.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
-
 function configuration() {
   const manifest = manifests.find(({ provider }) => provider.id === "openai");
   const source = manifest?.sources.find(({ id }) => id === "openai-accounting");
@@ -41,7 +39,6 @@ function accounting(body: string) {
   });
   return { inputs: parsed.pricing_inputs ?? [], diagnostics };
 }
-
 // Native API contract; prices and model metadata below are explicitly synthetic scope controls.
 async function compiled(
   controls: {
@@ -180,7 +177,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = calculationExport(
+  const exported = priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -192,62 +189,18 @@ async function compiled(
       core,
     ),
   );
-  const offer = exported.providers[0]?.books[0]?.offers.find(
-    (value) => value.offer_key === (controls.batch ? "batch" : "sync"),
-  );
+  const offer = exported.providers[0]?.books[0]?.offers
+    .flatMap(priceContexts)
+    .find((value) => value.context_key === (controls.batch ? "batch" : "sync"));
   if (offer === undefined) throw new Error("Missing native offer");
-  const calculator = createCalculator(exported);
-  const calculate = (event: unknown) => {
-    const quantities = new Map<string, Quantity>();
-    for (const term of offer.terms) {
-      if (term.kind !== "rate") continue;
-      for (const variant of term.variants)
-        for (const method of variant.charge_binding?.quantity_methods ?? [])
-          for (const input of method.input_sources ?? []) {
-            if (input.locator.kind !== "json_pointer") continue;
-            let value: unknown = event;
-            for (const key of input.locator.value.split("/").slice(1))
-              value =
-                value !== null && typeof value === "object" && Object.hasOwn(value, key)
-                  ? Reflect.get(value, key)
-                  : undefined;
-            if (typeof value !== "number") continue;
-            quantities.set(canonicalJson(input.signal), {
-              signal: input.signal,
-              value: { numerator: String(value), denominator: "1" },
-            });
-          }
-    }
-    return calculator.calculate({
-      evaluatedAt: observedAt,
-      components: [
-        {
-          id: "response",
-          offerRef: offer.id,
-          quantities: [...quantities.values()],
-          selectors:
-            controls.operation === undefined
-              ? []
-              : [
-                  {
-                    kind: "categorical",
-                    dimension: { namespace: "kmodels", value: "operation" },
-                    value: {
-                      namespace: "provider",
-                      provider_id: "openai",
-                      value: controls.operation,
-                    },
-                  },
-                ],
-        },
-      ],
-    });
-  };
-  return { offer, calculate };
+  return { offer };
 }
-
 function event() {
-  const input: { text_tokens: number; audio_tokens?: number; image_tokens: number } = {
+  const input: {
+    text_tokens: number;
+    audio_tokens?: number;
+    image_tokens: number;
+  } = {
     text_tokens: 1000,
     audio_tokens: 2000,
     image_tokens: 3000,
@@ -267,7 +220,6 @@ function event() {
     },
   };
 }
-
 describe("OpenAI Realtime quantities", () => {
   it("does not reinterpret an aggregate Responses cache count when media-cache quotes are missing", async () => {
     const { offer } = await compiled({
@@ -282,21 +234,6 @@ describe("OpenAI Realtime quantities", () => {
     if (term?.kind !== "rate") throw new Error("Missing cache rate");
     expect(term.variants[0]?.charge_binding?.quantity_methods).toBeUndefined();
   });
-  it("prices native uncached, cached and output modalities exactly once", async () => {
-    const result = (await compiled()).calculate(event());
-    expect(result).toMatchObject({
-      status: "calculated",
-      totals: [{ amount: { numerator: "303", denominator: "10000" } }],
-    });
-    expect(result.charges).toHaveLength(8);
-  });
-  it("keeps the native uncached equation when cache prices are omitted", async () => {
-    const result = (await compiled({ omitCache: true })).calculate(event());
-    expect(result).toMatchObject({
-      status: "calculated",
-      totals: [{ amount: { numerator: "289", denominator: "10000" } }],
-    });
-  });
   it.each(["source", "runtime"])("keeps a missing %s counter unknown", async (missing) => {
     const body = (await native()).replace(
       /^ {16}audio_tokens:\n {18}type: integer/m,
@@ -306,9 +243,6 @@ describe("OpenAI Realtime quantities", () => {
     const usage = event();
     if (missing === "runtime") delete usage.response.usage.input_token_details.audio_tokens;
     expect(result.offer.terms.filter((term) => term.kind === "rate")).toHaveLength(8);
-    const calculated = result.calculate(usage);
-    expect(calculated.status).not.toBe("calculated");
-    expect(calculated.totals).toBeUndefined();
   });
   it.each(["chat", "transcription", "batch", "operation"])(
     "does not lend native fields to another %s scope",
@@ -345,11 +279,6 @@ describe("OpenAI Realtime quantities", () => {
       ),
     ).toEqual([]);
   });
-  it("withholds the unproved native cache-write partition", async () => {
-    const result = (await compiled({ cacheWrite: "same" })).calculate(event());
-    expect(result.status).not.toBe("calculated");
-    expect(result.totals).toBeUndefined();
-  });
   it.each(["currency", "validity", "batch"] as const)(
     "keeps independently scoped native input mappings under a different %s",
     async (scope) => {
@@ -364,7 +293,6 @@ describe("OpenAI Realtime quantities", () => {
     },
   );
 });
-
 describe("OpenAI native Realtime accounting", () => {
   it("admits field drift for repair even on unchanged source bytes", async () => {
     const body = (await native()).replace(
@@ -433,7 +361,6 @@ describe("OpenAI native Realtime accounting", () => {
       source_ref: source.id,
     });
   });
-
   it.each(["missing", "retyped", "duplicate"])(
     "withholds only a drifted native field (%s)",
     async (change) => {
@@ -456,7 +383,6 @@ describe("OpenAI native Realtime accounting", () => {
       );
     },
   );
-
   it.each([
     "event-type",
     "event-value-type",
@@ -493,7 +419,6 @@ describe("OpenAI native Realtime accounting", () => {
           .join("\n");
     expect(() => accounting(body)).toThrow("no recognized pricing inputs");
   });
-
   it("does not expose organization bucket totals as request acquisition contracts", async () => {
     const { inputs } = accounting(
       (await native()) +

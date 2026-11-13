@@ -4,13 +4,11 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { projectPricingTableCell } from "../src/catalog/pricing-presentation.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import { sourcePriceFactSchema } from "../src/catalog/pricing-source.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
-
 const manifest = manifests.find(({ provider }) => provider.id === "typesafe");
 if (manifest === undefined) throw new Error("Missing TypeSafe manifest");
 const source = manifest.sources[0];
@@ -19,9 +17,13 @@ const provider = { ...manifest.provider, source_ids: [source.id] };
 const observedAt = "2026-09-22T00:00:00.000Z";
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/typesafe/${name}`, import.meta.url), "utf8");
-
 async function parse(
-  overrides: { models?: string; api?: string | null; apiUrl?: string; index?: string } = {},
+  overrides: {
+    models?: string;
+    api?: string | null;
+    apiUrl?: string;
+    index?: string;
+  } = {},
 ) {
   const api = overrides.api === undefined ? await fixture("api.md") : overrides.api;
   const findings: SourceContractEvidence[] = [];
@@ -47,7 +49,6 @@ async function parse(
   });
   return { ...parsed, findings, reconciliation };
 }
-
 describe("TypeSafe AI", () => {
   it("follows the current alias destination without creating a long-context price tier", async () => {
     const result = await parse({ models: await fixture("models-id-pricing.md") });
@@ -103,7 +104,6 @@ describe("TypeSafe AI", () => {
     ]);
     expect(result).not.toHaveProperty("invocation");
   });
-
   it("keeps price associations independent of API origin, authentication and wire configuration", async () => {
     const api = await fixture("system-one.md");
     const original = await parse({ api });
@@ -135,7 +135,6 @@ describe("TypeSafe AI", () => {
       );
     }
   });
-
   it("does not use release-stage or unrelated API text as price mapping conditions", async () => {
     const api = await fixture("system-one.md");
     const original = await parse({ api });
@@ -148,7 +147,6 @@ describe("TypeSafe AI", () => {
     const unclearAlias = await parse({ api, models });
     expect(unclearAlias.inference_prices).toEqual(original.inference_prices);
   });
-
   it("withdraws only associations whose request-ID meaning is no longer established", async () => {
     const models = await fixture("models.md");
     const withoutAliases = await parse({
@@ -173,7 +171,6 @@ describe("TypeSafe AI", () => {
     ]);
     expect(withoutIds.models[0]?.price_facts).toEqual(withoutAliases.models[0]?.price_facts);
   });
-
   it("follows the indexed System One OpenAPI operation for typed questions and usage", async () => {
     const parsed = await parse({
       api: await fixture("system-one.md"),
@@ -243,7 +240,6 @@ describe("TypeSafe AI", () => {
       "table header",
     );
   });
-
   it("publishes the exact current model, aliases and typed evaluation facts", async () => {
     const { models, pricing_inputs, findings, reconciliation } = await parse();
     expect(models).toHaveLength(1);
@@ -285,7 +281,6 @@ describe("TypeSafe AI", () => {
       "excluded",
     ]);
   });
-
   it("accepts the current horizontal model table and compact labels", async () => {
     const { models, findings, reconciliation } = await parse({
       models: await fixture("models-horizontal.md"),
@@ -323,7 +318,6 @@ describe("TypeSafe AI", () => {
     expect(findings).toEqual([]);
     expect(reconciliation).toHaveLength(4);
   });
-
   it("reviews published input labels and question types instead of inferring them", async () => {
     const models = await fixture("models-horizontal.md");
     const paths = (findings: SourceContractEvidence[]) =>
@@ -354,7 +348,6 @@ describe("TypeSafe AI", () => {
       ["classification"],
     ]);
   });
-
   it("compiles request charges with response usage mappings", async () => {
     const parsed = await parse();
     const { models } = parsed;
@@ -402,7 +395,6 @@ describe("TypeSafe AI", () => {
       ]),
     );
   });
-
   it.each([
     ["inconsistent units", "\\$42 / \\$0.042", "\\$42 / \\$0.42"],
     ["missing output price", "Output tokens are free.", "Output pricing varies."],
@@ -414,14 +406,12 @@ describe("TypeSafe AI", () => {
       parse({ models: (await fixture("models.md")).replace(before, after) }),
     ).rejects.toThrow();
   });
-
   it("does not restrict future model IDs to the Jev name", async () => {
     const { models } = await parse({
       models: (await fixture("models.md")).replaceAll("jev-1.13.0", "decision-model-2"),
     });
     expect(models[0]?.model_id).toBe("decision-model-2");
   });
-
   it("rejects duplicate model tables before alias binding", async () => {
     const models = await fixture("models.md");
     const table = models.match(/^\| Jev 1\.13[^\n]*\n(?:\|[^\n]*\n)+/m)?.[0];
@@ -430,12 +420,10 @@ describe("TypeSafe AI", () => {
       "Duplicate TypeSafe model ID",
     );
   });
-
   it("rejects aliases that collide with a current model ID", async () => {
     const models = (await fixture("models.md")).replace("`jev-latest`", "`jev-1.13.0`");
     await expect(parse({ models })).rejects.toThrow("TypeSafe alias is ambiguous or unbound");
   });
-
   it("keeps model and price evidence if the optional API document is unavailable", async () => {
     const parsed = await parse({ api: null });
     const { models } = parsed;
@@ -465,21 +453,7 @@ describe("TypeSafe AI", () => {
       aggregation: "request",
     });
     expect(variant.charge_binding?.quantity_methods).toBeUndefined();
-    expect(evaluateRateCost(variant, [])).toMatchObject({ kind: "missing_input" });
-    expect(
-      evaluateRateCost(variant, [
-        {
-          signal: { namespace: "kmodels", value: "input_tokens" },
-          value: { numerator: "1000000", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({
-      kind: "resolved",
-      amount: { numerator: "21", denominator: "500" },
-      denomination: { kind: "fiat", currency: "USD" },
-    });
   });
-
   it.each([
     ["renamed", '<ResponseField name="changed_tokens" type="integer" />'],
     ["retyped", '<ResponseField name="input_tokens" type="string" />'],
@@ -498,7 +472,6 @@ describe("TypeSafe AI", () => {
     expect(pricing_inputs?.map(({ key }) => key)).toEqual(["systemone.output_tokens"]);
     expect(findings).toHaveLength(1);
   });
-
   it("does not map a counter nested under another usage property", async () => {
     const api = (await fixture("api.md")).replace(
       '<ResponseField name="input_tokens" type="integer" />',
@@ -511,7 +484,6 @@ describe("TypeSafe AI", () => {
     expect(pricing_inputs?.map(({ locator }) => locator.value)).toEqual(["/usage/output_tokens"]);
     expect(findings).toHaveLength(1);
   });
-
   it("ignores nested lookalikes beside the directly owned usage counters", async () => {
     const api = (await fixture("api.md")).replace(
       '<ResponseField name="input_tokens" type="integer" />',
@@ -526,7 +498,6 @@ describe("TypeSafe AI", () => {
     ]);
     expect(findings).toEqual([]);
   });
-
   it("does not map a usage object nested under a different response property", async () => {
     const api = (await fixture("api.md"))
       .replace(
@@ -541,7 +512,6 @@ describe("TypeSafe AI", () => {
     expect(model.price_facts).toHaveLength(2);
     expect(findings).toHaveLength(2);
   });
-
   it("fails closed when the index adds an unreviewed commercial surface", async () => {
     await expect(
       parse({

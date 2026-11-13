@@ -2,6 +2,18 @@
 
 Status: implemented
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Keep one public Serverless relationship per admitted exact model ID. Standard/Priority are service-tier conditions. Fast, Ultra-fast, US-only and Spot retain independently evidenced request identities; identity differences do not imply another customer contract. A Standard retry is another request. Unpriced routes stay unknown; dedicated and negotiated products remain outside this source scope.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 The [public Model Library](https://fireworks.ai/models) provides Serverless admission. Read its
 structured listing and crawl only the bounded same-host model cards with both Serverless flags.
 Each card must publish its canonical link, exact model path and Serverless offering. The

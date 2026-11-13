@@ -2,6 +2,18 @@
 
 Status: current
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+Online and Batch belong to the same admitted public usage relationship per model. Keep execution, regional API/deployment context, modality, context band and cache rules as conditions with exact quantities. Search services keep their own books; Beijing/Singapore and agent/agent_max variants are region/operation conditions, not separate agreements. Trials, subscriptions and savings commitments remain outside the admitted pricing partition.
+
+The source authorities and evidence limits below remain authoritative. Adapter keys such as
+`sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
+`source_contexts` binds them to the published relationship and its conditions. They are not
+additional user-selectable agreements. Migration preserves monetary facts, conditional accounting,
+source revisions and independently charged subjects.
+
 ## Boundary
 
 The DashScope partition is an AI Gateway rate book, not a catalog of everything Alibaba Cloud
@@ -15,7 +27,7 @@ Included facts are:
   voice-generation operations;
 - request-visible rate dimensions such as region, deployment scope, context band, thinking mode,
   modality, resolution, operation, and promotion eligibility;
-- distinct on-demand and Batch invocation offers;
+- on-demand and Batch rate contexts within one relationship;
 - explicit and implicit context-cache rates; and
 - built-in web, image-to-image, and text-to-image search call rates for the exact supported models
   and scopes; and
@@ -49,7 +61,7 @@ still reject empty or truncated source inventories.
 ## Inference ID pricing
 
 The price book's literal model column establishes the inference ID and its existing model-scoped
-on-demand or Batch offers. Each published spelling remains exact, including snapshots and regional
+on-demand or Batch conditions within one relationship. Each published spelling remains exact, including snapshots and regional
 suffixes. Display aliases, recommended-model labels and similar family names do not establish
 additional request IDs or transfer prices. IDs found only in cache eligibility or tool compatibility
 lists do not establish a base inference tariff.
@@ -242,8 +254,8 @@ closed. Annotated `(Invitational preview)` IDs retain their exact identity and p
 An unreviewed Billing item retains its amount, original unit, item label and known scope as raw
 evidence until its operation contract is established; it never becomes an unconditioned rate.
 
-The public price book produces one model book per exact catalog identity. A model book has an
-on-demand offer and, where published, a Batch offer. Rates remain separate variants under their
+The public price book produces one model book per exact catalog identity. A model book has one
+public relationship with on-demand and, where published, Batch execution conditions. Rates remain separate variants under their
 exact applicability rather than expanding a Cartesian product or choosing a default.
 
 Explicit discontinued rows publish `not_applicable` model dispositions when present. Their
@@ -258,8 +270,7 @@ For token-priced models, total request input selects the published context band 
 band applies to the request. Input, output, cache-read, and cache-write terms retain separate meters.
 Published `L<Token≤U` bands use inclusive integer bounds `L + 1` through `U`;
 the strict lower bound must not overlap the preceding tier, including at zero.
-Published Batch rows are moved to the Batch offer and lose the source-native `service_tier=batch`
-condition because the offer identity already carries that distinction.
+Published Batch rows retain a distinct extraction context so accounting remains exact. The ownership compiler restores their executable distinction as a condition within the relationship offer.
 
 A single explicit `List price` with a reviewed integer percentage reduction establishes
 `promotion=false` for the list quote and `promotion=true` for the reduced quote. Native night and
@@ -288,7 +299,8 @@ A directly published cache-read tariff takes precedence over a generic multiplie
 covers the base rate. When the guide explicitly withholds an exception's read price, that charge
 remains raw `unknown_amount`; it is not silently omitted or zero. The base price, explicit write,
 other cache mode and sibling regions survive. The explicit cache contract retains its published
-five-minute TTL; no request creation time or undocumented native mode selector is inferred.
+five-minute TTL as a fixed cache-write rate condition. Preserve it in applicability and display
+it as readonly when it is the sole applicable value. No request creation time or undocumented native mode selector is inferred.
 
 Built-in web, image-to-image, and text-to-image search are separate shared provider-service books.
 Equal scope/rate variants are stored once with all exact compatible model references instead of

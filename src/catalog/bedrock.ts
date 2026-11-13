@@ -11,10 +11,17 @@ import {
   markdownTable,
 } from "./bedrock-markdown.ts";
 import { bedrockInferencePrices } from "./bedrock-inference-pricing.ts";
-import { bedrockNovaGeoPricing } from "./bedrock-nova-pricing.ts";
+import {
+  bedrockNovaGeoPricing,
+  bedrockAnthropicGeoPricing,
+  bedrockStandardGeoPricing,
+  bedrockCrossRegionPricingUrl,
+  type BedrockGeoPrice,
+} from "./bedrock-geo-pricing.ts";
 import { uniqueCanonicalValues } from "./canonical-value.ts";
 import {
   bedrockAliasGeographies,
+  bedrockSoleGeoProfile,
   bedrockCardIdentity,
   bedrockGeoProfiles,
   bedrockProfileGeography,
@@ -712,13 +719,11 @@ function kimiK3CacheWriteRates(
   vocabulary.push(atom);
   return rates.map((rate) => {
     if (rate.meter !== "cache_write_text") return rate;
-    const { cache_ttl_seconds: _, ...conditions } = rate.conditions;
     return {
       ...rate,
-      conditions,
       charge_binding: {
         signal,
-        aggregation: conditions.service_tier === "batch" ? "job" : "attempt",
+        aggregation: rate.conditions.service_tier === "batch" ? "job" : "attempt",
         observations: [
           {
             source_ref: rate.source_ref,
@@ -938,6 +943,7 @@ function openAiCardRoute(
   access: CardId,
   option: string,
   profiles: ReturnType<typeof bedrockGeoProfiles>,
+  billingRegions?: ReadonlySet<string>,
 ):
   | {
       conditions: SourcePriceFact["conditions"];
@@ -969,12 +975,9 @@ function openAiCardRoute(
     } else if (geographies.size === 1) geography = geographies.values().next().value;
   }
   if (scope === "global" && qualifier !== undefined) return;
-  if (
-    scope === "in-region" &&
-    qualifier !== undefined &&
-    !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(qualifier)
-  )
-    return;
+  const namedRegion =
+    scope === "in-region" && qualifier !== "bedrock-mantle" ? qualifier : undefined;
+  if (namedRegion !== undefined && !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(namedRegion)) return;
   const regions =
     !access.deploymentTypes.has(scope) || !access.endpoints.has(endpoint)
       ? []
@@ -986,8 +989,10 @@ function openAiCardRoute(
                   item.deploymentType === scope &&
                   (item.programmaticEndpoint === undefined ||
                     item.programmaticEndpoint === endpoint) &&
-                  (scope !== "in-region" || qualifier === undefined || item.region === qualifier) &&
-                  !/^(?:us-gov-|cn-)/.test(item.region),
+                  (namedRegion === undefined || item.region === namedRegion) &&
+                  (billingRegions === undefined
+                    ? !/^(?:us-gov-|cn-)/.test(item.region)
+                    : billingRegions.has(item.region)),
               )
               .map(({ region }) => region),
           ),
@@ -1001,25 +1006,44 @@ function openAiCardRoute(
           ? "geo_cross_region"
           : "global_cross_region",
     ...(geography === undefined ? {} : { inference_geo: geography }),
-    ...(scope === "in-region" && qualifier !== undefined ? { region: qualifier } : {}),
+    ...(namedRegion === undefined ? {} : { region: namedRegion }),
   };
   if (scope !== "geo" || geographies.size === 1 || regions.length === 0)
     return { conditions, regions: regions.map((region) => ({ region })) };
 
-  const regionalGeographies = geoProfileSourceRegions(access, profiles, geography).filter(
-    ({ region }) => regions.includes(region),
-  );
+  const regionalGeographies = geoProfileSourceRegions(
+    access.aliases,
+    profiles,
+    geography,
+    card.availability,
+  ).filter(({ region }) => regions.includes(region));
   if (regionalGeographies.length > 0)
     return { conditions, regions: uniqueCanonicalValues(regionalGeographies) };
 }
 
 function geoProfileSourceRegions(
-  access: CardId,
+  aliases: ReadonlySet<string>,
   profiles: ReturnType<typeof bedrockGeoProfiles>,
   geography?: string,
+  availability: readonly BedrockAvailability[] = [],
 ): Array<{ region: string; inference_geo: string }> {
-  return [...access.aliases].flatMap((id) => {
+  return [...aliases].flatMap((id) => {
     const profile = profiles.get(id);
+    if (!profiles.has(id)) {
+      const soleGeography = bedrockSoleGeoProfile(id, aliases);
+      if (soleGeography === undefined || (geography !== undefined && geography !== soleGeography))
+        return [];
+      return availability
+        .filter(
+          (item) =>
+            item.deploymentType === "geo" &&
+            (item.programmaticEndpoint === undefined ||
+              item.programmaticEndpoint === "bedrock-runtime") &&
+            item.region.startsWith("us-gov-") === (soleGeography === "us-gov") &&
+            !item.region.startsWith("cn-"),
+        )
+        .map(({ region }) => ({ region, inference_geo: soleGeography }));
+    }
     if (profile === undefined || (geography !== undefined && geography !== profile.geography))
       return [];
     let table: ReturnType<typeof markdownTable>;
@@ -1028,7 +1052,17 @@ function geoProfileSourceRegions(
     } catch {
       return [];
     }
-    if (table === undefined) return [];
+    if (table === undefined) {
+      if (!profile.body.includes("The Region you call is the source Region.")) return [];
+      const overview = bedrockAvailabilityTable(profile.body);
+      if (!overview) return [];
+      return overview.rows.flatMap((row) => {
+        const region = row[overview.region]?.match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
+        return region !== undefined && bedrockAvailabilitySupported(row[overview.geo] ?? "")
+          ? [{ region, inference_geo: profile.geography }]
+          : [];
+      });
+    }
     const sourceIndex = table.header.indexOf("Source Region");
     return table.rows.flatMap((row) => {
       const region = row[sourceIndex]?.match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
@@ -1057,6 +1091,19 @@ function openAiModelCardPricing(
   const content = cardProse(card.pricingSection);
   const profiles = bedrockGeoProfiles(cardProse(card.regionalSection ?? ""));
   const headings = [...content.matchAll(/^### ([^\n]+)$/gm)];
+  const sections = headings.flatMap((heading, index) => {
+    const name = heading[1] ?? "";
+    const body = content.slice(heading.index + heading[0].length, headings[index + 1]?.index);
+    const owned = markdownSection(content, 3, name) !== undefined;
+    if (!/^AWS GovCloud \(US-(?:East|West|East and US-West)\)$/.test(name))
+      return [{ name, body, owned }];
+    const contexts = [...body.matchAll(/^#### ((?:Short|Long) context \([^\n]+\))$/gm)];
+    return contexts.map((context, i) => ({
+      name: `${name} — ${context[1]?.replace(/^[SL]/, (letter) => letter.toLowerCase())}`,
+      body: body.slice(context.index + context[0].length, contexts[i + 1]?.index),
+      owned: owned && markdownSection(body, 4, context[1] ?? "") !== undefined,
+    }));
+  });
   const intro = content.slice(0, headings[0]?.index).replaceAll("**", "");
   const standardOnly =
     /^[ \t]*All prices are in USD per 1 million tokens for the Standard tier\./m.test(intro);
@@ -1068,17 +1115,24 @@ function openAiModelCardPricing(
   const responsesTier = serviceTiers.includes(
     'To request it with the Responses API, set `"service_tier": "ultrafast"`.',
   );
-  for (const [index, heading] of headings.entries()) {
-    const name = heading[1] ?? "";
+  for (const { name, body: block, owned } of sections) {
     const match = name.match(
-      /^(?:(Standard|Ultrafast) — )?Commercial Regions(?: —|,) (short|long) context \(([^()]*)\)$/,
+      /^(?:(Standard|Ultrafast) — )?(Commercial Regions|AWS GovCloud \(US-(?:East|West|East and US-West)\))(?: —|,) (short|long) context \(([^()]*)\)$/,
     );
     if (match === null) continue;
-    const block = content.slice(heading.index + heading[0].length, headings[index + 1]?.index);
-    const owned = markdownSection(content, 3, name) !== undefined;
+    const billingRegions =
+      match[2] === "Commercial Regions"
+        ? undefined
+        : new Set(
+            match[2] === "AWS GovCloud (US-East)"
+              ? ["us-gov-east-1"]
+              : match[2] === "AWS GovCloud (US-West)"
+                ? ["us-gov-west-1"]
+                : ["us-gov-east-1", "us-gov-west-1"],
+          );
     const tier = match[1] === "Ultrafast" ? "ultrafast" : "standard";
-    const long = match[2] === "long";
-    const count = match[3]?.match(
+    const long = match[3] === "long";
+    const count = match[4]?.match(
       long ? /^more than ([^\s]+) input tokens$/ : /^([^\s]+) input tokens or fewer$/,
     )?.[1];
     const threshold = count === undefined ? undefined : wholeTokenCount(count);
@@ -1094,7 +1148,7 @@ function openAiModelCardPricing(
     } catch {
       table = undefined;
     }
-    if (table === undefined || !owned) {
+    if (table === undefined) {
       rawFacts.push(
         rawPricingFact(
           sourceId,
@@ -1114,7 +1168,7 @@ function openAiModelCardPricing(
     }
     for (const row of table.rows) {
       const option = row[table.header.indexOf("Inference option")] ?? "";
-      const route = openAiCardRoute(card, access, option, profiles);
+      const route = openAiCardRoute(card, access, option, profiles, billingRegions);
       if (route?.regions.length === 0) {
         onPricingReconciliation?.({
           disposition: "excluded",
@@ -1131,7 +1185,11 @@ function openAiModelCardPricing(
               api.name === "Responses" && api.programmaticEndpoint === route?.conditions.endpoint,
           ));
       const scopeKnown =
-        knownContext && knownApi && (match[1] !== undefined || standardOnly) && route !== undefined;
+        owned &&
+        knownContext &&
+        knownApi &&
+        (match[1] !== undefined || standardOnly) &&
+        route !== undefined;
       for (const [columnIndex, column] of table.header.entries()) {
         if (column === "Inference option") continue;
         const meter =
@@ -1226,6 +1284,7 @@ function cardAvailability(
 ): BedrockAvailability[] {
   if (content === undefined) throw new Error("Bedrock model card omitted Regional Availability");
   const availability: BedrockAvailability[] = [];
+  const expiredGeoRegions = new Set<string>();
   for (const block of bedrockAvailabilityBlocks(content)) {
     const table = bedrockAvailabilityTable(block.body);
     if (table === undefined)
@@ -1241,6 +1300,9 @@ function cardAvailability(
       for (const [deploymentType, column] of columns) {
         const raw = cells[column] ?? "";
         const legacyDate = raw.match(/^Legacy \(EOL: (\d{4}-\d{2}-\d{2})\)$/)?.[1];
+        const endDate = raw.match(/(?:^EOL: |^Legacy \(EOL: )(\d{4}-\d{2}-\d{2})/)?.[1];
+        if (deploymentType === "geo" && endDate !== undefined && endDate <= observedAt.slice(0, 10))
+          expiredGeoRegions.add(region);
         if (
           bedrockAvailabilitySupported(raw) ||
           (legacyDate !== undefined && legacyDate > observedAt.slice(0, 10))
@@ -1252,6 +1314,23 @@ function cardAvailability(
           });
       }
     }
+  }
+  // The dedicated GovCloud CRIS table is more specific than the cards' generic
+  // overview, which still marks Geo unsupported. An explicit EOL remains final.
+  const regional = cardProse(content);
+  if (!retired && regional.includes("**US GovCloud CRIS**")) {
+    const profiles = bedrockGeoProfiles(regional);
+    for (const { region } of geoProfileSourceRegions(new Set(profiles.keys()), profiles, "us-gov"))
+      if (
+        region.startsWith("us-gov-") &&
+        !expiredGeoRegions.has(region) &&
+        !availability.some((item) => item.region === region && item.deploymentType === "geo")
+      )
+        availability.push({
+          region,
+          deploymentType: "geo",
+          programmaticEndpoint: "bedrock-runtime",
+        });
   }
   if (availability.length === 0 && !retired)
     throw new Error("Bedrock model card contained no regional availability");
@@ -1655,9 +1734,20 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
     return labelKey !== "" && labelKey === identityKey(card.name, card.publisher);
   });
   if (displayMatches.length > 0) return oneModel(displayMatches);
+  const usageModel = usage.match(
+    /^[A-Z0-9]+-(.+?)-(?:input|output|cache|text|image|audio|video)(?:[-_]|$)/i,
+  )?.[1];
   const matches = cards.filter((card) => {
     const labelKey = identityKey(label, card.publisher);
     if (labelKey !== "" && card.identityKeys.has(labelKey)) return true;
+    // Native SKU labels can abbreviate the model while the usage type preserves
+    // its full published name (including VL/BF16 and the parameter count).
+    if (
+      usageModel !== undefined &&
+      !/ Latency Optimized$/i.test(label) &&
+      identityKey(usageModel, card.publisher) === identityKey(card.name, card.publisher)
+    )
+      return true;
     return [...card.ids].some(([id]) => {
       const stem = id.replace(/^[^.]+\./, "").replace(/-v\d+:\d+$/i, "");
       const value = stem.replace(/[^a-z0-9]+/gi, "[-._:]?");
@@ -1975,6 +2065,7 @@ function priceTargets(
   card: Card,
   offerCode: BedrockOfferCode,
   usage: string,
+  sharedGeo = false,
 ): { ids: string[]; endpoint: BedrockModelEndpoint | undefined } {
   const deploymentType = priceDeploymentType(usage);
   const lower = usage.toLowerCase();
@@ -1993,7 +2084,8 @@ function priceTargets(
   const ids = [...card.ids]
     .filter(
       ([, value]) =>
-        value.deploymentTypes.has(deploymentType) &&
+        (value.deploymentTypes.has(deploymentType) ||
+          (sharedGeo && value.deploymentTypes.has("geo"))) &&
         (marketplaceToken || value.endpoints.has(endpoint)),
     )
     .map(([id]) => id);
@@ -2624,15 +2716,18 @@ function parsePrices(
   const unbound = new Set<string>();
   const unsupported = new Set<string>();
   const profileRegions = new Map<CardId, ReturnType<typeof geoProfileSourceRegions>>();
-  let novaGeoPrices: ReturnType<typeof bedrockNovaGeoPricing> | undefined;
-  try {
-    novaGeoPrices = bedrockNovaGeoPricing(documents);
-  } catch (error) {
-    onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "optional_pricing_source_drifted",
-      sample: `Nova geographic pricing: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  const geoPrices = new Map<string, BedrockGeoPrice>();
+  const standardGeoPricing = bedrockStandardGeoPricing(documents);
+  for (const read of [bedrockNovaGeoPricing, bedrockAnthropicGeoPricing]) {
+    try {
+      for (const [key, price] of read(documents)) geoPrices.set(key, price);
+    } catch (error) {
+      onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "optional_pricing_source_drifted",
+        sample: `Geographic pricing: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
   const seenLists = new Set<string>();
   for (const document of documents) {
@@ -2710,7 +2805,6 @@ function parsePrices(
       requiredDimensions += dimensions.length;
       const modelRefs =
         card === undefined ? [] : [...card.ids.keys()].map((id) => `amazon-bedrock/${id}`);
-      const target = card === undefined ? undefined : priceTargets(card, list.offerCode, usage);
       for (const { dimension, term } of dimensions) {
         const spec = commercialSpec(list.offerCode, attributes, dimension.unit, modelRefs);
         if (spec !== undefined) {
@@ -2777,16 +2871,7 @@ function parsePrices(
           });
           continue;
         }
-        if (target === undefined || target.ids.length === 0) {
-          handledDimensions++;
-          unbound.add(`${label} (${usage})`);
-          onPricingReconciliation?.({
-            disposition: "unbound",
-            reason_code: "price_dimension_target_unbound",
-            sample: `${label}: ${dimension.description}`,
-          });
-          continue;
-        }
+        const target = priceTargets(card, list.offerCode, usage);
         const price = dimension.pricePerUnit.USD;
         if (price === undefined) {
           unsupported.add(`${label}: ${dimension.unit}`);
@@ -2864,28 +2949,52 @@ function parsePrices(
           });
           continue;
         }
-        handledDimensions++;
-        onPricingReconciliation?.({
-          disposition: "normalized",
-          reason_code: "price_dimension_bound",
-        });
-        const pagePrice = novaGeoPrices?.get(`${attributes.location}\0${dimension.rateCode}`);
-        const sharedGeo =
+        const pagePrice =
+          dimension.rateCode === undefined ? undefined : geoPrices.get(dimension.rateCode);
+        const pageGeo =
           pagePrice !== undefined &&
-          parsed.conditions.endpoint === "bedrock-runtime" &&
+          (parsed.conditions.endpoint === undefined ||
+            parsed.conditions.endpoint === "bedrock-runtime") &&
           parsed.conditions.deployment_scope === "in_region" &&
           pagePrice.meter === parsed.meter &&
           pagePrice.tier === parsed.conditions.service_tier &&
-          dimension.unit === "1K tokens" &&
+          dimension.unit === pagePrice.unit &&
+          parsed.conditions.cache_ttl_seconds === pagePrice.ttl &&
+          (pagePrice.speed === undefined || parsed.conditions.speed === pagePrice.speed) &&
           decimalsEqual(pagePrice.price, price) &&
-          modelForProduct(cards, pagePrice.label, "") === card;
-        if (pagePrice !== undefined && !sharedGeo)
+          pagePrice.labels.some((label) => modelForProduct(cards, label, "") === card);
+        // Owned Nova/Anthropic tables qualify their tariffs more narrowly. Other models
+        // use the guide's Standard geographic tariff, never its Global discount.
+        const standardGeo =
+          pagePrice === undefined &&
+          standardGeoPricing &&
+          card.publisher !== "Anthropic" &&
+          card.publisher !== "Amazon" &&
+          parsed.conditions.deployment_scope === "in_region" &&
+          parsed.conditions.service_tier === "standard" &&
+          (parsed.conditions.endpoint === undefined ||
+            parsed.conditions.endpoint === "bedrock-runtime") &&
+          !/in[_ -]region/i.test(usage);
+        const sharedGeo = pageGeo || standardGeo;
+        if (pagePrice !== undefined && !pageGeo)
           onPricingReconciliation?.({
             disposition: "unbound",
-            reason_code: "nova_geo_rate_join_unresolved",
+            reason_code: "geo_rate_join_unresolved",
             sample: locator.value,
           });
-        for (const id of target.ids) {
+        const scopedTarget = priceTargets(card, list.offerCode, usage, sharedGeo);
+        if (scopedTarget.ids.length === 0) {
+          handledDimensions++;
+          unbound.add(`${label} (${usage})`);
+          onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "price_dimension_target_unbound",
+            sample: `${label}: ${dimension.description}`,
+          });
+          continue;
+        }
+        handledDimensions++;
+        for (const id of scopedTarget.ids) {
           const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
           const access = card.ids.get(id);
           const region = parsed.conditions.region;
@@ -2894,8 +3003,10 @@ function parsePrices(
             let published = profileRegions.get(access);
             if (published === undefined) {
               published = geoProfileSourceRegions(
-                access,
+                access.aliases,
                 bedrockGeoProfiles(cardProse(card.regionalSection ?? "")),
+                undefined,
+                card.availability,
               );
               profileRegions.set(access, published);
             }
@@ -2911,26 +3022,57 @@ function parsePrices(
                 ),
             );
           }
-          if (
-            geo.length === 0 ||
-            card.availability.some(
-              (item) =>
-                item.region === region &&
-                item.deploymentType === "in-region" &&
-                (item.programmaticEndpoint === undefined ||
-                  item.programmaticEndpoint === "bedrock-runtime"),
-            )
-          )
-            addRate(rates, { ...parsed, source_locator: locator });
+          const inRegion =
+            (!sharedGeo && target.ids.includes(id)) ||
+            (access?.deploymentTypes.has("in-region") === true &&
+              card.availability.some(
+                (item) =>
+                  item.region === region &&
+                  item.deploymentType === "in-region" &&
+                  (item.programmaticEndpoint === undefined ||
+                    access.endpoints.has(item.programmaticEndpoint)) &&
+                  (parsed.conditions.endpoint === undefined ||
+                    item.programmaticEndpoint === undefined ||
+                    item.programmaticEndpoint === parsed.conditions.endpoint),
+              ));
+          if (inRegion) addRate(rates, { ...parsed, source_locator: locator });
           for (const scope of geo)
             addRate(rates, {
               ...parsed,
-              conditions: { ...parsed.conditions, ...scope, deployment_scope: "geo_cross_region" },
+              conditions: {
+                ...parsed.conditions,
+                ...scope,
+                endpoint: "bedrock-runtime",
+                deployment_scope: "geo_cross_region",
+              },
               source_locator: {
                 kind: "table",
-                value: `https://aws.amazon.com/bedrock/pricing/#Geo_Cross-region_inference_and_in-region | ${locator.value}`,
+                value: `${pagePrice?.locator ?? bedrockCrossRegionPricingUrl} | ${locator.value}`,
               },
             });
+          if (!inRegion && geo.length === 0) {
+            const conditions = { ...parsed.conditions };
+            delete conditions.deployment_scope;
+            rawFor(id).push({
+              ...commercialRawFact(
+                list.offerCode,
+                sku,
+                attributes,
+                dimension,
+                price,
+                term.effectiveDate,
+                `unresolved_geo:${parsed.meter}`,
+                sourceId,
+              ),
+              reason: "unknown_applicability",
+              conditions,
+            });
+          }
+          onPricingReconciliation?.({
+            disposition: inRegion || geo.length > 0 ? "normalized" : "raw",
+            reason_code:
+              inRegion || geo.length > 0 ? "price_dimension_bound" : "geo_source_region_unresolved",
+          });
           byId.set(id, rates);
         }
       }

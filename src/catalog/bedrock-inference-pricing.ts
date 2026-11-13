@@ -1,4 +1,9 @@
-import { bedrockCardIdentity, bedrockGeoProfiles, bedrockPublicIds } from "./bedrock-model-ids.ts";
+import {
+  bedrockCardIdentity,
+  bedrockGeoProfiles,
+  bedrockPublicIds,
+  bedrockSoleGeoProfile,
+} from "./bedrock-model-ids.ts";
 import {
   bedrockAvailabilityBlocks,
   bedrockAvailabilitySupported,
@@ -56,6 +61,14 @@ export function bedrockInferencePrices(
   const sourceRegionBilling = prose(crossRegion?.body ?? "").includes(
     "The price is calculated based on the Region from which you call an inference profile.",
   );
+  const field = byUrl.get(
+    `${root}APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md`,
+  );
+  const contents = prose(markdownSection(field?.body ?? "", 2, "Contents") ?? "");
+  const definition = contents.match(/\*\*\s*modelArn\s*\*\*([\s\S]*?)(?=\n\s*\*\*|$)/)?.[1];
+  const rerankArnRequired =
+    definition?.includes("The ARN of the reranker model.") === true &&
+    definition.includes("Required: Yes");
   function add(model: ParsedProviderModel, model_id: string, fixed: Fixed, docs: Document[]) {
     const conditions = [
       ...model.price_facts,
@@ -156,6 +169,12 @@ export function bedrockInferencePrices(
         seen.add(key);
         const model = modelsById.get(identity.modelId);
         if (model === undefined) continue;
+        if (rerankArnRequired && model.tasks.includes("reranking")) {
+          // The operation's required modelArn field owns addressing, not the generic
+          // Runtime template in the model card. Admit only documented literal ARNs below.
+          report(`/inference-pricing/rerank-requires-arn/${identity.modelId}`);
+          continue;
+        }
         if (
           identity.idKind === "api_id" &&
           cell("In-Region endpoint URL").startsWith("https://") &&
@@ -170,11 +189,14 @@ export function bedrockInferencePrices(
           ["Geo inference ID", "geo_cross_region"],
           ["Global inference ID", "global_cross_region"],
         ] as const) {
-          for (const id of bedrockPublicIds(cell(column))) {
+          const aliases = new Set(bedrockPublicIds(cell(column)));
+          for (const id of aliases) {
             const geography =
               deployment_scope === "global_cross_region"
                 ? "global"
-                : profilesById.get(id)?.geography;
+                : profilesById.has(id)
+                  ? profilesById.get(id)?.geography
+                  : bedrockSoleGeoProfile(id, aliases);
             pending.push({
               model,
               id,
@@ -198,13 +220,8 @@ export function bedrockInferencePrices(
       report(`/inference-pricing/id-table/${doc.url}`);
     }
   }
-  const field = byUrl.get(
-    `${root}APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md`,
-  );
   const use = byUrl.get(`${root}userguide/rerank-use.md`);
   if (field && use) {
-    const contents = prose(markdownSection(field.body, 2, "Contents") ?? "");
-    const definition = contents.match(/\*\*\s*modelArn\s*\*\*([\s\S]*?)(?=\n\s*\*\*|$)/)?.[1];
     const example = markdownSection(use.body, 4, "[ Node.js ]") ?? "";
     const ids = [
       ...example.matchAll(
@@ -216,8 +233,7 @@ export function bedrockInferencePrices(
       ({ model_id, tasks }) => model_id === id?.[3] && tasks.includes("reranking"),
     );
     if (
-      definition?.includes("The ARN of the reranker model.") &&
-      definition.includes("Required: Yes") &&
+      rerankArnRequired &&
       /rerankingConfiguration: \{\s*type: "BEDROCK_RERANKING_MODEL"/.test(example) &&
       model &&
       id?.[1] &&

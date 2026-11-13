@@ -4,16 +4,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
-import { createCalculator } from "../src/pricing/index.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
 import { projectWebsitePricingTimeline } from "../src/catalog/website-pricing-query.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
-
 const fixture = (name: string) =>
   readFile(new URL(`./fixtures/deepseek/${name}.html`, import.meta.url), "utf8");
 function configuration() {
@@ -110,46 +106,8 @@ async function compiled() {
     provider_vocabularies: [partition.vocabulary],
     model_dispositions: partition.model_dispositions,
   };
-  const exported = calculationExport(core, createPricingCatalogEnvelope(pricing, core));
-  const calculator = createCalculator(exported);
-  function calculate(
-    api: "search" | "fetch",
-    offerKey: string,
-    currency: string,
-    at: string,
-    quantity?: string,
-  ) {
-    const book = exported.providers[0]?.books.find(
-      (book) => book.scope.kind === "provider_resource" && book.scope.resource_key === `web-${api}`,
-    );
-    const offer = book?.offers.find((offer) => offer.offer_key === offerKey);
-    const term = offer?.terms.find((term) => term.kind === "rate");
-    const signal = term?.variants[0]?.charge_binding?.signal;
-    if (offer === undefined || signal === undefined) throw new Error("Missing service offer");
-    return calculator.calculate({
-      evaluatedAt: at,
-      components: [
-        {
-          id: api,
-          offerRef: offer.id,
-          quantities:
-            quantity === undefined
-              ? []
-              : [{ signal, value: { numerator: quantity, denominator: "1" } }],
-          selectors: [
-            {
-              kind: "categorical",
-              dimension: { namespace: "kmodels", value: "billing_currency" },
-              value: { namespace: "provider", provider_id: "deepseek", value: currency },
-            },
-          ],
-        },
-      ],
-    });
-  }
-  return { partition, calculate, core, pricing };
+  return { partition, core, pricing };
 }
-
 describe("DeepSeek native Search and Fetch charges", () => {
   it("keeps standalone services independent of model compatibility and generation quantities", async () => {
     const { result, failures } = await parsed();
@@ -191,7 +149,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
       assembleParsedProviderPricing("deepseek", observedAt, [{ source, ...captured }], []),
     ).toEqual(detached);
   });
-
   it("accepts the current tool-triggered client scope, including Codex Alpha Search", async () => {
     const { result, diagnostics, failures } = await parsed();
     expect(failures).toEqual([]);
@@ -207,7 +164,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
     expect(serverOffers).toHaveLength(2);
     expect(serverOffers.every((fact) => fact.price_facts.length === 2)).toBe(true);
   });
-
   it("rejects a different client scope instead of guessing the server-tool tariff", async () => {
     const { result, diagnostics, failures } = await parsed((bundle) => {
       const doc = bundle.documents.find(({ url }) => url.includes("/guides/search/"));
@@ -227,7 +183,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
       ),
     ).toBe(true);
   });
-
   it("presents both service offers at their current request tariff through the shared website timeline", async () => {
     const { core, pricing } = await compiled();
     const website = websitePublication(core, pricing, "b".repeat(64));
@@ -235,8 +190,8 @@ describe("DeepSeek native Search and Fetch charges", () => {
     const resources = website.providerPricing.flatMap((chunk) => chunk.resources);
     expect(resources.map((resource) => resource.title).sort()).toEqual(["Web Fetch", "Web Search"]);
     for (const resource of resources) {
-      expect(resource.offers).toHaveLength(2);
-      const server = resource.offers.find((offer) => offer.title.includes("server tools"));
+      expect(resource.offers).toHaveLength(1);
+      const server = resource.offers[0];
       if (server === undefined) throw new Error("Missing scoped server-tool presentation");
       const ref = server.offer_refs[0];
       const detail =
@@ -247,12 +202,11 @@ describe("DeepSeek native Search and Fetch charges", () => {
             )?.offers[ref[1]];
       if (detail === undefined) throw new Error("Missing deferred service offer");
       const timeline = projectWebsitePricingTimeline(detail, observedAt);
-      expect(timeline.current.rates).toHaveLength(2);
+      expect(timeline.current.rates).toHaveLength(4);
       expect(timeline.next_change_at).toBeUndefined();
       expect(timeline.upcoming).toBeUndefined();
     }
   });
-
   it("uses the price pages for amounts while keeping guide quotes explicitly excluded", async () => {
     const { result, diagnostics, failures } = await parsed((bundle) => {
       const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
@@ -271,37 +225,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
       diagnostics.filter((item) => item.reason_code === "service_amount_authority_price_page"),
     ).toHaveLength(2);
   });
-
-  it.each(["search", "fetch"] as const)(
-    "calculates %s per successful request across currency and the server-tool scope",
-    async (api) => {
-      const { calculate } = await compiled();
-      for (const [currency, numerator, denominator] of [
-        ["USD", "3", "2000"],
-        ["CNY", "1", "100"],
-      ]) {
-        if (currency === undefined || numerator === undefined || denominator === undefined)
-          throw new Error("Invalid native quote case");
-        for (const offer of ["standalone", "server_tools"]) {
-          const result = calculate(api, offer, currency, observedAt, "2");
-          expect(result.status).toBe("calculated");
-          expect(result.totals).toEqual([
-            {
-              denomination: { kind: "fiat", currency },
-              amount: { numerator, denominator },
-            },
-          ]);
-        }
-        const unknown = calculate(api, "server_tools", currency, observedAt);
-        expect(unknown.status).toBe("unknown");
-        expect(unknown.totals).toBeUndefined();
-        expect(
-          calculate(api, "standalone", currency, observedAt, "0").totals?.[0]?.amount.numerator,
-        ).toBe("0");
-      }
-    },
-  );
-
   it.each(["policy", "predicate", "quoted"])(
     "withholds unproved %s billing scope and signals the pricing dependency",
     async (failure) => {
@@ -322,7 +245,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
       expect(failures).toEqual(["https://api-docs.deepseek.com/guides/search/"]);
     },
   );
-
   it("preserves an unreadable native amount locally without replacing it with zero", async () => {
     const { result, diagnostics, failures } = await parsed((bundle) => {
       const doc = bundle.documents.find((doc) => doc.url.includes("/zh-cn/"));
@@ -350,7 +272,6 @@ describe("DeepSeek native Search and Fetch charges", () => {
     expect(diagnostics.some((item) => item.disposition === "raw")).toBe(true);
   });
 });
-
 describe("DeepSeek owned exact model limits", () => {
   it("does not select a last value from duplicate example properties", async () => {
     const { result, findings } = await parsed((bundle) => {
@@ -390,7 +311,6 @@ describe("DeepSeek owned exact model limits", () => {
       "DeepSeek-V4.1-Flash-1017",
     );
   });
-
   it.each(["type", "value", "nested"])(
     "withholds a %s context claim independently of the output limit",
     async (drift) => {

@@ -1,28 +1,25 @@
 import type { PriceApplicability } from "../catalog/pricing-schema.ts";
 import type {
-  CalculationBinding,
-  CalculationBook,
-  CalculationEnvelope,
-  CalculationOffer,
-  CalculationProvider,
-  CalculationRateTerm,
-  CalculationRaw,
-  CalculationTerm,
-  NormalizedVariant,
+  PriceDataBook,
+  PriceDataEnvelope,
+  PriceDataOffer,
+  PriceDataProvider,
+  PriceDataRateTerm,
+  PriceDataRaw,
+  PriceDataTerm,
 } from "./schema.ts";
-import { PricingError } from "./errors.ts";
 import { validatePriceData } from "./validation.ts";
 
 export interface IndexedOffer {
-  provider: CalculationProvider;
-  book: CalculationBook;
-  offer: CalculationOffer;
+  provider: PriceDataProvider;
+  book: PriceDataBook;
+  offer: PriceDataOffer;
 }
 
 export interface PricingSnapshot {
-  data: CalculationEnvelope;
+  data: PriceDataEnvelope;
   offers: ReadonlyMap<string, IndexedOffer>;
-  rates: ReadonlyMap<string, CalculationRateTerm>;
+  rates: ReadonlyMap<string, PriceDataRateTerm>;
 }
 
 export function createPricingSnapshot(priceData: unknown): PricingSnapshot {
@@ -30,10 +27,10 @@ export function createPricingSnapshot(priceData: unknown): PricingSnapshot {
 }
 
 /** Internal entry for readers that have already validated their complete partition. */
-export function indexValidatedPriceData(validated: CalculationEnvelope): PricingSnapshot {
+export function indexValidatedPriceData(validated: PriceDataEnvelope): PricingSnapshot {
   const data = freezeRecursively(validated);
   const offers = new Map<string, IndexedOffer>();
-  const rates = new Map<string, CalculationRateTerm>();
+  const rates = new Map<string, PriceDataRateTerm>();
   for (const provider of data.providers) {
     for (const book of provider.books) {
       for (const offer of book.offers) {
@@ -47,17 +44,9 @@ export function indexValidatedPriceData(validated: CalculationEnvelope): Pricing
   return { data, offers, rates };
 }
 
-export function getOffer(snapshot: PricingSnapshot, offerRef: string): IndexedOffer {
-  const offer = snapshot.offers.get(offerRef);
-  if (offer === undefined) {
-    throw new PricingError("UNKNOWN_OFFER", "Offer is not present in this snapshot");
-  }
-  return offer;
-}
-
 export function offerApplicabilities(
   snapshot: PricingSnapshot,
-  offer: CalculationOffer,
+  offer: PriceDataOffer,
 ): PriceApplicability[] {
   const scopes = [
     ...offer.states.map((variant) => variant.applicability),
@@ -84,21 +73,8 @@ export function offerApplicabilities(
   return scopes;
 }
 
-export function rawTermVariants(term: CalculationTerm): CalculationRaw[] {
+export function rawTermVariants(term: PriceDataTerm): PriceDataRaw[] {
   return term.kind === "raw" ? term.variants : term.raw_variants;
-}
-
-export function variantBindings(variant: NormalizedVariant): CalculationBinding[] {
-  if ("charge_binding" in variant && variant.charge_binding !== undefined) {
-    return [variant.charge_binding];
-  }
-  if ("charge_bindings" in variant) return variant.charge_bindings;
-  return [];
-}
-
-export function termBindings(term: CalculationTerm): CalculationBinding[] {
-  if (term.kind === "raw") return [];
-  return term.variants.flatMap(variantBindings);
 }
 
 function freezeRecursively<T>(value: T): T {

@@ -3,17 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { canonicalJson } from "../src/catalog/canonical-json.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
-import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
 } from "../src/catalog/pricing-reconciliation.ts";
-import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
-import { createCalculator, type Quantity } from "../src/pricing/index.ts";
-
 const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
 if (manifest === undefined) throw new Error("Missing Bedrock manifest");
 const primarySource = manifest.sources[0];
@@ -21,7 +15,6 @@ if (primarySource === undefined) throw new Error("Missing Bedrock source");
 const source: SourceManifest = primarySource;
 const provider = { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) };
 const observedAt = "2026-10-19T04:27:08.089Z";
-
 async function nativeBundle(withBulk = false) {
   const card = {
     url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.md",
@@ -47,7 +40,6 @@ async function nativeBundle(withBulk = false) {
     documents,
   };
 }
-
 function parse(
   bundle: Awaited<ReturnType<typeof nativeBundle>>,
   findings: PricingReconciliationItem[] = [],
@@ -60,13 +52,11 @@ function parse(
     onPricingReconciliation: (item) => findings.push(item),
   });
 }
-
 function astra(result: ReturnType<typeof parse>) {
   const model = result.models.find(({ model_id }) => model_id === "openai.gpt-6-astra");
   if (model === undefined) throw new Error("Missing Astra model");
   return model;
 }
-
 describe("native Bedrock card tariffs", () => {
   it("separates the Grok 4.7 commercial and GovCloud rates by region and tier", async () => {
     const bundle = await nativeBundle();
@@ -103,7 +93,6 @@ describe("native Bedrock card tariffs", () => {
       ["invoke_model", "4.62"],
     ]);
   });
-
   it("applies the Grok 4.6 Priority and Flex multipliers to every published Standard rate", async () => {
     const bundle = await nativeBundle();
     bundle.documents.push({
@@ -139,7 +128,6 @@ describe("native Bedrock card tariffs", () => {
       ),
     ).toEqual([]);
   });
-
   it("keeps an unrecognized Grok multiplier clause unresolved instead of guessing its scope", async () => {
     const bundle = await nativeBundle();
     const body = await readFile(
@@ -168,7 +156,6 @@ describe("native Bedrock card tariffs", () => {
       ),
     ).toHaveLength(1);
   });
-
   it("keeps Mantle-only regional tables out of the runtime cross-region tariff parser", async () => {
     const bundle = await nativeBundle(true);
     const before = astra(parse(bundle));
@@ -217,7 +204,6 @@ describe("native Bedrock card tariffs", () => {
       ).toBe(true);
     },
   );
-
   it("requires the owning USD unit claim while retaining independent native SKUs", async () => {
     const bundle = await nativeBundle(true);
     const card = bundle.documents[0];
@@ -239,7 +225,6 @@ describe("native Bedrock card tariffs", () => {
       ),
     ).toBe(true);
   });
-
   it("isolates a malformed native table without losing its quotes or other bands", async () => {
     const bundle = await nativeBundle();
     const card = bundle.documents[0];
@@ -258,147 +243,6 @@ describe("native Bedrock card tariffs", () => {
     expect(model.raw_price_facts).toHaveLength(1);
     expect(model.raw_price_facts[0]?.raw.fragment).toContain("$66.00");
   });
-
-  it("calculates native Ultrafast amounts through the portable export with caller-supplied quantities", async () => {
-    const result = parse(await nativeBundle(true));
-    const partition = assembleParsedProviderPricing(
-      "amazon-bedrock",
-      observedAt,
-      [{ source, ...result }],
-      result.models,
-    );
-    if (partition === undefined) throw new Error("Missing partition");
-    const parsedCore: Catalog = {
-      catalog_version: "a".repeat(64),
-      generated_at: observedAt,
-      coverage: [],
-      warnings: [],
-      providers: [provider],
-      models: result.models,
-      sources: [
-        {
-          id: source.id,
-          provider_id: provider.id,
-          url: source.url,
-          source: source.source ?? [source.type],
-          stability: source.stability,
-          scope: source.scope ?? "global",
-          exhaustive: source.exhaustive ?? false,
-          role: source.role ?? "catalog",
-          field_paths: source.fields,
-          observed_at: observedAt,
-          content_hash: "1".repeat(64),
-          extractor_version: source.extractorVersion,
-        },
-      ],
-    };
-    const core = catalogSchema.parse(JSON.parse(JSON.stringify(parsedCore)));
-    const envelope = calculationExport(
-      core,
-      createPricingCatalogEnvelope(
-        {
-          provider_vocabularies: [partition.vocabulary],
-          provider_snapshots: [partition.snapshot],
-          model_dispositions: partition.model_dispositions,
-          books: partition.books,
-        },
-        core,
-      ),
-    );
-    const exported = envelope.providers[0]?.books
-      .find(({ scope }) => scope.model_refs.includes(astra(result).uid))
-      ?.offers.find(({ offer_key }) => offer_key === "on-demand");
-    if (exported === undefined) throw new Error("Missing exported offer");
-    const quantities = new Map<string, Quantity>();
-    for (const term of exported.terms) {
-      if (term.kind !== "rate") continue;
-      for (const variant of term.variants) {
-        const signal = variant.charge_binding?.signal;
-        if (signal !== undefined)
-          quantities.set(canonicalJson(signal), {
-            signal,
-            value: { numerator: "0", denominator: "1" },
-          });
-      }
-    }
-    const calculator = createCalculator(envelope);
-    for (const [context, expected] of [
-      [272000, { numerator: "408", denominator: "25" }],
-      [272001, { numerator: "816003", denominator: "25000" }],
-    ] as const) {
-      const calculated = calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          {
-            id: "native",
-            offerRef: exported.id,
-            quantities: [...quantities.values()].map((quantity) =>
-              quantity.signal.value === "uncached_input_tokens"
-                ? { ...quantity, value: { numerator: String(context), denominator: "1" } }
-                : quantity,
-            ),
-            selectors: [
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "service_tier" },
-                value: { namespace: "provider", provider_id: "amazon-bedrock", value: "ultrafast" },
-              },
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "operation" },
-                value: { namespace: "provider", provider_id: "amazon-bedrock", value: "responses" },
-              },
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "endpoint" },
-                value: {
-                  namespace: "provider",
-                  provider_id: "amazon-bedrock",
-                  value: "bedrock-runtime",
-                },
-              },
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "deployment_scope" },
-                value: {
-                  namespace: "provider",
-                  provider_id: "amazon-bedrock",
-                  value: "global_cross_region",
-                },
-              },
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "region" },
-                value: { namespace: "provider", provider_id: "amazon-bedrock", value: "us-east-1" },
-              },
-              {
-                kind: "decimal",
-                dimension: { namespace: "kmodels", value: "context_tokens" },
-                unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
-                value: String(context),
-              },
-              {
-                kind: "decimal",
-                dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
-                unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
-                value: "1800",
-              },
-            ],
-          },
-        ],
-      });
-      expect(calculated).toMatchObject({
-        status: "calculated",
-        totals: [
-          {
-            amount: expected,
-            denomination: { kind: "fiat", currency: "USD" },
-          },
-        ],
-      });
-    }
-  });
-
   it.each([false, true])(
     "retains all literal Ultrafast quotes with partial bulk inventory=%s",
     async (withBulk) => {
@@ -442,7 +286,6 @@ describe("native Bedrock card tariffs", () => {
       expect(model.raw_price_facts).toEqual([]);
     },
   );
-
   it("preserves numeric amounts and localized unknown API scope without lending Converse contracts", async () => {
     const bundle = await nativeBundle(true);
     const card = bundle.documents[0];
@@ -523,7 +366,6 @@ describe("native Bedrock card tariffs", () => {
       true,
     );
   });
-
   it("retains sibling cells when one native cache column loses its contract", async () => {
     const bundle = await nativeBundle();
     const card = bundle.documents[0];
@@ -545,7 +387,6 @@ describe("native Bedrock card tariffs", () => {
       ),
     ).toBe(true);
   });
-
   it("retains an unreadable price cell without fabricating a quote state or a multiplier", async () => {
     const bundle = await nativeBundle();
     const card = bundle.documents[0];
@@ -566,7 +407,6 @@ describe("native Bedrock card tariffs", () => {
     });
     expect(model.state_facts ?? []).toEqual([]);
   });
-
   it("keeps a duplicate tariff owner unresolved without hiding other bands", async () => {
     const bundle = await nativeBundle();
     const card = bundle.documents[0];
@@ -589,7 +429,6 @@ describe("native Bedrock card tariffs", () => {
       true,
     );
   });
-
   // Two complete assemblies also check document-order invariance; allow for slower CI workers.
   it("composes card and bulk observations without silently selecting an unequal amount", async () => {
     const bundle = await nativeBundle(true);
@@ -634,5 +473,5 @@ describe("native Bedrock card tariffs", () => {
       reversed.models,
     );
     expect(again?.books).toEqual(partition?.books);
-  }, 15_000);
+  }, 15000);
 });

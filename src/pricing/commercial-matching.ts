@@ -2,6 +2,7 @@ import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value
 import { evaluateApplicability, type PricingSelection } from "../catalog/pricing-applicability.ts";
 import {
   applicabilitiesOverlap,
+  applicabilityContainedIn,
   canonicalizeApplicability,
   unconditionalApplicability,
 } from "../catalog/pricing-canonical.ts";
@@ -39,6 +40,44 @@ export interface UnresolvedCommercialChoice {
 }
 export interface AvailableCommercialChoice extends CommercialChoice {
   offer_refs: string[];
+  targets?: ("book" | "offer" | "condition")[];
+}
+
+/** Automatic choices must preserve every possible price context, including other request modes. */
+export function commercialBranchesCoverScopes(
+  scopes: Iterable<PriceApplicability>,
+  current: readonly CommercialBranch[],
+  proposed: readonly CommercialBranch[],
+): boolean {
+  const prices = [...scopes];
+  let hasContext = false;
+  for (const branch of current) {
+    const remaining = (scope: PriceApplicability): PriceApplicability => ({
+      any_of: scope.any_of.flatMap((clause) =>
+        evaluateApplicability({ any_of: [clause] }, branch.selectors).state === "false"
+          ? []
+          : [
+              {
+                all_of: clause.all_of.filter(
+                  (condition) =>
+                    evaluateApplicability({ any_of: [{ all_of: [condition] }] }, branch.selectors)
+                      .state !== "true",
+                ),
+              },
+            ],
+      ),
+    });
+    const coverage = remaining({ any_of: proposed.flatMap(({ scope }) => scope.any_of) });
+    for (const price of prices) {
+      const scope = intersectCommercialScope(price, branch.scope);
+      if (scope === undefined) continue;
+      const context = remaining(scope);
+      if (context.any_of.length === 0) continue;
+      hasContext = true;
+      if (!applicabilityContainedIn(context, coverage)) return false;
+    }
+  }
+  return hasContext;
 }
 
 /** Bind exact native predicates while retaining the complete correlated scope of every claim. */

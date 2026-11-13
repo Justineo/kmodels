@@ -8,31 +8,22 @@ identity matching, and vocabulary mappings.
 
 ## Purpose
 
-Kmodels is an AI Gateway rate book. It publishes public list rates for proxied inference and for
-provider-hosted capacity that directly runs an admitted model. Request charges and running-resource
-charges remain separate: no instance-hour fee is allocated across calls. Kmodels does not observe
-a request lifecycle, store a usage ledger, or reconcile an invoice.
+Kmodels publishes conditional unit prices for inference and provider-hosted capacity:
+`price(subject, meter, conditions) -> applicable unit price(s)`. Amounts, denominations, denominators,
+validity and source evidence accompany the result. Missing conditions and conflicting evidence
+remain explicit. No billable quantities, usage ledger or request-cost total are required.
 
-The [portable calculator](pricing-calculator.md) implements the stateless public handoff. It owns
-no price retrieval or usage lifecycle; applications initialize it with a complete versioned provider
-export and replace instances when data changes. [Pricing coverage](pricing-coverage.md) defines
-completeness and explicit evidence gaps; provider guides own exact mechanisms.
+A condition qualifies the usage being priced by one lookup. It need not hold for every token in
+the request. Consumers may query multiple TTLs independently and own usage attribution and cost
+aggregation. Input, output, cache read and cache write remain distinct meters; different TTLs
+remain conditions on cache write.
 
-The handoff to a calculator is explicit. For each applicable rate variant, Kmodels publishes:
-
-- the exact rate, denominator, applicability, and validity;
-- the final billable usage signal and its aggregation boundary;
-- zero or more alternative quantity methods, including exact source locators and bounded arithmetic;
-- selector sources where the provider returns a value needed to choose the variant; and
-- source observations proving each price, mapping, and calculation.
-
-The calculator supplies one evaluation record containing the chosen route/request selectors and
-the observed signal values it could collect. It may obtain them from an API response, terminal
-stream event, asynchronous result, account report, invocation log, or telemetry. Kmodels reports
-which alternatives are sufficient and which signals remain missing; it does not prescribe how that
-record is captured, stored, retried, or reconciled. Correlation IDs and account-billing joins remain
-downstream operational data unless they are themselves required to select or calculate a public
-rate.
+The [portable pricing package](price-lookup.md) exposes model/resource unit-price lookup.
+Provider-owned price-basis metadata describes denominators and billing rules. Kmodels does not
+execute quantity graphs or expose a cost API. Missing accounting evidence does not block a known
+unit price.
+[Pricing coverage](pricing-coverage.md) reports independent evidence gaps. Provider guides own
+exact source mappings.
 
 Price books remain provider-owned. Kmodels neither constructs nor promises a continuously updated
 cross-provider identity for an allegedly equivalent model; consumers that need such product
@@ -82,8 +73,7 @@ Exclude:
   request; and
 - formulas that require workload forecasting or amortizing a fixed charge across requests.
 
-Capacity rates use resource aggregation and an instance-time denominator, never a request usage
-signal. A regional infrastructure rate does not establish that every model can deploy in that
+Capacity unit prices retain an instance-time denominator and are not allocated across requests. A regional infrastructure rate does not establish that every model can deploy in that
 Region or that the account has capacity. Model links require exact supported-instance metadata;
 unlinked regional rates remain provider resources.
 
@@ -104,8 +94,8 @@ provider snapshot
 ```
 
 - A **book** owns one admitted model, separately priced request service, or inference capacity resource.
-- An **offer** is one selectable invocation mechanism, such as on-demand, Batch, or a service call,
-  or an independently scoped adjustment to exact referenced rates.
+- An **offer** identifies an evidenced commercial relationship for that subject. Invocation
+  mechanisms and scoped adjustments belong to its terms, not to its identity.
 - A **term** is one rate, exact price state, allowance that applies directly to admitted request
   usage, contribution, or bounded raw fact.
 - A **variant** holds the exact rate or state under one applicability and validity scope.
@@ -122,62 +112,58 @@ signals, resource keys, and source-native evidence.
 This hierarchy is the stable core. Relations, contributions, allowances, resource edges, and
 settlement fields remain optional wire capabilities; a provider review must not populate them just
 to make its commercial graph look complete. Most directly invoked model rates need only a model
-book, one or more invocation offers, rate terms, and applicability variants.
+book, one or more relationship offers, rate terms, and applicability variants.
 
 ### Offers and dimensions
 
-An offer owns a coherent commercial contract for model inference, a service or running capacity. Terms within that offer describe charges that may
-apply together; applicability-qualified variants select the applicable version of each charge.
-Offer identity and price applicability serve different purposes even when a caller selects both
-through enum inputs.
+An offer identifies the commercial relationship under which a customer is charged. A condition
+is a predicate on eligibility, a request, a deployment, or an observed outcome. Conditions can
+qualify an offer's eligibility or a term's rate; they are not an alternative kind of entity.
 
-Classify a source distinction using its commercial contract:
+Apply this decision procedure to every provider:
 
-1. Separate tariff scope, enrollment, allocation, accounting or explicit composition evidence can
-   establish separate contracts. A single contract can span several execution mechanisms; preserve
-   that contract and its scoped alternatives. A different mechanism alone does not force a split.
-2. An independently charged service with its own invocation trigger or commercial relationships
-   has its own service offer. Search and inference may both charge; they are not alternatives in
-   a single mode enum. Use existing exact relations when composition requires them.
-3. Region, served service tier, context band, cache TTL, modality, quality and resolution qualify
-   rates within a mechanism. A condition may affect several terms or make a term inapplicable;
-   that alone does not create a new offer. Priority/Flex remain conditions under the reviewed
-   contracts, including when the provider gives them separate price-table columns.
-4. An API path, model task, product brand, billing unit, amount difference, streaming flag, or table
-   heading alone does not establish an independent offer. Ordinary streamed responses remain
-   ordinary requests. A single video-generation job can return asynchronously without being Batch.
-5. Preserve source uncertainty. Do not manufacture an offer, rate, mechanism, or default Standard
-   tier from a missing column or an unsupported capability. New mechanisms need exact source proof.
+1. Identify the charged subject. Models, independent services and running resources retain separate
+   books even when the same account pays for them.
+2. Establish a separate offer only from a distinct enrollment, contractual obligation, capacity
+   commitment, seller/account billing relationship, or explicitly opted-in data-use program.
+   A source heading, price table, API path, aggregation boundary, execution mode, meter or different
+   amount alone is insufficient evidence.
+3. Within the same relationship, Batch, online/live operation, actual tier, speed, region, context
+   and protocol qualify terms. Retain each conditional rate's quantity methods and aggregation;
+   never widen synchronous extraction paths into Batch or add mutually exclusive charges together.
+4. Account enrollment is independent of request preferences. Gemini Free/Paid and Contributor
+   programs and OpenAI's evidenced data-sharing program are relationship choices. Ordinary
+   Standard/Priority/Flex outcomes remain conditions. Existing-customer eligibility alone is not
+   evidence of another agreement.
+5. Without evidence of a second relationship, use one public list-rate offer for the subject.
+   Do not create speculative contracts or Cartesian products of request dimensions. Missing price
+   evidence remains unknown/raw; callable endpoints do not create priced offers.
 
-Keep a source operation as a condition when it distinguishes rate variants inside the same
-service, such as image quality operations or search-result categories. Promote it to an offer when
-the reviewed source establishes an independent mechanism. Vercel and Together Batch are such
-promotions: retain source-native operation labels in raw evidence, but move their rates, states,
-validity and accounting boundaries into a separate `batch` offer. Do not copy unrelated rates or
-synchronous acquisition paths into Batch. Unscoped raw uncertainty remains conservatively visible.
+The practical test is: after all request and usage facts are supplied, must the consumer still
+identify a separately held or selected commercial agreement? That agreement identifies an offer.
+Changing only a request or outcome under the same agreement selects a condition. A field name
+alone never establishes enrollment or a contractual obligation.
 
-Offers publish evidenced `selection` claims using the contract in
-[Canonical commercial selection](offer-semantics-design.md). Each claim has a dimension, coverage,
-applicability, optional validity, alternatives bound to exact native predicates, and observations.
-Execution is one dimension, alongside billing basis, resource kind and scoped tier/speed choices.
-A single offer can support several alternatives; equal descriptors never merge distinct offers.
+Existing single-relationship keys remain opaque stable identifiers. Combined tariff contexts use
+`public` (qualified by billing basis when necessary). Account programs use
+`account:<program>` and retain their native eligibility predicates. Excluded subscriptions,
+reserved commitments and private contracts remain excluded: this boundary does not expand admission.
 
-Provider-owned commercial policies establish the mappings. For mixed request/session families,
-the policy must find reviewed accounting locators on every priced variant before asserting a
-whole-offer mechanism. Model tasks, API endpoints and transport tags do not establish a tariff.
-Missing or mixed accounting proof remains partial. Provider-resource offers retain their own
-billing basis and resource kind; execution is marked not applicable rather than inferred from a
-product name such as SageMaker Realtime Inference.
+Adapters may extract separate tariff contexts to preserve exact accounting. The shared ownership
+compiler combines them before publication. `source_contexts` maps source keys to applicability for
+association compilation and migration; it is provenance, not a second selectable offer layer.
+Terms retain source context in stable keys. Reviewed account programs partition the combined terms.
 
-Tier/speed conditions stay on their native rate variants. Canonical choices project those exact
-conditions without moving their ownership. Requested and served classes remain independent.
-The common resolver preserves correlated scopes, retains provider-specific residual values,
-and returns exact calculator selectors. The old `execution_mode` query is a compatibility alias
-for a canonical execution choice; it is no longer a stored offer field.
+Canonical choices declare a target: `book`, `offer`, or `condition`. Account plan selects the
+relationship; execution/tier/speed bind conditions. Billing basis belongs to the offer and resource
+kind to the book. A query can resolve them together while reporting ownership, exact references,
+native residual values, correlated scopes, partial evidence and missing inputs. Requested outcomes
+never establish actual billed results. The old `execution_mode` query remains a compatibility alias.
 
-Do not materialize every possible Cartesian product. Store each official rate with only the
-conditions that qualify it. The UI resolves compatible variants from the dimensions relevant to
-that book.
+Services remain separate charged subjects. Model eligibility, protocol, operation and region
+qualify service terms; shared allowances retain one pool and exact rate targets. Remap relations
+and contributions together with offer and term IDs. Remove a same-book `exclusive_with` relation
+only when disjoint conditions prove the same exclusion. No quota is duplicated per model/request.
 
 ### Rates, meters, and usage
 
@@ -193,9 +179,8 @@ A charge binding optionally connects the rate to a billable result signal and ag
 Its quantity methods are alternative acquisition paths: each path may consume that signal directly
 or derive it with a bounded exact-rational graph, and may map every required input to first-party
 request, response, stream, result, account-report, invocation-log, or versioned OTel fields. The
-bundled pure evaluator defines the calculation semantics and rejects conflicting results from two
-available paths. The Gateway remains responsible for collecting those inputs and deciding how to
-handle an interrupted or incomplete request.
+canonical schema validates the graph and its units without executing it. Consumers own any
+collection, attribution or execution of those accounting rules. They do not supply usage to Kmodels.
 
 The graph admits only reviewed operations. Its product form multiplies one quantity by `item`
 counts, for example seconds requested per video by successfully returned videos; it is not a
@@ -275,11 +260,11 @@ The model list shows compact representative inference rates or a capacity status
 rate is available. Details show:
 
 1. public running-capacity offers linked by exact compatibility evidence;
-2. one selected invocation mechanism, when present;
+2. the applicable commercial relationship, when a choice exists;
 3. its base and related request-cost meter/rate rows; and
 4. the deployment or request dimensions that can change those rates.
 
-The mechanism remains the stable presentation context. Its model rates remain visible while related
+The subject and commercial relationship remain the presentation context. Its model rates remain visible while related
 services are grouped in one closed disclosure by default, with every meter kept separate. Service
 charges remain distinct from model and capacity rates; included features distinguish a zero-marginal-charge
 state; automatic charges identify costs produced by the mechanism. Only an exact `exclusive_with`

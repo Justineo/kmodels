@@ -14,7 +14,7 @@ This index points to the repository's current decisions. Detailed documents are 
 
 ## Domain topics
 
-- [Pricing coverage and evidence](docs/pricing-coverage.md): rate, binding, acquisition and operation
+- [Pricing coverage and evidence](docs/pricing-coverage.md): rate, condition and evidence
   completeness; generated coverage resources, unknowns and evidence-preserving repair.
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
@@ -31,15 +31,15 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Source semantic audit](docs/semantic-audit.md): manual Jev experiment, evidence replay, and evaluation limits; not scheduled.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
-  request and inference-capacity rates, scoped usage signals, selector inputs and exact calculations, best-effort normalization and raw
+  inference and capacity unit prices, conditional rate selection, optional accounting metadata, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
-- [Portable pricing calculator](docs/pricing-calculator.md): caller-owned calculation exports, pure ESM package, exact evaluation, and language-neutral conformance.
+- [Portable pricing package](docs/price-lookup.md): caller-owned snapshots, unit-price lookup, validation, and portable contracts.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
   inference and hosting-capacity admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
-- [Canonical commercial selection](docs/offer-semantics-design.md): evidenced scoped offer semantics,
+- [Canonical commercial selection](docs/offer-semantics-design.md): relationship properties and condition mappings,
   canonical-to-native selectors, shared model/resource selection and stored migration.
 
 ## Downstream consumers

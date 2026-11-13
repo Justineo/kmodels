@@ -451,8 +451,8 @@ public catalog profiles and audit-rich canonical data remain available at the
 explicit `/catalog/` and `/pricing/` endpoints. Do not commit duplicate endpoint
 assets under `public/`.
 
-The export pack also contains `/pricing/calculation/index.json`, complete provider partitions under
-`/pricing/calculation/providers/`, and `/pricing/calculation/coverage.json`. These are generated from
+The export pack also contains `/pricing/lookup/index.json`, complete provider partitions under
+`/pricing/lookup/providers/`, and `/pricing/lookup/coverage.json`. These are generated from
 the same accepted pair before publication and carry its identity and provider freshness. The
-[calculator package](pricing-calculator.md) receives those exports from its caller; collection does
+[unit-price package](price-lookup.md) receives those exports from its caller; collection does
 not insert data into the npm package.

@@ -9,6 +9,7 @@ import { togetherCatalogIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { bedrockFoundationMapUrls } from "./bedrock-geo-pricing.ts";
 import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
 import { fetchSagemakerInventory } from "./sagemaker-api.ts";
 import {
@@ -2675,6 +2676,26 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     fetchPayload(indexSource),
     configuredPromise,
   ]);
+  if (source.extractor.kind === "bedrock-catalog") {
+    const page = configuredDocuments.find(
+      (d) => "payload" in d && d.url === "https://aws.amazon.com/bedrock/pricing/",
+    );
+    if (page && "payload" in page) {
+      const maps = await mapConcurrent(
+        bedrockFoundationMapUrls(page.payload.body),
+        crawl.concurrency,
+        (url) =>
+          fetchDocumentEntry(source, {
+            key: `${source.id}/geo-map/${url.split("/").at(-1)}`,
+            url: checkedUrl(url, source),
+            format: "json",
+            maxResponseBytes: 4 * 1024 * 1024,
+            optional: true,
+          }),
+      );
+      configuredDocuments.push(...maps);
+    }
+  }
   const nestedIndexUrls =
     crawl.nestedIndexes === undefined
       ? []

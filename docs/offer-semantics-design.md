@@ -1,202 +1,113 @@
 # Canonical commercial selection
 
-Status: implemented. Canonical offer selection replaces the scalar offer execution field.
-The calculation schema remains 1.0; commercial metadata travels through a separately bound mapping.
+The [relationship boundary](commercial-topology.md#offers-and-dimensions) defines Offer versus
+condition. Provider guides own concrete decisions and source evidence. This contract lets consumers
+select prices without interpreting provider extraction keys.
 
-## Contract and ownership
+## Ownership
 
-Consumers express commercial choices in a shared vocabulary and receive exact offer references and
-native calculation selectors. They do not interpret provider offer keys. Equal descriptors do not
-merge offers, and a descriptor change does not change an offer's ID.
+| Layer             | Meaning                                                     | Example                                        |
+| ----------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| Book              | Charged subject                                             | Model, search service, running instance        |
+| Offer             | Independently evidenced commercial relationship             | Public usage, Paid Tier, Contributor program   |
+| Term/variant      | Conditional charge, state or adjustment                     | Batch input, Priority output, shared allowance |
+| Selection mapping | Canonical choice with explicit ownership and native binding | Standard maps to xAI default                   |
 
-An offer is a coherent, identified commercial contract owning terms, states and relationships.
-Separate tariff scope, enrollment, allocation, accounting or explicit composition evidence can
-establish separate offers. A heading, amount, endpoint, model task or protocol alone cannot.
-One evidenced contract can span several mechanisms. An independently charged service or running
-capacity belongs in its own resource book, with exact relationships to other charges.
+Execution does not identify a commercial relationship. Ordinary/Batch/live rates stay in the same
+public offer unless separate enrollment, obligations or billing relationships are evidenced.
+Account programs with data-use obligations remain distinct. A condition may qualify either offer
+eligibility or a term. Unified querying never erases that ownership.
 
-Rate qualifiers stay on terms: geography, context, modality, TTL, quality and actual served tier
-do not become offers merely because they affect many rows. Vercel/Together Batch contracts retain
-their reviewed separate tariffs and result-item accounting; their native operation labels remain
-in evidence. No further split or merge is required by canonicalization.
+The consumer contract is unit-price resolution for a subject, meter and conditions. Conditions
+apply to the usage being priced by one lookup, not to every token in a request. Cache-write TTL
+therefore qualifies variants of one meter even when multiple TTLs occur in the same request.
+Neither simultaneous usage nor an optional usage-counter binding establishes a new offer or term.
 
-The admitted scope includes model inference, independent services, running capacity and existing
-adjustments. Subscriptions, reserved commitments, negotiated contracts and other excluded products
-remain outside admission. Schema vocabulary does not authorize collecting them.
+## Representation
 
-| Layer                | Authority                                                   | Consumer responsibility                     |
-| -------------------- | ----------------------------------------------------------- | ------------------------------------------- |
-| Book                 | Model/resource identity and resource kind                   | Identify the charged subject                |
-| Offer                | Contract identity, billing basis, states and relationships  | Identify eligible commercial contracts      |
-| Term/variant         | Meter, amount, unit, applicability, validity and accounting | Identify charges inside the contract        |
-| Selection projection | Evidenced canonical values and exact native bindings        | Discover and select across ownership layers |
+Produced `offer.selection` claims declare `target: book | offer | condition`. This field is an
+index of facts, not authoritative ownership of every indexed fact. Claims retain their exact
+applicability, optional validity, alternatives with native bindings, coverage and source evidence.
 
-## Wire representation
+Coverage is complete, partial or not_applicable. Missing claims do not establish support or
+rejection. Complete alternatives preserve correlations: Batch does not gain Priority/Fast from an
+adjacent online table. Requested tier never establishes actual served tier.
 
-`offer.selection` is an optional bounded array of scoped claims:
+`source_contexts` maps source extraction keys to predicates inside the relationship. Parsers may
+retain sync/batch and service-operation contexts to preserve accounting. Association compilation
+resolves each context into the relationship offer and exact fixed selectors. Consumers do not
+interpret these source keys. Calculation exports omit source-context and selection metadata;
+the separately bound inference mapping carries canonical choices.
 
-```ts
-{
-  dimension: "served_service_tier",
-  coverage: "complete", // complete | partial | not_applicable
-  applicability: { any_of: [{ all_of: [/* exact native context */] }] },
-  validity: /* optional published interval */,
-  alternatives: [{
-    value: { namespace: "kmodels", value: "standard" },
-    applicability: { any_of: [{ all_of: [/* exact native tier binding */] }] },
-  }],
-  observations: [/* source reference, owned locator and bounded raw fact */],
-}
-```
+| Dimension              | Target    | Meaning                                                   |
+| ---------------------- | --------- | --------------------------------------------------------- |
+| account_plan           | Offer     | Enrolled pricing program, including data-use obligations  |
+| billing_mode           | Offer     | Usage/capacity charging basis                             |
+| resource_kind          | Book      | Independently charged subject class                       |
+| execution              | Condition | Evidenced ordinary request, Batch or live session         |
+| service_tier           | Condition | Tariff class without specified requested/served ownership |
+| requested_service_tier | Condition | Request preference                                        |
+| served_service_tier    | Condition | Actual billed service class                               |
+| speed                  | Condition | Actual performance class, independently of tier           |
 
-The existing applicability algebra preserves disjunctions of conjunctions. Claims are scoped by
-their owning offer/book model set, their explicit applicability and validity. Complete coverage
-has alternatives; not-applicable coverage has none; partial coverage can preserve known alternatives
-without claiming completeness. A missing claim does not prove rejection or support.
-Optional `excluded_values` records evidenced negative facts within the same scope. For example,
-an ordinary/session contract can remain partially classified while its independent Batch contract
-proves that Batch does not belong to this offer. Exclusions cannot also be positive alternatives.
+Provider policies admit exact aliases. xAI Default maps to Standard; Priority and Fast are not
+globally equivalent. Labels do not promise equivalent SLAs. Unknown values retain provider
+identity and evidence gaps. Free/included remain price states, never defaults inferred from
+missing rates or model capabilities.
 
-One claim can carry request and live-session alternatives on the same offer. Different offers can
-carry the same descriptor. Correlated claims can describe request + Fast and Batch without Fast:
-the resolver intersects their scopes and exact bindings. Independent dropdown arrays never become
-the authoritative contract.
+Where execution classification remains partial, a native invocation-mode predicate preserves
+known tariff separation without inventing request/live support. Streaming alone does not establish
+a live session; one asynchronous video job does not establish Batch.
 
-Billing mode and resource kind project their existing authoritative fields. Tier/speed claims
-project exact native rate predicates and retain validity and matching observations; those native
-predicates remain the calculation authority. No rates are moved merely to normalize their labels.
+## Compilation and migration
 
-## Vocabulary and normalization
+Provider extraction first preserves exact source prices and conditional accounting. The ownership
+compiler combines tariff contexts under the public relationship, makes formerly implicit context
+conditions explicit, preserves model restrictions, and remaps dependent references. Account
+programs partition these terms using reviewed eligibility evidence, including raw-only prices.
 
-The registered dimensions are:
+Independent services and capacity retain their books. Model-specific service rows become
+model-qualified terms; allowances retain one shared pool and exact targets. Contributions and
+relations remap with their target prices. A same-book exclusion relation is removed only when
+disjoint conditions prove the same exclusion. Aggregation and acquisition do not change merely
+because their enclosing offer changes.
 
-| Dimension                | Definition and limit                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `execution`              | Ordinary request, independently submitted Batch, or live session; transport does not prove a tariff |
-| `billing_mode`           | Existing usage, capacity or other admitted charging basis; not a service tier                       |
-| `resource_kind`          | Existing independently priced subject class; services are not all capacity                          |
-| `service_tier`           | The tariff's class where the source does not designate requested/served ownership                   |
-| `requested_service_tier` | A requested preference; does not establish the billed result                                        |
-| `served_service_tier`    | The observed billed service class                                                                   |
-| `speed`                  | Observed performance class, independently of service-tier naming                                    |
+`scripts/migrate-offer-boundaries.ts` applies the same compiler to accepted data. Dry run is the
+default; `--write` adopts the validated pair and rebuilt projections with a local backup. It checks
+monetary/accounting facts, raw evidence, core catalog, source revisions, freshness and mapped
+identities. No live collection is required. Single-relationship IDs and non-colliding term keys stay
+stable; merged or partitioned offer/term IDs change with ownership. Book and source
+identities remain stable. Replace snapshot and mapping together; old references cannot be reused.
 
-The current normalizations are exact mappings of tariff discriminators, not promises of identical
-cross-provider SLAs. Standard, Priority, Flex, Fast, Ultrafast and Optimized remain distinct values.
-A broader classification is not emitted as an exact choice. Unreviewed values retain provider
-namespace and identity in the same discovery interface.
+## Consumer contract
 
-Provider-owned policies explicitly admit native values; there is no runtime string heuristic.
-xAI's documented Default processing maps to canonical Standard, with the exact native `default`
-selector returned for calculation. Its upstream Fast/Priority response alias remains owned by its
-accounting contract. OpenAI's Fast tariff stays Fast even where its acquisition mapping accepts a
-returned Priority value. Anthropic Fast remains a separate speed dimension. A global
-Priority = Fast alias would erase these distinctions and is forbidden.
+Model/resource lookup accepts canonical choices, native selectors, evaluation time and an optional
+exact offer reference. Available choices expose `targets` alongside exact offer references.
+The result distinguishes candidate relationships, missing request/outcome inputs, unsupported
+combinations and incomplete classification. It never selects the cheapest candidate or supplies an
+unobserved outcome. Exact quantities and independent charge components remain caller-owned.
 
-Free and included remain price states. No requested-tier choice fills a served-tier condition.
-Actual billing needs the observed result; planning may explicitly supply a hypothetical outcome.
+The website groups controls into **Plan** and **Usage conditions**. Account plan selects the
+agreement. Request mode and billed tier qualify its rates. Resource kind and billing basis remain
+descriptive subject/plan properties. Services are separate charges rather than mutually exclusive
+account plans. Planning estimates use explicit hypothetical inputs.
 
-## Producer policies and evidence limits
+Legacy execution_mode queries translate to execution choices. Claims without target remain
+readable, but current producers declare ownership. Portable price-data schema 2.0 supports canonical
+execution predicates; package 0.4.0 exposes only unit-price lookup. Replace price and mapping inputs
+together. There is no legacy cost evaluator.
 
-Declarations live beside each owning commercial adapter, with shared assembly and projection.
-Selection is derived after canonical term compaction, so repeated source rows do not expand the
-provider's precompaction envelope or produce different metadata from stored-data migration.
-The registry dispatches those declarations; it contains no task/endpoint/key classifier.
-The declarations use adapter-owned keys to locate reviewed contracts, not to infer their meaning.
-The mapping compiler resolves native Batch operation associations against the assembled offers.
-Fresh extraction and stored-input replay therefore use the same conversion; source facts retain
-their native operation predicates, and providers with retained unsplit offers remain unchanged.
+## Required verification
 
-| Provider families                                                  | Execution evidence                                                                                                | Canonical qualifier mappings                                                          |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Anthropic                                                          | Owned ordinary/Batch tariffs                                                                                      | Standard/Fast speed                                                                   |
-| Bedrock                                                            | Exact Converse/invocation-log versus Sonic accounting bindings; owned Batch tariff                                | Standard/Priority/Flex/Ultrafast tier; Standard/Optimized speed                       |
-| Azure                                                              | Exact request versus Realtime accounting bindings; owned router/Batch tariffs                                     | Standard/Priority/Flex served tier                                                    |
-| OpenAI                                                             | Exact request versus Realtime accounting bindings; owned Batch tariff                                             | Standard/Fast/Ultrafast served tier                                                   |
-| Gemini, Vertex                                                     | Exact generation/interaction or partner request accounting; live bindings only where present; owned Batch tariffs | Standard/Priority/Flex tiers; Gemini's native Batch resource qualifier                |
-| DashScope                                                          | Exact request or Realtime accounting bindings; owned Batch tariff                                                 | Unreviewed values remain native                                                       |
-| Vercel                                                             | Independently bound image/video/rerank request charges; owned Batch tariff                                        | Standard/Priority/Flex/Ultrafast served tier; Standard/Fast speed                     |
-| Databricks                                                         | Owned pay-per-token request contract                                                                              | Standard/Priority served tier                                                         |
-| Fireworks                                                          | Owned serverless usage request contract                                                                           | Standard/Priority service tier                                                        |
-| Mistral                                                            | Owned ordinary/Batch contracts                                                                                    | Standard/Priority served tier                                                         |
-| xAI                                                                | Owned ordinary, direct media, live voice and Batch contracts                                                      | Default → Standard and Priority served tier                                           |
-| Cerebras, Cohere, DeepSeek, Kimi, Meta, Ollama, Together, TypeSafe | Their admitted direct request contracts; Kimi/Together owned Batch contracts                                      | Other values remain native                                                            |
-| SageMaker                                                          | Model software request contract, separately from running resources                                                | Serverless native on-demand/provisioned-execution qualifiers remain provider-specific |
-| Provider resources, including Hugging Face and shared services     | Execution not applicable; existing billing basis/resource kind                                                    | Reviewed native rate qualifiers remain independently scoped                           |
+Verify multiple modes in one relationship, separate account programs sharing modes, impossible
+Batch/tier combinations, aliases, requested/served independence, partial evidence, raw-only program
+prices, model-qualified services, shared allowances and remapped contributions. Verify source
+replay, exact calculation, UI/public lookup parity and snapshot-bound references. Stored migration
+does not claim fresh source verification.
 
-For families using accounting evidence, every normalized rate must have a matching reviewed
-acquisition locator and none may prove the opposite mechanism before a whole-offer claim is complete.
-Missing bindings or mixed request/session acquisition remain partial. This deliberately withdraws
-old assertions based only on model capabilities or endpoint support. For example, Vercel's generic
-generation accounting does not distinguish an ordinary request from a session; a realtime tag
-alone cannot fill that gap. Parsing or accounting improvements can supply later evidence without
-changing the consumer contract.
-
-Canonical selection does not add source fetching dependencies. Missing evidence remains explicit;
-there is no fabricated Standard default or inference from a token unit.
-
-The owned Batch contracts declare tier/speed axes not applicable where no such native tariff
-qualifier is published. An explicitly parsed native qualifier takes precedence over that default.
-This prevents a Batch candidate from becoming an unresolved Fast alternative merely because it
-has no speed column, while genuinely unreviewed offer families retain partial coverage.
-
-## Query and matching
-
-`createInferencePriceLookup` accepts the existing exact provider/model ID with `choices`, native
-`selectors`, evaluation time and an optional offer reference. `createCommercialPriceLookup` accepts
-the same choices with either a model subject or an exact resource book subject:
-
-```ts
-{
-  subject: { kind: "model", provider_id: "xai", model_id: "grok-4.3" },
-  choices: [
-    { dimension: "execution", value: { namespace: "kmodels", value: "request" } },
-    { dimension: "served_service_tier", value: { namespace: "kmodels", value: "standard" } },
-  ],
-}
-```
-
-Resource subjects use `{ kind: "resource", provider_id, book_ref }`; they do not invent model IDs.
-Exact references remain necessary for calculation and for residual ambiguity between same-class
-contracts. They do not negate semantic selection: consumers discover them from canonical choices.
-
-The resolver validates snapshot identity, preserves ID-fixed conditions, intersects scoped choices,
-and binds only exact selected native values. Geography and other context are not filled from an
-arbitrary source row. Correlated context remains required. It evaluates terms/validity with the
-existing matcher and returns:
-
-- `available_choices`: canonical or provider-residual values under the other choices and native inputs;
-- `missing_choices`: unresolved commercial dimensions;
-- `unresolved_choices`: explicit gaps in classification, including gaps beside positive candidates;
-- exact offer/term references, effective native selectors, missing native inputs and price gaps;
-- original applicable relationships and referenced contribution rates.
-
-Complete unsupported choices differ from incomplete evidence. Lookup does not choose the cheapest
-candidate, merge identical labels, assume quantities, or silently include/exclude related services.
-The caller supplies independently charged components to the exact calculator, whose existing
-composition checks remain authoritative. Services are not mutually exclusive model plans.
-
-The website uses the same commercial resolver for inference and resource/fallback controls. It
-keeps observed outcomes distinct from preferences, retains residual offer selection and presents
-services/capacity in their existing charge groups.
-
-## Persistence, compatibility and verification
-
-The bound `/pricing/inference.json` root stores `offer_selections` with observations reduced to
-source/locator evidence. It covers model and resource offers. Canonical publication checks that the
-projection exactly matches the current offers; stale references or changed source revisions cannot
-silently survive compilation. The decoded resource is bounded to 32 MiB.
-
-The old `execution_mode` query translates to a canonical execution choice. Legacy mapping inputs
-with `execution_choices` are accepted for compatibility; current producers omit them and store no
-scalar execution field. Exact calculation exports omit selection metadata, preserving schema 1.0.
-
-`scripts/canonicalize-commercial-selection.ts` reads accepted canonical data, validates the legacy
-field at that boundary only, applies the same producer policies and rebuilds mappings/projections.
-Before adoption it asserts unchanged IDs, prices, applicability, validity, accounting, relationships,
-core catalog and source revisions. It performs no live refresh and leaves captured inputs intact.
-
-Required regression coverage includes one offer/multiple mechanisms, multiple offers/same semantics,
-impossible combinations, native alias equivalence, observed/requested independence, partial evidence,
-validity, native-condition conflicts, resource capacity and additive relationships. Package/browser
-checks must consume the same matching implementation. The frozen calculator's conformance vectors
-remain the evidence for exact arithmetic and component composition.
+Canonical controls share the same preservation rule as native conditions: an edit retains every
+other applicable selection and removes only values excluded by the new domain. There are no
+special reset lists for account plan, execution, speed or tier. The UI labels the `speed` dimension
+**Speed**. A speed class and a service tier are distinct provider facts; a shared value label such as
+Standard does not establish equivalence. Actual versus requested ownership stays in the dimension
+contract and its evidence, not in an ambiguous field heading.

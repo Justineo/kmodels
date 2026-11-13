@@ -5,12 +5,10 @@ import { extractKimiOpenApiAccounting } from "../src/catalog/kimi-accounting.ts"
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import type { ParsedProviderModel, SourcePriceFact } from "../src/catalog/pricing-source.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
-import { createCalculator } from "../src/pricing/index.ts";
-
 const observedAt = "2026-10-20T00:00:00.000Z";
 async function compiled(
   china: boolean,
@@ -151,14 +149,13 @@ async function compiled(
     provider_vocabularies: [partition.vocabulary],
     model_dispositions: partition.model_dispositions,
   };
-  const exported = calculationExport(core, createPricingCatalogEnvelope(pricing, core));
+  const exported = priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
   const offer = exported.providers[0]?.books[0]?.offers.find(
     ({ offer_key }) => offer_key === "sync",
   );
   if (offer === undefined) throw new Error("Missing Kimi synchronous offer");
-  return { calculator: createCalculator(exported), offer, region, currency };
+  return { offer, region, currency };
 }
-
 describe("Kimi cache-write accounting", () => {
   it.each(["counter", "model scope"])(
     "does not replace a failed regional %s with the other region's contract",
@@ -208,7 +205,6 @@ describe("Kimi cache-write accounting", () => {
       ).toContain("/usage/cached_tokens");
     },
   );
-
   it("leaves the stronger partition caller-owned when its description no longer proves exclusivity", async () => {
     const { offer } = await compiled(false, {
       editBody: (body) =>
@@ -229,98 +225,4 @@ describe("Kimi cache-write accounting", () => {
         .map(({ locator }) => locator.value),
     ).toContain("/usage/input_tokens");
   });
-
-  it("keeps ordinary non-hit input billing when no separate write tariff exists", async () => {
-    const { calculator, offer, region, currency } = await compiled(true, { modelId: "kimi-k2.6" });
-    const result = calculator.calculate({
-      evaluatedAt: observedAt,
-      components: [
-        {
-          id: "k2",
-          offerRef: offer.id,
-          selectors: [
-            {
-              kind: "categorical",
-              dimension: { namespace: "kmodels", value: "region" },
-              value: { namespace: "provider", provider_id: "kimi", value: region },
-            },
-          ],
-          quantities: [
-            {
-              signal: { namespace: "kmodels", value: "input_tokens" },
-              value: { numerator: "1000", denominator: "1" },
-            },
-            {
-              signal: { namespace: "kmodels", value: "cached_input_tokens" },
-              value: { numerator: "200", denominator: "1" },
-            },
-            {
-              signal: { namespace: "kmodels", value: "output_tokens" },
-              value: { numerator: "0", denominator: "1" },
-            },
-          ],
-        },
-      ],
-    });
-    expect(result.status).toBe("calculated");
-    expect(result.totals).toEqual([
-      {
-        denomination: { kind: "fiat", currency },
-        amount: { numerator: "271", denominator: "50000" },
-      },
-    ]);
-  });
-  it.each([
-    { china: true, ttl: 300, amount: { numerator: "41", denominator: "2500" } },
-    { china: true, ttl: 3600, amount: { numerator: "14", denominator: "625" } },
-    { china: false, ttl: 300, amount: { numerator: "123", denominator: "50000" } },
-    { china: false, ttl: 3600, amount: { numerator: "21", denominator: "6250" } },
-  ])(
-    "charges each native Chat prompt partition once (China=$china, TTL=$ttl)",
-    async ({ china, ttl, amount }) => {
-      const { calculator, offer, region, currency } = await compiled(china);
-      const result = calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          {
-            id: "chat",
-            offerRef: offer.id,
-            selectors: [
-              {
-                kind: "categorical",
-                dimension: { namespace: "kmodels", value: "region" },
-                value: { namespace: "provider", provider_id: "kimi", value: region },
-              },
-              {
-                kind: "decimal",
-                dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
-                unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
-                value: String(ttl),
-              },
-            ],
-            quantities: [
-              {
-                signal: { namespace: "kmodels", value: "input_tokens" },
-                value: { numerator: "1000", denominator: "1" },
-              },
-              {
-                signal: { namespace: "kmodels", value: "cached_input_tokens" },
-                value: { numerator: "200", denominator: "1" },
-              },
-              {
-                signal: { namespace: "kmodels", value: "cache_write_tokens" },
-                value: { numerator: "300", denominator: "1" },
-              },
-              {
-                signal: { namespace: "kmodels", value: "output_tokens" },
-                value: { numerator: "0", denominator: "1" },
-              },
-            ],
-          },
-        ],
-      });
-      expect(result.status).toBe("calculated");
-      expect(result.totals).toEqual([{ denomination: { kind: "fiat", currency }, amount }]);
-    },
-  );
 });

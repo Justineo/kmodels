@@ -2,7 +2,12 @@
 
 Status: implemented and adopted by the accepted snapshot
 
-This document is the current wire and presentation contract.
+This document is the current wire and presentation contract. Offer ownership follows the
+[relationship decision procedure](commercial-topology.md#offers-and-dimensions). Execution and
+actual outcomes qualify terms; independently enrolled programs identify offers. `source_contexts`
+is an audit mapping for source tariff keys, omitted from unit-price exports. Canonical selection
+claims declare `target: book | offer | condition`. The canonical size budget includes the explicit
+conditions and scoped evidence introduced when source tariff contexts share a relationship.
 [Commercial topology](commercial-topology.md) defines the narrower admission boundary for an AI
 Gateway rate book. The shared wire and configured-provider adapters implement that boundary.
 Generated artifacts must pass topology and replay-adoption gates before a newly implemented adapter
@@ -26,7 +31,7 @@ provider snapshot
                  └─ applicability-qualified variant
 ```
 
-This hierarchy is the minimum needed to preserve distinct invocation offers, their exact
+This hierarchy is the minimum needed to preserve distinct commercial relationships, their exact
 relationships, meters, billed usage signals, units, conditions, and unsupported in-boundary facts
 without expanding every observed combination into a model-local rate list. The wire can represent
 broader commercial facts during provider convergence; that capacity does not admit them into newly
@@ -44,7 +49,7 @@ They advance as one accepted pair. The canonical pricing endpoint is
 Pair publication also refreshes the derived UI and export packs described in
 [Collection](collection.md). They are delivery artifacts, not canonical pricing
 resources; the export-pack pricing entry decodes to the exact canonical
-envelope. A separate [calculation export and pure package](pricing-calculator.md) preserve the
+envelope. A separate [unit-price export and pure package](price-lookup.md) preserve the
 commercial semantics without observation fragments. Their versioned portable schema is independent
 of canonical audit delivery and price refreshes do not require npm releases.
 
@@ -53,7 +58,7 @@ The same small core covers the principal strategies:
 | Strategy                                             | Representation                                                       |
 | ---------------------------------------------------- | -------------------------------------------------------------------- |
 | Input, output, cache read/write                      | Separate rate terms, exact units, distinct billable signals          |
-| Batch or another invocation mechanism                | A separate offer with its own aggregation boundary                   |
+| Batch or another invocation mechanism                | Conditional terms with their exact aggregation and acquisition       |
 | Context tiers, region, quality, modality, currency   | Applicability-qualified variants, with selector mappings where known |
 | Included quantity, minimum runtime, count × duration | A bounded exact quantity calculation beside the rate                 |
 | Separately billed search, tools, media               | Service or model rate terms with their own measured quantity         |
@@ -371,6 +376,10 @@ the latest attempted refresh time and one stable failure code. This metadata is
 provider-partition-wide and non-commercial: it does not claim that a particular
 model failed validation. A successful refresh clears the failure, and Git
 history—not the public schema—retains older attempts.
+For a targeted provider refresh, the envelope generation time describes the new publication.
+Unchanged providers retain their complete snapshot, including successful observation and failed
+attempt timestamps. These timestamps may precede publication but must never follow it. A provider
+outside the refresh scope is not reclassified as a failed refresh or stamped as newly observed.
 
 A newly collected price snapshot also captures `source_records`: the sorted, complete set of
 source IDs cited by its evidence, with their URL, observation time, content hash and extractor
@@ -380,7 +389,7 @@ still establish provider ownership; the latest catalog source metadata does not 
 revision used by an older price observation. Historical snapshots may lack captured records. Only
 a catalog record from the same observation can supply missing revision metadata; a later record
 cannot. Canonical evidence references remain available when historical version metadata is
-unavailable, but calculation export requires complete source records. Verified historical records
+unavailable, but unit-price export requires complete source records. Verified historical records
 may be recovered from the corresponding accepted catalog transaction without restamping prices.
 
 Compilation inputs follow the final composed price snapshot, rather than a collector's attempted
@@ -467,8 +476,9 @@ rate qualifiers in one consumer interface. It supports several execution alterna
 and several offers with the same semantics. Billing basis, resource kind, execution, requested/served
 tier and speed remain independent dimensions; compatible combinations retain their exact scopes.
 A descriptor change does not change identity. Only a reviewed contract split or merge changes IDs.
-The canonical-to-native projection crosses the inference mapping boundary; the frozen calculation
-schema and its native predicates remain unchanged.
+The canonical-to-native projection crosses the inference mapping boundary. Portable price-data
+schema 2.0 includes canonical execution predicates. Selection and source-context metadata remain
+outside that envelope; the bound inference mapping carries canonical choice claims.
 
 The standard billing modes mean:
 
@@ -575,13 +585,10 @@ Kmodels uses this graph as its canonical wire language rather than CEL. A
 consumer may compile the graph to CEL internally, but CEL source is not stored
 in the price book: accepting arbitrary expressions would weaken canonical
 identity, static unit validation, resource limits, and cross-implementation
-evaluation. `pricing-calculation.ts` is the exact-rational reference evaluator.
-It accepts caller-supplied signal quantities, evaluates every satisfiable method,
-rejects inconsistent results from two simultaneously available methods, and
-returns either a resolved quantity/cost, the exact alternative missing-signal
-sets, or `unbound`. It does not collect, persist, or reconcile request usage.
-Caller quantities must be bounded, non-negative reduced rationals; malformed values are rejected
-before evaluation, including on the direct-signal path.
+evaluation. `pricing-quantity-contract.ts` validates graph structure and enumerates referenced
+signals for data validation. Kmodels does not execute the graph, accept observed usage quantities,
+or compute monetary amounts. This metadata records source-defined price bases; it is not a
+runtime cost contract.
 
 `input_sources`, when present inside a quantity method, is that method's
 machine-readable acquisition contract. Each entry identifies one required signal,
@@ -657,8 +664,7 @@ signal name unless the source exposes a genuinely distinct counter.
 When source evidence identifies a single nominal duration as part of a charge, bind its billable
 quantity directly. Reserve duration selectors for evidence that duration changes applicability.
 A usage signal may carry a display label for the named quantity, which the website uses on the
-corresponding rate row. The portable calculation vocabulary carries the quantity identity and
-definition and omits the display label.
+corresponding rate row. The portable vocabulary retains the reviewed identity, definition and label.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
@@ -691,6 +697,22 @@ The same source spelling cannot represent two provider meter meanings. Provider
 atoms use reviewed semantic keys; raw spelling remains in observations.
 
 ### Applicability
+
+Kmodels resolves a unit price for a subject, meter and conditions. Conditions qualify a rate
+variant; they do not require every token in a request to use the same variant. Consumers can query
+the same meter with different facts and own usage attribution and cost aggregation. A token count
+used to select a context band is a pricing condition, not the quantity to multiply by the price.
+
+Cache-write TTL remains a condition on `cache_write_text`: 300 and 3600 seconds select five-minute
+and one-hour variants. Their coexistence within one request is not grounds for separate terms or
+offers. Retain TTL on raw evidence too, so an unreadable five-minute quote does not block an
+independently established one-hour price. Never infer a duration for an unqualified quote.
+Overlapping contradictory prices remain explicit conflicts.
+
+Meters distinguish what is priced; conditions distinguish when a price applies. Separate terms
+require independently identified priced items or rules, not different values of a condition.
+Optional price-basis bindings describe source-defined billing units and categories; missing
+usage counters do not invalidate a known unit price. Kmodels does not evaluate those quantities.
 
 Applicability is bounded disjunctive normal form:
 
@@ -732,6 +754,14 @@ Partial UI evaluation is three-valued:
 A missing selector remains a candidate and requests only dimensions that can
 still change the result. This is deterministic filtering, not source-uncertainty
 resolution.
+After substituting supplied facts, dependency discovery ignores an unresolved clause when a
+broader remaining clause covers it: `A OR (A AND B)` does not require `B`. Containment compares
+categorical values and exact numeric boundaries, not dimension names alone. This reduction stays
+inside one applicability expression; it never combines separate prices or charge components.
+The shared evaluator applies it to stored snapshots as well as newly collected prices, without
+rewriting their evidence or identifiers. Lookup and UI use the same
+dependencies regardless of input or clause order. Unsupported or genuinely conditional branches
+retain their missing inputs.
 
 ### Published validity
 
@@ -751,7 +781,7 @@ the exact datetime version containing the current instant and offer one concise
 preview of the next version. The effective time belongs to the plan transition
 rather than every state and rate row. A future exact start on any offer fact establishes a preview,
 even when the overall offer state stays numeric. The preview is explicitly labeled as upcoming
-and never changes which rate the calculator applies to an actual evaluation time.
+and never changes which rate lookup selects for a supplied evaluation time.
 Provably empty or reversed intervals are
 not normalized.
 
@@ -835,9 +865,15 @@ arrays have one schema-owned sort key and reject duplicate identities. Source
 sequences retain source order only where order is itself evidence.
 
 Validation checks the complete graph for I-JSON once. Canonical object keys and
-immutable applicability relations are identity-cached across validation and
-projection, while repeated equal applicability values share one canonicality
-check within the catalog. Canonical deduplication reuses its computed keys for
+immutable applicability relations are identity-cached, while repeated equal applicability
+values share one canonicality check within the catalog. Mirror validation gives each
+in-process provider a separate synchronous cache scope. Projection has its own synchronous
+scope, ending before asynchronous encoding/compression. Each scope restores enclosing caches
+in `finally`, including nested calls and errors; no scope spans an `await`. This releases
+phase-local strings and indexes even while the caller retains the accepted or previous graph,
+at the cost of rebuilding some keys in later phases. Ordinary caller-owned lookup caches keep
+their existing behavior. Cache release neither mutates a price graph nor forces GC or immediate
+RSS reclamation. Canonical deduplication reuses its computed keys for
 sorting. Serialization returns bounded canonical chunks, avoiding a complete
 intermediate string for every nested subtree. Callers join them when they need
 a contiguous string.
@@ -847,15 +883,98 @@ strings or allocating full-size encoding buffers. Strict schema validation
 checks the header and each book separately, bounding temporary deep clones to one
 book; global semantic validation still sees the complete graph, and publication
 freezes the same input graph it validates.
+Stored pricing is decoded through a strict envelope/header followed by one book at a time.
+Each parsed book replaces its unvalidated predecessor in the owned decoding state, so reading
+does not retain a complete unvalidated graph alongside a complete schema clone. Decoding
+stops at the first malformed book and retains its `data.books[index]` issue paths.
+The local read/recovery path enters preparation after structural validation; public preparation still
+validates caller-owned structures. Semantic validation, canonical hashes, core bindings and
+publication freezing run on both paths. There is no shape-validation cache for mutable objects.
+Provider validation runs at most three worker tasks concurrently, bounding the number of live
+private provider graph copies and validation caches. Every partition still uses the same
+validator; parent topology, global limits and canonical publication checks remain unchanged.
+Public preparation keeps cost ordering and native object-message transport. Three workers trade
+an additional simultaneous graph copy relative to two workers for lower validation latency.
+Mirror reads instead send only the estimated most expensive provider to one worker while
+validating the other owned partitions in process. The estimate includes applicability clause,
+condition and categorical-value counts, not just record counts. A single-provider read stays
+in process because it has no independent work to overlap with transport. Parent topology,
+limits and every provider validator remain unchanged. Errors retain the original task-order
+priority, even when the remote provider is later in that order. Worker teardown is awaited
+on both success and failure, before canonical source allocation. This bounds transport to one
+provider copy. Compared with entirely in-process mirror validation, this trades a higher
+first-read peak for lower latency; phase-local cache release can lower the complete publication
+peak independently. Measure both peaks rather than assuming one represents the other. It does
+not lower admission limits or bypass consumer validation.
+Process peak RSS also depends on allocation and GC timing. Compilation retains its separate
+four-worker pool default. Accepted-snapshot recovery selects two validation workers and waits
+for their validation and teardown before allocating canonical data fragments. The recovered
+graph remains exclusively owned during this wait, so canonical serialization can safely follow
+validation. This prevents canonical fragments from overlapping worker graph copies and caches,
+at the cost of less CPU overlap. Public preparation of caller-owned input retains its
+serialization-before-await boundary. These are scheduling policies, not
+data-admission limits; endpoint memory alone cannot establish a process peak reduction.
+Offline replay sends each compilation worker a SHA-256 fingerprint of the accepted provider
+partition. The worker fingerprints its complete assembled result, including source evidence and
+metadata, using bounded canonical chunks. An equal partition returns only that fingerprint,
+avoiding a second complete object graph across the worker boundary. The parent checks the
+returned fingerprint against the submitted task before reusing the accepted partition.
+For changed partitions, replay compares each returned book and provider metadata with accepted
+values at worker receipt. Deeply equal values reuse the accepted objects; changed books retain their new
+values and pass the existing adoption and publication checks. Equality includes evidence and
+metadata, not only rates or stable IDs, and does not create canonical comparison strings.
+When the entire reassembled pricing graph equals a locally prepared immutable candidate,
+replay reuses its pricing envelope and canonical bytes instead of validating and serializing
+them again. Unregistered caller objects cannot use this shortcut. Source revision checks,
+provider assembly and adoption checks still run, and inference mappings are rebuilt independently.
+Changed graphs still require validation and a new canonical source while the caller retains
+the prior candidate; workers also still copy genuinely new compilation results.
+
+JSON text is scanned for strict syntax and duplicate decoded member names before native
+`JSON.parse` constructs the graph; UTF-8, I-JSON string/number checks and canonical-byte checks
+remain at their existing boundaries. This avoids a second JavaScript-parser traversal that
+constructs objects while preserving rejected-input behavior.
 Resource limits use ordinary JSON byte length because
 member ordering changes byte order, not UTF-8 byte count. Canonical
 serialization remains authoritative for hashes and published bytes. Catalog and
 provider byte budgets count complete books and their separators independently,
 without allocating a second complete serialized catalog just to measure it.
-The complete catalog budget is 320 MiB, including conservative retained-state metadata and scoped
-commercial selection evidence. The accepted catalog with selection exceeds the former 288 MiB bound;
+Precompaction admission counts the same projected records one book at a time. It validates
+I-JSON and counts ordinary JSON bytes, including cross-book array separators, without sorting
+records or allocating a provider-sized projection, canonical string or UTF-8 buffer. The byte
+and observation/count budgets keep their existing meanings; this is an allocation and work
+reduction, not a capacity calibration. One unusually large book can still require a large
+temporary projection. Asset packs encode and compress at most four assets concurrently per
+profile, avoiding UTF-8 buffers for all queued assets; both profiles may run concurrently.
+Prepared publications retain their existing canonical source fragments for export packing.
+The canonical pricing asset is encoded and compressed incrementally with stream backpressure,
+without flattening the complete UTF-16 source or allocating its complete UTF-8 buffer. Source
+limits and hashes count the emitted bytes, and gzip receives no intermediate flushes, preserving
+the existing manifest and compressed bytes. Other string assets keep their existing bounded
+concurrency path. Canonical snapshot writes encode the same prepared fragments incrementally
+into a temporary file, then atomically rename it before the accepted-pair pointer advances.
+Existing snapshot files are compared byte-for-byte through a bounded read buffer, including
+an end-of-file check, so equal files keep their identity and modification time. Failed writes
+remove their partial temporary file and leave the accepted destination intact. Recovery reads
+and fatally decodes the pricing snapshot in a separate asynchronous scope that returns only
+text. Both the initial file size and the actual bytes read enforce the encoded-input limit.
+The complete input byte buffer becomes collectible before the unchanged syntax, duplicate-key
+and I-JSON checks build the graph. The header-schema continuation similarly returns only its
+owned header before book validation resumes, so the raw parse tree does not retain a second
+book array while checked books replace their predecessors. Exact canonical comparison
+rereads the same open file descriptor against encoded fragments with a 64 KiB read buffer.
+Positional reads start from byte zero, preserve the handle's cursor and keep comparison bound
+to the original file if its pathname is atomically replaced. The descriptor closes on success
+or failure before mirror restoration. This exchanges a second sequential snapshot read for
+ending complete input-buffer ownership before the graph and worker copies are built. It still
+allocates the full buffer during UTF-8 decoding and requires complete text for JSON parsing;
+collection timing and later allocations affect process peak RSS. It does not allocate another
+full canonical string or UTF-8 buffer for the comparison.
+The complete source string remains available for callers that explicitly need it.
+The complete catalog budget is 384 MiB, including conservative retained-state metadata and scoped
+commercial selection evidence. Explicit relationship predicates increase the retained evidence size;
 provider, applicability and precompaction limits remain independent.
-It leaves 32 MiB below the pricing mirror's decoded-input limit for the published envelope.
+It leaves 32 MiB below the pricing mirror's 416 MiB decoded-input limit for the published envelope.
 The provider budgets apply to each partition. A rejected catalog reports its measured byte
 count and the limit.
 
@@ -913,8 +1032,8 @@ Bedrock's native on-demand token SKU owns its latency class; an optimized quote 
 Standard speed to an unqualified Marketplace, card or differently scoped quote.
 
 The pure applicability interpreter lives in `pricing-applicability.ts`. Website
-projection and the portable calculator use that same implementation, including
-partial OR clauses, interval selectors and exact decimal bounds. The calculator
+projection and portable price lookup use that same implementation, including
+partial OR clauses, interval selectors and exact decimal bounds. The lookup runtime
 does not depend on presentation, formatting, website or component modules.
 
 Presentation renders the labels supplied by the canonical vocabulary and its
@@ -969,6 +1088,31 @@ selection, amount, units, allowances, offer relationships, charge bindings, or
 model disposition.
 Unsupported commercial raw values contribute their bounded raw facts, so an
 unsupported price change is still a commercial diff.
+
+## Performance boundary and stopping criteria
+
+The current implementation bounds temporary schema clones to one book, limits worker copies,
+shares unchanged immutable replay results, scopes phase-local caches and streams canonical
+output encoding/comparison. It intentionally retains complete JSON text for native parsing,
+the complete checked graph and canonical fragments. A changed publication can overlap its
+previous graph while an owner still needs it. These are current implementation limits, not
+evidence of an uncollected graph or an additional complete canonical-string copy.
+
+Keep the current read/preparation/recovery/compilation scheduling policies unless a repeated
+measurement on the same source and input demonstrates a useful trade-off. First-read peak,
+complete-publication peak, cold recovery, CPU and elapsed time are separate acceptance metrics.
+Lower endpoint heap or fewer copied records alone does not justify further scheduling changes.
+Canonical fingerprints and exact recovery rereads spend CPU and I/O to reduce simultaneous
+copies; changed-input paths must retain their own correctness and cost controls.
+
+Do not continue with a streaming JSON parser, a new compact storage format, custom worker
+serialization, global cache eviction or forced GC solely to reduce theoretical allocation.
+Reopen those choices for a reproduced resource failure or a measured dominant cost, with exact
+provider/evidence/consumer parity and an explicit complexity and latency budget. Full schema,
+semantic, provenance and canonical-byte checks remain required at their owned boundaries.
+Resource admission budgets are independent of the scheduling policy and are not proof of peak
+process capacity. Network/source acquisition and browser interaction need their own workloads;
+offline replay and publication measurements do not establish their performance or source freshness.
 
 ## Presentation
 
@@ -1213,9 +1357,12 @@ Safety findings override ordinary availability retention. Known-unsafe bytes
 are never republished merely because a refresh failed.
 
 After provider transitions, publication checks whole-catalog topology, identity,
-I-JSON, and size once, while four work-conserving workers validate the provider
-partitions. Canonical serialization runs concurrently with those independent
-checks. The resulting exact pair candidate is deeply immutable, so commit does
+I-JSON, and size once, while a bounded worker pool validates the provider
+partitions. Regular preparation overlaps canonical serialization with those independent
+checks; accepted-snapshot recovery waits for worker teardown before serialization to reduce
+peak overlap. Mirror reads overlap one provider worker with in-process validation, then end
+worker/cache lifetimes before canonical serialization.
+The resulting exact pair candidate is deeply immutable, so commit does
 not repeat validation before staging snapshots and atomically advancing one
 pair manifest. Mirrors are repairable from that pointer after interruption.
 Consumers therefore observe one accepted old pair or one accepted new pair,

@@ -60,6 +60,7 @@ import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
 import { applyXaiCommercialTopology } from "./xai-commercial.ts";
 import { applyTypesafeCommercialTopology } from "./typesafe-commercial.ts";
 import { applyCommercialSelections } from "./commercial-selection.ts";
+import { canonicalizeOfferBoundaries } from "./account-offers.ts";
 import { commercialSelectionPolicies } from "./commercial-selection-policies.ts";
 import { splitBatchModelOffers } from "./batch-model-offers.ts";
 import {
@@ -254,9 +255,11 @@ export function assembleParsedProviderPricing(
     dispositions,
     books,
   } satisfies AtomicProviderPricing;
-  return applyCommercialSelections(
-    assembleProviderPricing(applyCommercialTopology(input, publishedModels, pricingInputs)),
-    commercialSelectionPolicies[providerId],
+  return canonicalizeOfferBoundaries(
+    applyCommercialSelections(
+      assembleProviderPricing(applyCommercialTopology(input, publishedModels, pricingInputs)),
+      commercialSelectionPolicies[providerId],
+    ),
   );
 }
 

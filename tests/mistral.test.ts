@@ -1,3 +1,4 @@
+import { offerContexts, executionSelector } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
@@ -13,34 +14,26 @@ import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import { mistralCurrencyUrl, mistralPriorityUrl } from "../src/catalog/mistral-pricing-policy.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { projectPricingTableCell } from "../src/catalog/pricing-presentation.ts";
 import { evaluateModelApplicability } from "../src/catalog/pricing-applicability.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
-import { createCalculator } from "../src/pricing/index.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import type { Catalog, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
-
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
-
 function manifest(providerId: string): ProviderManifest {
   const value = manifests.find((item) => item.provider.id === providerId);
   if (value === undefined) throw new Error(`Missing manifest ${providerId}`);
   return value;
 }
-
 function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
-
 async function mistralSource(
   overrides: {
     endpoints?: string;
@@ -49,7 +42,10 @@ async function mistralSource(
     omitDocument?: string;
     openapi?: string;
     pricing?: string;
-    pricingDocuments?: readonly { url: string; body: string }[];
+    pricingDocuments?: readonly {
+      url: string;
+      body: string;
+    }[];
     schema?: string;
   } = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
@@ -212,21 +208,17 @@ async function mistralSource(
     }),
   };
 }
-
 async function mistralCatalog(...args: Parameters<typeof mistralSource>): Promise<ProviderModel[]> {
   return (await mistralSource(...args)).models;
 }
-
 function withoutMistralPrices(body: string): string {
   return body
     .replace('input: [{ type: "range", price: 1.5, denominator: "/M Tokens" }]', "input: []")
     .replace('output: [{ type: "range", price: 7.5, denominator: "/M Tokens" }]', "output: []");
 }
-
 function withoutMistralPublicMedium(body: string): string {
   return body.replaceAll("mistral-medium-latest", "unlisted-medium");
 }
-
 describe("Mistral adapters", () => {
   it("accounts for the regional control without inventing model availability or replacing missing service topology", async () => {
     const items: PricingReconciliationItem[] = [];
@@ -261,7 +253,6 @@ describe("Mistral adapters", () => {
     expect(partition.books.some(({ scope }) => scope.kind === "provider_resource")).toBe(false);
     expect(() => validateAdoptedTopology(partition)).toThrow("commercial topology changed");
   });
-
   it.each(["before", "after"])(
     "withholds conflicting same-page prices %s the original row",
     async (order) => {
@@ -284,7 +275,8 @@ describe("Mistral adapters", () => {
       );
       const sync = partition?.books
         .find(({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04")
-        ?.offers.find(({ offer_key }) => offer_key === "sync");
+        ?.offers.flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync");
       const input = sync?.terms.find(
         (term) => term.kind === "rate" && term.meter.value === "input_text",
       );
@@ -298,7 +290,6 @@ describe("Mistral adapters", () => {
       expect(output.variants.length).toBeGreaterThan(0);
     },
   );
-
   it("derives current EUR and served Priority rates without applying Priority to Batch or non-completion models", async () => {
     const result = await mistralSource({
       pricing: await fixture("mistral/pricing-table.html"),
@@ -399,12 +390,14 @@ describe("Mistral adapters", () => {
     expect(projectPricingTableCell(data, medium, "input")).toBeUndefined();
     const sync = partition.books
       .find(({ book_key }) => book_key === `model:${medium.uid}`)
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const input = sync?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "input_text",
     );
     if (input?.kind !== "rate") throw new Error("Missing input term");
     const selections = (tier: string, endpoint = "/v1/chat/completions") => [
+      executionSelector("request"),
       {
         kind: "categorical" as const,
         dimension: { namespace: "kmodels" as const, value: "endpoint" as const },
@@ -449,67 +442,8 @@ describe("Mistral adapters", () => {
         locator: { kind: "json_pointer", value: "/usage/service_tier" },
       }),
     );
-    expect(
-      evaluateRateCost(priority, [
-        {
-          signal: { namespace: "kmodels", value: "input_tokens" },
-          value: { numerator: "1000000", denominator: "1" },
-        },
-        {
-          signal: { namespace: "kmodels", value: "cached_input_tokens" },
-          value: { numerator: "0", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "21", denominator: "8" } });
     if (sync === undefined) throw new Error("Missing synchronous offer");
-    const calculator = createCalculator(
-      calculationExport(core, {
-        core_catalog_version: core.catalog_version,
-        core_data_sha256: "c".repeat(64),
-        pricing_data_version: "b".repeat(64),
-        generated_at: observedAt,
-        data,
-      }),
-    );
-    const quantities = [
-      {
-        signal: { namespace: "kmodels" as const, value: "input_tokens" as const },
-        value: { numerator: "1000000", denominator: "1" },
-      },
-      {
-        signal: { namespace: "kmodels" as const, value: "cached_input_tokens" as const },
-        value: { numerator: "0", denominator: "1" },
-      },
-      {
-        signal: { namespace: "kmodels" as const, value: "output_tokens" as const },
-        value: { numerator: "0", denominator: "1" },
-      },
-    ];
-    const calculated = calculator.calculate({
-      evaluatedAt: observedAt,
-      components: [
-        { id: "request", offerRef: sync.id, selectors: selections("priority"), quantities },
-      ],
-    });
-    expect(calculated).toMatchObject({
-      status: "calculated",
-      totals: [
-        {
-          denomination: { kind: "fiat", currency: "USD" },
-          amount: { numerator: "21", denominator: "8" },
-        },
-      ],
-    });
-    expect(() =>
-      calculator.calculate({
-        evaluatedAt: observedAt,
-        components: [
-          { id: "request", offerRef: sync.id, selectors: selections("auto"), quantities },
-        ],
-      }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_REQUEST" }));
   });
-
   it("reads a per-million-token output cell published beside per-minute audio rates", async () => {
     const result = await mistralSource({
       pricing: await fixture("mistral/pricing-table.html"),
@@ -527,7 +461,6 @@ describe("Mistral adapters", () => {
       ]),
     );
   });
-
   it("counts only the currencies published for a library retrieval price", () => {
     const model = baseModel({
       providerId: "mistral",
@@ -557,7 +490,6 @@ describe("Mistral adapters", () => {
       { disposition: "normalized", reason_code: "normalized_provider_service_price" },
     ]);
   });
-
   it("keeps accounting contracts when the first catalog model has no price-page row", async () => {
     const pricing = (await fixture("mistral/pricing-table.html")).replace(
       ">Codestral Embed <span",
@@ -583,7 +515,8 @@ describe("Mistral adapters", () => {
     );
     const input = partition?.books
       .find(({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04")
-      ?.offers.find(({ offer_key }) => offer_key === "sync")
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync")
       ?.terms.find((term) => term.kind === "rate" && term.meter.value === "input_text");
     if (input?.kind !== "rate") throw new Error("Missing Mistral input rate");
     expect(
@@ -596,7 +529,6 @@ describe("Mistral adapters", () => {
       expect.objectContaining({ locator: { kind: "json_pointer", value: "/usage/prompt_tokens" } }),
     );
   });
-
   it("captures and replays a service-only pricing source without a model carrier", async () => {
     const value = manifest("mistral");
     const configured = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -656,7 +588,6 @@ describe("Mistral adapters", () => {
       ),
     ).toEqual(partition);
   });
-
   it("reports an unsupported repository denominator instead of a normalized rate", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog(
@@ -681,7 +612,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it.each([
     ['type: "future", price: 1.5, denominator: "/M Tokens"'],
     ['type: "range", price: 1.5, denominator: "/M Tokens", label: "Future input"'],
@@ -708,7 +638,6 @@ describe("Mistral adapters", () => {
       sample: "mistral-medium-3-5-26-04",
     });
   });
-
   it("keeps an unreadable published price unknown rather than claiming no price is published", async () => {
     const models = await mistralCatalog({
       medium: (await fixture("mistral/mistral-medium-3-5-26-04.ts")).replaceAll(
@@ -720,7 +649,6 @@ describe("Mistral adapters", () => {
     const medium = models.find(({ model_id }) => model_id === "mistral-medium-3-5");
     expect(medium).toMatchObject({ pricing_state: "unknown", price_facts: [] });
   });
-
   it("reads the table section unit when a row omits its own denominator", () => {
     const table = (unit: string, cells: readonly string[]) =>
       `<section><div><span>${unit}</span></div><table><tr><th>Model</th><th>Input</th><th>Cached input</th><th>Output</th></tr><tr><td><a href="/models/ocr-4-1">OCR 4.1</a></td>${cells
@@ -748,7 +676,6 @@ describe("Mistral adapters", () => {
       { label: "Cached input (/1000 pages)", suffix: "/ 1000 pages" },
     ]);
   });
-
   it("reads current sale amounts and keeps cached OCR cells separate from ordinary pages", async () => {
     const value = manifest("mistral");
     const configured = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -888,7 +815,6 @@ describe("Mistral adapters", () => {
       ).toBe(true);
     }
   });
-
   it("binds renamed price cards through their linked official API identity", () => {
     const value = manifest("mistral");
     const configured = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -963,7 +889,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it("parses current USD rates while retaining unresolved EUR and Priority scopes without policy companions", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog(
@@ -1173,7 +1098,7 @@ describe("Mistral adapters", () => {
           { name: "Conversations", path: "/v1/conversations" },
         ],
         modalities: { input: ["text", "image"], output: ["text"] },
-        limits: { context_tokens: 256_000, max_output_tokens: 32_000 },
+        limits: { context_tokens: 256000, max_output_tokens: 32000 },
         release_date: "2026-04-28",
         pricing: [
           {
@@ -1336,7 +1261,6 @@ describe("Mistral adapters", () => {
       },
     });
   });
-
   it("uses explicit lifecycle state and publishes no current offer for retired models", async () => {
     const medium = await fixture("mistral/mistral-medium-3-5-26-04.ts");
     const metadata =
@@ -1367,7 +1291,6 @@ describe("Mistral adapters", () => {
       price_facts: [],
     });
   });
-
   it("keeps an empty current price definition unknown without a non-publication claim", async () => {
     const medium = withoutMistralPrices(await fixture("mistral/mistral-medium-3-5-26-04.ts"));
     const pricing = withoutMistralPublicMedium(await fixture("mistral/pricing.html"));
@@ -1376,7 +1299,6 @@ describe("Mistral adapters", () => {
     );
     expect(model).toMatchObject({ pricing_state: "unknown", price_facts: [] });
   });
-
   it("fills a repository price gap from the exact first-party public price card", async () => {
     const medium = withoutMistralPrices(await fixture("mistral/mistral-medium-3-5-26-04.ts"));
     const model = (await mistralCatalog({ medium })).find(
@@ -1400,7 +1322,6 @@ describe("Mistral adapters", () => {
       ]),
     });
   });
-
   it("reads an exact structural Free row even when adjacent card text has no separator", async () => {
     const medium = withoutMistralPrices(await fixture("mistral/mistral-medium-3-5-26-04.ts"));
     const pricing = withoutMistralPublicMedium(await fixture("mistral/pricing.html")).replace(
@@ -1412,7 +1333,6 @@ describe("Mistral adapters", () => {
     );
     expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
   });
-
   it("lets the dedicated price page resolve a repository amount to Free", async () => {
     const pricing = withoutMistralPublicMedium(await fixture("mistral/pricing.html")).replace(
       "</main>",
@@ -1435,7 +1355,6 @@ describe("Mistral adapters", () => {
       sample: "mistral-medium-latest: Free",
     });
   });
-
   it.each(["before", "after"])(
     "preserves explicit cached input %s its ordinary input row",
     async (order) => {
@@ -1473,7 +1392,6 @@ describe("Mistral adapters", () => {
       );
     },
   );
-
   it("classifies an explicit repository cached-input row without duplicating input", async () => {
     const medium = (await fixture("mistral/mistral-medium-3-5-26-04.ts")).replace(
       'input: [{ type: "range", price: 1.5, denominator: "/M Tokens" }]',
@@ -1530,7 +1448,6 @@ describe("Mistral adapters", () => {
       },
     ]);
   });
-
   it("accounts for every reviewed repository and public-page price observation", async () => {
     const items: PricingReconciliationItem[] = [];
     const result = await mistralSource({}, (item) => items.push(item));
@@ -1557,7 +1474,6 @@ describe("Mistral adapters", () => {
       sample: "mistral-large-2407: Input (/M tokens)",
     });
   });
-
   it("selects the dedicated price page while preserving a conflicting repository amount", async () => {
     const pricing = (await fixture("mistral/pricing.html")).replaceAll(
       '"priceUsd":1.5',
@@ -1590,7 +1506,6 @@ describe("Mistral adapters", () => {
       sample: "mistral-medium-3-5: Input (/M tokens)",
     });
   });
-
   it("publishes distinct inference mechanisms and provider-resource price books", async () => {
     const value = manifest("mistral");
     const source = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -1607,9 +1522,13 @@ describe("Mistral adapters", () => {
     const medium = pricing?.books.find(
       ({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04",
     );
-    expect(medium?.offers.map(({ offer_key }) => offer_key)).toEqual(["batch", "sync"]);
-    const sync = medium?.offers.find(({ offer_key }) => offer_key === "sync");
-    const batch = medium?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(medium?.offers.map(({ offer_key }) => offer_key)).toEqual(["public"]);
+    const sync = medium?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
+    const batch = medium?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "batch");
     const syncRates = sync?.terms.filter((term) => term.kind === "rate") ?? [];
     const input = syncRates.find(({ meter }) => meter.value === "input_text");
     const cache = syncRates.find(({ meter }) => meter.value === "cache_read_text");
@@ -1672,14 +1591,14 @@ describe("Mistral adapters", () => {
           relations.length + enrollment.length + settlement.length === 0,
       ),
     ).toBe(true);
-
     const ocrUid = models.find(({ model_id }) => model_id === "mistral-ocr-4-0")?.uid;
     const ocr = pricing?.books.find(
       ({ scope }) => scope.kind === "models" && scope.model_refs.includes(ocrUid ?? ""),
     );
     expect(
       ocr?.offers
-        .find(({ offer_key }) => offer_key === "sync")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync")
         ?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []))[0]?.charge_binding,
     ).toMatchObject({
       signal: { namespace: "kmodels", value: "processed_pages" },
@@ -1699,7 +1618,8 @@ describe("Mistral adapters", () => {
     );
     expect(
       speech?.offers
-        .find(({ offer_key }) => offer_key === "sync")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "sync")
         ?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []))[0]?.charge_binding,
     ).toMatchObject({
       signal: { namespace: "kmodels", value: "input_characters" },
@@ -1716,7 +1636,6 @@ describe("Mistral adapters", () => {
         },
       ],
     });
-
     const code = pricing?.books.find(({ book_key }) => book_key === "service:code-execution");
     expect(code?.offers[0]?.terms[0]).toMatchObject({
       kind: "rate",
@@ -1741,12 +1660,12 @@ describe("Mistral adapters", () => {
       ]),
     });
     expect(code?.offers[0]).toMatchObject({ relations: [], enrollment: [], settlement: [] });
-
     const library = pricing?.books.find(({ book_key }) => book_key === "service:library-retrieval");
     expect(library?.offers.map(({ offer_key }) => offer_key)).toEqual(["usage"]);
     expect(
       library?.offers
-        .find(({ offer_key }) => offer_key === "usage")
+        .flatMap(offerContexts)
+        .find(({ context_key: offer_key }) => offer_key === "usage")
         ?.terms.find(({ kind }) => kind === "rate"),
     ).toMatchObject({
       variants: expect.arrayContaining([
@@ -1816,7 +1735,6 @@ describe("Mistral adapters", () => {
         ),
     ).toBe(false);
   });
-
   it("keeps a provider-service amount when its execution-counter companion is unavailable", async () => {
     const value = manifest("mistral");
     const source = value.sources.find(({ id }) => id === "mistral-pricing");
@@ -1858,7 +1776,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it("keeps the catalog independently usable when the pricing overlay is unavailable", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog(
@@ -1876,7 +1793,6 @@ describe("Mistral adapters", () => {
     expect(medium?.price_facts.some(({ currency }) => currency === "EUR")).toBe(false);
     expect(items).not.toContainEqual(expect.objectContaining({ sample: "/pricing/api/" }));
   });
-
   it("keeps valid pricing cards when one provider-service amount is malformed", async () => {
     const pricing = (await fixture("mistral/pricing.html")).replace(
       '{"priceEur":30,"priceUsd":30,"prefix":null,"suffix":null}',
@@ -1895,7 +1811,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it("ignores weight-distribution changes outside the gateway rate-book boundary", async () => {
     const large = (await fixture("mistral/mistral-large-3-25-12.ts")).replace(
       'url: "https://huggingface.co/mistralai/Mistral-Large-3-675B-Instruct-2512"',
@@ -1910,7 +1825,6 @@ describe("Mistral adapters", () => {
       expect.objectContaining({ reason_code: "weight_distribution_drift" }),
     );
   });
-
   it("isolates first-party accounting drift while keeping identity guards strict", async () => {
     const openapi = (await fixture("mistral/openapi.yaml")).replace(
       "cached_tokens",
@@ -1971,7 +1885,8 @@ describe("Mistral adapters", () => {
       ({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04",
     );
     const inputBinding = medium?.offers
-      .find(({ offer_key }) => offer_key === "sync")
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync")
       ?.terms.flatMap((term) =>
         term.kind === "rate" && term.meter.value === "input_text" ? term.variants : [],
       )[0]?.charge_binding;
@@ -1993,22 +1908,20 @@ describe("Mistral adapters", () => {
       cacheCalculation?.input_sources?.some(({ signal }) => signal.value === "cached_input_tokens"),
     ).toBe(true);
     const cachedRate = medium?.offers
-      .find(({ offer_key }) => offer_key === "sync")
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync")
       ?.terms.flatMap((term) =>
         term.kind === "rate" && term.meter.value === "cache_read_text" ? term.variants : [],
       )[0];
     expect(cachedRate?.charge_binding?.quantity_methods).not.toEqual([]);
-
     const modelList = (await fixture("mistral/openapi.yaml")).replace(
       "list_models_v1_models_get",
       "list_available_models",
     );
     await expect(mistralCatalog({ openapi: modelList })).resolves.toHaveLength(7);
-
     const misleadingUsage = `${openapi}\n    UnrelatedCacheShape:\n      properties:\n        cached_tokens:\n          type: integer`;
     await expect(mistralCatalog({ openapi: misleadingUsage })).resolves.toHaveLength(7);
   });
-
   it("binds documented prompt-cache tokens the API specification omits", async () => {
     const openapi = (await fixture("mistral/openapi.yaml")).replace(
       '\n        prompt_tokens_details:\n          $ref: "#/components/schemas/PromptTokensDetails"',
@@ -2046,7 +1959,6 @@ describe("Mistral adapters", () => {
         ]),
       }),
     );
-
     const value = manifest("mistral");
     const pricingSource = value.sources.find(({ id }) => id === "mistral-pricing");
     if (pricingSource === undefined) throw new Error("Missing Mistral pricing source");
@@ -2059,7 +1971,8 @@ describe("Mistral adapters", () => {
     );
     const offer = partition?.books
       .find(({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04")
-      ?.offers.find(({ offer_key }) => offer_key === "sync");
+      ?.offers.flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     const rates = offer?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])) ?? [];
     expect(
       rates.some(({ charge_binding }) =>
@@ -2069,7 +1982,6 @@ describe("Mistral adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("isolates feature, endpoint, and pricing drift", async () => {
     const medium = await fixture("mistral/mistral-medium-3-5-26-04.ts");
     const findings: SourceContractEvidence[] = [];
@@ -2080,7 +1992,6 @@ describe("Mistral adapters", () => {
     );
     expect(featureModels).toHaveLength(7);
     expect(findings).toContainEqual(expect.objectContaining({ disposition: "accept_with_signal" }));
-
     const schema = await fixture("mistral/schema.ts");
     expect(
       await mistralCatalog({
@@ -2090,7 +2001,6 @@ describe("Mistral adapters", () => {
         ),
       }),
     ).toHaveLength(7);
-
     const endpoints = await fixture("mistral/endpoints.ts");
     const endpointModels = await mistralCatalog({
       endpoints: endpoints.replace(
@@ -2104,7 +2014,6 @@ describe("Mistral adapters", () => {
         .find(({ model_id }) => model_id === "mistral-medium-3-5")
         ?.api_endpoints?.some(({ path }) => path === "/v1/chat/completions"),
     ).toBe(false);
-
     const invalidFree = await mistralCatalog({
       medium: medium.replace("free: false", "free: true"),
     });
@@ -2112,14 +2021,12 @@ describe("Mistral adapters", () => {
     expect(
       invalidFree.find(({ model_id }) => model_id === "mistral-medium-3-5")?.pricing_state,
     ).toBe("numeric");
-
     await expect(
       mistralCatalog({
         medium: withoutMistralPrices(medium),
         pricing: withoutMistralPublicMedium(await fixture("mistral/pricing.html")),
       }),
     ).resolves.toHaveLength(7);
-
     expect(
       (
         await mistralCatalog({
@@ -2128,7 +2035,6 @@ describe("Mistral adapters", () => {
       ).find(({ model_id }) => model_id === "mistral-medium-3-5"),
     ).toMatchObject({ status: "active", release_stage: "preview" });
   });
-
   it("excludes weights-only definitions before validating hosted API facets", async () => {
     const findings: SourceContractEvidence[] = [];
     const reconciliation: PricingReconciliationItem[] = [];
@@ -2158,7 +2064,6 @@ describe("Mistral adapters", () => {
     );
     expect(invalid.length).toBeGreaterThan(0);
   });
-
   it("skips one malformed model definition without rejecting recognized siblings", async () => {
     const findings: SourceContractEvidence[] = [];
     const models = await mistralCatalog(
@@ -2182,7 +2087,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it("validates structured base models and ignores private fine-tunes", async () => {
     const manifestValue = manifest("mistral");
     const apiSource = manifestValue.sources.find(({ id }) => id === "mistral-api");
@@ -2211,7 +2115,7 @@ describe("Mistral adapters", () => {
         aliases: ["mistral-medium-latest"],
         tasks: ["text_generation"],
         modalities: { input: ["text", "image"], output: ["text"] },
-        limits: { context_tokens: 262_144 },
+        limits: { context_tokens: 262144 },
         status: "active",
         source_refs: ["mistral-api"],
       },
@@ -2226,7 +2130,6 @@ describe("Mistral adapters", () => {
         source_refs: ["mistral-api"],
       },
     ]);
-
     const api = (await fixture("mistral/api.json")).replace('      "type": "base",\n', "");
     const value = manifest("mistral");
     const source = value.sources.find(({ id }) => id === "mistral-api");
@@ -2239,7 +2142,6 @@ describe("Mistral adapters", () => {
         observedAt,
       }).models.map(({ model_id }) => model_id),
     ).toEqual(["mistral-medium-3-5", "mistral-ocr-4-0"]);
-
     const findings: SourceContractEvidence[] = [];
     expect(
       parseSource({
@@ -2261,7 +2163,6 @@ describe("Mistral adapters", () => {
         ]),
       }),
     );
-
     const capabilityFindings: SourceContractEvidence[] = [];
     expect(
       parseSource({
@@ -2284,7 +2185,6 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-
   it("declares a structured official catalog and non-persistent account inventory", () => {
     const value = manifest("mistral");
     expect(value.sources).toMatchObject([

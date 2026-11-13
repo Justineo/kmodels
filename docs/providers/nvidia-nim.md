@@ -2,6 +2,15 @@
 
 Status: implemented
 
+## Offer boundary
+
+[Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
+
+This provider remains catalog-only. Hosted inventory and API credentials establish callable identities, not a public per-model rate or enrollment contract. Developer-program access and self-hosted enterprise licensing do not create priced offers for the admitted hosted inventory. No synthetic free, Batch or subscription offer is introduced.
+
+The source authorities and evidence limits below remain authoritative. This catalog-only provider
+has no admitted price partition or source offer contexts to migrate.
+
 Kmodels covers the public model-ID inventory from NVIDIA's hosted
 [`GET /v1/models`](https://integrate.api.nvidia.com/v1/models). This is the inventory of the
 shared endpoint, which can be collected without a key. The

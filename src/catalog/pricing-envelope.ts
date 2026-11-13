@@ -83,8 +83,10 @@ function validateSnapshotTimes(envelope: PricingCatalogEnvelope): void {
       snapshot.publication === "fresh"
         ? snapshot.observed_at
         : snapshot.refresh_failure.attempted_at;
-    if (currentAt !== envelope.generated_at)
-      throw new Error(`Provider ${snapshot.provider_id} has the wrong refresh time`);
+    // A targeted publication may carry untouched provider partitions. Its publication
+    // time must not restamp their last successful observation or failed attempt.
+    if (Date.parse(currentAt) > Date.parse(envelope.generated_at))
+      throw new Error(`Provider ${snapshot.provider_id} has a refresh time after publication`);
   }
 }
 

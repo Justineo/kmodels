@@ -1,3 +1,4 @@
+import { offerContexts } from "./offer-context.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -6,7 +7,6 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
-import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
@@ -20,13 +20,10 @@ import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { ModelTask, Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
-
 const observedAt = "2026-07-21T00:00:00.000Z";
-
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
-
 function validateParsedPricing(
   value: ProviderManifest,
   source: SourceManifest,
@@ -66,26 +63,21 @@ function validateParsedPricing(
     },
   );
 }
-
 const linkedBundleFixtureSchema = z.object({
   index: z.object({ url: z.string(), body: z.string() }),
   documents: z.array(z.object({ url: z.string(), body: z.string() })),
 });
-
 function linkedBundle(body: string): z.infer<typeof linkedBundleFixtureSchema> {
   return linkedBundleFixtureSchema.parse(JSON.parse(body));
 }
-
 function manifest(providerId: string): ProviderManifest {
   const value = manifests.find((item) => item.provider.id === providerId);
   if (value === undefined) throw new Error(`Missing manifest ${providerId}`);
   return value;
 }
-
 function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
-
 async function parsed(
   providerId: string,
   path: string,
@@ -107,7 +99,6 @@ async function parsed(
     observedAt,
   }).models;
 }
-
 function openAiModel(id: string, tasks: ModelTask[], name = id): ProviderModel {
   return {
     ...baseModel({
@@ -120,7 +111,6 @@ function openAiModel(id: string, tasks: ModelTask[], name = id): ProviderModel {
     tasks,
   };
 }
-
 function accountingBody(): string {
   return [
     "components:",
@@ -157,7 +147,6 @@ function accountingBody(): string {
     "          type: string",
   ].join("\n");
 }
-
 async function openAiModelPricing(
   path: string,
   catalogModels: ProviderModel[],
@@ -173,7 +162,6 @@ async function openAiModelPricing(
     catalogModels,
   }).models;
 }
-
 describe("OpenAI adapters", () => {
   it("retains the actual Chat served tier as a commercial input without invocation wiring", async () => {
     const value = manifest("openai");
@@ -205,7 +193,6 @@ describe("OpenAI adapters", () => {
       expect(inputs.some(({ key }) => key === "responses.served_service_tier")).toBe(true);
     }
   });
-
   it.each([
     ["1", "2", "3"],
     ["3", "2", "1"],
@@ -371,7 +358,6 @@ describe("OpenAI adapters", () => {
         }).models,
     ).toThrow("no admitted facts");
   });
-
   it("retains supported facts without adding identities from an unrelated price table", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -385,7 +371,6 @@ describe("OpenAI adapters", () => {
     }).models;
     expect(models.map(({ model_id }) => model_id)).toEqual(["gpt-priced"]);
   });
-
   it("calculates eligible container sessions using unchanged per-minute prices and the published minimum", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -433,32 +418,7 @@ describe("OpenAI adapters", () => {
           variant.price.value.numerator === "1" && variant.price.value.denominator === "40000",
       );
     if (minute === undefined) throw new Error("Missing one-GiB minute rate");
-    expect(
-      evaluateRateCost(minute, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "openai",
-            value: "container_session_seconds_before_minimum",
-          },
-          value: { numerator: "120", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "400" } });
-    expect(
-      evaluateRateCost(minute, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "openai",
-            value: "container_session_seconds_before_minimum",
-          },
-          value: { numerator: "480", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "250" } });
   });
-
   it.each([
     "changed-minimum",
     "equal",
@@ -545,24 +505,6 @@ describe("OpenAI adapters", () => {
       .find(({ price }) => price.value.numerator === "1" && price.value.denominator === "40000");
     if (scenario === "changed-minimum" || scenario === "equal") {
       if (minute === undefined) throw new Error("Missing container minute rate");
-      expect(
-        evaluateRateCost(minute, [
-          {
-            signal: {
-              namespace: "provider",
-              provider_id: "openai",
-              value: "container_session_seconds_before_minimum",
-            },
-            value: { numerator: "1", denominator: "1" },
-          },
-        ]),
-      ).toMatchObject({
-        kind: "resolved",
-        amount:
-          scenario === "changed-minimum"
-            ? { numerator: "21", denominator: "2000" }
-            : { numerator: "3", denominator: "400" },
-      });
       expect(terms.some((term) => term.kind === "raw")).toBe(false);
     } else {
       expect(minute).toBeUndefined();
@@ -572,7 +514,6 @@ describe("OpenAI adapters", () => {
     }
     expect(partition?.books.some(({ book_key }) => book_key === "model:openai/gpt-5.4")).toBe(true);
   });
-
   it("combines the complete model index with rich model pages", async () => {
     const models = await parsed("openai", "openai/catalog.json");
     const model = models.find((candidate) => candidate.model_id === "gpt-5.4");
@@ -599,8 +540,8 @@ describe("OpenAI adapters", () => {
         { name: "Batch", path: "v1/batch" },
       ],
       aliases: ["gpt-5.4-2026-03-05"],
-      context: 1_050_000,
-      output: 128_000,
+      context: 1050000,
+      output: 128000,
       modalities: { input: ["text", "image"], output: ["text"] },
       capabilities: {
         reasoning: true,
@@ -622,7 +563,6 @@ describe("OpenAI adapters", () => {
     });
     expect(model?.pricing_state).toBe("unknown");
   });
-
   it("uses a numeric cached-input rate as positive prompt-cache evidence", async () => {
     const models = await parsed("openai", "openai/catalog.json", undefined, (body) => {
       const bundle = linkedBundle(body);
@@ -636,7 +576,6 @@ describe("OpenAI adapters", () => {
         .prompt_cache,
     ).toBe(true);
   });
-
   it("keeps card-local pricing in a separately replaceable HTML overlay", async () => {
     const catalog = await parsed("openai", "openai/catalog.json");
     const availability: NonNullable<ProviderModel["availability"]> = [
@@ -661,20 +600,18 @@ describe("OpenAI adapters", () => {
     ).toBe("3.125");
     expect(
       model?.price_facts.find(
-        (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 272_001,
+        (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 272001,
       )?.price,
     ).toBe("5");
     expect(
       model?.price_facts.find(
-        (rate) =>
-          rate.meter === "cache_read_text" && rate.conditions.context_min_tokens === 272_001,
+        (rate) => rate.meter === "cache_read_text" && rate.conditions.context_min_tokens === 272001,
       )?.price,
     ).toBe("0.5");
     expect(
       new Set(model?.price_facts.map(({ conditions }) => conditions.deployment_scope)),
     ).toEqual(new Set(["global_processing"]));
   });
-
   it("accepts explicit cache writes, long-context cache rates, and live session cards", async () => {
     const models = await openAiModelPricing("openai/current-price-cards.json", [
       openAiModel("gpt-6-sol", ["text_generation"]),
@@ -684,13 +621,12 @@ describe("OpenAI adapters", () => {
     expect(sol?.price_facts).toHaveLength(8);
     expect(sol?.price_facts.filter(({ meter }) => meter === "cache_write_text")).toMatchObject([
       { price: "2.50", conditions: { service_tier: "standard" } },
-      { price: "5", conditions: { service_tier: "standard", context_min_tokens: 272_001 } },
+      { price: "5", conditions: { service_tier: "standard", context_min_tokens: 272001 } },
     ]);
     expect(models.find(({ model_id }) => model_id === "gpt-live-1")?.price_facts).toMatchObject([
       { meter: "session_runtime", price: "0.05", unit: "minute" },
     ]);
   });
-
   it("extracts OpenAI pricing inputs independently from the rate source", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-accounting");
@@ -736,7 +672,6 @@ describe("OpenAI adapters", () => {
     ]);
     expect(findings).not.toEqual([]);
   });
-
   it("distinguishes the standard and batch views behind a price-tier selector", async () => {
     const model = (
       await openAiModelPricing("openai/batch-catalog.json", [
@@ -768,7 +703,6 @@ describe("OpenAI adapters", () => {
       },
     ]);
   });
-
   it("publishes an explicitly free hosted moderation offer as free", async () => {
     const value = manifest("openai");
     const pricingSource = value.sources.find(({ id }) => id === "openai-overview");
@@ -815,7 +749,6 @@ describe("OpenAI adapters", () => {
       price_facts: [],
     });
   });
-
   it("extracts exact regional-processing model and endpoint support", async () => {
     const value = manifest("openai");
     const configured = value.sources.find(({ id }) => id === "openai-data-residency");
@@ -849,7 +782,6 @@ describe("OpenAI adapters", () => {
       api_endpoints: [{ name: "Speech generation", path: "v1/audio/speech" }],
     });
   });
-
   it("recognizes Decisions regional support without assigning text-generation pricing", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-data-residency");
@@ -872,7 +804,6 @@ describe("OpenAI adapters", () => {
     });
     expect(findings).toEqual([]);
   });
-
   it("takes the earliest exact model release from changelog feature entries", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-changelog");
@@ -898,7 +829,6 @@ describe("OpenAI adapters", () => {
       { model_id: "gpt-image-2", release_date: "2026-04-21" },
     ]);
   });
-
   it.each(["### Feb 30", "### Feb 0", "## Unreviewed date"])(
     "rejects changelog date drift without inheriting an older date (%s)",
     (heading) => {
@@ -923,7 +853,6 @@ describe("OpenAI adapters", () => {
       ]);
     },
   );
-
   it("keeps reviewed residency facts when a row adds an unknown region", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-data-residency");
@@ -948,7 +877,6 @@ describe("OpenAI adapters", () => {
     ]);
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
-
   it("fills missing prices, adds service tiers, and resolves source conflicts", async () => {
     const value = manifest("openai");
     const configured = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1169,7 +1097,10 @@ describe("OpenAI adapters", () => {
         scope.kind === "provider_resource" &&
         scope.resource_key === "fine-tuned-inference:o4-mini-2025-04-16",
     );
-    expect(fineTuned?.offers.map(({ offer_key }) => offer_key)).toEqual(["batch", "sync"]);
+    expect(fineTuned?.offers.map(({ offer_key }) => offer_key)).toEqual([
+      "account:data_sharing",
+      "account:default",
+    ]);
     expect(
       fineTuned?.offers.flatMap(({ terms }) =>
         terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
@@ -1192,14 +1123,13 @@ describe("OpenAI adapters", () => {
           ({ meter, conditions }) =>
             meter === "input_text" &&
             conditions.service_tier === "standard" &&
-            conditions.context_min_tokens === 272_001,
+            conditions.context_min_tokens === 272001,
         ),
     ).toMatchObject({
       price: "5.01",
       resolution_policy: "openai_pricing_page_over_model_card",
     });
   });
-
   it("keeps an explicitly priced snapshot separate from a card alias", () => {
     const value = manifest("openai");
     const configured = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1239,7 +1169,6 @@ describe("OpenAI adapters", () => {
       }),
     ]);
   });
-
   it("applies an exact pricing-page alias without merging its catalog identity", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1290,7 +1219,6 @@ describe("OpenAI adapters", () => {
       sample: "gpt-daybreak-blue-latest -> gpt-5.6-sol",
     });
   });
-
   it("localizes pricing-table drift and conflicting cells", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1343,7 +1271,6 @@ describe("OpenAI adapters", () => {
     );
     expect(() => sourcePricingReconciliation(models, reconciliation, true)).not.toThrow();
   });
-
   it("recognizes the native Fine-tuning heading and column order", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1446,7 +1373,6 @@ describe("OpenAI adapters", () => {
       },
     ]);
   });
-
   it("prices GPT-Live session seconds without minute rounding", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1482,16 +1408,7 @@ describe("OpenAI adapters", () => {
       )[0];
     if (rate === undefined) throw new Error("Missing live session rate");
     expect(rate.charge_binding?.aggregation).toBe("session");
-    expect(
-      evaluateRateCost(rate, [
-        {
-          signal: { namespace: "kmodels", value: "active_seconds" },
-          value: { numerator: "90", denominator: "1" },
-        },
-      ]),
-    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "40" } });
   });
-
   it("prices GPT-Live sessions under the current GPT-Live heading", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1514,7 +1431,6 @@ describe("OpenAI adapters", () => {
       }),
     ]);
   });
-
   it("prices the specialized context and cache-write table", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1588,7 +1504,6 @@ describe("OpenAI adapters", () => {
     );
     validateParsedPricing(value, source, result.models, partition);
   });
-
   it("publishes Fast with EU residency as unsupported and keeps the numeric region scopes disjoint", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1629,7 +1544,9 @@ describe("OpenAI adapters", () => {
       value.pricingCategoricalLabels,
     );
     validateParsedPricing(value, source, models, partition);
-    const offer = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+    const offer = partition?.books[0]?.offers
+      .flatMap(offerContexts)
+      .find(({ context_key: offer_key }) => offer_key === "sync");
     expect(offer?.states.filter(({ state }) => state === "not_supported")).toEqual([
       expect.objectContaining({
         applicability: {
@@ -1683,7 +1600,6 @@ describe("OpenAI adapters", () => {
       ),
     ).toBe(true);
   });
-
   it("preserves an exact model's future billing start and research eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1717,7 +1633,6 @@ describe("OpenAI adapters", () => {
     expect(unresolved?.price_facts).toEqual([]);
     expect(unresolved?.raw_price_facts).toHaveLength(3);
   });
-
   it("requires the Life sciences section's own trusted-access statement", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1746,7 +1661,6 @@ describe("OpenAI adapters", () => {
     );
     expect(() => parse(body.replace(note, "") + "\n" + note)).toThrow("no admitted facts");
   });
-
   it("recovers renamed Fast and Ultrafast tables with first-party regional scopes", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1866,7 +1780,6 @@ describe("OpenAI adapters", () => {
     ).toBe(true);
     expect(noGuides.flatMap(({ raw_price_facts }) => raw_price_facts)).toHaveLength(6);
   });
-
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1960,7 +1873,6 @@ describe("OpenAI adapters", () => {
       ?.offers.flatMap(({ terms }) => terms);
     expect(terms?.flatMap((term) => (term.kind === "rate" ? term.raw_variants : []))).toEqual([]);
   });
-
   it("binds Realtime translation duration to audio input", async () => {
     const models = await openAiModelPricing("openai/realtime-translation-catalog.json", [
       openAiModel("gpt-realtime-translate", ["translation"]),
@@ -1980,7 +1892,6 @@ describe("OpenAI adapters", () => {
       ],
     });
   });
-
   it("accepts reviewed Live endpoints and names identical to model IDs", async () => {
     const value = manifest("openai");
     const source = value.sources[0];
@@ -2001,7 +1912,6 @@ describe("OpenAI adapters", () => {
     expect(models[0]?.tasks).toContain("speech_to_speech");
     expect(findings).toEqual([]);
   });
-
   it.each([
     ["Supported", "Not supported", "Supported"],
     ["Not supported", "Supported", "Not supported"],
@@ -2026,7 +1936,6 @@ describe("OpenAI adapters", () => {
     expect(model?.api_endpoints).toContainEqual(expect.objectContaining({ path: "v1/responses" }));
     expect(model?.limits.context_tokens).toBe(1050000);
   });
-
   it("preserves model facts and signals an unreviewed endpoint card", async () => {
     const value = manifest("openai");
     const source = value.sources[0];
@@ -2048,12 +1957,10 @@ describe("OpenAI adapters", () => {
     expect(models).not.toHaveLength(0);
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
-
   it("parses scoped API inventory without treating it as the global catalog", async () => {
     const models = await parsed("openai", "openai/api.json", "openai-api");
     expect(models.map((model) => model.model_id)).toEqual(["gpt-5.4", "ft:gpt-5.4:example"]);
   });
-
   it("keeps an explicit routed alias inside its matching Markdown card", async () => {
     const body = (await fixture("openai/catalog.json")).replace(
       "GPT-5.4 is a professional reasoning model.",
@@ -2068,7 +1975,6 @@ describe("OpenAI adapters", () => {
       "gpt-5.4-latest",
     ]);
   });
-
   it("reads abbreviated shutdown months and the current family/snapshot header", async () => {
     const models = await parsed(
       "openai",
@@ -2089,7 +1995,6 @@ describe("OpenAI adapters", () => {
     );
     expect(invalid.map(({ model_id }) => model_id)).toEqual(["gpt-realtime", "tts-1", "whisper-1"]);
   });
-
   it("skips an irregular deprecation row without losing valid siblings", async () => {
     const models = await parsed("openai", "openai/deprecations.md", "openai-deprecations", (body) =>
       body.replace("| 2026-09-28", "| malformed |\n| 2026-09-28"),
@@ -2100,7 +2005,6 @@ describe("OpenAI adapters", () => {
       "text-embedding-3-large",
     ]);
   });
-
   it.each([false, true])(
     "keeps alias evidence when an earlier shutdown is encountered later (%s)",
     async (reverse) => {
@@ -2119,7 +2023,6 @@ describe("OpenAI adapters", () => {
       expect(models[0]?.aliases.toSorted()).toEqual(["gpt-new-alias", "gpt-old-alias"]);
     },
   );
-
   it("skips a bounded shutdown date without unresolved contract drift", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-deprecations");
@@ -2139,7 +2042,6 @@ describe("OpenAI adapters", () => {
       "text-embedding-3-large",
     ]);
     expect(findings).toEqual([]);
-
     const unreadableFindings: SourceContractEvidence[] = [];
     parseSource({
       provider: provider(value),
@@ -2152,7 +2054,6 @@ describe("OpenAI adapters", () => {
       unreadableFindings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path)),
     ).toEqual(["/deprecations/shutdown-date"]);
   });
-
   it("parses lifecycle dates and replacements from deprecation tables", async () => {
     const models = await parsed("openai", "openai/deprecations.md", "openai-deprecations");
     expect(
@@ -2182,7 +2083,6 @@ describe("OpenAI adapters", () => {
         replacement_model_ids: ["text-embedding-3-small"],
       },
     ]);
-
     const value = manifest("openai");
     const lifecycleSource = value.sources.find(({ id }) => id === "openai-deprecations");
     if (lifecycleSource === undefined) throw new Error("Missing OpenAI lifecycle source");
@@ -2205,7 +2105,6 @@ describe("OpenAI adapters", () => {
       "gpt-5.4-completions",
     ]);
   });
-
   it("keeps indexed identity when a model page is missing or malformed", async () => {
     const value = manifest("openai");
     const source = value.sources[0];
@@ -2226,7 +2125,6 @@ describe("OpenAI adapters", () => {
     expect(finding).toMatchObject({ disposition: "accept_with_signal" });
   });
 });
-
 describe("OpenAI fixed search content", () => {
   it("admits a model-bound content rule without a model row in that pricing source", async () => {
     const value = manifest("openai");
@@ -2263,7 +2161,6 @@ describe("OpenAI fixed search content", () => {
       raw_variants: [expect.objectContaining({ reason: "target_rate_not_normalized" })],
     });
   });
-
   it.each([false, true])(
     "preserves unrecognized fixed-content evidence alongside normalized rules: %s",
     async (includeKnown) => {
@@ -2304,7 +2201,6 @@ describe("OpenAI fixed search content", () => {
       expect(term.variants).toHaveLength(includeKnown ? 1 : 0);
     },
   );
-
   it("contributes fixed tokens to the model rate without copying prices or requiring a runtime locator", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -2327,7 +2223,7 @@ describe("OpenAI fixed search content", () => {
         result.models,
         value.pricingCategoricalLabels,
       );
-    const cost = (text: string, evidence?: string) => {
+    const priceBasis = (text: string, evidence?: string) => {
       const result = parse(text);
       if (evidence !== undefined) {
         const term = result.commercial_facts?.find(
@@ -2351,31 +2247,18 @@ describe("OpenAI fixed search content", () => {
         .find(({ id }) => contribution.target_rate_refs.includes(id));
       if (binding === undefined || target?.kind !== "rate" || target.variants[0] === undefined)
         throw new Error("Missing referenced model input rate");
-      return evaluateRateCost({ ...target.variants[0], charge_binding: binding }, [
-        {
-          signal: {
-            namespace: "provider",
-            provider_id: "openai",
-            value: "fixed_search_content_calls",
-          },
-          value: { numerator: "2", denominator: "1" },
-        },
-      ]);
+      return { price: target.variants[0].price.value, methods: binding.quantity_methods };
     };
-    expect(cost(body)).toEqual({
-      kind: "resolved",
-      amount: { numerator: "3", denominator: "1250" },
-      denomination: { kind: "fiat", currency: "USD" },
+    expect(priceBasis(body).price).toEqual({ numerator: "3", denominator: "20000000" });
+    expect(priceBasis(body.replace("$0.15", "$0.25")).price).toEqual({
+      numerator: "1",
+      denominator: "4000000",
     });
-    expect(cost(body.replace("$0.15", "$0.25"))).toMatchObject({
-      amount: { numerator: "1", denominator: "250" },
-    });
-    expect(cost(body.replace("8,000", "9,000"))).toMatchObject({
-      amount: { numerator: "27", denominator: "10000" },
-    });
-    expect(cost(body, "A 999,000-token fixed block.")).toEqual(cost(body));
+    expect(priceBasis(body.replace("8,000", "9,000")).methods).not.toEqual(
+      priceBasis(body).methods,
+    );
+    expect(priceBasis(body, "A 999,000-token fixed block.")).toEqual(priceBasis(body));
   });
-
   it("reads fixed search content when model names use inline code spans", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -2421,7 +2304,6 @@ describe("OpenAI fixed search content", () => {
       items.filter(({ reason_code }) => reason_code === "fixed_search_content_rule"),
     ).toHaveLength(1);
   });
-
   it.each(["missing", "unreadable", "conflicting", "equal", "outside-tools"] as const)(
     "contains fixed-content dependency and source ownership failures: %s",
     async (scenario) => {

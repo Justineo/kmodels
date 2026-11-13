@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
+import { queryWebsiteCommercialOffer } from "../src/catalog/website-commercial-query.ts";
 import type {
   WebsitePricingOffer,
   WebsiteProvider,
@@ -135,6 +136,78 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
+  it("applies a sole canonical tier and restores a choice when another tariff is available", async () => {
+    const dimension = { namespace: "kmodels", value: "service_tier" } as const;
+    const standard = { namespace: "kmodels", value: "standard" } as const;
+    const priority = { namespace: "kmodels", value: "priority" } as const;
+    const scope = (value: typeof standard | typeof priority) => ({
+      any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [value] }] }],
+    });
+    const offer = pricingOffer();
+    offer.states = [];
+    offer.selectors = [
+      {
+        key: JSON.stringify(dimension),
+        dimension,
+        kind: "categorical",
+        label: "Service tier",
+        values: [{ key: "standard", label: "Standard", value: standard }],
+      },
+    ];
+    const claim = {
+      dimension: "service_tier" as const,
+      target: "condition" as const,
+      coverage: "complete" as const,
+      applicability: allContexts,
+      alternatives: [{ value: standard, applicability: scope(standard) }],
+    };
+    offer.commercial_selection = { observed_at: "2026-10-01T00:00:00Z", claims: [claim] };
+    const rate = {
+      key: "standard-rate",
+      term_ref: "c".repeat(64),
+      label: "Input text",
+      amount: "$1",
+      unit: "per 1M tokens",
+      accessible_text: "$1 per 1M tokens",
+      applicability: scope(standard),
+      applicability_label: "Service tier: Standard",
+    };
+    offer.rates = [rate];
+    const fixed = await renderComponent(PricingOfferBreakdown, { offer });
+    expect(fixed).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(fixed).toContain('class="exact-rate"');
+    expect(fixed).not.toContain("<select");
+
+    // One advertised value need not apply to every price context within the same offer.
+    const mixed = {
+      ...offer,
+      rates: [...offer.rates, { ...rate, key: "unqualified-rate", applicability: allContexts }],
+    };
+    expect(
+      queryWebsiteCommercialOffer(mixed, [], [], "2026-11-01T00:00:00.000Z").fixed_choices,
+    ).toEqual([]);
+    const mixedControls = await renderComponent(PricingOfferBreakdown, { offer: mixed });
+    expect(mixedControls).toContain("<select");
+    expect(mixedControls).not.toMatch(/<output\b[^>]*>Standard<\/output>/);
+
+    offer.commercial_selection.claims = [
+      {
+        ...claim,
+        alternatives: [...claim.alternatives, { value: priority, applicability: scope(priority) }],
+      },
+    ];
+    offer.rates.push({
+      ...rate,
+      key: "priority-rate",
+      amount: "$2",
+      applicability: scope(priority),
+    });
+    const selectable = await renderComponent(PricingOfferBreakdown, { offer });
+    expect(selectable).toContain("<select");
+    expect(selectable).toContain("Priority");
+    expect(selectable).not.toContain('class="exact-rate"');
+  });
+
   it("groups conflicting quotes by meter while preserving each amount and scope", async () => {
     const offer = pricingOffer();
     offer.unnormalized = ["Input text", "Output text"].flatMap((label) =>
@@ -192,7 +265,7 @@ describe("provider pricing details", () => {
       explainCharges: true,
     });
 
-    expect(html).toContain('aria-label="Pricing options"');
+    expect(html).toMatch(/<legend\b[^>]*>Usage conditions<\/legend>/);
     expect(html).toContain("Promotion");
     expect(html).toContain("Yes");
     expect(html).toContain("No");
@@ -298,8 +371,8 @@ describe("provider pricing details", () => {
       modelRef: "test/model",
     });
 
-    expect(html).toContain('<section class="pricing-context"');
-    expect(html).toContain('aria-label="Pricing options"');
+    expect(html).toMatch(/<legend\b[^>]*>Usage conditions<\/legend>/);
+    expect(html).not.toContain('class="pricing-context"');
     expect(html).not.toContain(">Pricing options</h6>");
     expect(html).not.toContain("Select Billing period to see rates.");
     expect(html).toContain('<details class="schedule-rule"');
@@ -389,7 +462,7 @@ describe("provider pricing details", () => {
       expect(html).toContain('class="rate-offer"');
       expect(html).toContain('class="rate-offer-heading"');
       expect(html).toContain('class="offer-breakdown"');
-      expect(html).toContain('aria-label="Pricing options"');
+      expect(html).toMatch(/<legend\b[^>]*>Usage conditions<\/legend>/);
       expect(html).not.toContain('class="provider-offer"');
     }
     expect(modelHtml).toContain("Service charge");
