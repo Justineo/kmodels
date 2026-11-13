@@ -51,11 +51,11 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
     }),
   );
   const hasMediaLabels = [...responseMedia.values()].some((media) => media !== undefined);
-  const field = (
+  const fieldCandidates = (
     owner: Owner,
     path: DeepseekFieldPath,
     media: ResponseMedia = "application/json",
-  ): Selection | undefined => {
+  ): { fields: Selection[]; unique: boolean } => {
     const root =
       owner === "request"
         ? requestRoots
@@ -64,7 +64,8 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
           : responseRoots;
     const owners = new Set<Selection[number]>(root.toArray());
     let parent: Selection | undefined;
-    for (const [name, type] of path) {
+    for (const [index, [name, type]] of path.entries()) {
+      const last = index === path.length - 1;
       const candidates = (parent ?? root)
         .find(itemSelector)
         .filter((_, node) => {
@@ -76,11 +77,28 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
             : $(node).parents(itemSelector).first().get(0) === parent.get(0);
         })
         .filter((_, node) => ownedMetadata($(node), "strong.openapi-schema__property") === name);
-      if (candidates.length !== 1 || ownedMetadata(candidates, ".openapi-schema__name") !== type)
-        return;
+      const typed = candidates.filter(
+        (_, node) => ownedMetadata($(node), ".openapi-schema__name") === type,
+      );
+      if (last) {
+        const fields: Selection[] = [];
+        typed.each((position) => {
+          fields.push(typed.eq(position));
+        });
+        return { fields, unique: candidates.length === 1 && typed.length === 1 };
+      }
+      if (candidates.length !== 1 || typed.length !== 1) return { fields: [], unique: false };
       parent = candidates;
     }
-    return parent;
+    return { fields: [], unique: false };
+  };
+  const field = (
+    owner: Owner,
+    path: DeepseekFieldPath,
+    media: ResponseMedia = "application/json",
+  ): Selection | undefined => {
+    const { fields, unique } = fieldCandidates(owner, path, media);
+    return unique ? fields[0] : undefined;
   };
   const text = (owner: Owner, path: DeepseekFieldPath): string | undefined => {
     const selected = field(owner, path);
@@ -89,9 +107,7 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
     copy.find(itemSelector + ", pre, blockquote").remove();
     return htmlText(copy.text());
   };
-  const values = (owner: Owner, path: DeepseekFieldPath): string[] | undefined => {
-    const selected = field(owner, path);
-    if (selected === undefined) return;
+  const possibleValues = (selected: Selection): string[] | undefined => {
     const statements = selected
       .find("p")
       .filter(
@@ -111,11 +127,23 @@ export function deepseekApiDocument(body: string, path: string, method: "GET" | 
     )?.[1];
     return plain === undefined ? undefined : [plain];
   };
+  const values = (owner: Owner, path: DeepseekFieldPath): string[] | undefined => {
+    const selected = field(owner, path);
+    if (selected === undefined) return;
+    return possibleValues(selected);
+  };
+  const allValues = (owner: Owner, path: DeepseekFieldPath): string[] | undefined => {
+    const collected = fieldCandidates(owner, path).fields.flatMap(
+      (selected) => possibleValues(selected) ?? [],
+    );
+    return collected.length === 0 ? undefined : [...new Set(collected)];
+  };
   return {
     has: (owner: Owner, path: DeepseekFieldPath, media?: ResponseMedia) =>
       field(owner, path, media) !== undefined,
     text,
     values,
+    allValues,
     responseSamples: articles
       .find(".openapi-code__response-samples-container pre code")
       .filter((_, node) => $(node).parents(itemSelector + ", .mime, blockquote").length === 0)

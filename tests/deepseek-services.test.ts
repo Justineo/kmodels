@@ -271,6 +271,30 @@ describe("DeepSeek native Search and Fetch charges", () => {
     expect(direct?.price_facts.some((rate) => rate.currency === "CNY")).toBe(false);
     expect(diagnostics.some((item) => item.disposition === "raw")).toBe(true);
   });
+  it.each(["heading", "header", "row"] as const)(
+    "rejects the retired %s instead of reusing the previous price contract",
+    async (drift) => {
+      const { result, failures } = await parsed((bundle) => {
+        const $ = load(bundle.index.body);
+        const owned = $("h2")
+          .filter((_, node) => $(node).text().includes("Web Search & Fetch Pricing"))
+          .first();
+        const table = owned.nextAll("table").first();
+        if (drift === "heading") owned.text("Search & Fetch Pricing");
+        else if (drift === "header") table.find("th").first().text("API");
+        else
+          table
+            .find("td")
+            .filter((_, node) => $(node).text() === "Search (text, image)")
+            .first()
+            .text("Search");
+        bundle.index.body = $.html();
+      });
+      expect(failures).toEqual([source.url]);
+      expect(result.models).toHaveLength(4);
+      expect(result.commercial_facts ?? []).toEqual([]);
+    },
+  );
 });
 describe("DeepSeek owned exact model limits", () => {
   it("does not select a last value from duplicate example properties", async () => {

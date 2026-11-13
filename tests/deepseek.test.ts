@@ -382,6 +382,46 @@ describe("DeepSeek adapters", () => {
     ).toBe(true);
     expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
   });
+  it("aggregates a oneOf tool union instead of reporting schema drift", async () => {
+    const chat = changedHtml(await fixture("deepseek/chat.html"), ($) => {
+      const tools = $(".mime strong.openapi-schema__property")
+        .filter((_, node) => $(node).text() === "tools")
+        .closest(".openapi-schema__list-item");
+      const type = tools.find(".openapi-schema__list-item").first();
+      for (const value of ["deepseek_web_search", "deepseek_read_url"])
+        type.after(
+          '<div class="openapi-schema__list-item"><strong class="openapi-schema__property">type</strong><span class="openapi-schema__name">string</span><p>Possible values: [<code>' +
+            value +
+            "</code>]</p></div>",
+        );
+    });
+    const findings: SourceContractEvidence[] = [];
+    const models = await deepseekCatalog({
+      chat,
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(contractPaths(findings)).not.toContain("/deepseek/chat_tool_schema_drift/tools");
+    expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
+  });
+  it("still signals drift when a tool union never declares the function type", async () => {
+    const chat = changedHtml(await fixture("deepseek/chat.html"), ($) => {
+      const tools = $(".mime strong.openapi-schema__property")
+        .filter((_, node) => $(node).text() === "tools")
+        .closest(".openapi-schema__list-item");
+      const type = tools.find(".openapi-schema__list-item").first();
+      type.find("p code").text("deepseek_web_search");
+      type.after(
+        '<div class="openapi-schema__list-item"><strong class="openapi-schema__property">type</strong><span class="openapi-schema__name">string</span><p>Possible values: [<code>deepseek_read_url</code>]</p></div>',
+      );
+    });
+    const findings: SourceContractEvidence[] = [];
+    const models = await deepseekCatalog({
+      chat,
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(contractPaths(findings)).toContain("/deepseek/chat_tool_schema_drift/tools");
+    expect(models.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
+  });
   it("keeps catalog diagnostics outside the native pricing denominator", async () => {
     const normal: PricingReconciliationItem[] = [],
       changed: PricingReconciliationItem[] = [];
@@ -743,7 +783,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v27",
+      extractorVersion: "deepseek-catalog-v28",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,

@@ -139,6 +139,16 @@ qualification is rejected as contract drift instead of being silently priced. Th
 amounts never replace the price pages' cells. These service rates do not inherit model Peak/Off-peak
 periods.
 
+The English `Web Search & Fetch Pricing` and Chinese `联网搜索与抓取价格` sections own the amounts.
+Each publishes one `Item | Unit | Price` table (`项目 | 计费单位 | 价格`) with a
+`Search (text, image)` row (`搜索（文字、图片）`) at `Per 1,000 searches` (`每 1,000 次`) and a
+`Web fetch` row (`网页抓取`) at `Per 1,000 fetches` (`每 1,000 次`). The section heading, column
+headers, row labels and units are the contract: the retired `Search & Fetch Pricing` heading,
+`API` column and `successful requests` unit are rejected rather than reused, because a renamed or
+re-headed section may have changed its billing basis. The pages now state that tool-mediated use is
+billed on the same terms and defer the rules to the Web Tools `Billing` section, which is not yet a
+refresh dependency; the guide's qualification rule still governs the request outcome.
+
 Both services charge per successful request, independently of the number of search results.
 Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.
 Failures, empty search results and timeouts are not billable. Consumers supply these precisely
@@ -179,6 +189,12 @@ integer leaves must be directly and uniquely declared at every step, including
 prose markers and quoted schemas cannot establish those paths. A duplicate or retyped field
 withholds only its affected mappings; an unrelated nested lookalike cannot erase a valid direct
 field. A duplicate companion path withholds that document's mappings in either order.
+Request-side interface claims use a different rule for documented unions. A `oneOf` property such
+as `tools` republishes its own named child per variant, so the `tools.type` claim aggregates the
+`Possible values` of every variant and requires the expected value (`function`) in that union.
+Requiring one unique child there would report drift for a union that still documents the variant.
+This aggregation applies only to those boolean interface claims; accounting locators keep the
+unique-declaration rule above.
 The rendered OpenAPI reference can publish separate JSON and event-stream schemas. When those
 media labels are present, REST uses the JSON schema and FIM streaming uses the event-stream schema.
 Duplicating a field in one media schema does not invalidate its sibling transport. Older unlabelled

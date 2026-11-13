@@ -206,7 +206,7 @@ function chatClaims(input: Input, body: string | undefined): ChatClaims {
   catalogClaim(input, "chat_tool_schema_drift", "tools", () => {
     if (
       evidence.api
-        .values("request", [
+        .allValues("request", [
           ["tools", "object[]"],
           ["type", "string"],
         ])

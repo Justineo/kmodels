@@ -68,6 +68,8 @@ const serviceDefinitions = [
     api: "Search",
     key: "web-search",
     meter: "web_search",
+    labels: { USD: "Search (text, image)", CNY: "搜索（文字、图片）" },
+    units: { USD: "Per 1,000 searches", CNY: "每 1,000 次" },
     definition:
       "Search API requests returning HTTP 200 with a non-empty results array; result count does not multiply the charge",
   },
@@ -75,6 +77,8 @@ const serviceDefinitions = [
     api: "Fetch",
     key: "web-fetch",
     meter: "retrieval",
+    labels: { USD: "Web fetch", CNY: "网页抓取" },
+    units: { USD: "Per 1,000 fetches", CNY: "每 1,000 次" },
     definition: "Fetch API requests returning HTTP 200 with page content",
   },
 ] as const;
@@ -85,14 +89,13 @@ function serviceQuotes(
   currency: DeepseekCurrency,
   url: string,
 ): ServiceQuote[] {
-  const headers = currency === "USD" ? "API|Unit|Price" : "API|计费单位|价格";
-  const expectedUnit = currency === "USD" ? "Per 1,000 successful requests" : "每 1,000 次成功请求";
+  const headers = currency === "USD" ? "Item|Unit|Price" : "项目|计费单位|价格";
   const tables = htmlTables(body);
   const table = tables[0];
   if (tables.length !== 1 || table?.headers.join("|") !== headers)
     throw new Error("Service price table changed");
   for (const row of table.rows)
-    if (!serviceDefinitions.some((service) => service.api === row[0]?.text))
+    if (!serviceDefinitions.some((service) => service.labels[currency] === row[0]?.text))
       input.onPricingReconciliation?.({
         disposition: "unsupported",
         reason_code: "public_price_shape_unsupported",
@@ -102,11 +105,12 @@ function serviceQuotes(
           .slice(0, 256),
       });
   return serviceDefinitions.map((service) => {
-    const rows = table.rows.filter((row) => row[0]?.text === service.api);
+    const rows = table.rows.filter((row) => row[0]?.text === service.labels[currency]);
     if (rows.length !== 1) throw new Error("Missing or duplicate " + service.api + " quote");
     const row = rows[0],
       unit = row?.[1]?.text ?? "",
       rawAmount = row?.[2]?.text ?? "";
+    const expectedUnit = service.units[currency];
     let amount: string | undefined;
     try {
       amount = deepseekPrice(rawAmount, currency);
@@ -127,7 +131,7 @@ export function deepseekServicePricing(
   input: SourceParseInput,
   bundle: LinkedBundle,
 ): SourcePricingFacts {
-  const usd = section(bundle.index.body, "Search & Fetch Pricing");
+  const usd = section(bundle.index.body, "Web Search & Fetch Pricing");
   const guide = document(bundle, guideUrl);
   const billing = guide === undefined ? undefined : section(guide, "Billing");
   if (usd === undefined && billing === undefined) return {};
@@ -136,7 +140,7 @@ export function deepseekServicePricing(
     if (usd === undefined) throw new Error("Missing owned USD service prices");
     dependencyUrl = cnyUrl;
     const cnyBody = document(bundle, cnyUrl);
-    const cny = cnyBody === undefined ? undefined : section(cnyBody, "网页搜索与抓取价格");
+    const cny = cnyBody === undefined ? undefined : section(cnyBody, "联网搜索与抓取价格");
     if (cny === undefined) throw new Error("Missing owned CNY service prices");
     dependencyUrl = guideUrl;
     if (billing === undefined) throw new Error("Missing owned billing companion");
