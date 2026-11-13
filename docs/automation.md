@@ -397,6 +397,10 @@ Status: implemented
   plan's exact commit and candidate artifact ID. Each verifies the archive's pointer/hash before
   restoration and checks the generated-input fingerprint after validation. Publication waits for
   both checks and uploads those same staged archive bytes, without repacking or collecting again.
+  The build runner also runs the pinned Chromium pricing interaction gate on that candidate.
+  Performance reports and assertion screenshots are retained for seven days; a budget or browser
+  failure blocks publication. Ordinary CI and trusted repair validation select the same gate for
+  affected dependencies and snapshot changes. The repair bootstrap installs its browser runtime.
   Reports remain in the seven-day refresh evidence artifact; generated verification uploads its
   own attempt-specific evidence artifact. Repair reads both when diagnosing verification timeouts.
   After a refresh commits and
@@ -463,8 +467,8 @@ Status: implemented
   retries replace fixed one-second pacing; no published Hub quota establishes that delay.
   The run report includes per-source acquisition durations separately from provider elapsed time.
   Source durations include retry waits, exclude scheduler queue time and parsing, and can overlap.
-- Scheduled refresh validates only the generated catalog suite and production
-  build on parallel runners. It does not rerun code-only unit and fixture tests when the checkout is
+- Scheduled refresh validates the generated catalog suite and production build, including the
+  pricing browser performance gate, on parallel runners. It does not rerun code-only unit and fixture tests when the checkout is
   unchanged. Push and pull-request CI runs those tests once. Generated-data
   assertions follow the boundary and volatility rules in [Testing](testing.md).
 - One non-isolated, single-worker generated-data test project shares one parsed

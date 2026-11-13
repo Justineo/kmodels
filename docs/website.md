@@ -31,6 +31,9 @@ while preserving alternatives; editing it removes only incompatible explicit sel
 values never become explicit selections just because another control changes. Selection order must
 not decide whether a field is editable. Fields with no remaining applicability can still disappear.
 This ordering applies to model-ID, ordinary and provider-resource pricing.
+For offer details, derive native control availability from the commercial scope before applying
+user-entered native selections. Apply those selections when querying rates; feeding them back as
+fixed scope would hide Region immediately after selection and prevent further edits.
 Apply their native predicates without restricting unrelated price rows to a commercial claim's
 narrower scope. Unknown price evidence remains unknown.
 Use consistent control heights and borders, collapsing to one column on narrow

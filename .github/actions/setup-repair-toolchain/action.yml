@@ -16,6 +16,7 @@ runs:
         echo "PATH=$PATH" >> "$GITHUB_ENV"
         vp env install
         vp install --frozen-lockfile
+        vp exec playwright install --with-deps chromium
         vp env doctor
 
     - name: Hydrate the checked-out catalog

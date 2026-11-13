@@ -228,6 +228,25 @@ jobs:
         if: matrix.check == 'build'
         run: vp run build
 
+      - name: Install the pinned performance browser
+        if: matrix.check == 'build'
+        run: vp exec playwright install --with-deps chromium
+
+      - name: Check pricing interaction performance
+        if: matrix.check == 'build'
+        env:
+          PRICING_PERFORMANCE_REPORT: ${{ runner.temp }}/pricing-performance/report.json
+        run: vp run test:pricing-performance
+
+      - name: Upload pricing performance evidence
+        if: always() && matrix.check == 'build'
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pricing-performance/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify candidate preservation
         run: diff "$RUNNER_TEMP/candidate-fingerprint" <(vp node scripts/catalog-snapshot.ts fingerprint)
 

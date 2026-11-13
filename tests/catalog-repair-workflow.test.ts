@@ -358,6 +358,11 @@ it("checks one immutable refresh candidate on parallel runners before publishing
     "catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
   );
   expect(checks).toContain('diff "$RUNNER_TEMP/candidate-fingerprint"');
+  expect(checks).toContain("vp exec playwright install --with-deps chromium");
+  expect(checks).toContain("run: vp run test:pricing-performance");
+  expect(checks.indexOf("run: vp run test:pricing-performance")).toBeLessThan(
+    checks.indexOf('diff "$RUNNER_TEMP/candidate-fingerprint"'),
+  );
   expect(publish).toContain("needs: [prepare, assemble, check]");
   for (const consumer of [checks, publish]) {
     expect(consumer).toContain("ref: ${{ needs.prepare.outputs.sha }}");

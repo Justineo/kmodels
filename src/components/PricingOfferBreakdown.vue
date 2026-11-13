@@ -152,12 +152,15 @@ const commercialOptions = computed(() => {
   );
 });
 const commercialQuery = computed(() =>
-  queryCommercial([
-    ...commercialChoices.value,
-    ...commercialContext.value.fixed_choices.filter(
-      (fixed) => !commercialChoices.value.some(({ dimension }) => dimension === fixed.dimension),
-    ),
-  ]),
+  queryCommercial(
+    [
+      ...commercialChoices.value,
+      ...commercialContext.value.fixed_choices.filter(
+        (fixed) => !commercialChoices.value.some(({ dimension }) => dimension === fixed.dimension),
+      ),
+    ],
+    {},
+  ),
 );
 const displayOffer = computed(() =>
   props.hideConditions ? unfilteredOffer.value : commercialQuery.value.offer,

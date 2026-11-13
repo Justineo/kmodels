@@ -12,6 +12,7 @@ export interface ValidationInputs {
   generated: ReadonlySet<string>;
   build: ReadonlySet<string>;
   package: ReadonlySet<string>;
+  performance: ReadonlySet<string>;
 }
 
 export function validationPlan(paths: readonly string[], inputs: ValidationInputs): string[][] {
@@ -38,6 +39,8 @@ export function validationPlan(paths: readonly string[], inputs: ValidationInput
     ) ||
     affects(inputs.build);
   const portable = full || changed(/^packages\/pricing\//) || affects(inputs.package);
+  const performance =
+    full || changed(/^(?:data\/|tests\/performance\/)/) || affects(inputs.performance);
   const code = paths.filter((path) => /\.(?:[cm]?[jt]sx?|vue)$/.test(path));
   const workflow = changed(/^\.github\//);
   const unit = full || changed(/^tests\/fixtures\//);
@@ -70,6 +73,7 @@ export function validationPlan(paths: readonly string[], inputs: ValidationInput
   }
   if (build) commands.push(["run", "build"]);
   if (portable) commands.push(["run", "package:build"], ["run", "package:check"]);
+  if (performance) commands.push(["run", "test:pricing-performance"]);
   return commands;
 }
 
@@ -146,6 +150,7 @@ export async function validateChanges(base: string | undefined, planOnly = false
       "scripts/pricing-package-schema.ts",
       "scripts/check-pricing-package.ts",
     ]),
+    performance: await dependencyClosure(["scripts/check-pricing-performance.ts"]),
   });
   const commands = selected.map((args) =>
     inActions && args[0] === "test"

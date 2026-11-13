@@ -7,6 +7,7 @@ const inputs: ValidationInputs = {
   generated: new Set(["src/catalog/pricing-schema.ts"]),
   build: new Set(["src/catalog/pricing-schema.ts", "src/App.vue"]),
   package: new Set(["src/catalog/pricing-schema.ts", "tests/fixtures/pricing/"]),
+  performance: new Set(["src/catalog/pricing-schema.ts", "src/components/InferencePrices.vue"]),
 };
 
 it("limits documentation and collector changes to their affected checks", () => {
@@ -33,10 +34,12 @@ it("checks generated data and materialized consumers without rerunning code-only
   expect(validationPlan(["data/catalog-snapshot.json"], inputs)).toEqual([
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
+    ["run", "test:pricing-performance"],
   ]);
   expect(validationPlan(["data/catalog.json", "data/export-assets.pack"], inputs)).toEqual([
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
+    ["run", "test:pricing-performance"],
   ]);
 });
 
@@ -57,6 +60,7 @@ it("checks every affected pricing consumer once without a duplicate fixture suit
     ["run", "build"],
     ["run", "package:build"],
     ["run", "package:check"],
+    ["run", "test:pricing-performance"],
   ]);
   expect(commands.some((command) => command.includes("collect:fixtures"))).toBe(false);
 });
@@ -89,15 +93,22 @@ it("selects harness tests for workflow edits without unrelated production builds
   expect(commands.some(([command]) => command === "run")).toBe(false);
 });
 
+it.each(["src/components/InferencePrices.vue", "tests/performance/index.html"])(
+  "selects browser performance checks for %s",
+  (path) =>
+    expect(validationPlan([path], inputs)).toContainEqual(["run", "test:pricing-performance"]),
+);
+
 it.each(["pnpm-lock.yaml", "vite.config.ts", "tests/setup.ts"])(
   "uses one full test run when %s changes the shared execution contract",
   (path) => {
     const commands = validationPlan([path], inputs);
     expect(commands.filter(([command]) => command === "test")).toEqual([["test", "--run"]]);
-    expect(commands.slice(-3)).toEqual([
+    expect(commands.slice(-4)).toEqual([
       ["run", "build"],
       ["run", "package:build"],
       ["run", "package:check"],
+      ["run", "test:pricing-performance"],
     ]);
   },
 );

@@ -20,7 +20,8 @@
     "preview": "vp preview",
     "report:refresh": "node scripts/report-refresh.ts",
     "test": "vp test --run",
-    "test:data": "vp test --run --project generated"
+    "test:data": "vp test --run --project generated",
+    "test:pricing-performance": "node scripts/check-pricing-performance.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1148.0",
@@ -38,6 +39,7 @@
     "@types/node": "^26.6.4",
     "@vitejs/plugin-vue": "^6.0.9",
     "node-gyp": "^13.1.0",
+    "playwright": "1.65.0",
     "typescript": "npm:typescript-native-bridge@6.0.3-bridge.18.tsgo.7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.1.0",
     "vite-plus": "1.1.0",

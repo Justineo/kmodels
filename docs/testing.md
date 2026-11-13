@@ -136,6 +136,42 @@ after each test, including failures.
   identifiers must never enter samples, unrelated root extensions must be stripped and signaled,
   and malformed owned semantics must reject the complete provider candidate.
 
+## Pricing interaction performance
+
+`vp run test:pricing-performance` builds a production browser harness around the actual
+`InferencePrices` and `PricingOfferBreakdown` components. Install its pinned Chromium once with
+`vp exec playwright install chromium` (Linux CI uses `--with-deps`). Run it serially, without
+other benchmarks or builds competing for the same machine. It never collects sources or changes
+the accepted snapshot. `--fixture-only` limits the command to the stable synthetic workload.
+
+The fixed workload has 24 regions, four tier/speed combinations, two tariff meters, and cache-TTL
+overlap: 192 rate variants and 480 commercial claims. Three fresh browser contexts per component
+measure cold mount and first Priority selection, followed by repeated Standard/optimized/Region/
+Priority/Flex transitions. Regions alternate and have different prices; assertions require both
+tariffs to match, incompatible Speed to disappear, and Region to remain editable and selected.
+The offer control domain excludes user-entered native selections: those selections filter rates,
+not the controls needed to change them. A declared singleton still renders as fixed scope.
+
+Browser budgets are 750 ms for cold mount, 150 ms for first selection, and 50 ms median / 100 ms
+P95 for each interaction separately. Timing covers event dispatch, matching, Vue updates and forced
+layout; the next animation-frame delay is recorded separately, not treated as paint completion.
+Transport, bundle loading and data decoding are outside the interaction budget. Do not average a
+slow action into unrelated fast actions or retry a failed budget into a pass. Threshold changes
+require a measured workload/runner rationale; they must not merely accommodate a regression.
+
+The same run selects up to five distinct models from the checked publication, ranked by commercial
+scope condition count, and exercises their available controls. Selection records the snapshot
+version and model names without requiring any changing provider ID or price to exist. Models with
+no editable controls report mount-only evidence; the fixed workload always requires interactions.
+Reports include raw samples, percentiles, runtime/browser versions and failures, with screenshots
+for browser assertion failures. Default output is `node_modules/.cache/pricing-performance/report.json`;
+`PRICING_PERFORMANCE_REPORT` overrides it. CI and refresh retain reports for seven days.
+
+Deterministic unit guards complement wall-clock limits: regional scope preparation has a linear
+clause-work bound and warm reuse assertion, and full matcher queries at 24 and 48 regions allow
+at most eight tariff-row validation passes. These protect both batching and native-row reuse
+independently of runner speed. Browser checks cover the reactive/rendering work those guards omit.
+
 ## Required validation
 
 For read-only offline performance comparisons, run `vp node scripts/benchmark-catalog.ts`
@@ -219,6 +255,9 @@ or the PR base. Trusted repair publication uses the same planner against latest 
   A changed snapshot pointer also selects the static build because it can replace the projections.
   Site and package checks run only when their source/resource dependency closures change;
   generated catalog/projection assets also select the production build.
+- Pricing component/matcher dependencies, the performance harness, generated data and full gates
+  select the pricing browser check. This dependency closure includes both UI paths and their
+  shared query code; unrelated collector-only changes do not force a browser run.
 - Filesystem-loaded fixtures cannot be fully traced by Vitest's import graph. Their change uses
   the unit-project fallback, rather than pretending that an incomplete graph proves a narrower
   scope. Focused tests remain preferable during editing when the actual readers are known.
@@ -234,7 +273,8 @@ or the PR base. Trusted repair publication uses the same planner against latest 
 
 The scheduled refresh checks the generated project and production build on parallel runners
 against the exact staged candidate archive and collection commit, because code-only behavior
-was already verified in CI. Each runner checks that validation preserved its candidate's input
+was already verified in CI. The build runner also checks pricing interaction performance before
+publication, including data-only changes that do not trigger push CI. Each runner checks that validation preserved its candidate's input
 fingerprint; publication reuses that same archive only after both checks pass.
 Fixture replay compares ordinary collection with compressed shard round trips through the
 normal provider collector. Fresh and retained-price cases must preserve provider results, fetch
