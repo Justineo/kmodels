@@ -4,6 +4,9 @@ Status: implemented
 
 - GitHub Actions checks every push and pull request, including the portable pricing package build
   and packed Node/browser conformance checks. Package preparation never publishes to npm.
+  Every Void deployment independently runs the pricing browser performance gate on its checked-out
+  code and snapshot before deployment. This covers direct main pushes and dispatched deployments
+  even while CI is still running; failed budgets block the Deploy step and retain diagnostic evidence.
 - The six-hourly incident schedule in `Catalog repair` uses a deterministic code-repair admission
   gate. Preparation reads the latest completed main-branch refresh's report
   artifact, run identity, failed steps, and bounded failure log with read-only Actions access.

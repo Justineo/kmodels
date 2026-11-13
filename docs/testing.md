@@ -166,6 +166,8 @@ no editable controls report mount-only evidence; the fixed workload always requi
 Reports include raw samples, percentiles, runtime/browser versions and failures, with screenshots
 for browser assertion failures. Default output is `node_modules/.cache/pricing-performance/report.json`;
 `PRICING_PERFORMANCE_REPORT` overrides it. CI and refresh retain reports for seven days.
+Deployment also runs this gate against its actual checkout before contacting Void and retains the
+same evidence. Direct main pushes and manual dispatches cannot race ahead of CI's performance check.
 
 Deterministic unit guards complement wall-clock limits: regional scope preparation has a linear
 clause-work bound and warm reuse assertion, and full matcher queries at 24 and 48 regions allow

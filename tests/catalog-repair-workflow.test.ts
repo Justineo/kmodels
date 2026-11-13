@@ -336,6 +336,22 @@ it("queues the refresh and repair writers together while inference uses a separa
   expect(job(workflow, "commit_repair")).not.toMatch(/^\s+(?:contents|actions): write$/m);
 });
 
+it("gates the deployed checkout before contacting Void, including dispatch and direct pushes", async () => {
+  const deploy = job(
+    await readFile(new URL("../.github/workflows/void-deploy.yml", import.meta.url), "utf8"),
+    "deploy",
+  );
+  const gate = deploy.indexOf("run: vp run test:pricing-performance");
+  expect(gate).toBeGreaterThan(deploy.indexOf("run: vp run build"));
+  expect(gate).toBeGreaterThan(deploy.indexOf("vp exec playwright install --with-deps chromium"));
+  expect(deploy.indexOf("vp exec void connect")).toBeGreaterThan(gate);
+  const step = deploy
+    .split(/\n      - /)
+    .find((value) => value.includes("run: vp run test:pricing-performance"));
+  expect(step).toBeDefined();
+  expect(step).not.toMatch(/continue-on-error:|if:/);
+});
+
 it("checks one immutable refresh candidate on parallel runners before publishing its exact archive", async () => {
   const refresh = await readFile(
     new URL("../.github/workflows/catalog.yml", import.meta.url),

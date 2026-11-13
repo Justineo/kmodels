@@ -57,6 +57,23 @@ jobs:
       - name: Build static site
         run: vp run build
 
+      - name: Install the pinned performance browser
+        run: vp exec playwright install --with-deps chromium
+
+      - name: Check pricing interaction performance
+        env:
+          PRICING_PERFORMANCE_REPORT: ${{ runner.temp }}/pricing-performance/report.json
+        run: vp run test:pricing-performance
+
+      - name: Upload pricing performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployment-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pricing-performance/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Deploy
         run: |
           vp exec void connect "$VOID_API_URL" --no-login
