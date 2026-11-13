@@ -87,6 +87,19 @@ The result distinguishes candidate relationships, missing request/outcome inputs
 combinations and incomplete classification. It never selects the cheapest candidate or supplies an
 unobserved outcome. Exact quantities and independent charge components remain caller-owned.
 
+Choice resolution groups branches by their exact native selectors and normalizes each complete
+scope union once. Repeatedly normalizing a growing union makes interaction cost quadratic in
+regional claims. Scope intersections reuse the narrower input when containment proves the result;
+partially overlapping scopes still use the full intersection. These shared lookup rules preserve
+every regional predicate without inferring geography from a tier selection.
+The immutable selection graph also has a lazy index by dimension. Claims with identical bindings,
+coverage, exclusions and validity share one scope union; subsumed clauses are removed once.
+Validity and supplied facts are still evaluated on every query. Replacing the selection graph
+creates a new index, and weak references release old snapshots. Available choice vocabulary is
+indexed separately from its dynamic applicability. Within one inference query, alternative probes
+reuse price-row matches for identical native selectors while retaining their own commercial scope
+and missing conditions. Query results are not cached across evaluation times or selector changes.
+
 The website groups editable controls into **Plan** and **Usage conditions** and displays fixed
 published qualifiers as descriptive **Price scope**. A sole published value still qualifies a price;
 it neither establishes an actual usage fact nor becomes an unconditional model property. The

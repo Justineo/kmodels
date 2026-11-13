@@ -1,10 +1,13 @@
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { matchInferencePrices } from "../src/pricing/inference-matching.ts";
 import {
   commercialBranchesCoverScopes,
+  intersectCommercialScope,
   resolveCommercialChoices,
 } from "../src/pricing/commercial-matching.ts";
 import { unconditionalApplicability as all } from "../src/catalog/pricing-canonical.ts";
+import * as canonical from "../src/catalog/pricing-canonical.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
 import type { CommercialChoice, PriceApplicability } from "../src/catalog/pricing-schema.ts";
 import type {
   InferenceMatchData,
@@ -77,6 +80,104 @@ function data(offers: InferenceMatchOffer[]): InferenceMatchData {
 function query(input: InferenceMatchData, ...choices: CommercialChoice[]) {
   return matchInferencePrices(input, [], at, undefined, undefined, choices);
 }
+
+it("reuses contained scopes and still intersects partially overlapping predicates", () => {
+  const us = native("region", "us");
+  const eu = native("region", "eu");
+  const regionUnion = { any_of: [...us.any_of, ...eu.any_of] };
+  expect(intersectCommercialScope(us, regionUnion)).toBe(us);
+  expect(intersectCommercialScope(regionUnion, us)).toBe(us);
+  expect(intersectCommercialScope(us, eu)).toBeUndefined();
+  const otherUnion = { any_of: [...eu.any_of, ...native("region", "apac").any_of] };
+  expect(intersectCommercialScope(regionUnion, otherUnion)).toEqual(eu);
+});
+
+it("merges many regional claims without repeatedly normalizing growing prefixes", () => {
+  const regions = Array.from({ length: 128 }, (_, index) => native("region", `region-${index}`));
+  const tier = native("served_service_tier", "priority");
+  const scopes = regions.map((region) => ({
+    any_of: [
+      {
+        all_of: [
+          ...region.any_of.flatMap((c) => c.all_of),
+          ...tier.any_of.flatMap((c) => c.all_of),
+        ],
+      },
+    ],
+  }));
+  const subject = offer(
+    "regional",
+    scopes.map((scope) => claim("served_service_tier", "priority", scope, tier)),
+  );
+  const original = structuredClone(subject);
+  const normalize = vi.spyOn(canonical, "canonicalizeApplicability");
+  let result;
+  try {
+    result = resolveCommercialChoices(
+      subject,
+      [],
+      [choice("served_service_tier", "priority")],
+      at,
+      at,
+    );
+    // Bound the processed clauses instead of relying on machine-dependent wall-clock timing.
+    expect(
+      normalize.mock.calls.reduce((count, [scope]) => count + scope.any_of.length, 0),
+    ).toBeLessThanOrEqual(regions.length * 4);
+    const preparations = normalize.mock.calls.length;
+    expect(
+      resolveCommercialChoices(subject, [], [choice("served_service_tier", "priority")], at, at),
+    ).toEqual(result);
+    expect(normalize.mock.calls).toHaveLength(preparations);
+  } finally {
+    normalize.mockRestore();
+  }
+  expect(subject).toEqual(original);
+  expect(result.unresolved).toEqual([]);
+  expect(result.branches).toHaveLength(1);
+  const branch = result.branches[0];
+  expect(branch?.scope).toEqual(
+    canonical.canonicalizeApplicability({ any_of: scopes.flatMap((scope) => scope.any_of) }),
+  );
+  expect(branch?.selectors.map(({ dimension }) => dimension.value)).toEqual([
+    "served_service_tier",
+  ]);
+  expect(branch).toBeDefined();
+  if (branch === undefined) return;
+  for (const region of [...regions, native("region", "unpublished")]) {
+    const value = region.any_of[0]?.all_of[0];
+    if (value?.kind !== "categorical" || value.values[0] === undefined)
+      throw new Error("Missing fixture region");
+    const match = evaluateApplicability(branch.scope, [
+      ...branch.selectors,
+      { kind: "categorical", dimension: value.dimension, value: value.values[0] },
+    ]);
+    expect(match.state).toBe(regions.includes(region) ? "true" : "false");
+  }
+});
+
+it("keeps time-dependent coverage separate when indexing regional claims", () => {
+  const us = native("region", "us");
+  const eu = native("region", "eu");
+  const tier = native("served_service_tier", "priority");
+  const expires = "2026-01-02T00:00:00.000Z";
+  const subject = offer("time-bound", [
+    {
+      ...claim("served_service_tier", "priority", us, tier),
+      validity: { until: { value: expires, precision: "datetime", inclusive: false } },
+    },
+    claim("served_service_tier", "priority", eu, tier),
+  ]);
+  const choices = [choice("served_service_tier", "priority")];
+  const before = resolveCommercialChoices(subject, [], choices, at, at);
+  const after = resolveCommercialChoices(subject, [], choices, expires, at);
+  expect(before.branches).toHaveLength(1);
+  expect(after.branches).toHaveLength(1);
+  expect(before.branches[0]?.scope.any_of).toHaveLength(2);
+  expect(after.branches[0]?.scope.any_of).toHaveLength(1);
+  expect(after.branches[0]?.scope).toEqual(intersectCommercialScope(eu, tier));
+  expect(resolveCommercialChoices(subject, [], choices, at, at)).toEqual(before);
+});
 
 it("does not infer a sole speed when it would discard another execution context", () => {
   const request = native("operation", "request");

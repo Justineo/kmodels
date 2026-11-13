@@ -4,12 +4,102 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
+  clauseContainedIn,
   unconditionalApplicability,
 } from "../catalog/pricing-canonical.ts";
 import type { CommercialChoice, PriceApplicability } from "../catalog/pricing-schema.ts";
 import type { InferenceMatchOffer } from "./inference-matching-schema.ts";
 import { PricingError } from "./errors.ts";
 import { validityGap } from "./selection.ts";
+import { pricingLimits } from "../catalog/pricing-constants.ts";
+
+type SelectionClaim = NonNullable<InferenceMatchOffer["selection"]>[number];
+const claimIndexes = new WeakMap<
+  SelectionClaim[],
+  Map<CommercialChoice["dimension"], SelectionClaim[]>
+>();
+const declaredChoices = new WeakMap<
+  SelectionClaim[],
+  Omit<AvailableCommercialChoice, "offer_refs">[]
+>();
+
+/** Static vocabulary of an immutable selection graph; applicability remains query-specific. */
+export function declaredCommercialChoices(
+  selection: InferenceMatchOffer["selection"],
+): readonly Omit<AvailableCommercialChoice, "offer_refs">[] {
+  if (selection === undefined) return [];
+  const cached = declaredChoices.get(selection);
+  if (cached !== undefined) return cached;
+  const choices = uniqueCanonicalValues(
+    selection.flatMap((claim) =>
+      claim.alternatives.map(({ value }) => ({ dimension: claim.dimension, value })),
+    ),
+  ).map((choice) => {
+    const targets = [
+      ...new Set(
+        selection.flatMap((claim) =>
+          claim.dimension === choice.dimension &&
+          claim.target !== undefined &&
+          claim.alternatives.some(
+            ({ value }) => canonicalJson(value) === canonicalJson(choice.value),
+          )
+            ? [claim.target]
+            : [],
+        ),
+      ),
+    ];
+    return { ...choice, ...(targets.length ? { targets } : {}) };
+  });
+  declaredChoices.set(selection, choices);
+  return choices;
+}
+
+function indexedClaims(
+  offer: InferenceMatchOffer,
+  dimension: CommercialChoice["dimension"],
+): SelectionClaim[] {
+  const selection = offer.selection;
+  if (selection === undefined) return [];
+  let index = claimIndexes.get(selection);
+  if (index === undefined) {
+    index = new Map();
+    claimIndexes.set(selection, index);
+  }
+  const cached = index.get(dimension);
+  if (cached !== undefined) return cached;
+  const groups = new Map<string, [SelectionClaim, ...SelectionClaim[]]>();
+  for (const claim of selection) {
+    if (claim.dimension !== dimension) continue;
+    const key = canonicalJson({
+      coverage: claim.coverage,
+      alternatives: claim.alternatives,
+      ...(claim.validity === undefined ? {} : { validity: claim.validity }),
+      ...(claim.excluded_values === undefined ? {} : { excluded_values: claim.excluded_values }),
+    });
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [claim]);
+    else group.push(claim);
+  }
+  const claims = [...groups.values()].flatMap((group) => {
+    const any_of = group.flatMap(({ applicability }) => applicability.any_of);
+    if (group.length === 1 || any_of.length > pricingLimits.applicabilityClauses) return group;
+    const normalized = canonicalizeApplicability({ any_of });
+    // A OR (A AND B) adds no scope. Remove subsumed clauses before interactive evaluation.
+    const retained: PriceApplicability["any_of"] = [];
+    for (const clause of [...normalized.any_of].sort((a, b) => a.all_of.length - b.all_of.length)) {
+      if (!retained.some((other) => clauseContainedIn(clause.all_of, other.all_of)))
+        retained.push(clause);
+    }
+    return [
+      {
+        ...group[0],
+        applicability: { any_of: normalized.any_of.filter((clause) => retained.includes(clause)) },
+      },
+    ];
+  });
+  index.set(dimension, claims);
+  return claims;
+}
 
 export function intersectCommercialScope(
   left: PriceApplicability,
@@ -17,6 +107,8 @@ export function intersectCommercialScope(
 ): PriceApplicability | undefined {
   if (left.any_of.some(({ all_of }) => all_of.length === 0)) return right;
   if (right.any_of.some(({ all_of }) => all_of.length === 0)) return left;
+  if (applicabilityContainedIn(left, right)) return left;
+  if (applicabilityContainedIn(right, left)) return right;
   if (!applicabilitiesOverlap(left, right)) return;
   return canonicalizeApplicability({
     any_of: uniqueCanonicalValues(
@@ -94,9 +186,7 @@ export function resolveCommercialChoices(
   const unresolved: UnresolvedCommercialChoice[] = [];
   for (const choice of choices) {
     if (branches.length === 0) break;
-    const claims = (offer.selection ?? []).filter(
-      ({ dimension }) => dimension === choice.dimension,
-    );
+    const claims = indexedClaims(offer, choice.dimension);
     if (claims.length === 0)
       unresolved.push({ offer_ref: offer.id, dimension: choice.dimension, reason: "unreviewed" });
     const next: CommercialBranch[] = [];
@@ -167,17 +257,25 @@ export function resolveCommercialChoices(
           }
         }
       }
-    const grouped = new Map<string, CommercialBranch>();
+    const grouped = new Map<string, [CommercialBranch, ...CommercialBranch[]]>();
     for (const branch of next) {
       const key = canonicalJson(uniqueCanonicalValues(branch.selectors));
       const previous = grouped.get(key);
-      if (previous === undefined) grouped.set(key, branch);
-      else
-        previous.scope = canonicalizeApplicability({
-          any_of: uniqueCanonicalValues([...previous.scope.any_of, ...branch.scope.any_of]),
-        });
+      if (previous === undefined) grouped.set(key, [branch]);
+      else previous.push(branch);
     }
-    branches = [...grouped.values()];
+    // Normalize each union once, rather than reprocessing its growing prefix for every claim.
+    branches = [...grouped.values()].map((group) => {
+      const first = group[0];
+      return group.length === 1
+        ? first
+        : {
+            selectors: first.selectors,
+            scope: canonicalizeApplicability({
+              any_of: uniqueCanonicalValues(group.flatMap(({ scope }) => scope.any_of)),
+            }),
+          };
+    });
   }
   return { branches, unresolved: uniqueCanonicalValues(unresolved) };
 }
