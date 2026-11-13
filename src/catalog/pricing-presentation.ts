@@ -6,6 +6,7 @@ import {
 } from "./pricing-applicability.ts";
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
+import { commercialValueLabel } from "../pricing/commercial-vocabulary.ts";
 import { scaleDecimal } from "./pricing.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
 import {
@@ -722,6 +723,20 @@ export function formatCategoricalValue(value: PriceCategoricalValue): string {
     : /^[a-z][a-z0-9_]*$/.test(value.value)
       ? formatSentenceCase(value.value)
       : value.value;
+}
+
+export function formatConditionValue(
+  dimension: PriceDimension,
+  value: PriceCategoricalValue,
+  label?: string,
+): string {
+  if (
+    dimension.namespace === "kmodels" &&
+    dimension.value === "speed" &&
+    (value.value === "standard" || value.value === "optimized")
+  )
+    return commercialValueLabel(value.value);
+  return label ?? formatCategoricalValue(value);
 }
 
 export function formatRecurringTimeSchedule(schedule: RecurringTimeSchedule): string {

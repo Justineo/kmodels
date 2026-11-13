@@ -26,7 +26,7 @@ it.each(["execution", "account_plan", "speed", "service_tier"] as const)(
   },
 );
 
-it("keeps an explicit choice editable while hiding unrelated dimensions", () => {
+it("keeps alternatives of every relevant dimension editable while hiding unrelated dimensions", () => {
   const request = { ...choice("execution", "request"), offer_refs: ["offer"] };
   const batch = { ...choice("execution", "batch"), offer_refs: ["offer"] };
   const fast = { ...choice("speed", "fast"), offer_refs: ["offer"] };
@@ -36,6 +36,7 @@ it("keeps an explicit choice editable while hiding unrelated dimensions", () => 
   ]);
   expect(commercialControlChoices([request, batch, fast], [request, fast], [fast])).toEqual([
     request,
+    batch,
     fast,
   ]);
 });

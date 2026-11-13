@@ -6,7 +6,7 @@ import type { WebsitePricingSelector } from "./website-schema.ts";
 import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
 import type { CommercialChoice } from "./pricing-schema.ts";
 
-/** Keep alternatives for an explicit choice editable; infer only choices applicable to this scope. */
+/** Keep every alternative of a relevant dimension editable, including inferred selections. */
 export function commercialControlChoices(
   all: readonly AvailableCommercialChoice[],
   applicable: readonly AvailableCommercialChoice[],
@@ -15,11 +15,7 @@ export function commercialControlChoices(
   return all.filter(
     (choice) =>
       selected.some(({ dimension }) => dimension === choice.dimension) ||
-      applicable.some(
-        (current) =>
-          canonicalJsonKey(current.value) === canonicalJsonKey(choice.value) &&
-          current.dimension === choice.dimension,
-      ),
+      applicable.some((current) => current.dimension === choice.dimension),
   );
 }
 

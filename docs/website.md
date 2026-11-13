@@ -25,6 +25,11 @@ native price selectors share one **Usage conditions** fieldset and one continuou
 The canonical mapping is an input convenience, not a separate category of pricing condition.
 Resolve native single-value fields before generating mapped commercial controls, and keep those
 values as descriptive text in **Price scope**, outside the editable **Usage conditions** fieldset.
+For mapped commercial fields, determine fixedness from the unselected subject's domain, not the
+values left after another commercial selection. A dependent singleton fills its editable control
+while preserving alternatives; editing it removes only incompatible explicit selections. Derived
+values never become explicit selections just because another control changes. Selection order must
+not decide whether a field is editable. Fields with no remaining applicability can still disappear.
 This ordering applies to model-ID, ordinary and provider-resource pricing.
 Apply their native predicates without restricting unrelated price rows to a commercial claim's
 narrower scope. Unknown price evidence remains unknown.
@@ -40,8 +45,8 @@ evidenced ID bindings and never guesses an actual value from a one-value publish
 Recompute these values from the
 current options rather than storing them as user selections, so switching request mode or plan can
 restore alternatives. Evaluate automatic scope without the value's own explicit selection and
-native bindings. A scoped singleton remains editable after selection when clearing it restores
-other price contexts; a mandatory singleton resolves before selection.
+native bindings. A scoped singleton resolves automatically only when it preserves every remaining
+price context; automatic resolution does not by itself make the control read-only.
 A sole account plan still requires an explicit choice; availability alone
 does not establish enrollment.
 Served fields are labeled as observed outcomes or explicit planning estimates. Options retain

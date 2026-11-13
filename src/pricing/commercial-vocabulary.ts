@@ -55,6 +55,7 @@ export function commercialValueLabel(value: string): string {
     capacity: "Running capacity",
     service: "Service",
     standard: "Standard",
+    optimized: "Latency optimized",
     priority: "Priority",
     flex: "Flex",
     fast: "Fast",

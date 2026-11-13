@@ -28,7 +28,7 @@ import { matchInferencePrices, type InferenceMatchResult } from "../pricing/infe
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
 import {
-  formatCategoricalValue,
+  formatConditionValue,
   formatDimension,
   formatRecurringTimeSchedule,
   formatUnitExpression,
@@ -78,6 +78,10 @@ const idOptions = computed(() =>
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
 ]);
+const unselectedMatch = computed(() => {
+  const matching = toRaw(selectedPrice.value?.matching);
+  return matching === undefined ? undefined : matchInferencePrices(matching, [], evaluatedAt.value);
+});
 const baseCommercialMatch = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   return matching === undefined
@@ -94,14 +98,14 @@ const baseCommercialMatch = computed(() => {
 const fixedNativeSelections = computed(() => {
   const price = toRaw(selectedPrice.value);
   const current = baseCommercialMatch.value;
-  if (price?.matching === undefined || current === undefined) return [];
+  const initial = unselectedMatch.value;
+  if (price?.matching === undefined || current === undefined || initial === undefined) return [];
+  // Only the unfiltered domain establishes a fixed field; dependent singletons stay editable.
   const options = inferencePriceOptions(
     price.matching,
-    current,
+    initial,
     price.pricing_options ?? [],
     evaluatedAt.value,
-    undefined,
-    commercialChoices.value,
   ).filter(
     ({ dimension }) =>
       !current.available_choices.some(
@@ -130,7 +134,7 @@ const commercialOptions = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   if (matching === undefined) return [];
   return commercialControlChoices(
-    matchInferencePrices(matching, [], evaluatedAt.value).available_choices,
+    unselectedMatch.value?.available_choices ?? [],
     commercialMatch.value?.available_choices ?? [],
     commercialChoices.value,
   ).filter(
@@ -149,7 +153,9 @@ const fixedChoices = computed(() => {
   return fixedInferenceCommercialChoices(
     matching,
     current,
-    commercialOptions.value,
+    current.available_choices.filter((choice) =>
+      commercialOptions.value.some(({ dimension }) => dimension === choice.dimension),
+    ),
     evaluatedAt.value,
     commercialChoices.value,
   );
@@ -317,7 +323,7 @@ function conditionLabel(selector: Exclude<PricingSelection, { kind: "decimal_ran
   )?.option;
   const value = fixed?.kind === "categorical" ? fixed.values[0] : undefined;
   const schedule = value?.schedule;
-  const name = value?.label ?? formatCategoricalValue(selector.value);
+  const name = formatConditionValue(selector.dimension, selector.value, value?.label);
   return schedule === undefined
     ? `${label}: ${name}`
     : `${label}: ${name} (${formatRecurringTimeSchedule(schedule)} · ${schedule.time_zone})`;
@@ -488,7 +494,7 @@ async function copyId(id: string): Promise<void> {
     <PricingControls
       prefix="inference-price"
       :choices="commercialOptions"
-      :fixed="fixedChoices"
+      :inferred="fixedChoices"
       :selected="commercialChoices"
       :selectors="conditionOptions"
       :inputs="inputs"

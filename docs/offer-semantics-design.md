@@ -115,3 +115,11 @@ special reset lists for account plan, execution, speed or tier. The UI labels th
 **Speed**. A speed class and a service tier are distinct provider facts; a shared value label such as
 Standard does not establish equivalence. Actual versus requested ownership stays in the dimension
 contract and its evidence, not in an ambiguous field heading.
+
+Automatic selection and fixed presentation are separate decisions. A commercial field that has
+alternatives for the selected subject keeps an edit control even if another choice temporarily
+leaves one applicable value. Inferred values fill that control without entering explicit-choice
+state. Both selection orders must preserve the same editing paths in inference and resource views.
+The shared `optimized` speed value displays as **Latency optimized** in canonical controls,
+native selectors, fixed scope and condition annotations. Raw identifiers and source evidence retain
+`optimized`; display formatting does not change price matching or reinterpret other dimensions.

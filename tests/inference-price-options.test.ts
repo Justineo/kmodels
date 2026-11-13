@@ -189,6 +189,17 @@ it.each(["service_tier", "speed"] as const)(
     for (const select of html.match(/<select\b[\s\S]*?<\/select>/gu) ?? [])
       expect(select).not.toContain(">Standard<");
 
+    // A fully mapped native singleton must stay visible instead of being consumed twice.
+    const variants = term.variants;
+    term.variants = [{ applicability: qualified, semantics: 0 }];
+    const fullyMapped = await renderComponent(InferencePrices, {
+      modelRef: "fixture/model",
+      prices: [price],
+      offers: [],
+    });
+    expect(fullyMapped).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    term.variants = variants;
+
     // Multiple native values remain a real choice even when only one has a canonical mapping.
     if (native.kind !== "categorical") throw new Error("Missing categorical selector");
     native.values.push({ key: "fast", label: "Fast", value: { ...standard, value: "fast" } });

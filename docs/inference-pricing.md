@@ -210,7 +210,7 @@ about a real request or a claim that other usage is unsupported. Do not require 
 for a sole published price scope. Keep the predicate in canonical rates and public lookup; removing
 it would incorrectly make a conditional price universal. Do not turn a varying condition into a
 model property merely because one model or filtered view has one published value.
-Resolve native singletons before replacing mapped dimensions with canonical controls. Keep the
+Resolve native singletons from the ID's unselected domain before replacing mapped dimensions with canonical controls. Keep the
 native price scope and its exact selection instead of an equivalent one-option canonical picker.
 Native selection preserves sibling prices that omit the dimension; it does not broaden a commercial
 claim's scope or resolve missing evidence. Apply this ordering to inference-ID, ordinary model and
@@ -230,8 +230,11 @@ must not eliminate Batch before the viewer chooses the request mode.
 Inferred values are derived afresh from explicit choices, so a changed plan or request mode can
 restore alternatives. Check a value's automatic applicability without that dimension's explicit
 choice or its resolved native bindings: selecting a scoped value cannot make it prove its own
-coverage and turn read-only. A singleton that still narrows other price contexts stays editable;
-once the other conditions make it mandatory, it resolves automatically before a click.
+coverage. Distinguish a field with one value in the unselected ID domain from a field narrowed to
+one value by other choices. Only the former becomes fixed scope. The latter can fill automatically
+but keeps its original alternatives in an editable control. Editing that control replaces
+incompatible explicit choices; inferred values are never copied into the explicit-choice state.
+The same effective tier/speed combination must have the same controls regardless of selection order.
 Fixed scope uses descriptive text without form-control borders or dropdown arrows. Multiple scoped
 rate qualifier values remain explicit choices and share one Usage conditions fieldset and grid with native
 selectors such as context and endpoint. Canonical mapping does not create a separate UI category.

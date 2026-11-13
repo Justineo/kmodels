@@ -9,6 +9,7 @@ import {
 import {
   formatUnitExpression,
   formatRecurringTimeSchedule,
+  formatConditionValue,
 } from "../catalog/pricing-presentation.ts";
 import UiSelect from "./UiSelect.vue";
 import UiIcon from "./UiIcon.vue";
@@ -26,6 +27,16 @@ const booleanOptions = [
 ];
 function inputValue(key: string): string {
   return props.inputs[key] ?? "";
+}
+function fixedLabel(selector: WebsitePricingSelector): string {
+  if (selector.kind === "categorical") {
+    const value = selector.values[0];
+    return value === undefined
+      ? ""
+      : formatConditionValue(selector.dimension, value.value, value.label);
+  }
+  if (selector.kind === "decimal_buckets") return selector.values[0]?.label ?? "";
+  return selector.kind === "decimal_values" ? (selector.values[0] ?? "") : "";
 }
 function setInput(key: string, value: string): void {
   emit("input", key, value);
@@ -67,11 +78,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
       <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
     </label>
     <output v-if="fixedPricingSelection(selector) !== undefined" class="pricing-fixed-value">{{
-      selector.kind === "categorical" || selector.kind === "decimal_buckets"
-        ? selector.values[0]?.label
-        : selector.kind === "decimal_values"
-          ? selector.values[0]
-          : ""
+      fixedLabel(selector)
     }}</output>
     <template v-else-if="selector.kind === 'categorical'">
       <UiSelect
@@ -80,7 +87,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
         :options="
           selector.values.map((option) => ({
             value: option.key,
-            label: option.label,
+            label: formatConditionValue(selector.dimension, option.value, option.label),
           }))
         "
         :placeholder="

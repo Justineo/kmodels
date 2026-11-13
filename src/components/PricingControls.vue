@@ -17,7 +17,7 @@ const props = defineProps<{
   choices: AvailableCommercialChoice[];
   selected: CommercialChoice[];
   prefix: string;
-  fixed: readonly CommercialChoice[];
+  inferred: readonly CommercialChoice[];
   selectors: readonly WebsitePricingSelector[];
   inputs: Readonly<Record<string, string>>;
   followRegion?: { key: string; label: string } | undefined;
@@ -29,6 +29,7 @@ const emit = defineEmits<{
 const groups = computed(() =>
   [...new Set(props.choices.map(({ dimension }) => dimension))].map((dimension) => {
     const choices = props.choices.filter((choice) => choice.dimension === dimension);
+    const inferred = props.inferred.find((choice) => choice.dimension === dimension);
     return {
       dimension,
       section: choices.some(
@@ -38,8 +39,8 @@ const groups = computed(() =>
         : "Usage conditions",
       label: commercialDimensionLabels[dimension],
       description: commercialDefinitions[dimension],
-      selected: props.selected.find((choice) => choice.dimension === dimension),
-      fixed: props.fixed.some((choice) => choice.dimension === dimension),
+      selected: props.selected.find((choice) => choice.dimension === dimension) ?? inferred,
+      fixed: choices.length === 1 && inferred !== undefined,
       options: choices.map(({ value }) => ({
         value: canonicalJson(value),
         label:

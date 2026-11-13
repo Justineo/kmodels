@@ -5,7 +5,7 @@ import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
 import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
 import {
-  formatCategoricalValue,
+  formatConditionValue,
   formatDimension,
   formatRateUnit,
   formatUnitExpression,
@@ -499,7 +499,7 @@ function applicabilityLabel(
 function conditionLabel(condition: WebsitePriceCondition): string {
   const label = formatDimension(condition.dimension);
   if (condition.kind === "categorical")
-    return `${label}: ${condition.values.map(formatCategoricalValue).join(", ")}`;
+    return `${label}: ${condition.values.map((value) => formatConditionValue(condition.dimension, value)).join(", ")}`;
   if (condition.kind === "boolean") return condition.value ? label : `No ${label.toLowerCase()}`;
   const bounds = [
     condition.lower === undefined
@@ -576,7 +576,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
     <PricingControls
       v-if="!hideConditions"
       :prefix="offer.id"
-      :fixed="commercialContext.fixed_choices"
+      :inferred="commercialContext.fixed_choices"
       :choices="commercialOptions"
       :selected="commercialChoices"
       :selectors="rateSelectors"
@@ -591,7 +591,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
         inherited
           .map((selection) =>
             selection.kind === "categorical"
-              ? `${formatDimension(selection.dimension)} · ${formatCategoricalValue(selection.value)}`
+              ? `${formatDimension(selection.dimension)} · ${formatConditionValue(selection.dimension, selection.value)}`
               : formatDimension(selection.dimension),
           )
           .join(", ")
