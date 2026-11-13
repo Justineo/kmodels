@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import { canonicalJsonKey, compareUtf8 } from "../src/catalog/canonical-value.ts";
 import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
@@ -148,6 +148,12 @@ function categoricalLabelIdentity(
 }
 
 describe("website data", () => {
+  // Rebuilding every provider's inference and website projections takes minutes on CI runners.
+  // Keep that shared preparation outside individual consumer assertions, with a bounded budget.
+  beforeAll(async () => {
+    await publicationData();
+  }, 300_000);
+
   it("publishes all core table data in bounded parallel chunks", async () => {
     const { catalog, publication, dataVersion } = await publicationData();
     const catalogSource = JSON.stringify(publication.catalog);

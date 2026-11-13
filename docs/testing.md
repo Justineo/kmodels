@@ -41,6 +41,13 @@ The full public-endpoint projection test has a 15-second budget
 for rebuilding and decoding the catalog assets. Assertion and production resource limits
 remain independent.
 
+The website suite rebuilds the full inference and website publication once in a five-minute
+setup hook, outside each consumer assertion's budget. On CI this shared synchronous projection
+can take nearly three minutes; the assertions still enforce schema, parity and byte limits.
+The Vercel request-denominator regression likewise collects its complete reviewed inventory in a
+30-second setup hook, then checks the two affected rows within the normal test budget. Keep the
+full provider fixture: its independent service books satisfy the provider topology contract.
+
 For replay performance changes, compare the same committed data and pinned Node version with
 the same heap limit. Measure elapsed time and peak process RSS, including worker threads;
 JavaScript heap usage alone misses encoding buffers and worker memory. Verify the replayed

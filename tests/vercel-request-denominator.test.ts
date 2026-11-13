@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, it, vi } from "vite-plus/test";
+import { beforeAll, expect, it, vi } from "vite-plus/test";
 import { linkedBundleSchema, type LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
@@ -14,9 +14,11 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
 
 const at = "2026-10-30T18:30:00.000Z";
 
+let result: Awaited<ReturnType<typeof collectProvider>>;
+
 // The catalog publishes `pricing.request` on one model and omits it on every other model and
 // endpoint. Both shapes must reach the catalog, and the undocumented amount must stay raw.
-it("retains endpoint routes when the per-request amount is absent or nonzero", async () => {
+beforeAll(async () => {
   const manifest = manifests.find(({ provider }) => provider.id === "vercel");
   const catalog = manifest?.sources.find(({ id }) => id === "vercel-models");
   if (!manifest || !catalog) throw new Error("Missing Vercel source");
@@ -51,7 +53,7 @@ it("retains endpoint routes when the per-request amount is absent or nonzero", a
     };
   });
 
-  const result = await collectProvider(
+  result = await collectProvider(
     { ...manifest, sources: [catalog] },
     undefined,
     {
@@ -60,7 +62,9 @@ it("retains endpoint routes when the per-request amount is absent or nonzero", a
     at,
   );
   if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
+}, 30_000);
 
+it("retains endpoint routes when the per-request amount is absent or nonzero", () => {
   const byId = new Map(result.models.map((model) => [model.model_id, model]));
   const perRequest = byId.get("parallel/parallel-decisions-fast");
   const omitted = byId.get("acme/omitted-request");
@@ -68,7 +72,7 @@ it("retains endpoint routes when the per-request amount is absent or nonzero", a
 
   expect(perRequest.routes).toEqual([
     {
-      source_ref: catalog.id,
+      source_ref: "vercel-models",
       provider: "parallel",
       provider_model_id: "parallel/parallel-decisions-fast",
       task: "evaluation",
