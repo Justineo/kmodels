@@ -13,8 +13,7 @@ export interface ProjectionInput {
   catalog: Catalog;
   pricing: PricingCatalogEnvelope;
   catalogAssetSource: string;
-  pricingAssetSource: string;
-  pricingAssetChunks?: readonly string[];
+  pricingAssetChunks: readonly string[];
   inference?: InferencePricingPublication;
 }
 
@@ -62,9 +61,7 @@ function projectionAssets(input: ProjectionInput, dataVersion: string) {
   );
   const exportAssets = [
     ...catalogExportAssets(input.catalog, input.catalogAssetSource),
-    input.pricingAssetChunks === undefined
-      ? { fileName: "pricing/index.json", source: input.pricingAssetSource }
-      : { fileName: "pricing/index.json", sourceChunks: input.pricingAssetChunks },
+    { fileName: "pricing/index.json", sourceChunks: input.pricingAssetChunks },
     ...priceDataExportAssets(input.catalog, input.pricing),
     ...(input.inference === undefined
       ? []

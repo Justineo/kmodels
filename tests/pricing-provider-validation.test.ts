@@ -8,8 +8,7 @@ import {
   adoptedTopologies,
   validateAdoptedTopology,
 } from "../src/catalog/pricing-adopted-topology.ts";
-import { validatePricingCatalogEnvelopeMetadata } from "../src/catalog/pricing-envelope.ts";
-import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { prepareCatalogPairInParallel } from "../src/catalog/pricing-publication.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
@@ -83,11 +82,7 @@ describe("provider pricing validation", () => {
   });
 
   it("validates every committed provider pricing partition", async () => {
-    const { catalog, pricing, pricingDataHash } = await generatedData();
-
-    expect(() =>
-      validatePricingCatalogEnvelopeMetadata(pricing, catalog, pricingDataHash),
-    ).not.toThrow();
+    const { catalog, pricing } = await generatedData();
     await expect(validatePricingCatalogInParallel(pricing.data, catalog)).resolves.toBeUndefined();
   }, 90_000);
 
@@ -123,7 +118,7 @@ describe("provider pricing validation", () => {
 
   it("replays admissible inputs and preserves obsolete or rejected retained partitions", async () => {
     const { catalog, pricing } = await generatedData();
-    const current = prepareCatalogPair(catalog, pricing);
+    const current = await prepareCatalogPairInParallel(catalog, pricing);
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
 

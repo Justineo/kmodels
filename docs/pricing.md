@@ -946,7 +946,7 @@ and observation/count budgets keep their existing meanings; this is an allocatio
 reduction, not a capacity calibration. One unusually large book can still require a large
 temporary projection. Asset packs encode and compress at most four assets concurrently per
 profile, avoiding UTF-8 buffers for all queued assets; both profiles may run concurrently.
-Prepared publications retain their existing canonical source fragments for export packing.
+Projection inputs carry the prepared canonical source fragments directly into export packing.
 The canonical pricing asset is encoded and compressed incrementally with stream backpressure,
 without flattening the complete UTF-16 source or allocating its complete UTF-8 buffer. Source
 limits and hashes count the emitted bytes, and gzip receives no intermediate flushes, preserving
@@ -1089,7 +1089,7 @@ model disposition.
 Unsupported commercial raw values contribute their bounded raw facts, so an
 unsupported price change is still a commercial diff.
 
-## Performance boundary and stopping criteria
+## Performance trade-offs
 
 The current implementation bounds temporary schema clones to one book, limits worker copies,
 shares unchanged immutable replay results, scopes phase-local caches and streams canonical
@@ -1098,21 +1098,15 @@ the complete checked graph and canonical fragments. A changed publication can ov
 previous graph while an owner still needs it. These are current implementation limits, not
 evidence of an uncollected graph or an additional complete canonical-string copy.
 
-Keep the current read/preparation/recovery/compilation scheduling policies unless a repeated
-measurement on the same source and input demonstrates a useful trade-off. First-read peak,
-complete-publication peak, cold recovery, CPU and elapsed time are separate acceptance metrics.
-Lower endpoint heap or fewer copied records alone does not justify further scheduling changes.
-Canonical fingerprints and exact recovery rereads spend CPU and I/O to reduce simultaneous
-copies; changed-input paths must retain their own correctness and cost controls.
-
-Do not continue with a streaming JSON parser, a new compact storage format, custom worker
-serialization, global cache eviction or forced GC solely to reduce theoretical allocation.
-Reopen those choices for a reproduced resource failure or a measured dominant cost, with exact
-provider/evidence/consumer parity and an explicit complexity and latency budget. Full schema,
-semantic, provenance and canonical-byte checks remain required at their owned boundaries.
-Resource admission budgets are independent of the scheduling policy and are not proof of peak
-process capacity. Network/source acquisition and browser interaction need their own workloads;
-offline replay and publication measurements do not establish their performance or source freshness.
+Evaluate alternative implementations on the same source and input, with repeated measurements
+of first-read peak, complete-publication peak, cold recovery, CPU and elapsed time. Prefer the
+simpler implementation when additional machinery has no useful complete-workload benefit;
+record local latency or memory regressions as well as gains. Current limits do not establish
+that further optimization is impossible. Canonical fingerprints and exact recovery rereads spend
+CPU and I/O to reduce simultaneous copies; changed-input paths need their own cost controls.
+Structural, semantic, provenance, ownership, error and canonical-byte contracts remain required.
+Resource admission budgets do not establish peak process capacity. Network/source acquisition
+and browser interaction require separate workloads from offline replay and publication.
 
 ## Presentation
 

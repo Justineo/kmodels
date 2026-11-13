@@ -8,7 +8,7 @@ import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
-import { inferencePricingPublication } from "../src/catalog/inference-pricing.ts";
+import { withPricingCanonicalCache } from "../src/catalog/pricing-canonical.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import {
@@ -65,18 +65,7 @@ function foundAuditFields(value: unknown, fields = auditFields): string[] {
 let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefined;
 
 async function loadGeneratedPublication() {
-  const { catalog, pricing } = await generatedData();
-  const inferenceSource = await readFile(
-    new URL("../data/inference-pricing.json", import.meta.url),
-    "utf8",
-  ).catch((error: unknown) => {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-    throw error;
-  });
-  const inference =
-    inferenceSource === undefined
-      ? undefined
-      : inferencePricingPublication(catalog, pricing, JSON.parse(inferenceSource));
+  const { catalog, pricing, inference } = await generatedData();
   const dataVersion = websiteDataVersion(
     catalog.catalog_version,
     pricing.pricing_data_version,
@@ -86,13 +75,15 @@ async function loadGeneratedPublication() {
     catalog,
     dataVersion,
     pricing: pricing.data,
-    publication: websitePublication(
-      catalog,
-      pricing.data,
-      dataVersion,
-      inference === undefined
-        ? undefined
-        : websiteInferencePrices(catalog, pricing, inference.mapping),
+    publication: withPricingCanonicalCache(() =>
+      websitePublication(
+        catalog,
+        pricing.data,
+        dataVersion,
+        inference === undefined
+          ? undefined
+          : websiteInferencePrices(catalog, pricing, inference.mapping),
+      ),
     ),
   };
 }

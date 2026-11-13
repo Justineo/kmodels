@@ -29,9 +29,15 @@ The generated-data file list is defined once in `tests/generated-data-tests.ts` 
 configuration and the test-boundary guard. Adding a test that reads durable generated state
 requires adding it to that list. The boundary guard follows test helpers, static imports,
 re-exports, dynamic imports, and URL paths recursively, including nested test directories.
-The generated project loads and decodes its shared accepted pair in a bounded setup hook. This
-keeps cold filesystem, decompression and schema-validation cost out of the first assertion's
-default five-second budget. The full public-endpoint projection test has a 15-second budget
+The generated project reads its shared accepted pair through the normal checked mirror reader
+in a bounded setup hook. The shared context retains the checked graphs and inference mapping,
+releasing canonical publication fragments before consumer tests. Replay prepares its candidate
+through the parallel boundary for that assertion; website projections reuse the checked inference
+mapping and end caches with their synchronous phase, as in production. The reader checks schema,
+metadata hashes, provenance and canonical identity; generated tests additionally exercise parallel
+provider validation and compare replay and consumer outputs. This keeps cold filesystem,
+decompression and schema-validation cost out of the first assertion's default five-second budget.
+The full public-endpoint projection test has a 15-second budget
 for rebuilding and decoding the catalog assets. Assertion and production resource limits
 remain independent.
 

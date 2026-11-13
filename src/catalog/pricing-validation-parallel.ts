@@ -29,7 +29,7 @@ export async function validatePricingCatalogForRead(
   let remoteIndex = 0;
   let remoteWeight = -1;
   for (const [index, task] of tasks.entries()) {
-    const weight = readValidationWeight(task);
+    const weight = validationWeight(task, true);
     if (weight > remoteWeight) {
       remoteIndex = index;
       remoteWeight = weight;
@@ -66,33 +66,12 @@ export async function validatePricingCatalogForRead(
   }
   // Execution order can change without changing the original task/error order.
   // Always await teardown, including when an in-process provider fails first.
-  let remoteFailure: { error: unknown } | undefined;
   try {
     await remote;
   } catch (error) {
-    remoteFailure = { error };
+    if (localFailure === undefined || remoteIndex < localFailure.index) throw error;
   }
-  if (localFailure !== undefined && localFailure.index < remoteIndex) throw localFailure.error;
-  if (remoteFailure !== undefined) throw remoteFailure.error;
   if (localFailure !== undefined) throw localFailure.error;
-}
-
-function readValidationWeight(task: ValidationTask): number {
-  let weight = validationWeight(task);
-  for (const book of task.data.books)
-    for (const offer of book.offers)
-      for (const term of offer.terms) {
-        for (const variant of term.variants) {
-          if ("applicability" in variant) weight += selectorWeight(variant.applicability);
-          else if ("possible_scope" in variant && variant.possible_scope !== undefined)
-            weight += selectorWeight(variant.possible_scope);
-        }
-        if ("raw_variants" in term)
-          for (const variant of term.raw_variants)
-            if (variant.possible_scope !== undefined)
-              weight += selectorWeight(variant.possible_scope);
-      }
-  return weight;
 }
 
 export function validatePricingCatalogInParallel(
@@ -142,7 +121,7 @@ function providerTasks(data: PricingCatalog, core: PricingValidationCore): Valid
     .map(({ task }) => task);
 }
 
-function validationWeight(task: ValidationTask): number {
+function validationWeight(task: ValidationTask, includeApplicability = false): number {
   let weight =
     task.core.models.length +
     task.core.sources.length +
@@ -162,9 +141,20 @@ function validationWeight(task: ValidationTask): number {
         offer.enrollment.length +
         offer.settlement.length +
         offer.relations.length;
-      for (const term of offer.terms)
+      for (const term of offer.terms) {
         weight +=
           1 + term.variants.length + ("raw_variants" in term ? term.raw_variants.length : 0);
+        if (!includeApplicability) continue;
+        for (const variant of term.variants) {
+          if ("applicability" in variant) weight += selectorWeight(variant.applicability);
+          else if ("possible_scope" in variant && variant.possible_scope !== undefined)
+            weight += selectorWeight(variant.possible_scope);
+        }
+        if ("raw_variants" in term)
+          for (const variant of term.raw_variants)
+            if (variant.possible_scope !== undefined)
+              weight += selectorWeight(variant.possible_scope);
+      }
     }
   }
   return weight;
