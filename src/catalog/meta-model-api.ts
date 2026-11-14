@@ -11,6 +11,39 @@ import { bindMetaRates, extractMetaPricingInputs } from "./meta-accounting.ts";
 
 const modelsUrl = "https://dev.meta.ai/docs/models";
 const pricingUrl = "https://dev.meta.ai/docs/pricing-rate-limits";
+const tokenMeters = new Map<
+  string,
+  {
+    meter: SourcePriceFact["meter"];
+    signal: "uncached_input_tokens" | "cached_input_tokens" | "output_tokens";
+    rawUnit: string;
+  }
+>([
+  [
+    "Input",
+    {
+      meter: "input_text",
+      signal: "uncached_input_tokens",
+      rawUnit: "Uncached input tokens; per 1M tokens",
+    },
+  ],
+  [
+    "Cached input",
+    {
+      meter: "cache_read_text",
+      signal: "cached_input_tokens",
+      rawUnit: "Cached input tokens; per 1M tokens",
+    },
+  ],
+  [
+    "Output",
+    {
+      meter: "output_text",
+      signal: "output_tokens",
+      rawUnit: "Output tokens; per 1M tokens",
+    },
+  ],
+]);
 
 function section($: CheerioAPI, id: string): CheerioAPI {
   const main = $("main,[role='main']");
@@ -215,37 +248,16 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       const column = `${modeColumn} mode (per 1M tokens)`;
       item.price_facts = tariffs.map(({ label, price: cell }) => {
         const price = usd(cell(column));
-        switch (label) {
-          case "Input":
-            return rate(
-              "input_text",
-              price,
-              "million_tokens",
-              `${family}-pricing`,
-              { namespace: "kmodels", value: "uncached_input_tokens" },
-              "Uncached input tokens; per 1M tokens",
-            );
-          case "Cached input":
-            return rate(
-              "cache_read_text",
-              price,
-              "million_tokens",
-              `${family}-pricing`,
-              { namespace: "kmodels", value: "cached_input_tokens" },
-              "Cached input tokens; per 1M tokens",
-            );
-          case "Output":
-            return rate(
-              "output_text",
-              price,
-              "million_tokens",
-              `${family}-pricing`,
-              { namespace: "kmodels", value: "output_tokens" },
-              "Output tokens; per 1M tokens",
-            );
-          default:
-            throw new Error("Unreviewed Meta token meter");
-        }
+        const meter = tokenMeters.get(label);
+        if (meter === undefined) throw new Error("Unreviewed Meta token meter");
+        return rate(
+          meter.meter,
+          price,
+          "million_tokens",
+          `${family}-pricing`,
+          { namespace: "kmodels", value: meter.signal },
+          meter.rawUnit,
+        );
       });
     }
   }
@@ -294,40 +306,17 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     emberTiers.map(({ header, conditions }) => {
       const price = usd(cell(header));
       const rawUnit = `${label} tokens; ${header}`;
-      switch (label) {
-        case "Input":
-          return rate(
-            "input_text",
-            price,
-            "million_tokens",
-            "muse-ember-pricing",
-            { namespace: "kmodels", value: "uncached_input_tokens" },
-            rawUnit,
-            conditions,
-          );
-        case "Cached input":
-          return rate(
-            "cache_read_text",
-            price,
-            "million_tokens",
-            "muse-ember-pricing",
-            { namespace: "kmodels", value: "cached_input_tokens" },
-            rawUnit,
-            conditions,
-          );
-        case "Output":
-          return rate(
-            "output_text",
-            price,
-            "million_tokens",
-            "muse-ember-pricing",
-            { namespace: "kmodels", value: "output_tokens" },
-            rawUnit,
-            conditions,
-          );
-        default:
-          throw new Error("Unreviewed Meta Muse Ember token meter");
-      }
+      const meter = tokenMeters.get(label);
+      if (meter === undefined) throw new Error("Unreviewed Meta Muse Ember token meter");
+      return rate(
+        meter.meter,
+        price,
+        "million_tokens",
+        "muse-ember-pricing",
+        { namespace: "kmodels", value: meter.signal },
+        rawUnit,
+        conditions,
+      );
     }),
   );
 
