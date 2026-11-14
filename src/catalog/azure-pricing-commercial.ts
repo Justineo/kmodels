@@ -457,7 +457,7 @@ function modelSignal(
     if (isMeter(meter, "cache_write_text"))
       return {
         signal: standardSignal("cache_write_tokens"),
-        directKeys: mechanism === "sync" ? endpointKeys(model, "chat.cache_write_tokens", []) : [],
+        directKeys: mechanism === "sync" ? chatKeys(model, "chat.cache_write_tokens") : [],
       };
     if (isMeter(meter, "output_text"))
       return {
@@ -478,7 +478,7 @@ function modelSignal(
         "input_audio_tokens",
         "Billable audio-input tokens",
         unit,
-        endpointKeys(model, "chat.input_audio_tokens", []),
+        chatKeys(model, "chat.input_audio_tokens"),
       );
     if (isMeter(meter, "output_audio"))
       return providerModelSignal(
@@ -486,7 +486,7 @@ function modelSignal(
         "output_audio_tokens",
         "Billable audio-output tokens",
         unit,
-        endpointKeys(model, "chat.output_audio_tokens", []),
+        chatKeys(model, "chat.output_audio_tokens"),
       );
     if (isMeter(meter, "input_image"))
       return providerModelSignal(
@@ -848,18 +848,11 @@ function inferenceFamilies(model: PublishedModel | undefined): string[] {
   ];
 }
 
-function endpointKeys(
-  model: PublishedModel | undefined,
-  chatKey: string,
-  responseKeys: readonly string[],
-): string[] {
-  return [
-    ...(hasEndpoint(model, "openai/v1/chat/completions") ||
+function chatKeys(model: PublishedModel | undefined, key: string): string[] {
+  return hasEndpoint(model, "openai/v1/chat/completions") ||
     hasEndpoint(model, "openai/v1/completions")
-      ? [chatKey]
-      : []),
-    ...(hasEndpoint(model, "openai/v1/responses") ? responseKeys : []),
-  ];
+    ? [key]
+    : [];
 }
 
 function hasEndpoint(model: PublishedModel | undefined, path: string): boolean {
