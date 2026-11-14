@@ -1689,7 +1689,6 @@ function tokenTables(
       section === "Gemini Omni" && headers.join("|") === "Model|Type|Token Price /1M (USD)";
     if (
       excludedPricingTable(table, headers) ||
-      headers.some((header) => /storage/i.test(header)) ||
       (!abbreviatedTokenHeader &&
         !geminiTokenHeader &&
         !omniTokenHeader &&
@@ -1768,6 +1767,9 @@ function tokenTables(
           const prices = /^(?:No charge|Free)$/i.test(raw)
             ? [{ price: "0" }]
             : money(alternative < 0 ? raw : raw.slice(0, alternative));
+          const mixedBillingUnits =
+            prices.some(({ unit }) => unit === "second") &&
+            prices.some(({ unit }) => unit === undefined);
           if (prices.length === 0 && /^(?:N\/?A|Not available)$/i.test(raw))
             for (const { model: target } of current)
               for (const rateMeter of rateMeters)
@@ -1806,8 +1808,7 @@ function tokenTables(
                       sourceId,
                       `${header}; ${descriptor}; ${raw}`,
                       {
-                        ...(prices.some(({ unit }) => unit === "second") &&
-                        prices.some(({ unit }) => unit === undefined)
+                        ...(mixedBillingUnits
                           ? { billing_unit: item.unit === "second" ? "second" : "token" }
                           : {}),
                         ...conditions,
@@ -2426,6 +2427,9 @@ function inlineUnitTables(
           if (unit === undefined) continue;
           prices.push({ price, unit });
         }
+        const mixedBillingUnits =
+          prices.some(({ unit }) => unit === "second") &&
+          prices.some(({ unit }) => unit === "million_tokens");
         for (const model of current)
           for (const meter of rateMeters) {
             for (const { price, unit } of prices)
@@ -2437,10 +2441,7 @@ function inlineUnitTables(
                   unit,
                   sourceId,
                   raw,
-                  prices.some(({ unit }) => unit === "second") &&
-                    prices.some(({ unit }) => unit === "million_tokens")
-                    ? { billing_unit: unit === "second" ? "second" : "token" }
-                    : {},
+                  mixedBillingUnits ? { billing_unit: unit === "second" ? "second" : "token" } : {},
                 ),
                 reconcile,
               );
