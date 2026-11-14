@@ -93,11 +93,13 @@ export function fireworksConsoleTargets(bundle: LinkedBundle): { id: string; url
 function addConsolePrices(
   input: SourceParseInput,
   models: Map<string, ParsedProviderModel>,
-  bundle: LinkedBundle,
+  ids: readonly string[],
+  documents: LinkedBundle["documents"],
 ): void {
-  for (const { id, url } of fireworksConsoleTargets(bundle)) {
+  for (const id of ids) {
+    const url = fireworksConsoleUrl(id);
     const base = models.get(id);
-    const document = bundle.documents.find((item) => item.url === url);
+    const document = documents.find((item) => item.url === url);
     assertSourceConstraint(
       "Fireworks bundle omitted a required console profile",
       base !== undefined && document !== undefined,
@@ -708,7 +710,12 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   const retrieval = docs("querying-embeddings-models", "guides");
   addLegacyEmbeddings(input, models, retrieval, pricing);
   bindRetrievalAliases(models, retrieval);
-  addConsolePrices(input, models, bundle);
+  addConsolePrices(
+    input,
+    models,
+    cards.map(({ model }) => model.model_id),
+    bundle.documents,
+  );
   for (const model of models.values())
     if (model.price_facts.length > 0) model.pricing_state = "numeric";
   const published = [...models.values()];
