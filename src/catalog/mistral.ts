@@ -536,11 +536,9 @@ function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
     status: statuses.get(required("Status")) ?? "unknown",
     input: list("Input"),
     output: list("Output"),
-    features: (fields.has("Features")
-      ? list("Features")
-      : ["Retired", "Deprecated"].includes(required("Status"))
-        ? []
-        : list("Features")
+    features: (!fields.has("Features") && ["Retired", "Deprecated"].includes(required("Status"))
+      ? []
+      : list("Features")
     ).map((feature) =>
       feature === "transcriptions" &&
       /streaming session over WebSocket|live transcription purposes only/i.test(
@@ -1725,10 +1723,10 @@ function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): Mod
   if (capabilities.classification) result.push("classification");
   if (capabilities.moderation) result.push("moderation");
   if (capabilities.ocr) result.push("ocr");
-  if (capabilities.audio_transcription) result.push("transcription");
-  if (capabilities.audio_transcription_realtime) result.push("transcription");
+  if (capabilities.audio_transcription || capabilities.audio_transcription_realtime)
+    result.push("transcription");
   if (capabilities.audio_speech) result.push("speech_synthesis");
-  return unique(result);
+  return result;
 }
 
 function apiModalities(
