@@ -128,7 +128,11 @@ function binding(
           : undefined;
   if (signal === undefined) return;
   const mapped = decision
-    ? { methods: [], facts: [] }
+    ? directQuantityMethods(
+        signal,
+        signal.value === "input_tokens" ? ["systemone.input_tokens"] : [],
+        inputIndex,
+      )
     : signal.value === "uncached_input_tokens"
       ? uncachedInputMethods(inputIndex)
       : directMethods(signal, inputIndex);

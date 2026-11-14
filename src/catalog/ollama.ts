@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import { baseModel } from "./model.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { extractOllamaPricingInputs } from "./ollama-accounting.ts";
@@ -230,25 +231,31 @@ function facts(
   const badges = new Set(item.badges);
   const embedding = badges.has("embedding");
   const decision = badges.has("decision");
+  const speech = new RegExp(
+    `^${item.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is [^.]{0,80}\\btext-to-speech (?:family|model)\\.`,
+    "i",
+  ).test(item.description ?? "");
   const input: Modality[] = ["text"];
   if (badges.has("vision")) input.push("image");
   if (badges.has("audio")) input.push("audio");
   const modalities: ProviderModel["modalities"] = {
     input,
-    output: embedding ? ["embedding"] : decision ? [] : ["text"],
+    output: embedding ? ["embedding"] : decision ? [] : speech ? ["audio"] : ["text"],
   };
   return {
     ...(item.description === undefined ? {} : { description: item.description }),
     service_families: [libraryFamily],
-    tasks: decision
-      ? orderedTasks(embedding ? ["embeddings", "classification"] : ["classification"])
-      : classifyModelTasks({
-          modelId: item.id,
-          name: item.id,
-          rawType: embedding ? "embedding" : "language",
-          modalities,
-          fallback: embedding ? "embeddings" : "text_generation",
-        }),
+    tasks: speech
+      ? ["speech_synthesis"]
+      : decision
+        ? orderedTasks(embedding ? ["embeddings", "classification"] : ["classification"])
+        : classifyModelTasks({
+            modelId: item.id,
+            name: item.id,
+            rawType: embedding ? "embedding" : "language",
+            modalities,
+            fallback: embedding ? "embeddings" : "text_generation",
+          }),
     modalities,
     capabilities: {
       ...unknownCapabilities(),
@@ -627,8 +634,14 @@ function documents(input: ParseInput, bundle: z.infer<typeof bundleSchema>): Map
 function retirementRows(body: string): Map<string, Retirement> {
   const result = new Map<string, Retirement>();
   let pastDate: string | undefined;
-  for (const line of body.split("\n")) {
-    const title = line.match(/<Accordion title="([A-Z][a-z]+ \d{1,2}, \d{4})">/)?.[1];
+  const sections = ["Upcoming retirements", "Past retirements"].flatMap(
+    (name) => markdownSection(body, 2, name) ?? markdownSection(body, 3, name) ?? [],
+  );
+  for (const rawLine of markdownProse(sections.join("\n")).split("\n")) {
+    const line = rawLine.replace(/^> ?/, "");
+    const title =
+      line.match(/^\[accordion\] ([A-Z][a-z]+ \d{1,2}, \d{4})$/)?.[1] ??
+      line.match(/<Accordion title="([A-Z][a-z]+ \d{1,2}, \d{4})">/)?.[1];
     if (title !== undefined) pastDate = englishDate(title);
     const upcoming = line.match(
       /^\|\s*([A-Z][a-z]+ \d{1,2}, \d{4})\s*\|\s*`([^`]+)`\s*\|\s*(?:`([^`]+)`)?\s*\|$/,
@@ -710,7 +723,10 @@ export function parseOllamaCloud(input: ParseInput): SourceParseResult {
     else details.set(detail.model, detail);
   }
   const docs = documents(input, bundle);
-  const retirements = retirementRows(docs.get("https://docs.ollama.com/cloud.md") ?? "");
+  const retirements = new Map([
+    ...retirementRows(docs.get("https://docs.ollama.com/cloud.md") ?? ""),
+    ...retirementRows(docs.get("https://docs.ollama.com/cloud/model-lifecycle.md") ?? ""),
+  ]);
   for (const detail of detailRows) {
     if (detail.status !== 410) continue;
     const retirement = retirementResponse(detail.model, detail.body);

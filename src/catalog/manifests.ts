@@ -4380,7 +4380,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "ollama-library", minModels: 200, maxModels: 350 },
-        extractorVersion: "ollama-library-v7",
+        extractorVersion: "ollama-library-v8",
         fields: [
           "model_id",
           "description",
@@ -4407,7 +4407,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v18",
+        extractorVersion: "ollama-cloud-v19",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4454,6 +4454,7 @@ export const manifests = [
                 "markdown",
               ],
               ["cloud", "https://docs.ollama.com/cloud.md", "markdown"],
+              ["lifecycle", "https://docs.ollama.com/cloud/model-lifecycle.md", "markdown"],
               ["pricing", "https://ollama.com/pricing", "html"],
               [
                 `api-types-${ollamaUsageRelease}`,

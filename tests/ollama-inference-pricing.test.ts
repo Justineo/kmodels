@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
@@ -235,6 +236,29 @@ it("does not depend on Show, usage or protocol guides for independently establis
     bundle.details = [];
   });
   expect(lookup(candidate)({ provider_id: "ollama", model_id: "kimi-k3" }).status).toBe("matched");
+});
+
+it("withdraws a retired Cloud route from the relocated quoted table while preserving a current Library row", async () => {
+  const lifecycle = await readFile(
+    new URL("./fixtures/ollama/lifecycle-current.txt", import.meta.url),
+    "utf8",
+  );
+  const { candidate, facts } = await collect((bundle) => {
+    bundle.documents.push({
+      url: "https://docs.ollama.com/cloud/model-lifecycle.md",
+      body: lifecycle.replace("`qwen3.5:397b`", "`kimi-k3`"),
+    });
+  });
+  expect(candidate.catalog.models.find(({ model_id }) => model_id === "kimi-k3")?.status).toBe(
+    "active",
+  );
+  expect(facts.some(({ model_id }) => model_id === "kimi-k3")).toBe(false);
+  expect(lookup(candidate)({ provider_id: "ollama", model_id: "kimi-k3" }).reason).toBe(
+    "unreviewed_id",
+  );
+  expect(lookup(candidate)({ provider_id: "ollama", model_id: "gpt-oss:20b" }).status).toBe(
+    "matched",
+  );
 });
 
 it("projects the same ID and period conditions to the website without audit data", async () => {

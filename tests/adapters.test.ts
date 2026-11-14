@@ -1090,17 +1090,17 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
     ["https://docs.ollama.com/api/usage.md", "usage.md"],
     ["https://docs.ollama.com/api/openai-compatibility.md", "openai-compatibility.md"],
     ["https://docs.ollama.com/cloud.md", "cloud.md"],
-    ["https://raw.githubusercontent.com/ollama/ollama/v0.40.14/api/types.go", "api-types.go"],
+    ["https://raw.githubusercontent.com/ollama/ollama/v0.40.16/api/types.go", "api-types.go"],
     [
-      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/openai/openai.go",
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.16/openai/openai.go",
       "openai-types.go",
     ],
     [
-      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/openai/responses.go",
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.16/openai/responses.go",
       "responses-types.go",
     ],
     [
-      "https://raw.githubusercontent.com/ollama/ollama/v0.40.14/middleware/openai.go",
+      "https://raw.githubusercontent.com/ollama/ollama/v0.40.16/middleware/openai.go",
       "openai-middleware.go",
     ],
   ] as const;
@@ -13887,7 +13887,7 @@ describe("Ollama adapters", () => {
     const value = manifest("ollama");
     const cloud = ollamaSource("ollama-cloud");
     expect(cloud).toMatchObject({
-      extractorVersion: "ollama-cloud-v18",
+      extractorVersion: "ollama-cloud-v19",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
     });

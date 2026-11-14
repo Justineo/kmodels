@@ -1,4 +1,6 @@
 import { finalizePricingInputs } from "./pricing-input.ts";
+import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
+import { yamlBlock, yamlPath } from "./yaml.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
 import { contractExtensionEvidence, type SourceContractEvidence } from "./source-contract.ts";
@@ -18,7 +20,7 @@ interface Contract {
 const usageUrl = "https://docs.ollama.com/api/usage.md";
 const compatibilityUrl = "https://docs.ollama.com/api/openai-compatibility.md";
 const openapiUrl = "https://docs.ollama.com/openapi.yaml";
-export const ollamaUsageRelease = "v0.40.14";
+export const ollamaUsageRelease = "v0.40.16";
 export const ollamaUsageSourceBase = `https://raw.githubusercontent.com/ollama/ollama/${ollamaUsageRelease}`;
 const typesUrl = `${ollamaUsageSourceBase}/api/types.go`;
 const openaiUrl = `${ollamaUsageSourceBase}/openai/openai.go`;
@@ -54,12 +56,55 @@ export function extractOllamaPricingInputs(input: Input): SourcePricingInputFact
     }
     return [{ ...fact, source_ref: input.sourceRef }];
   });
+  const systemOne = systemOneInput(input);
   return finalizePricingInputs(
-    facts,
-    contracts.length,
+    [...facts, ...systemOne.facts],
+    contracts.length + systemOne.expected,
     "Ollama pricing inputs",
     input.onReconciliation,
   );
+}
+
+function systemOneInput(input: Input): { facts: SourcePricingInputFact[]; expected: number } {
+  const body = input.documents.get(openapiUrl) ?? "";
+  const operation = yamlPath(body, ["paths", "/v1/systemone", "post"]);
+  if (operation === undefined) return { facts: [], expected: 0 };
+  const servers = yamlBlock(operation, "servers", 6);
+  const schema = yamlPath(body, [
+    "paths",
+    "/v1/systemone",
+    "post",
+    "responses",
+    "200",
+    "content",
+    "application/json",
+    "schema",
+  ]);
+  const reference = schema?.match(
+    /^\s{16}\$ref: ["']#\/components\/schemas\/SystemOneResponse["']$/gm,
+  );
+  const types = openApiYamlSchemaReader(body)("SystemOneResponse", ["usage", "input_tokens"]);
+  if (
+    !/^        - url: https:\/\/ollama\.com$/m.test(servers ?? "") ||
+    reference?.length !== 1 ||
+    types.length !== 1 ||
+    types[0] !== "integer"
+  ) {
+    input.onFinding?.(contractExtensionEvidence(["/pricing-inputs/systemone.input_tokens"]));
+    return { facts: [], expected: 1 };
+  }
+  return {
+    expected: 1,
+    facts: [
+      {
+        key: "systemone.input_tokens",
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "success_only",
+        source_ref: input.sourceRef,
+      },
+    ],
+  };
 }
 
 function nativeContracts(

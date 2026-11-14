@@ -47,17 +47,30 @@ still apply. Replaying source facts does not turn a Library identity into a pric
   model rates. The collector extracts numeric input, cached-input, and output amounts, their
   denominator, and exact named variants such as `Base` and `Peak`; plan and credit prose is
   intentionally not transported into canonical pricing.
-- The fixed [Cloud guide](https://docs.ollama.com/cloud) supplies route and lifecycle facts,
-  including structured retirement tables. Retirement applies to an exact Cloud route and does not
+- The fixed [Cloud guide](https://docs.ollama.com/cloud) and independent
+  [Cloud model lifecycle](https://docs.ollama.com/cloud/model-lifecycle.md) companion supply lifecycle facts.
+  Current past-retirement tables use quoted `[accordion]` date labels; historical inline MDX
+  tables remain readable. Only the owned Upcoming/Past retirement sections establish dates.
+  Retirement applies to an exact Cloud route and does not
   retire a still-current Library identity.
 - The fixed [native usage guide](https://docs.ollama.com/api/usage),
   [OpenAPI document](https://docs.ollama.com/openapi.yaml), and
   [OpenAI-compatibility guide](https://docs.ollama.com/api/openai-compatibility) establish supported
   routes and public usage behavior.
-- Exact released source from Ollama `v0.40.14` establishes the wire contract that the prose and
+- Exact released source from Ollama `v0.40.16` establishes the wire contract that the prose and
   OpenAPI do not fully describe: native cached-token fields, OpenAI-compatible usage conversion,
   terminal `include_usage` chunks, and Responses usage events. The tag is deliberately pinned so a
   moving branch cannot silently change a calculation input; a provider review bumps it.
+
+The native Cloud inventory is public; it contains exact IDs and modification metadata, not tariffs.
+The account usage API reports delayed aggregate spend and tokens, not a public unit-price book or
+per-request billing event. The hosted version endpoint currently returns `0.0.0`, so it does not
+identify a deployed source release. The reviewed release comparison changes request truncation
+and empty-list encoding, while the consumed usage-conversion blocks remain unchanged.
+The first-party Anthropic compatibility guide describes token counts as approximations; it does
+not establish exact billable Messages quantities. Its compatible-model prose cannot establish
+that every Cloud ID supports that route. These sources therefore do not replace the existing
+exact-ID, tariff, and accounting authorities.
 
 The fixed [pricing page](https://ollama.com/pricing) supplies an independent model token-price table
 and Off-Peak schedule. Only its owned `Model pricing` section, per-million-token claim, exact column
@@ -84,6 +97,10 @@ The existing page count and byte bounds still apply.
 - Library family IDs are accepted exactly as published. The collector does not enumerate arbitrary
   community namespaces or tags from a local daemon and does not invent size, quantization,
   `:cloud`, or `-cloud` identities.
+- An owned card description that explicitly identifies its named model as a text-to-speech
+  family or model establishes speech synthesis with text input and audio output. An audio-input
+  badge or an incidental mention of speech software cannot establish that task. This covers the
+  current Phonon card without a name-based task override or a Cloud price for local execution.
 - Cloud list IDs, Cloud search families, normalized family-page tags, and Show detail identities are
   reconciled by exact ID. `remote_model` and `remote_host` are recognized transport fields but do not
   mint another catalog identity.
@@ -122,6 +139,9 @@ The current public sources illustrate this distinction: the API advertises `gemm
 the central tariff names `gemma4`. Without an explicit exact tariff or price-alias relation, that
 tagged ID remains unknown even though the family has ordinary catalog pricing. `gpt-oss:20b`,
 by contrast, has an exact API entry and exact named tariff. Absence of a tariff is not a free rate.
+The same boundary applies to Clef: direct Cloud documentation and the family tariff name `clef`,
+while the inventory lists `clef:27b`. Its tag page demonstrates local `clef:27b-cloud` calls and a
+direct Python call using `clef`; neither establishes a price alias for `clef:27b`.
 
 A fresh list that no longer contains an ID withdraws its mapping even if Library/search evidence
 keeps the catalog row and ordinary prices. A documented Cloud retirement also withholds that route's
@@ -167,7 +187,12 @@ that usage is billed per input token at the linked central price. With that owne
 cache/output dashes indicate no separate charge: publish the input rate against total input tokens
 and do not create cache/output prices or missing-price records. Missing, quoted, differently linked
 or identity-mismatched claims cannot establish this exception. Decision models use System One;
-Generate/Chat acquisition methods do not bind their input quantity, which remains caller-supplied.
+Generate/Chat acquisition methods do not bind their input quantity. The owned System One OpenAPI
+operation must explicitly admit the Cloud origin and reference its typed response schema before
+`/usage/input_tokens` supplies the total input quantity. This includes image positions and repeated
+shared context, as the response field defines. Missing Cloud admission or a malformed, duplicated
+or non-integer field removes that acquisition method while preserving the independently published
+input tariff. System One has no streaming acquisition method.
 
 The Pro/Max access gate and extra-usage-credit settlement do not qualify list rates and are not price
 dimensions. An ordinal Low/Medium/High usage class is an allowance-consumption label, not a currency
