@@ -22,6 +22,10 @@ one exact callable model and its table header supplies the separate display name
 table attaches exact alternate request names to that model; aliases do not create duplicate
 catalog rows. The stable-release alias establishes maturity only for its current target.
 Version strings and release dates are not inferred from IDs or the provider launch date.
+An explicit availability-date sentence in `Current models` can supply `release_date` only
+when it names one exact table display name. Validate the calendar date; conflicting dates,
+ambiguous names, fenced examples and dates for other products do not establish that model's
+release. Date uncertainty is claim-local and does not remove independently published prices.
 Markdown delimiter cells accept one or more hyphens with optional alignment colons, including
 the compact `:-` form. Header and row column counts and labeled fields remain strict.
 
@@ -44,6 +48,12 @@ All requests stay on the reviewed documentation host; linked content is not auto
 Authenticated `GET /v1/models` is account inventory and currently lists aliases, not an
 exhaustive versioned catalog. It is not needed to collect the public catalog. Third-party
 gateway IDs, prices and availability are not evidence for direct TypeSafe service.
+The public [homepage](https://typesafe.ai/) corroborates the USD denomination and the
+current input/free-output prices. Its workflow benchmarks and other providers' comparison
+prices are not direct TypeSafe tariffs. The [enterprise page](https://typesafe.ai/enterprise)
+and account console concern negotiated access, organization limits and data requirements;
+they do not supply another public per-model price book. Anonymous API acquisition can fail
+without credentials, so it cannot replace the explicitly exhaustive versioned Models page.
 
 ## Model facts
 

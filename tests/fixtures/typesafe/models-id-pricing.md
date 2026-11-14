@@ -11,6 +11,8 @@ Every model on this page is served by the same endpoint, `POST /v1/systemone`. T
 | Context length              | 64k per-request / 32k per-question | 64k per-request / 32k per-question |
 | Input                       | Text                               | Text                               |
 
+Jev 1.14 is the newest Jev release, available from October 14, 2026.
+
 - **Price:** You pay per input token. Output tokens are free. A Btok is a billion tokens and an Mtok is a million tokens.
 
 ## Context length

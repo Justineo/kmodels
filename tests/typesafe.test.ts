@@ -50,6 +50,43 @@ async function parse(
   return { ...parsed, findings, reconciliation };
 }
 describe("TypeSafe AI", () => {
+  it("reads the exact model's explicit availability date without dating its sibling", async () => {
+    const { models } = await parse({ models: await fixture("models-id-pricing.md") });
+    expect(models.find(({ model_id }) => model_id === "jev-1.14.0")?.release_date).toBe(
+      "2026-10-14",
+    );
+    expect(models.find(({ model_id }) => model_id === "jev-1.13.0")?.release_date).toBeUndefined();
+  });
+
+  it.each([
+    "invalid calendar",
+    "conflicting dates",
+    "ambiguous name",
+    "other product",
+    "fenced example",
+  ])("isolates release-date evidence: %s", async (scenario) => {
+    let models = await fixture("models-id-pricing.md");
+    const sentence = "Jev 1.14 is the newest Jev release, available from October 14, 2026.";
+    if (scenario === "invalid calendar")
+      models = models.replace(sentence, sentence.replace("October 14", "February 30"));
+    if (scenario === "conflicting dates")
+      models = models.replace(
+        sentence,
+        sentence + "\n" + sentence.replace("October 14", "October 15"),
+      );
+    if (scenario === "ambiguous name") models = models.replace("| Jev 1.13", "| Jev 1.14");
+    if (scenario === "other product")
+      models = models.replace(sentence, sentence.replace("Jev 1.14 is", "Another product is"));
+    if (scenario === "fenced example")
+      models = models.replace(sentence, "```text\n" + sentence + "\n```");
+    const parsed = await parse({ models });
+    expect(parsed.models.every(({ release_date }) => release_date === undefined)).toBe(true);
+    expect(parsed.models.every(({ price_facts }) => price_facts.length === 2)).toBe(true);
+    expect(parsed.findings.length > 0).toBe(
+      ["invalid calendar", "conflicting dates", "ambiguous name"].includes(scenario),
+    );
+  });
+
   it("follows the current alias destination without creating a long-context price tier", async () => {
     const result = await parse({ models: await fixture("models-id-pricing.md") });
     expect(

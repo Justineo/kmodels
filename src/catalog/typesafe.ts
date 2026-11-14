@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
-import { markdownSection } from "./markdown.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
@@ -153,6 +153,48 @@ function questionTypes(value: string | undefined): string[] | undefined {
   return types.length > 0 && types.every((type) => reviewedQuestionTypes.has(type))
     ? types
     : undefined;
+}
+
+function modelReleaseDates(
+  input: Input,
+  current: string,
+  models: Iterable<ParsedProviderModel>,
+): void {
+  const records = [...models];
+  const dates = new Map<ParsedProviderModel, Set<string>>();
+  const months =
+    "January February March April May June July August September October November December".split(
+      " ",
+    );
+  for (const match of markdownProse(current).matchAll(
+    /^([^\n]+?) is the newest Jev release, available from ([A-Z][a-z]+) ([1-9]\d?), (\d{4})\.$/gmu,
+  )) {
+    const [, name, month, day, year] = match;
+    const targets = records.filter((model) => model.name === name);
+    if (targets.length === 0) continue;
+    const target = targets[0];
+    const monthIndex = months.indexOf(month ?? "");
+    const value = new Date(`${month} ${day}, ${year} UTC`);
+    if (
+      targets.length !== 1 ||
+      target === undefined ||
+      monthIndex < 0 ||
+      !Number.isFinite(value.getTime()) ||
+      value.getUTCMonth() !== monthIndex ||
+      value.getUTCDate() !== Number(day) ||
+      value.getUTCFullYear() !== Number(year)
+    ) {
+      signal(input, "/models/release-date");
+      continue;
+    }
+    const observed = dates.get(target) ?? new Set<string>();
+    observed.add(value.toISOString().slice(0, 10));
+    dates.set(target, observed);
+  }
+  for (const [model, values] of dates) {
+    if (values.size === 1) model.release_date = [...values][0];
+    else signal(input, "/models/release-date");
+  }
 }
 
 function reviewIndex(bundle: LinkedBundle): void {
@@ -420,6 +462,7 @@ export function parseTypesafeCatalog(input: Input): SourceParseResult {
       byId.set(id, model);
     }
   }
+  modelReleaseDates(input, current, byId.values());
   const aliasSection = section(body, "Aliases");
   const aliases = tables(aliasSection);
   if (aliases.length !== 1 || aliases[0]?.header.join("|") !== "Alias|Points to|Meaning")
