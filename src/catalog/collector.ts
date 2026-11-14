@@ -939,7 +939,25 @@ export async function collectProvider(
           observedAt,
           ...(role === "catalog"
             ? {}
-            : { catalogModels: applyPublicGroups(groups, supplements, overlays) }),
+            : {
+                catalogModels: applyPublicGroups(groups, supplements, overlays),
+                inventoryModels: [
+                  ...inventories.flatMap(({ models }) => models),
+                  ...unavailableInventories.flatMap((inventory) =>
+                    retainSourceFacts(
+                      applyPublicGroups(groups, supplements, overlays),
+                      comparableOldModels,
+                      inventory,
+                    )
+                      .models.filter((model) =>
+                        comparableOldModels.some(
+                          (old) => old.uid === model.uid && old.source_refs.includes(inventory.id),
+                        ),
+                      )
+                      .map((model) => ({ ...model, api_endpoints: [] })),
+                  ),
+                ],
+              }),
           onContractFinding: contractFindings.add,
           onPricingReconciliation: (item) => {
             pricingReconciliationItems.push(item);

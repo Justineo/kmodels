@@ -30,6 +30,11 @@ export interface SourceParseInput {
     | "version"
   > &
     Partial<Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities">>)[];
+  // Scoped observations remain separate from public catalog admission.
+  inventoryModels?: readonly Pick<
+    ProviderModel,
+    "model_id" | "availability" | "api_endpoints" | "source_refs"
+  >[];
   onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
   // A mixed source may retain valid catalog facts while its commercial partition must fail.

@@ -28,6 +28,7 @@ import {
 import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
+import { regionalMistralPrices } from "./mistral-regional-pricing.ts";
 
 type Direction = "input" | "output";
 type SourcePriceKind = Direction | "cached_input";
@@ -119,6 +120,7 @@ const apiCommonShape = {
   deprecation: apiDateSchema.nullable().optional(),
   deprecation_replacement_model: modelIdSchema.nullable().optional(),
   default_model_temperature: z.number().finite().nullable().optional(),
+  billing_model_name: z.unknown().optional(),
 };
 const apiBaseSchema = z.object({
   ...apiCommonShape,
@@ -534,11 +536,19 @@ function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
     status: statuses.get(required("Status")) ?? "unknown",
     input: list("Input"),
     output: list("Output"),
-    features: fields.has("Features")
+    features: (fields.has("Features")
       ? list("Features")
       : ["Retired", "Deprecated"].includes(required("Status"))
         ? []
-        : list("Features"),
+        : list("Features")
+    ).map((feature) =>
+      feature === "transcriptions" &&
+      /streaming session over WebSocket|live transcription purposes only/i.test(
+        body.split("\n\n")[1] ?? "",
+      )
+        ? "realtime-transcriptions"
+        : feature,
+    ),
     ...(version === undefined ? {} : { version }),
     ...(releaseDate === undefined ? {} : { releaseDate }),
     ...(contextTokens === undefined ? {} : { contextTokens }),
@@ -584,6 +594,10 @@ function markdownFeatureEndpoints(): Map<string, ApiEndpoint[]> {
     ["moderations", [{ name: "Moderations", path: "/v1/moderations" }]],
     ["chat-moderations", [{ name: "Chat / Moderations", path: "/v1/chat/moderations" }]],
     ["transcriptions", [audio]],
+    [
+      "realtime-transcriptions",
+      [{ name: "Realtime Audio Transcriptions", path: "/v1/audio/transcriptions/realtime" }],
+    ],
     ["timestamps", [audio]],
     ["tts", [speech]],
     ["voice-cloning", [speech]],
@@ -706,6 +720,7 @@ const featureOperations = new Map<string, ModelTask[]>([
   ["moderations", ["moderation"]],
   ["chat-moderations", ["moderation"]],
   ["transcriptions", ["transcription"]],
+  ["realtime-transcriptions", ["transcription"]],
   ["tts", ["speech_synthesis"]],
   ["voice-cloning", []],
   ["timestamps", ["transcription"]],
@@ -1410,6 +1425,13 @@ export function parseMistralCatalog(input: Input): SourceParseResult {
         document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
         signal,
       );
+  if (
+    markdown &&
+    !optionalDocument("/studio/audio/speech-to-text/transcribe-in-realtime.md")?.includes(
+      "wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=",
+    )
+  )
+    endpointsByFeature.delete("realtime-transcriptions");
   const companion = (path: string, markdownPath: string): string =>
     (optionalDocument(markdown ? markdownPath : path) ?? "").replace(/\s+/g, " ");
   const discounts = {
@@ -1612,12 +1634,30 @@ export function parseMistralPricing(input: Input): SourceParseResult {
     tabular || hasPolicyDocuments
       ? parseMistralPricingPolicy(bundle, input.source.id, input.onPricingReconciliation)
       : undefined;
-  if (tabular && /Regional inference/i.test(page.text()))
+  const regionalScope =
+    bundle.documents.some(
+      ({ url }) => url === "https://docs.mistral.ai/inference/regional-inference.md",
+    ) || (input.inventoryModels?.length ?? 0) > 0;
+  if (tabular && /Regional inference/i.test(page.text()) && !regionalScope)
     input.onPricingReconciliation?.({
       disposition: "excluded",
       reason_code: "regional_pricing_requires_model_availability",
     });
   for (const model of models) {
+    const regionalContext = {
+      ...model,
+      price_facts: model.price_facts.map((rate) => ({ ...rate })),
+      raw_price_facts: [...model.raw_price_facts],
+    };
+    if (policy !== undefined) applyMistralPricingPolicy(regionalContext, policy, undefined);
+    const regional = regionalMistralPrices(input, regionalContext, policy);
+    if (regional.rates.length > 0 || regional.raw.length > 0)
+      input.onPricingReconciliation?.({
+        disposition: regional.rates.length > 0 ? "normalized" : "unbound",
+        reason_code:
+          regional.rates.length > 0 ? "normalized_regional_price" : "regional_policy_unavailable",
+        sample: model.model_id,
+      });
     model.price_facts = model.price_facts.filter(
       ({ source_ref }) => source_ref === input.source.id,
     );
@@ -1627,6 +1667,9 @@ export function parseMistralPricing(input: Input): SourceParseResult {
     if (!observedModels.has(model.uid)) model.pricing_state = "unknown";
     if (policy !== undefined)
       applyMistralPricingPolicy(model, policy, input.onPricingReconciliation);
+    model.price_facts.push(...regional.rates);
+    model.raw_price_facts.push(...regional.raw);
+    if (regional.rates.length > 0) model.pricing_state = "numeric";
   }
   const commercialFacts = extractMistralCommercialFacts(
     {
@@ -1657,6 +1700,22 @@ export function parseMistralPricing(input: Input): SourceParseResult {
       .sort((left, right) => left.uid.localeCompare(right.uid)),
     commercial_facts: commercialFacts,
     pricing_inputs: pricingInputs,
+    ...(regionalScope ||
+    models.some(({ price_facts, raw_price_facts }) =>
+      [...price_facts, ...raw_price_facts].some(
+        ({ conditions }) => conditions.region !== undefined,
+      ),
+    )
+      ? {
+          vocabulary: ["global", "eu", "us"].map((region) => ({
+            kind: "categorical_value" as const,
+            key: region,
+            dimension: { namespace: "kmodels" as const, value: "region" as const },
+            definition: `Provider-published region value "${region}"`,
+            label: region === "global" ? "Global endpoint" : `${region.toUpperCase()} endpoint`,
+          })),
+        }
+      : {}),
   };
 }
 
@@ -1723,9 +1782,21 @@ export function parseMistralApi(input: Input): ProviderModel[] {
       if (!apiCapabilityKeys.has(key)) extensions.add(`/models/*/capabilities/${key}`);
   }
   if (extensions.size > 0) input.onContractFinding?.(contractExtensionEvidence([...extensions]));
+  const publicIds =
+    input.catalogModels === undefined
+      ? undefined
+      : new Set(input.catalogModels.flatMap(({ model_id, aliases }) => [model_id, ...aliases]));
+  const publicItems =
+    publicIds === undefined
+      ? list.data
+      : list.data.filter((item) => {
+          const id =
+            item !== null && typeof item === "object" ? Reflect.get(item, "id") : undefined;
+          return typeof id !== "string" || publicIds.has(id);
+        });
   const items = recognizeItems({
     label: "Mistral API model",
-    items: list.data,
+    items: publicItems,
     schema: apiItemSchema,
     modelId: "id",
     rootKeys: [
@@ -1740,6 +1811,32 @@ export function parseMistralApi(input: Input): ProviderModel[] {
   });
   const models = items.flatMap((value): ProviderModel[] => {
     if (value.type !== "base") return [];
+    const region =
+      input.source.extractor.kind === "mistral-api" ? input.source.extractor.region : undefined;
+    const publicModel =
+      region === undefined
+        ? undefined
+        : input.catalogModels?.find(({ model_id }) => model_id === value.id);
+    if (region !== undefined) {
+      if (publicModel === undefined) return [];
+      if (items.filter(({ id }) => id === value.id).length !== 1) {
+        input.onContractFinding?.(contractExtensionEvidence(["/models/*/id"]));
+        return [];
+      }
+      const billing = modelIdSchema.nullish().safeParse(value.billing_model_name);
+      if (
+        !billing.success ||
+        (billing.data != null &&
+          input.catalogModels?.some(
+            (other) =>
+              other.model_id !== publicModel.model_id &&
+              [other.model_id, ...other.aliases].includes(billing.data ?? ""),
+          ))
+      ) {
+        input.onContractFinding?.(contractExtensionEvidence(["/models/*/billing_model_name"]));
+        return [];
+      }
+    }
     const deprecation = value.deprecation?.slice(0, 10);
     const deprecated =
       deprecation === undefined ? false : deprecation <= input.observedAt.slice(0, 10);
@@ -1753,7 +1850,41 @@ export function parseMistralApi(input: Input): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         ...(value.description == null ? {} : { description: value.description }),
-        aliases: unique((value.aliases ?? []).filter((alias) => alias !== value.id)),
+        aliases:
+          region === undefined
+            ? unique((value.aliases ?? []).filter((alias) => alias !== value.id))
+            : [],
+        ...(region === undefined
+          ? {}
+          : {
+              availability: [{ region, deployment_type: "managed_api" }],
+              api_endpoints: [
+                ...(value.capabilities.completion_chat === true
+                  ? [{ name: "Chat Completions", path: "/v1/chat/completions" }]
+                  : []),
+                ...(value.capabilities.completion_fim === true
+                  ? [{ name: "FIM", path: "/v1/fim/completions" }]
+                  : []),
+                ...(publicModel?.tasks.includes("embeddings")
+                  ? [{ name: "Embeddings", path: "/v1/embeddings" }]
+                  : []),
+                ...(value.capabilities.ocr === true ? [{ name: "OCR", path: "/v1/ocr" }] : []),
+                ...(value.capabilities.audio_transcription === true
+                  ? [{ name: "Audio Transcriptions", path: "/v1/audio/transcriptions" }]
+                  : []),
+                ...(value.capabilities.audio_transcription_realtime === true
+                  ? [
+                      {
+                        name: "Realtime Audio Transcriptions",
+                        path: "/v1/audio/transcriptions/realtime",
+                      },
+                    ]
+                  : []),
+                ...(value.capabilities.audio_speech === true
+                  ? [{ name: "Audio Speech", path: "/v1/audio/speech" }]
+                  : []),
+              ],
+            }),
         tasks: apiOperations(value.capabilities),
         raw_type: value.type,
         modalities: apiModalities(value.capabilities),

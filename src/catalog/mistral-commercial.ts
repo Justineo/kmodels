@@ -83,7 +83,21 @@ export function applyMistralCommercialTopology(
       if (book.scope.kind === "models")
         return [
           includePricingInputSourceRefs(
-            splitModelBook(book, published.get(book.scope.model_refs[0] ?? ""), input, inputIndex),
+            splitModelBook(
+              regionalBook(
+                book,
+                input.vocabulary.atoms.some(
+                  (atom) =>
+                    atom.kind === "categorical_value" &&
+                    atom.key === "global" &&
+                    atom.dimension.namespace === "kmodels" &&
+                    atom.dimension.value === "region",
+                ),
+              ),
+              published.get(book.scope.model_refs[0] ?? ""),
+              input,
+              inputIndex,
+            ),
           ),
         ];
       return book.scope.kind === "provider_resource" && requestServices.has(book.scope.resource_key)
@@ -94,6 +108,86 @@ export function applyMistralCommercialTopology(
           ]
         : [];
     }),
+  };
+}
+
+function regionalBook(book: AtomicPricingBook, scoped: boolean): AtomicPricingBook {
+  const hasRegion = (applicability: PriceApplicability): boolean =>
+    applicability.any_of.some(({ all_of }) =>
+      all_of.some(
+        ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "region",
+      ),
+    );
+  const regional = book.offers.some(({ terms }) =>
+    terms.some((term) =>
+      term.kind === "rate"
+        ? term.variants.some(({ applicability }) => hasRegion(applicability))
+        : term.kind === "raw" &&
+          term.variants.some(
+            ({ possible_scope }) => possible_scope !== undefined && hasRegion(possible_scope),
+          ),
+    ),
+  );
+  if (!regional && !scoped) return book;
+  const globalScope = (applicability: PriceApplicability): PriceApplicability =>
+    canonicalizeApplicability({
+      any_of: applicability.any_of.map(({ all_of }) => ({
+        all_of: all_of.some(
+          ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "region",
+        )
+          ? all_of
+          : [
+              ...all_of,
+              {
+                kind: "categorical" as const,
+                dimension: { namespace: "kmodels" as const, value: "region" as const },
+                values: [
+                  { namespace: "provider" as const, provider_id: "mistral", value: "global" },
+                ],
+              },
+            ],
+      })),
+    });
+  return {
+    ...book,
+    offers: book.offers.map((offer) => ({
+      ...offer,
+      states: offer.states.map((state) => {
+        const applicability = globalScope(state.applicability);
+        return {
+          ...state,
+          applicability,
+          observation: normalized(state.observation, applicability),
+        };
+      }),
+      terms: offer.terms.map((term) => {
+        if (term.kind === "rate")
+          return {
+            ...term,
+            variants: term.variants.map((variant) => {
+              const applicability = globalScope(variant.applicability);
+              return {
+                ...variant,
+                applicability,
+                observation: normalized(variant.observation, applicability),
+              };
+            }),
+            raw_variants: term.raw_variants.map((variant) => ({
+              ...variant,
+              possible_scope: globalScope(variant.possible_scope ?? { any_of: [{ all_of: [] }] }),
+            })),
+          };
+        if (term.kind === "raw")
+          return {
+            ...term,
+            variants: term.variants.map((variant) => ({
+              ...variant,
+              possible_scope: globalScope(variant.possible_scope ?? { any_of: [{ all_of: [] }] }),
+            })),
+          };
+        return term;
+      }),
+    })),
   };
 }
 
@@ -321,9 +415,7 @@ function modelBinding(
   ) {
     const signal = tokenSignal(meter.value, mechanism, hasCache);
     if (signal === undefined) return;
-    const paths = chatScope(variant.applicability)
-      ? new Set(["/v1/chat/completions"])
-      : endpointPaths(model);
+    const paths = scopedEndpoints(variant.applicability) ?? endpointPaths(model);
     const mapped =
       mechanism === "batch"
         ? emptyMethods()
@@ -334,6 +426,23 @@ function modelBinding(
   return media === undefined
     ? undefined
     : quantityBinding(media.signal, aggregation, media.mapped, variant);
+}
+
+function scopedEndpoints(applicability: PriceApplicability): ReadonlySet<string> | undefined {
+  const groups = applicability.any_of.map(({ all_of }) =>
+    all_of.find(
+      (condition) =>
+        condition.kind === "categorical" &&
+        condition.dimension.namespace === "kmodels" &&
+        condition.dimension.value === "endpoint",
+    ),
+  );
+  if (groups.some((condition) => condition?.kind !== "categorical")) return;
+  return new Set(
+    groups.flatMap((condition) =>
+      condition?.kind === "categorical" ? condition.values.map(({ value }) => value) : [],
+    ),
+  );
 }
 
 function tokenSignal(
@@ -422,7 +531,7 @@ function mediaSignal(
   model: PublishedPricingModel | undefined,
   inputIndex: PricingInputIndex,
 ): { signal: UsageSignal; mapped: MethodsAndFacts } | undefined {
-  const paths = endpointPaths(model);
+  const paths = scopedEndpoints(variant.applicability) ?? endpointPaths(model);
   if (meter.value === "input_image" && isStandardUnit(variant.price.per, "page")) {
     const signal = standardSignal("processed_pages");
     return {

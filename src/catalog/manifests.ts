@@ -85,7 +85,7 @@ export type Extractor =
       maxModels: number;
     }
   | { kind: "mistral-pricing"; minCards: number; maxCards: number }
-  | { kind: "mistral-api"; knownFields?: string[] }
+  | { kind: "mistral-api"; knownFields?: string[]; region?: "eu" | "us" }
   | { kind: "meta-model-api"; minModels: number; maxModels: number }
   | { kind: "xai-catalog"; minModels: number; maxModels: number }
   | { kind: "xai-api"; category: "all" | "language" | "image" | "video" }
@@ -3368,6 +3368,11 @@ export const manifests = [
       catalog_scope: "global",
     },
     pricingCategoricalLabels: [
+      ...pricingLabels("region", {
+        global: "Global endpoint",
+        eu: "EU endpoint",
+        us: "US endpoint",
+      }),
       ...pricingLabels("operation", { ocr: "OCR" }),
       ...pricingLabels("billing_currency", { EUR: "EUR", USD: "USD" }),
     ],
@@ -3385,7 +3390,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v21",
+        extractorVersion: "mistral-catalog-v22",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -3429,6 +3434,14 @@ export const manifests = [
               true,
             ],
             [
+              "realtime-transcription",
+              "https://docs.mistral.ai/studio/audio/speech-to-text/transcribe-in-realtime.md",
+              1,
+              undefined,
+              true,
+              true,
+            ],
+            [
               "batch-processing",
               "https://docs.mistral.ai/inference/batch-processing.md",
               1,
@@ -3439,6 +3452,34 @@ export const manifests = [
           ]),
         },
       },
+      ...(["eu", "us"] as const).map((region): SourceManifest => ({
+        id: `mistral-api-${region}`,
+        url: `https://api.${region}.mistral.ai/v1/models`,
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: {
+          kind: "mistral-api",
+          region,
+          knownFields: [
+            "archived",
+            "job",
+            "root",
+            "audio_transcription_capabilities",
+            "audio_speech_capabilities",
+          ],
+        },
+        extractorVersion: "mistral-regional-api-v1",
+        fields: ["model_id", "availability", "api_endpoints"],
+        allowedHosts: [`api.${region}.mistral.ai`],
+        maxResponseBytes: mebibytes(8),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "MISTRAL_API_KEY" },
+      })),
       {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
@@ -3448,7 +3489,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v12",
+        extractorVersion: "mistral-pricing-v13",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],
@@ -3476,6 +3517,14 @@ export const manifests = [
               undefined,
               true,
               false,
+            ],
+            [
+              "regional-inference",
+              "https://docs.mistral.ai/inference/regional-inference.md",
+              1,
+              undefined,
+              true,
+              true,
             ],
             ["api-schema", "https://docs.mistral.ai/openapi.yaml", 2, undefined, true, true],
             [
@@ -3530,9 +3579,16 @@ export const manifests = [
         stability: "documented",
         extractor: {
           kind: "mistral-api",
-          knownFields: ["archived", "job", "root", "default_model_temperature"],
+          knownFields: [
+            "archived",
+            "job",
+            "root",
+            "default_model_temperature",
+            "audio_transcription_capabilities",
+            "audio_speech_capabilities",
+          ],
         },
-        extractorVersion: "mistral-api-v4",
+        extractorVersion: "mistral-api-v5",
         fields: [
           "name",
           "description",

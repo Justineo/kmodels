@@ -1,6 +1,7 @@
 import * as ts from "typescript";
 import { z } from "zod";
 import type { LinkedBundle } from "./bundle.ts";
+import { mistralRegionalPolicy, type MistralRegionalPolicy } from "./mistral-regional-policy.ts";
 import { multiplyDecimal, rawPricingFact } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
@@ -22,6 +23,7 @@ interface CurrencyPolicy {
 export interface MistralPricingPolicy {
   euro?: CurrencyPolicy;
   priority?: string;
+  regional?: MistralRegionalPolicy;
   inputs: SourcePricingInputFact[];
 }
 
@@ -42,6 +44,7 @@ export function parseMistralPricingPolicy(
     document(mistralPriorityUrl) ??
     "";
   const priority = priorityFactor(body);
+  const regional = mistralRegionalPolicy(bundle, priority);
   for (const [name, known] of [
     ["currency", euro !== undefined],
     ["priority", priority !== undefined],
@@ -60,6 +63,7 @@ export function parseMistralPricingPolicy(
   return {
     ...(euro === undefined ? {} : { euro }),
     ...(priority === undefined ? {} : { priority }),
+    ...(regional === undefined ? {} : { regional }),
     inputs: mapped
       ? [
           {

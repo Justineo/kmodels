@@ -2185,7 +2185,7 @@ describe("Mistral adapters", () => {
       }),
     );
   });
-  it("declares a structured official catalog and non-persistent account inventory", () => {
+  it("declares public catalog and pricing sources with bounded regional and account inventories", () => {
     const value = manifest("mistral");
     expect(value.sources).toMatchObject([
       {
@@ -2213,11 +2213,21 @@ describe("Mistral adapters", () => {
           ]),
         },
       },
+      ...(["eu", "us"] as const).map((region) => ({
+        id: `mistral-api-${region}`,
+        url: `https://api.${region}.mistral.ai/v1/models`,
+        extractor: { kind: "mistral-api", region },
+        scope: "region",
+        role: "inventory",
+        optional: true,
+        fields: ["model_id", "availability", "api_endpoints"],
+        auth: { scheme: "bearer", env: "MISTRAL_API_KEY" },
+      })),
       {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v12",
+        extractorVersion: "mistral-pricing-v13",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

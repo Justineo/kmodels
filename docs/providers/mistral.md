@@ -202,16 +202,39 @@ Missing owned price policies and served-tier contracts produce repairable source
 An uninterpretable Priority price rule preserves a raw tariff scoped to that tier and the Chat
 endpoint, rather than implying that the price was withdrawn.
 
-The [regional guide](https://docs.mistral.ai/inference/regional-inference) publishes a 10% token
-uplift but requires separate model availability evidence. The broad UI toggle alone cannot
-establish a model/region tuple. The adapter records this explicit exclusion and does not create a
-regional resource book that could masquerade as the missing request-service topology.
-The guide explicitly owns `api.eu.mistral.ai/v1/models` and `api.us.mistral.ai/v1/models` as the
-regional availability queries; the global list does not substitute for them. An authentication
-failure on either leaves that region's model tuples unresolved. The guide excludes regional Batch,
-Files and stateful Agents, so a future positive regional model observation must not copy those
-global mechanisms or service fees into a regional tariff. Regional prices remain a known policy
-with unverified model applicability rather than an invented global-to-regional inheritance rule.
+The [regional guide](https://docs.mistral.ai/inference/regional-inference) owns the EU and US
+processing geographies, the 1.1 multiplier, and the regional model-list endpoints. The two optional
+authenticated inventories use `MISTRAL_API_KEY` and run before pricing. Their observations remain
+separate from global catalog admission. Only an exact public primary ID establishes a regional
+tuple. A regional alias alone cannot price its global target: `ministral-8b-latest`, for example,
+can resolve to different dated models in EU and US. A malformed billing identity or one belonging
+to another known public model withholds that row; an opaque internal `billing_model_name` is not
+a new public ID or a contradiction of an exact public primary ID.
+
+The guide's token rule survives independently of the pricing widget. The adapter also statically
+verifies the widget's Standard table, regional factor, row-cell multiplication and Priority
+composition. This establishes the regional factor for its other published row units and the
+**additive** Priority uplift: `1.75 + (1.1 - 1) = 1.85`, rather than `1.75 × 1.1`. Priority remains
+Chat token pricing only; the generic widget cannot override the guide's feature limitations.
+Unknown composition removes that derived Priority amount while preserving the guide's Standard
+token rule. Currency precision is checked after regional multiplication. Conflicting page amounts
+remain conflicting regionally, and unresolved non-token cache units remain raw evidence.
+
+Regional variants require a positively observed stateless endpoint. Batch, Files, Agents,
+Conversations and built-in service fees do not inherit regional prices. Global prices receive an
+explicit `global` condition when regional policy is collected, including models absent from both
+regional inventories. A known unsupported region therefore cannot silently select an unqualified
+global quote. Missing credentials leave regional applicability unverified. Retained availability
+metadata is not enough to reconstruct a regional endpoint from a merged global endpoint list;
+those tariffs become scoped unknowns until the regional inventory succeeds again. The independent
+global pricebook continues to refresh.
+
+Realtime transcription is a WebSocket operation, not offline transcription. Explicit realtime-only
+model-card prose and the current transcription guide establish
+`/v1/audio/transcriptions/realtime`. Missing guide evidence withholds that route rather than
+substituting the offline endpoint. Its known minute price survives, but the realtime guide names
+only a terminal `usage` object, without the typed billable-seconds field needed for an executable
+counter mapping. Offline HTTP usage locators are never copied into this operation.
 
 Conflicting numeric rows within one price page have equal authority. Both survive parsing and
 become local canonical conflict evidence; their order cannot select a winner. An explicit page

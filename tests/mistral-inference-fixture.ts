@@ -13,6 +13,13 @@ export async function mistralInferenceBundles() {
   const pricing = linkedBundleSchema.parse(await fixture("pricing"));
   const policies = linkedBundleSchema.shape.documents.parse(await fixture("policies"));
   catalog.documents.push(...policies.filter(({ url }) => !url.includes("priority-tier")));
+  catalog.documents.push({
+    url: "https://docs.mistral.ai/studio/audio/speech-to-text/transcribe-in-realtime.md",
+    body: await readFile(
+      new URL("./fixtures/mistral/realtime-transcription.txt", import.meta.url),
+      "utf8",
+    ),
+  });
   pricing.documents.push(...policies);
   return { catalog, pricing };
 }

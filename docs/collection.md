@@ -61,6 +61,10 @@ Status: implemented
   supplement-created row still retains all of its own facts.
 - Account, region, workspace, and runtime inventories are scoped validation. They may fill fields the public catalog leaves undisclosed and add positive set-valued facts to exact public matches, but never override a known global fact or create or remove a global row.
 - Only an exhaustive global catalog supports a completeness claim.
+- Pricing parsers may consume earlier scoped inventory observations separately from public
+  catalog models. This cannot admit inventory-only identities. Retained inventory enrichment is
+  exposed without endpoint mappings: merged catalog endpoints do not preserve their regional
+  owner and cannot establish a fresh scoped operation or tariff.
 - Optional authenticated sources use named environment variables. Collection loads ignored `.env` values without overriding the process environment.
 - Missing credentials or an optional inventory failure emits a structured warning. For exact
   public matches, the collector retains the last successful source-declared enrichment only where

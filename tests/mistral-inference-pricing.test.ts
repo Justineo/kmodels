@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
-import { expect, it, vi } from "vite-plus/test";
+import { readFile } from "node:fs/promises";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
@@ -28,17 +29,42 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   fetchSource: vi.fn(),
 }));
 const at = "2026-10-30T18:10:00.000Z";
-async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
+afterEach(() => vi.unstubAllEnvs());
+async function collect(
+  change?: (bundle: LinkedBundle) => void,
+  previous?: CatalogPairCandidate,
+  regional?: { eu?: unknown; us?: unknown; change?: (bundle: LinkedBundle) => void },
+) {
   const manifest = manifests.find(({ provider }) => provider.id === "mistral");
   const catalog = manifest?.sources.find(({ id }) => id === "mistral-models");
   const pricing = manifest?.sources.find(({ id }) => id === "mistral-pricing");
   if (!manifest || !catalog || !pricing) throw new Error("Missing Mistral sources");
   const bundles = await mistralInferenceBundles();
+  if (regional !== undefined) vi.stubEnv("MISTRAL_API_KEY", "fixture-key");
   change?.(bundles.catalog);
+  if (regional !== undefined) {
+    for (const [name, url] of [
+      ["regional-inference.md", "https://docs.mistral.ai/inference/regional-inference.md"],
+      ["regional-runtime.txt", "https://docs.mistral.ai/_next/static/chunks/regional.js"],
+    ]) {
+      if (name === undefined || url === undefined) throw new Error("Missing regional fixture");
+      bundles.pricing.documents.push({
+        url,
+        body: await readFile(new URL(`./fixtures/mistral/${name}`, import.meta.url), "utf8"),
+      });
+    }
+    regional.change?.(bundles.pricing);
+  }
   const bodies = new Map([
     [catalog.id, JSON.stringify(bundles.catalog)],
     [pricing.id, JSON.stringify(bundles.pricing)],
   ]);
+  const inventories =
+    regional === undefined
+      ? []
+      : manifest.sources.filter(({ id }) => id === "mistral-api-eu" || id === "mistral-api-us");
+  if (regional?.eu !== undefined) bodies.set("mistral-api-eu", JSON.stringify(regional.eu));
+  if (regional?.us !== undefined) bodies.set("mistral-api-us", JSON.stringify(regional.us));
   vi.mocked(fetchSource).mockImplementation(async (source) => {
     const body = bodies.get(source.id);
     if (!body) throw new Error("Missing fixture");
@@ -51,7 +77,7 @@ async function collect(change?: (bundle: LinkedBundle) => void, previous?: Catal
     };
   });
   const result = await collectProvider(
-    { ...manifest, sources: [catalog, pricing] },
+    { ...manifest, sources: [catalog, ...inventories, pricing] },
     previous?.catalog,
     { sources: {} },
     at,
@@ -89,7 +115,7 @@ function lookup(candidate: CatalogPairCandidate) {
 }
 
 function categorical(
-  dimension: "billing_currency" | "served_service_tier" | "endpoint" | "operation",
+  dimension: "billing_currency" | "served_service_tier" | "endpoint" | "operation" | "region",
   value: string,
 ): Selector {
   return {
@@ -102,6 +128,111 @@ const standard = [
   categorical("billing_currency", "USD"),
   categorical("served_service_tier", "standard"),
 ];
+async function regions() {
+  const read = async (region: string): Promise<unknown> =>
+    JSON.parse(
+      await readFile(
+        new URL(`./fixtures/mistral/regional-${region}.json`, import.meta.url),
+        "utf8",
+      ),
+    );
+  return { eu: await read("eu"), us: await read("us") };
+}
+
+function regionalQuery(
+  candidate: CatalogPairCandidate,
+  model_id: string,
+  region: string,
+  tier = "standard",
+  endpoint = "/v1/chat/completions",
+  execution_mode: "request" | "batch" = "request",
+) {
+  return lookup(candidate)({
+    provider_id: "mistral",
+    model_id,
+    execution_mode,
+    selectors: [
+      categorical("billing_currency", "USD"),
+      categorical("region", region),
+      ...(execution_mode === "batch"
+        ? []
+        : [categorical("served_service_tier", tier), categorical("endpoint", endpoint)]),
+    ],
+  });
+}
+
+it("uses native regional availability and the additive Priority uplift through public lookup", async () => {
+  const { candidate } = await collect(undefined, undefined, await regions());
+  for (const [region, tier, numerator, denominator] of [
+    ["global", "standard", "7", "10000000"],
+    ["eu", "standard", "77", "100000000"],
+    ["eu", "priority", "259", "200000000"],
+  ]) {
+    if (!region || !tier) throw new Error("Missing expectation");
+    const result = regionalQuery(candidate, "mistral-large-4", region, tier);
+    expect(result.status).toBe("matched");
+    expect(
+      result.candidates.flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "input_text"
+            ? term.variants.map(({ price }) => price.value)
+            : [],
+        ),
+      ),
+    ).toEqual([{ numerator, denominator }]);
+  }
+  for (const result of [
+    regionalQuery(candidate, "mistral-large-4", "us"),
+    regionalQuery(candidate, "ministral-8b-2512", "us"),
+    regionalQuery(candidate, "ministral-8b-latest", "us"),
+    regionalQuery(candidate, "mistral-large-4", "eu", "standard", "/v1/ocr"),
+    regionalQuery(candidate, "mistral-large-4", "eu", "standard", "/v1/chat/completions", "batch"),
+  ])
+    expect(result.candidates).toEqual([]);
+  expect(regionalQuery(candidate, "mistral-small-2603", "us").status).toBe("matched");
+  expect(regionalQuery(candidate, "ministral-8b-2512", "eu").status).toBe("matched");
+  expect(
+    regionalQuery(candidate, "codestral-2508", "eu", "standard", "/v1/fim/completions").status,
+  ).toBe("matched");
+});
+
+it("keeps regional policy failures local and never uses an unscoped global price for a region", async () => {
+  const { candidate } = await collect(undefined, undefined, {
+    ...(await regions()),
+    change: (bundle) => {
+      bundle.documents = bundle.documents.filter(({ url }) => !url.endsWith("regional.js"));
+    },
+  });
+  expect(regionalQuery(candidate, "mistral-large-4", "eu").status).toBe("matched");
+  const priority = regionalQuery(candidate, "mistral-large-4", "eu", "priority");
+  expect(
+    priority.candidates.flatMap(({ offer }) => offer.terms).some((term) => term.kind === "raw"),
+  ).toBe(true);
+  expect(
+    priority.candidates.flatMap(({ offer }) => offer.terms).some((term) => term.kind === "rate"),
+  ).toBe(false);
+  expect(regionalQuery(candidate, "mistral-large-4", "us").candidates).toEqual([]);
+});
+
+it("retains regional enrichment on access failure without admitting private inventory models", async () => {
+  const first = await collect(undefined, undefined, await regions());
+  const second = await collect(undefined, first.candidate, {});
+  const retained = regionalQuery(second.candidate, "mistral-large-4", "eu");
+  expect(
+    retained.candidates.flatMap(({ offer }) => offer.terms).some((term) => term.kind === "raw"),
+  ).toBe(true);
+  expect(
+    retained.candidates.flatMap(({ offer }) => offer.terms).some((term) => term.kind === "rate"),
+  ).toBe(false);
+  expect(
+    lookup(second.candidate)({ provider_id: "mistral", model_id: "ft:private-model" }).reason,
+  ).toBe("unreviewed_id");
+  const withoutHistory = await collect(undefined, undefined, {});
+  expect(regionalQuery(withoutHistory.candidate, "mistral-large-4", "eu").candidates).toEqual([]);
+  expect(regionalQuery(withoutHistory.candidate, "mistral-large-4", "global").status).toBe(
+    "matched",
+  );
+});
 function offerRef(query: ReturnType<typeof lookup>, model_id: string, key: string) {
   const offer = query({
     provider_id: "mistral",

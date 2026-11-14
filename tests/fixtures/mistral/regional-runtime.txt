@@ -1,0 +1,10 @@
+// Reduced from the pricing page's linked chunk. Parsed as evidence, never executed.
+(e) => {
+  let s = [{value:"standard",factor:1},{value:"batch",factor:.5},{value:"priority",factor:1.75}];
+  e.s(["pricingFactor",0,function(e,t){let i=t?1.1:1;return"priority"===e?1.75+(i-1):(s.find(t=>t.value===e)?.factor??1)*i}]);
+};
+function p({row:e,mode:n,regional:l,hideDenominator:h,currency:g,l:f}) {
+  let {model:x,isFree:b,isSelfHosted:v,input:w,cachedInput:y,output:k}=e,
+      j=(0,c.pricingFactor)(n,l), C=(e,i=1)=>{if(!e)return"—";return(0,u.i)(e.price*j*i,g)};
+  return [C(w),C(y),C(k)];
+}

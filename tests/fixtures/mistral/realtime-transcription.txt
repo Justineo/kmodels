@@ -1,0 +1,11 @@
+# Realtime transcription
+
+A session is a WebSocket connection to the realtime endpoint, with the model in the query string:
+
+```text
+wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=voxtral-mini-transcribe-realtime-3
+```
+
+| Event | Fields | Sent when |
+| --- | --- | --- |
+| `transcription.done` | `text`, `segments`, `language`, `model`, `usage` | After `input_audio.end`, once all the audio is transcribed. |
