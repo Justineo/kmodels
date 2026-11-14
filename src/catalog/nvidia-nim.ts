@@ -356,9 +356,10 @@ function apiCard(
   if (`${artifact.publisher}/${artifact.name}` !== slug || raw.artifactName !== artifact.name)
     return;
   if (!artifact.isPublic) return;
+  const attributes = parseSourceJson(raw.attributes, "NVIDIA endpoint attributes");
   const configuration = cardConfiguration.parse({
     artifactName: raw.artifactName,
-    attributes: parseSourceJson(raw.attributes, "NVIDIA endpoint attributes"),
+    attributes,
     openAPISpec:
       raw.openAPISpec == null || raw.openAPISpec.trim() === ""
         ? undefined
@@ -440,10 +441,7 @@ function apiCard(
       }
     }
   if (endpoints.length === 0 && z.uuid().safeParse(raw.nvcfFunctionId).success) {
-    const usage =
-      z
-        .object({ usage: z.string().optional() })
-        .parse(parseSourceJson(raw.attributes, "NVIDIA hosted usage")).usage ?? "";
+    const usage = z.object({ usage: z.string().optional() }).parse(attributes).usage ?? "";
     if (
       /--target\s+grpc\.nvcf\.nvidia\.com:443\b/u.test(usage) &&
       /--function-id\s+<%- nvcfFunctionId %>/u.test(usage)
@@ -475,15 +473,13 @@ export function parseNvidiaNimCards(input: SourceParseInput): ParsedProviderMode
   const bundle = linkedBundleSchema.parse(parseSourceJson(input.body, "NVIDIA model card bundle"));
   const documents = new Map(bundle.documents.map(({ url, body }) => [url, body]));
   const ids = new Set(hostedIds(bundle.index.body));
+  const buildUrl = nvidiaBuildUrl();
   const buildPages = bundle.documents.filter(({ url }) =>
-    url.startsWith(nvidiaBuildUrl().origin + nvidiaBuildUrl().pathname),
+    url.startsWith(buildUrl.origin + buildUrl.pathname),
   );
   const extraSlugs = buildPages.flatMap(({ body }, page) => nvidiaBuildPage(body, page).slugs);
   const native = new Map<string, ParsedProviderModel>();
-  for (const slug of new Set([
-    ...nvidiaNimCardUrls(bundle.index.body).map((url) => url.slice(buildOrigin.length + 1)),
-    ...extraSlugs,
-  ])) {
+  for (const slug of new Set([...[...ids].flatMap(candidateSlugs), ...extraSlugs])) {
     const name = slug.split("/")[1];
     const url = nvidiaEndpointBase + name;
     const metadata = documents.get(url),
