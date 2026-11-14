@@ -1457,7 +1457,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v52",
+        extractorVersion: "bedrock-catalog-v53",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1525,6 +1525,14 @@ export const manifests = [
               "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.md",
               1,
               "markdown",
+              true,
+            ],
+            [
+              "bedrock-model-regions",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md",
+              2,
+              "markdown",
+              true,
               true,
             ],
             [

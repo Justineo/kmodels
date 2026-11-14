@@ -297,6 +297,37 @@ It uses the standard AWS credential chain. Long-lived access keys require the ac
 secret; temporary credentials additionally require `AWS_SESSION_TOKEN`. Rejected or revoked
 credentials skip only this regional inventory overlay.
 
+The [model discovery guide](https://docs.aws.amazon.com/bedrock/latest/userguide/models-get-info.md)
+defines distinct Runtime and Mantle inventories. Runtime uses `ListFoundationModels` and
+`ListInferenceProfiles`; Mantle uses `/v1/models`, even when inference uses `/openai/v1`.
+The foundation API can include compatibility/deprecated IDs. Its lifecycle timestamps can enrich
+missing dates on exact public matches, but it contains no prices, context limits or complete
+cross-Region source lists. `GetFoundationModel` adds no tariff contract.
+The current read-only credentials successfully list foundation models, but model details, system
+inference profiles and SigV4 Mantle discovery return 403. This is an access limit, not an empty
+inventory or evidence that a model is unavailable. The three public Price List JSON feeds remain
+the full structured pricing acquisition; owned cards and exact public page rows qualify their gaps.
+
+GPT-6.1 Sol's [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.md)
+uses a Runtime `Scope` overview instead of repeating every source Region. This cannot discard its
+independent Mantle availability, literal request IDs or prices. The overview establishes routing
+support only. Its exact US profile's Source Region rows establish geographic availability, including
+the two Canadian source Regions; destination lists establish none. Global source Regions come from
+the card-linked [model-region matrix](https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md),
+now a bounded optional collection companion. Select the matrix block by the exact model-card link
+and its endpoint-qualified Global column. Never copy a sibling model's rows, a Geo source list or
+a destination list. Missing, duplicate, malformed or unlinked evidence withholds the affected Global
+rates as raw quotes while other model facts and independently scoped rates survive. Commercial
+Global rows do not grant GovCloud or China applicability.
+
+The card's `Regional (bedrock-mantle in US East (N. Virginia))`, `US CRIS (bedrock-runtime)` and
+`Global CRIS (bedrock-runtime)` labels supply the reviewed route qualifiers. Standard and Ultrafast
+retain their literal prices, exact 272K input-context boundary and sole 30-minute cache TTL. The
+stated premium and sixfold speed-tier multiplier are already included and are not applied again.
+The Runtime OpenAI-compatible base-URL statement owns `/openai/v1` operation paths. The pricing
+page now links frontier OpenAI models to their cards; an absent legacy literal table still emits
+its optional-overlay diagnostic and cannot remove prices collected from those cards.
+
 Claim-local accounting companions establish only calculator inputs, independently from the rate
 sources:
 

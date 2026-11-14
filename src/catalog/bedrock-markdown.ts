@@ -1,5 +1,5 @@
 import { bedrockProfileGeography, type BedrockEndpoint } from "./bedrock-model-ids.ts";
-import { markdownSection } from "./markdown.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 
 export function bedrockProgrammaticSection(body: string): string | undefined {
   return (
@@ -50,6 +50,75 @@ export function bedrockAvailabilityTable(body: string) {
 
 export function bedrockAvailabilitySupported(cell: string): boolean {
   return cell === "Supported" || (cell.includes("icon-yes.png") && !cell.includes("icon-no.png"));
+}
+
+// This overview states routing support, not a list of source or destination Regions.
+export function bedrockAvailabilityScope(body: string) {
+  const prose = markdownProse(body)
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n");
+  const table = markdownTable(prose, ["Scope", "In-Region", "Geo", "Global"]);
+  const row = table?.rows[0];
+  if (
+    table?.header.join("|") !== "Scope|In-Region|Geo|Global" ||
+    table.rows.length !== 1 ||
+    row?.[0] !== "US geographic and global inference" ||
+    bedrockAvailabilitySupported(row[1] ?? "")
+  )
+    return;
+  return {
+    geo: bedrockAvailabilitySupported(row[2] ?? ""),
+    global: bedrockAvailabilitySupported(row[3] ?? ""),
+  };
+}
+
+export function bedrockModelGlobalRegions(body: string, cardUrl: string): string[] | undefined {
+  const prose = markdownProse(body)
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n");
+  const headings = [
+    ...prose.matchAll(/^\*\*\[[^\n]+\]\((model-card-[a-z0-9-]+\.md)\)\*\*[ \t]*$/gm),
+  ];
+  const matches = headings.flatMap((heading, index) =>
+    new URL(
+      heading[1] ?? "",
+      "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md",
+    ).href === cardUrl
+      ? [prose.slice(heading.index + heading[0].length, headings[index + 1]?.index)]
+      : [],
+  );
+  if (matches.length !== 1 || matches[0] === undefined) return;
+  const headers = [
+    "Region",
+    "In-Region (bedrock-mantle)",
+    "In-Region (bedrock-runtime)",
+    "Geo (bedrock-runtime)",
+    "Global (bedrock-runtime)",
+  ];
+  let table: ReturnType<typeof markdownTable>;
+  try {
+    table = markdownTable(matches[0], headers);
+  } catch {
+    return;
+  }
+  if (
+    !table ||
+    table.header.join("|") !== headers.join("|") ||
+    table.rows.length === 0 ||
+    table.rows.length > 100
+  )
+    return;
+  const seen = new Set<string>();
+  const regions: string[] = [];
+  for (const row of table.rows) {
+    const region = row[0]?.match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
+    if (!region || seen.has(region)) return;
+    seen.add(region);
+    if (bedrockAvailabilitySupported(row[4] ?? "")) regions.push(region);
+  }
+  return regions;
 }
 
 function markdownCells(line: string): string[] {

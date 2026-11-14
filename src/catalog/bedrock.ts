@@ -5,6 +5,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import {
   bedrockAvailabilityBlocks,
   bedrockAvailabilitySupported,
+  bedrockAvailabilityScope,
+  bedrockModelGlobalRegions,
   bedrockAvailabilityTable,
   bedrockProgrammaticSection,
   bedrockRegionalSection,
@@ -411,7 +413,9 @@ function plain(value: string): string {
 }
 
 function fact(body: string, label: string): string | undefined {
-  return body.match(new RegExp(`^[-+*] \\*\\*${label}:\\*\\* ([^\\n]+)$`, "m"))?.[1]?.trim();
+  return body
+    .match(new RegExp(`^[-+*][ \\t]+\\*\\*${label}:\\*\\*[ \\t]+([^\\n]+)$`, "m"))?.[1]
+    ?.trim();
 }
 
 function humanDate(value: string): string | undefined {
@@ -948,9 +952,17 @@ function openAiCardRoute(
   | {
       conditions: SourcePriceFact["conditions"];
       regions: Array<{ region: string; inference_geo?: string }>;
+      unresolved?: boolean;
     }
   | undefined {
-  const match = option.match(
+  const routeLabel = option
+    .replace(
+      /^(?:Regional|In-Region) \(bedrock-mantle in (us-east-1|US East \(N\. Virginia\))\)$/,
+      "In-Region (us-east-1)",
+    )
+    .replace(/^Global CRIS \(bedrock-runtime\)$/, "Global CRIS")
+    .replace(/^([A-Za-z]+) CRIS \(bedrock-runtime\)$/, "$1 Geo CRIS");
+  const match = routeLabel.match(
     /^(In-Region|Mantle in-Region|Global CRIS|(?:([A-Za-z]+) )?Geo CRIS)(?: \(([^()]+)\))?$/,
   );
   if (match === null) return;
@@ -1008,6 +1020,19 @@ function openAiCardRoute(
     ...(geography === undefined ? {} : { inference_geo: geography }),
     ...(namedRegion === undefined ? {} : { region: namedRegion }),
   };
+  if (
+    scope === "global" &&
+    regions.length === 0 &&
+    billingRegions === undefined &&
+    access.deploymentTypes.has("global") &&
+    access.endpoints.has("bedrock-runtime")
+  ) {
+    const blocks = bedrockAvailabilityBlocks(cardProse(card.regionalSection ?? "")).filter(
+      (block) => block.endpoint === "bedrock-runtime",
+    );
+    if (blocks.length === 1 && bedrockAvailabilityScope(blocks[0]?.body ?? "")?.global)
+      return { conditions, regions: [], unresolved: true };
+  }
   if (scope !== "geo" || geographies.size === 1 || regions.length === 0)
     return { conditions, regions: regions.map((region) => ({ region })) };
 
@@ -1169,7 +1194,7 @@ function openAiModelCardPricing(
     for (const row of table.rows) {
       const option = row[table.header.indexOf("Inference option")] ?? "";
       const route = openAiCardRoute(card, access, option, profiles, billingRegions);
-      if (route?.regions.length === 0) {
+      if (route?.regions.length === 0 && route.unresolved !== true) {
         onPricingReconciliation?.({
           disposition: "excluded",
           reason_code: "model_card_price_route_not_applicable",
@@ -1189,6 +1214,7 @@ function openAiModelCardPricing(
         knownContext &&
         knownApi &&
         (match[1] !== undefined || standardOnly) &&
+        route?.unresolved !== true &&
         route !== undefined;
       for (const [columnIndex, column] of table.header.entries()) {
         if (column === "Inference option") continue;
@@ -1281,14 +1307,40 @@ function cardAvailability(
   content: string | undefined,
   observedAt: string,
   retired: boolean,
+  aliases: ReadonlySet<string>,
+  globalEvidence: { body: string; cardUrl: string } | undefined,
 ): BedrockAvailability[] {
   if (content === undefined) throw new Error("Bedrock model card omitted Regional Availability");
   const availability: BedrockAvailability[] = [];
   const expiredGeoRegions = new Set<string>();
   for (const block of bedrockAvailabilityBlocks(content)) {
     const table = bedrockAvailabilityTable(block.body);
-    if (table === undefined)
+    if (table === undefined) {
+      const scope =
+        block.endpoint === "bedrock-runtime" ? bedrockAvailabilityScope(block.body) : undefined;
+      if (scope !== undefined) {
+        const profiles = bedrockGeoProfiles(cardProse(block.body));
+        if (scope.geo)
+          for (const { region } of geoProfileSourceRegions(aliases, profiles, "us"))
+            availability.push({
+              region,
+              deploymentType: "geo",
+              programmaticEndpoint: "bedrock-runtime",
+            });
+        if (scope.global && globalEvidence !== undefined)
+          for (const region of bedrockModelGlobalRegions(
+            globalEvidence.body,
+            globalEvidence.cardUrl,
+          ) ?? [])
+            availability.push({
+              region,
+              deploymentType: "global",
+              programmaticEndpoint: "bedrock-runtime",
+            });
+        continue;
+      }
       throw new Error("Bedrock model card omitted its regional availability table");
+    }
     const columns = [
       ["in-region", table.inRegion],
       ["geo", table.geo],
@@ -1486,6 +1538,7 @@ function parseCard(
   url: string,
   observedAt: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+  compatibility?: string,
 ): Card {
   body = body.replaceAll("\r\n", "\n");
   const name = plain(body.match(/^# ([^\n]+)$/m)?.[1] ?? "");
@@ -1521,7 +1574,7 @@ function parseCard(
   const openAiMantleBase =
     /On `bedrock-mantle`, both APIs use the `\/openai\/v1` base path, not `\/v1`/.test(body);
   const openAiRuntimeBase =
-    /On `bedrock-runtime`, the base URL is ["`]?https:\/\/bedrock-runtime\.\{region\}\.amazonaws\.com\/openai\/v1/.test(
+    /On `bedrock-runtime`, the (?:OpenAI-compatible )?base URL is ["`]?https:\/\/bedrock-runtime\.\{region\}\.amazonaws\.com\/openai\/v1/.test(
       body,
     ) ||
     /Configure your client for the `bedrock-runtime` endpoint as follows:\s*\+ Use this base URL: `https:\/\/bedrock-runtime\.\{region\}\.amazonaws\.com\/openai\/v1`\./.test(
@@ -1570,7 +1623,12 @@ function parseCard(
   try {
     if (eol?.startsWith("Legacy:"))
       deprecatedAt = exactHumanDate(eol.slice("Legacy:".length).trim(), "legacy date");
-    else if (eol !== undefined && eol !== "N/A" && !eol.startsWith("No sooner than"))
+    else if (
+      eol !== undefined &&
+      eol !== "N/A" &&
+      eol !== "Not announced." &&
+      !eol.startsWith("No sooner than")
+    )
       retiredAt = exactHumanDate(eol, "EOL date");
   } catch {
     onPricingReconciliation?.({
@@ -1624,7 +1682,15 @@ function parseCard(
     ids: cardIds,
     modalities: cardSupport.modalities,
     apiEndpoints,
-    availability: cardAvailability(regionalSection, observedAt, status === "retired"),
+    availability: cardAvailability(
+      regionalSection,
+      observedAt,
+      status === "retired",
+      new Set([...cardIds.values()].flatMap((access) => [...access.aliases])),
+      compatibility !== undefined && regionalSection?.includes("](models-region-compatibility.md)")
+        ? { body: compatibility, cardUrl: url }
+        : undefined,
+    ),
     capabilities,
     limits,
     releaseDate,
@@ -3507,6 +3573,12 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
       sample: `Bedrock Mantle: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
+  const compatibility = bundle.documents.filter(
+    (document) =>
+      document.url ===
+      "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md",
+  );
+  const compatibilityBody = compatibility.length === 1 ? compatibility[0]?.body : undefined;
   const cards = bundle.documents
     .filter((document) => {
       const url = new URL(document.url);
@@ -3518,7 +3590,13 @@ export function parseBedrockCatalog(input: ParseInput): SourceParseResult {
     .flatMap((document): Card[] => {
       try {
         return [
-          parseCard(document.body, document.url, input.observedAt, input.onPricingReconciliation),
+          parseCard(
+            document.body,
+            document.url,
+            input.observedAt,
+            input.onPricingReconciliation,
+            compatibilityBody,
+          ),
         ];
       } catch (error) {
         input.onPricingReconciliation?.({

@@ -195,6 +195,81 @@ function lookup(candidate: CatalogPairCandidate) {
   );
 }
 
+it("collects Sol 6.1 card rates through lookup and the website without inventing global Regions", async () => {
+  const body = await fixture("bedrock/model-card-gpt61-sol.md");
+  const regional = await fixture("bedrock/model-regions-gpt61-sol.md");
+  const candidate = await collect((bundle) =>
+    bundle.documents.push(
+      { url: root + "userguide/model-card-openai-gpt-6-1-sol.md", body },
+      { url: root + "userguide/models-region-compatibility.md", body: regional },
+    ),
+  );
+  const query = lookup(candidate);
+  const model = candidate.catalog.models.find((m) => m.model_id === "openai.gpt-6.1-sol");
+  if (!model || !candidate.inference) throw new Error("Missing Sol 6.1");
+  const rows = websiteInferencePrices(
+    candidate.catalog,
+    candidate.pricing,
+    candidate.inference.mapping,
+  ).get(model.uid);
+  for (const [model_id, region, tier, meter, long, numerator, denominator] of [
+    ["global.openai.gpt-6.1-sol", "eu-central-1", "standard", "input_text", false, "1", "500000"],
+    [
+      "global.openai.gpt-6.1-sol",
+      "eu-central-1",
+      "ultrafast",
+      "cache_write_text",
+      true,
+      "3",
+      "100000",
+    ],
+    ["us.openai.gpt-6.1-sol", "ca-west-1", "standard", "input_text", false, "11", "5000000"],
+    ["us.openai.gpt-6.1-sol", "us-west-1", "ultrafast", "cache_write_text", false, "33", "2000000"],
+    ["openai.gpt-6.1-sol", "us-east-1", "ultrafast", "input_text", false, "33", "2500000"],
+  ] as const) {
+    const selectors: Selector[] = [
+      ...conditions.filter(
+        (s) =>
+          s.dimension.value !== "region" &&
+          s.dimension.value !== "service_tier" &&
+          s.dimension.value !== "context_tokens",
+      ),
+      ...(region ? [select("region", region)] : []),
+      select("service_tier", tier),
+      {
+        kind: "decimal",
+        dimension: { namespace: "kmodels", value: "context_tokens" },
+        value: long ? "272001" : "272000",
+        unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+      },
+    ];
+    const result = query({
+      provider_id: "amazon-bedrock",
+      model_id,
+      meter: { namespace: "kmodels", value: meter },
+      selectors,
+    });
+    expect(result.status, model_id).toBe("matched");
+    expect(
+      result.candidates.flatMap((c) =>
+        c.offer.terms.flatMap((t) =>
+          t.kind === "rate" ? t.variants.map((v) => v.price.value) : [],
+        ),
+      ),
+    ).toEqual([{ numerator, denominator }]);
+    const row = rows?.find((r) => r.model_id === model_id);
+    if (!row) throw new Error(`Missing website ID ${model_id}`);
+    expect(queryWebsiteInferencePrice(row, selectors, at).status).toBe("matched");
+  }
+  for (const [model_id, selectors] of [
+    ["openai.gpt-6.1-sol", [select("region", "us-east-2")]],
+    ["us.openai.gpt-6.1-sol", [select("region", "eu-central-1")]],
+  ] as const)
+    expect(
+      query({ provider_id: "amazon-bedrock", model_id, selectors: [...selectors] }).reason,
+    ).toBe("no_applicable_price");
+}, 20_000);
+
 it("repairs shared Geo tariffs across Anthropic profiles without borrowing another profile's source region", async () => {
   const reviewed = bundleSchema.parse(
     JSON.parse(await fixture("bedrock/anthropic-geo-pricing.json")),

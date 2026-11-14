@@ -58,6 +58,127 @@ function astra(result: ReturnType<typeof parse>) {
   return model;
 }
 describe("native Bedrock card tariffs", () => {
+  it("retains the Sol 6.1 scope overview and its independently owned source Regions", async () => {
+    const bundle = await nativeBundle();
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.md",
+      body: await readFile(
+        new URL("./fixtures/bedrock/model-card-gpt61-sol.md", import.meta.url),
+        "utf8",
+      ),
+    });
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md",
+      body: await readFile(
+        new URL("./fixtures/bedrock/model-regions-gpt61-sol.md", import.meta.url),
+        "utf8",
+      ),
+    });
+    const findings: PricingReconciliationItem[] = [];
+    const result = parse(bundle, findings);
+    const sol = result.models.find((model) => model.model_id === "openai.gpt-6.1-sol");
+    expect(sol?.price_facts).toHaveLength(608);
+    expect(sol?.raw_price_facts).toEqual([]);
+    expect(sol?.release_date).toBe("2026-09-29");
+    expect(sol?.limits).toMatchObject({ context_tokens: 1000000, max_output_tokens: 131072 });
+    expect(sol?.status).toBe("active");
+    expect(
+      sol?.availability
+        ?.filter((a) => a.deployment_type === "bedrock-runtime/geo")
+        .map((a) => a.region)
+        .sort(),
+    ).toEqual(["ca-central-1", "ca-west-1", "us-east-1", "us-east-2", "us-west-1", "us-west-2"]);
+    expect(
+      sol?.availability?.filter((a) => a.deployment_type === "bedrock-runtime/global"),
+    ).toHaveLength(31);
+    expect(
+      sol?.price_facts
+        .filter((f) => f.conditions.deployment_scope === "global_cross_region")
+        .every(
+          (f) => f.conditions.region !== undefined && !f.conditions.region.startsWith("us-gov-"),
+        ),
+    ).toBe(true);
+    expect(sol?.api_endpoints).toContainEqual({ name: "Responses", path: "openai/v1/responses" });
+    expect(sol?.api_endpoints?.some((api) => api.path === "v1/responses")).toBe(false);
+    expect(findings.filter((f) => f.reason_code === "model_card_unsupported")).toEqual([]);
+  });
+  it.each(["missing source rows", "foreign profile", "destination column"])(
+    "does not infer Sol geographic source Regions from %s",
+    async (change) => {
+      const bundle = await nativeBundle();
+      let body = await readFile(
+        new URL("./fixtures/bedrock/model-card-gpt61-sol.md", import.meta.url),
+        "utf8",
+      );
+      if (change === "missing source rows")
+        body = body.replace(/\n[^\n]*Geo inference details[^\n]*\n[\s\S]*/, "");
+      else if (change === "foreign profile")
+        body = body.replace(
+          "Geo inference ID: `us.openai.gpt-6.1-sol`",
+          "Geo inference ID: `us.unrelated-model`",
+        );
+      else body = body.replace("**Source Region**", "**Destination Region**");
+      bundle.documents.push({
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.md",
+        body,
+      });
+      const sol = parse(bundle).models.find((model) => model.model_id === "openai.gpt-6.1-sol");
+      expect(sol).toBeDefined();
+      expect(sol?.availability?.some((a) => a.deployment_type === "bedrock-runtime/geo")).toBe(
+        false,
+      );
+      expect(
+        sol?.price_facts.some((f) => f.conditions.deployment_scope === "geo_cross_region"),
+      ).toBe(false);
+      expect(sol?.price_facts.some((f) => f.conditions.endpoint === "bedrock-mantle")).toBe(true);
+      expect(sol?.raw_price_facts.some((f) => f.raw.label?.includes("Global CRIS"))).toBe(true);
+    },
+  );
+  it.each(["missing", "foreign", "duplicate", "malformed region", "unlinked"])(
+    "withholds Global source Regions from a %s compatibility matrix",
+    async (change) => {
+      const bundle = await nativeBundle();
+      let card = await readFile(
+        new URL("./fixtures/bedrock/model-card-gpt61-sol.md", import.meta.url),
+        "utf8",
+      );
+      let matrix = await readFile(
+        new URL("./fixtures/bedrock/model-regions-gpt61-sol.md", import.meta.url),
+        "utf8",
+      );
+      if (change === "foreign")
+        matrix = matrix.replaceAll(
+          "model-card-openai-gpt-6-1-sol.md",
+          "model-card-openai-gpt-6-1-terra.md",
+        );
+      if (change === "duplicate") matrix += matrix;
+      if (change === "malformed region")
+        matrix = matrix.replace("us-east-1 (N. Virginia)", "unknown-region");
+      if (change === "unlinked")
+        card = card.replace("](models-region-compatibility.md)", "](unreviewed.md)");
+      bundle.documents.push({
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.md",
+        body: card,
+      });
+      if (change !== "missing")
+        bundle.documents.push({
+          url: "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md",
+          body: matrix,
+        });
+      const sol = parse(bundle).models.find((model) => model.model_id === "openai.gpt-6.1-sol");
+      expect(sol).toBeDefined();
+      expect(sol?.availability?.some((a) => a.deployment_type === "bedrock-runtime/global")).toBe(
+        false,
+      );
+      expect(
+        sol?.price_facts.some((f) => f.conditions.deployment_scope === "global_cross_region"),
+      ).toBe(false);
+      expect(sol?.raw_price_facts.filter((f) => f.raw.label?.includes("Global CRIS"))).toHaveLength(
+        16,
+      );
+      expect(sol?.price_facts.some((f) => f.conditions.endpoint === "bedrock-mantle")).toBe(true);
+    },
+  );
   it("separates the Grok 4.7 commercial and GovCloud rates by region and tier", async () => {
     const bundle = await nativeBundle();
     bundle.documents.push({

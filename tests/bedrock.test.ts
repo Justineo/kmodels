@@ -588,7 +588,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v52");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v53");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,
@@ -599,6 +599,7 @@ describe("Bedrock adapters", () => {
       ["bedrock-invocation-cross-region", true, true],
       ["bedrock-mantle", true, undefined],
       ["bedrock-endpoint-regions", true, undefined],
+      ["bedrock-model-regions", true, true],
       ["bedrock-endpoints", true, undefined],
       ["bedrock-rerank-supported", true, undefined],
       ["bedrock-invocation-rerank-field", true, true],
