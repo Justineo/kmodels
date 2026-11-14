@@ -910,8 +910,11 @@ function validateModelIdentityContract(body: string, modelsListBody: string, inp
 
 function sectionProse(body: string, depth: number, heading: string): string {
   const content = markdownSection(body, depth, heading);
-  if (content === undefined) return "";
-  return markdownProse(content)
+  return content === undefined ? "" : ownedProse(content);
+}
+
+function ownedProse(body: string): string {
+  return markdownProse(body)
     .split(/\r?\n/)
     .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
     .join("\n");
@@ -1937,15 +1940,10 @@ function inferencePrices(
   models: readonly ProviderModel[],
   cards: readonly AnthropicModelCard[] = [],
 ): NonNullable<SourcePricingFacts["inference_prices"]> {
-  const owned = (body: string) =>
-    markdownProse(body)
-      .split(/\r?\n/)
-      .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
-      .join("\n");
   const identity = bundle.documents.find(({ url }) =>
     url.endsWith("/about-claude/models/model-ids-and-versions.md"),
   );
-  const meaning = owned(identity?.body ?? "");
+  const meaning = ownedProse(identity?.body ?? "");
   if (
     !meaning.includes("Each Claude model ID identifies a pinned version of the model.") ||
     !meaning.includes(
@@ -1958,7 +1956,7 @@ function inferencePrices(
   const guide = bundle.documents.find(({ url }) =>
     url.endsWith("/build-with-claude/batch-processing.md"),
   );
-  const batch = text(owned(guide?.body ?? ""));
+  const batch = text(ownedProse(guide?.body ?? ""));
   const batchIds =
     batch.includes("All active models support the Message Batches API.") &&
     batch.includes("A params object with the standard Messages API parameters");
@@ -1971,14 +1969,17 @@ function inferencePrices(
         url.endsWith("/about-claude/model-deprecations.md") ||
         url.endsWith("/release-notes/overview.md"),
     ),
-  ].map((document) => ({ document, ids: new Set(owned(document.body).split(/[^a-z0-9._:/-]+/i)) }));
+  ].map((document) => ({
+    document,
+    ids: new Set(ownedProse(document.body).split(/[^a-z0-9._:/-]+/i)),
+  }));
   identityDocuments.push(
     ...cards.map(({ model, document }) => ({ document, ids: new Set([model.model_id]) })),
   );
   // Read fresh labeled alias pairs; retained display aliases cannot revive a withdrawn price join.
   const aliases = new Map<string, Set<string>>();
   const aliasDocuments = new Map<string, { url: string; body: string }[]>();
-  for (const table of tables(owned(bundle.index.body)).filter(
+  for (const table of tables(ownedProse(bundle.index.body)).filter(
     ({ headers }) => headers[0] === "Feature",
   )) {
     const idRows = table.rows.filter((values) => values[0] === "Claude API ID");
@@ -2058,10 +2059,7 @@ export function parseAnthropicModelCards(input: Input): SourceParseResult {
   for (const document of bundle.documents) {
     if (!/^\/docs\/en\/models\/[a-z0-9-]+\/overview\.md$/.test(new URL(document.url).pathname))
       continue;
-    const body = markdownProse(document.body)
-      .split(/\r?\n/)
-      .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
-      .join("\n");
+    const body = ownedProse(document.body);
     const ids = [...body.matchAll(/^Model ID: `([^`]+)`[ \t]*$/gm)].map((match) => match[1]);
     const id = ids[0];
     const idTables = tables(sectionProse(body, 3, "Model IDs")).filter(
