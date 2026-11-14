@@ -48,6 +48,10 @@ All requests stay on the reviewed documentation host; linked content is not auto
 Authenticated `GET /v1/models` is account inventory and currently lists aliases, not an
 exhaustive versioned catalog. It is not needed to collect the public catalog. Third-party
 gateway IDs, prices and availability are not evidence for direct TypeSafe service.
+Authenticated acquisition with `JEV_API_KEY` confirms the `models` array contains `name`,
+`description` and `release_date`, with no rate fields. The two current alias dates differ;
+they cannot date the versioned target. The Models document owns the versioned release date
+and tariff. Do not make unconsumed alias metadata a refresh dependency.
 The public [homepage](https://typesafe.ai/) corroborates the USD denomination and the
 current input/free-output prices. Its workflow benchmarks and other providers' comparison
 prices are not direct TypeSafe tariffs. The [enterprise page](https://typesafe.ai/enterprise)
