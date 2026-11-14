@@ -96,6 +96,23 @@ async function fixture(): Promise<LinkedBundle> {
   const pricingPage = contributorFirst(landMarked(load(pricing.body)));
   pricingPage("main").append(ember.pricing);
   pricing.body = pricingPage.html();
+  const companions = linkedBundleSchema.shape.documents.parse(
+    JSON.parse(
+      await readFile(
+        new URL("./fixtures/meta/model-metadata-accounting.json", import.meta.url),
+        "utf8",
+      ),
+    ),
+  );
+  for (const companion of companions) {
+    const existing = bundle.documents.find(({ url }) => url === companion.url);
+    if (existing === undefined) bundle.documents.push(companion);
+    else {
+      const page = load(existing.body);
+      page("main").append(load(companion.body)("main").html() ?? "");
+      existing.body = page.html();
+    }
+  }
   return bundle;
 }
 async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
@@ -151,6 +168,214 @@ function prices(model_id: string, meter: string, candidate = baseline) {
     ),
   );
 }
+
+function bindings(model_id: string, meter: string, candidate = baseline) {
+  return lookup(candidate)({ provider_id: "meta", model_id }).candidates.flatMap(({ offer }) =>
+    offer.terms.flatMap((term) =>
+      term.kind === "rate" && term.meter.value === meter
+        ? term.variants.flatMap(({ charge_binding }) =>
+            charge_binding === undefined ? [] : [charge_binding],
+          )
+        : [],
+    ),
+  );
+}
+
+it("collects owned model specifications without copying version-specific effort to older models", () => {
+  const model = (id: string) => baseline.catalog.models.find(({ model_id }) => model_id === id);
+  expect(model("muse-wonder-1.0")).toMatchObject({
+    tasks: ["text_generation"],
+    modalities: { input: ["text", "image", "video", "audio", "pdf"], output: ["text"] },
+    limits: { context_tokens: 1048576 },
+    capabilities: {
+      reasoning: true,
+      effort_control: true,
+      tool_call: true,
+      structured_output: true,
+      streaming: true,
+      prompt_cache: true,
+    },
+  });
+  expect(model("muse-ember-1.0")).toMatchObject({
+    limits: { context_tokens: 1048576, max_output_tokens: 524288 },
+    capabilities: { reasoning: true, effort_control: true },
+  });
+  expect(model("muse-spark-1.3")?.capabilities.effort_control).toBe(true);
+  expect(model("muse-spark-1.2")?.capabilities.effort_control).toBe("unknown");
+  expect(model("muse-spark-1.3-contributor")?.capabilities.effort_control).toBe("unknown");
+  expect(model("sam-3.1")).toMatchObject({
+    tasks: ["segmentation"],
+    modalities: { input: ["text", "image", "video"] },
+    api_endpoints: [{ name: "Responses", path: "/v1/responses" }],
+  });
+  expect(baseline.catalog.models.every(({ release_date }) => release_date === undefined)).toBe(
+    true,
+  );
+});
+
+it("binds cached subsets and complete terminal usage without using usage totals for the context tier", () => {
+  const input = bindings("muse-spark-1.3", "input_text");
+  expect(input[0]?.quantity_methods).toHaveLength(2);
+  expect(
+    input[0]?.quantity_methods?.every(({ calculation }) =>
+      calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
+    ),
+  ).toBe(true);
+  const paths = input.flatMap(
+    ({ quantity_methods }) =>
+      quantity_methods?.flatMap(
+        ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+      ) ?? [],
+  );
+  expect(paths).toEqual(
+    expect.arrayContaining([
+      "/usage/input_tokens",
+      "/usage/prompt_tokens",
+      "/response/usage/input_tokens",
+      "/usage/prompt_tokens_details/cached_tokens",
+    ]),
+  );
+  expect(
+    input
+      .flatMap(
+        ({ quantity_methods }) =>
+          quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []) ?? [],
+      )
+      .every(({ absent_value }) => absent_value === undefined),
+  ).toBe(true);
+  const ember = lookup()({ provider_id: "meta", model_id: "muse-ember-1.0" });
+  expect(ember.missing_conditions).toContainEqual({
+    namespace: "kmodels",
+    value: "context_tokens",
+  });
+  expect(
+    ember.candidates
+      .flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate"
+            ? term.variants.flatMap(({ selector_sources }) => selector_sources ?? [])
+            : [],
+        ),
+      )
+      .filter(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "context_tokens",
+      ),
+  ).toEqual([]);
+});
+
+it("reads SAM billed counters and returned image arrays while leaving floored audio seconds caller-owned", () => {
+  for (const [meter, pointer] of [
+    ["input_image", "images_processed"],
+    ["input_video", "video_frames_processed"],
+  ]) {
+    const methods = bindings("sam-3.1", meter ?? "")[0]?.quantity_methods;
+    expect(methods?.flatMap(({ input_sources }) => input_sources ?? [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "response",
+          locator: { kind: "json_pointer", value: `/usage/${pointer}` },
+        }),
+        expect.objectContaining({
+          channel: "stream_event",
+          availability: "terminal_only",
+          locator: { kind: "json_pointer", value: `/response/usage/${pointer}` },
+        }),
+      ]),
+    );
+    expect(methods?.every(({ calculation }) => calculation === undefined)).toBe(true);
+  }
+  expect(
+    bindings("muse-image-1.0", "image_generation")[0]?.quantity_methods?.flatMap(
+      ({ input_sources }) => input_sources ?? [],
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      channel: "response",
+      locator: { kind: "json_pointer", value: "/data" },
+      reduction: { kind: "array_length" },
+    }),
+  ]);
+  expect(bindings("muse-voice-transcribe-1.0", "input_audio")[0]?.quantity_methods).toBeUndefined();
+  expect(prices("muse-image-1.0", "output_text")).toEqual([]);
+});
+
+it("withholds only a malformed native counter and keeps prices and independent protocols", async () => {
+  const candidate = await collect((bundle) => {
+    const doc = bundle.documents.find(({ url }) => url.endsWith("responses/schemas.md"));
+    if (!doc) throw Error("Missing response schema");
+    doc.body = doc.body.replace(
+      /(\| `input_tokens_details.cached_tokens`\s*\|\s*)`integer`/,
+      "$1`string`",
+    );
+  });
+  const paths = bindings("muse-spark-1.3", "input_text", candidate)[0]?.quantity_methods?.flatMap(
+    ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+  );
+  expect(paths).toContain("/usage/prompt_tokens");
+  expect(paths).toContain("/usage/input_tokens");
+  expect(paths).not.toContain("/usage/input_tokens_details/cached_tokens");
+  expect(paths).not.toContain("/response/usage/input_tokens_details/cached_tokens");
+  expect(prices("muse-spark-1.3", "input_text", candidate)).toEqual(
+    prices("muse-spark-1.3", "input_text"),
+  );
+  expect(bindings("sam-3.1", "input_video", candidate)[0]?.quantity_methods).toBeDefined();
+});
+
+it("requires the owned SSE union rather than an unrelated terminal event definition", async () => {
+  const candidate = await collect((bundle) => {
+    const doc = bundle.documents.find(({ url }) => url.endsWith("responses/schemas.md"));
+    if (!doc) throw Error("Missing response schema");
+    doc.body = doc.body.replace(
+      /(### Response Stream Wire Event[\s\S]*?)\[`ResponseCompletedEvent`\]\([^)]*\)/,
+      "$1`UnsupportedEvent`",
+    );
+  });
+  const sources = bindings(
+    "muse-spark-1.3",
+    "output_text",
+    candidate,
+  )[0]?.quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []);
+  expect(sources?.some(({ locator }) => locator.value.startsWith("/response/"))).toBe(false);
+  expect(
+    sources?.some(
+      ({ channel, locator }) => channel === "response" && locator.value === "/usage/output_tokens",
+    ),
+  ).toBe(true);
+});
+
+it("isolates missing and duplicate optional metadata while retaining exact identity and prices", async () => {
+  const candidate = await collect((bundle) => {
+    bundle.documents = bundle.documents.filter(({ url }) => !url.endsWith("/muse-ember"));
+    const cache = bundle.documents.find(({ url }) => url.endsWith("/prompt-caching.md"));
+    if (!cache) throw Error("Missing cache guide");
+    bundle.documents.push(cache);
+    const wonder = bundle.documents.find(({ url }) => url.endsWith("/muse-wonder"));
+    if (!wonder) throw Error("Missing Wonder");
+    const page = load(wonder.body);
+    const cell = page("#at-a-glance")
+      .nextUntil("h2,h3")
+      .find("tr")
+      .filter((_, node) => page(node).find("th,td").first().text() === "Endpoints")
+      .find("td")
+      .last();
+    cell.prepend("Unsupported ");
+    wonder.body = page.html();
+  });
+  expect(
+    candidate.catalog.models.find(({ model_id }) => model_id === "muse-ember-1.0")?.limits,
+  ).toEqual({});
+  expect(bindings("muse-spark-1.3", "input_text", candidate)[0]?.quantity_methods).toBeUndefined();
+  expect(bindings("muse-spark-1.3", "output_text", candidate)[0]?.quantity_methods).toBeDefined();
+  expect(
+    candidate.catalog.models
+      .find(({ model_id }) => model_id === "muse-wonder-1.0")
+      ?.api_endpoints?.some(({ path }) => path === "/v1/responses"),
+  ).toBe(false);
+  expect(prices("muse-ember-1.0", "input_text", candidate)).toEqual(
+    prices("muse-ember-1.0", "input_text"),
+  );
+});
 
 it("uses exact Standard and Contributor IDs without asking for a redundant pricing mode", () => {
   expect(baseline.catalog.providers).toMatchObject([

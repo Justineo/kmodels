@@ -63,7 +63,52 @@ unit, duplicate media meter, new unreviewed hosted line or changed accounting ru
 source for review. Association evidence links to the owning availability or overview section
 and the Model pricing heading. The rate observations link to their individual pricing sections.
 
-The price book binds caller-supplied billable quantities. It does not currently publish extraction
-formulas for all Model API response protocols. In particular, callers must supply uncached and
-cached input separately, floored audio seconds, and minimum-adjusted video frames. Country access
-restrictions describe availability. A regional tariff requires separate commercial evidence.
+## Discovery and model metadata
+
+The complete first-party `llms.txt` index supplies the model, API, billing and feature references.
+The documented Models API exposes only ID, owner, registry creation time and optional client-specific
+metadata. It has no tariff, modality, capability or model-limit fields. `MODEL_API_KEY` is its native
+credential name; without a configured key, its authentication failure cannot establish account
+availability. Registry creation time is not a model release date. The public hosted inventory and
+owned model pages remain the global authority, and open-weight Muse Spark Open and Muse Glimmer
+do not become Model API rows.
+
+Model metadata is read from the overview's exact-ID tables and the owned Wonder, Spark and Ember
+`At a glance` sections. It includes tasks, modalities, context and output limits, declared endpoints
+and positive use-case capabilities. Optional Ember acquisition and malformed individual fields do
+not reject unrelated identity or tariffs. Version-qualified effort ranges stay with the named ID;
+the Spark 1.3 range does not establish effort support for older or Contributor IDs. Spark's own
+versions section warns of degraded audio understanding on 1.3; listing an accepted audio input
+does not claim equal quality across versions. Unstated capabilities and release dates stay unknown.
+
+## Usage contracts
+
+Optional first-party endpoint Markdown and typed schemas own accounting fields independently of
+prices. Response ownership follows the HTTP 200 JSON type or the SSE wire union, then the terminal
+event and usage object. An unrelated schema or code example cannot establish a response counter.
+Missing, duplicate or malformed companions withhold only their dependent mappings.
+
+- Responses and Chat Completions expose total input, cached input and output counts for synchronous
+  responses and complete terminal events. The caching guide explicitly defines cached tokens as a
+  subset of total input. Uncached input therefore subtracts cached input, floored at zero. A
+  missing locator does not erase the known calculation or surviving locators; the caller supplies
+  an unmapped signal. Optional or absent fields do not imply zero. Messages usage is not assigned
+  either protocol's partition without its own semantic evidence.
+- SAM's typed Responses usage owns `images_processed` and `video_frames_processed`, including the
+  latter's already-billed 50-frame minimum. Synchronous and terminal SSE mappings use these counters
+  directly; raw video frame count does not substitute for the billed quantity.
+- The Images endpoints return an `ImagesResponse.data` array of generated images. Its length
+  supplies the successful returned-image quantity. Partial image events and token-usage fields do
+  not add image or token charges. Conversational Responses image counting remains caller-owned
+  because its output array mixes item types.
+- Voice transcription retains caller-supplied whole audio seconds. The native duration fields
+  report milliseconds, including cumulative streaming progress; dividing by 1,000 alone would
+  violate the published round-down rule. No such locator is advertised as billable seconds.
+- Text web search remains per billed query. A tool invocation or the number of search results
+  cannot substitute for a complete billable-query count.
+
+Ember's 200K condition remains caller-owned. Responses `input_tokens` can exclude reconstructed
+stored history or accumulate adjusted usage over hosted-tool iterations, so it cannot establish
+the model context used for the pricing tier. The preflight token-count API measures rendered
+context, not billed usage; no unused endpoint dependency is added. Country access restrictions
+describe availability, and a regional tariff requires separate commercial evidence.

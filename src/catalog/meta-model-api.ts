@@ -6,6 +6,8 @@ import type { ParsedProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import type { UsageSignal } from "./pricing-schema.ts";
 import { assertItemCount } from "./source-contract.ts";
+import { applyMetaModelMetadata } from "./meta-model-metadata.ts";
+import { bindMetaRates, extractMetaPricingInputs } from "./meta-accounting.ts";
 
 const modelsUrl = "https://dev.meta.ai/docs/models";
 const pricingUrl = "https://dev.meta.ai/docs/pricing-rate-limits";
@@ -444,8 +446,16 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     input.source.extractor.maxModels,
   );
   for (const item of models) if (item.price_facts.length > 0) item.pricing_state = "numeric";
+  applyMetaModelMetadata(bundle, models);
+  const pricingInputs = extractMetaPricingInputs(
+    bundle,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
+  bindMetaRates(bundle, models, pricingInputs);
   return {
     models,
+    pricing_inputs: pricingInputs,
     vocabulary: [
       {
         kind: "usage_signal",
