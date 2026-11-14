@@ -136,6 +136,7 @@ function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
   );
 }
 const commercialContext = computed(() => queryCommercial(commercialChoices.value));
+const availableCommercialChoices = computed(() => queryCommercial([]).available_choices);
 const commercialOptions = computed(() => {
   const fixed = automaticNativeSelections(commercialChoices.value, boundSelections.value);
   return commercialControlChoices(
@@ -167,7 +168,7 @@ const displayOffer = computed(() =>
 );
 function selectCommercial(choices: CommercialChoice[]): void {
   commercialChoices.value = retainCommercialChoices(commercialChoices.value, choices, (next) => {
-    const result = queryCommercial(next, {});
+    const result = queryCommercial(next);
     return (
       result.offer.rates.length > 0 ||
       result.offer.states.length > 0 ||
@@ -581,6 +582,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :prefix="offer.id"
       :inferred="commercialContext.fixed_choices"
       :choices="commercialOptions"
+      :available="availableCommercialChoices"
       :selected="commercialChoices"
       :selectors="rateSelectors"
       :inputs="inputs"

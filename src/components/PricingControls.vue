@@ -15,6 +15,7 @@ import PricingConditions from "./PricingConditions.vue";
 
 const props = defineProps<{
   choices: AvailableCommercialChoice[];
+  available?: readonly AvailableCommercialChoice[];
   selected: CommercialChoice[];
   prefix: string;
   inferred: readonly CommercialChoice[];
@@ -26,30 +27,42 @@ const emit = defineEmits<{
   change: [choices: CommercialChoice[]];
   input: [key: string, value: string];
 }>();
+function isAvailable(choice: CommercialChoice): boolean {
+  return (
+    props.available === undefined ||
+    props.available.some(
+      ({ dimension, value }) =>
+        dimension === choice.dimension && canonicalJson(value) === canonicalJson(choice.value),
+    )
+  );
+}
 const groups = computed(() =>
-  [...new Set(props.choices.map(({ dimension }) => dimension))].map((dimension) => {
-    const choices = props.choices.filter((choice) => choice.dimension === dimension);
-    const inferred = props.inferred.find((choice) => choice.dimension === dimension);
-    return {
-      dimension,
-      section: choices.some(
-        (choice) => choice.targets?.includes("offer") || choice.targets?.includes("book"),
-      )
-        ? "Plan"
-        : "Usage conditions",
-      label: commercialDimensionLabels[dimension],
-      description: commercialDefinitions[dimension],
-      selected: props.selected.find((choice) => choice.dimension === dimension) ?? inferred,
-      fixed: choices.length === 1 && inferred !== undefined,
-      options: choices.map(({ value }) => ({
-        value: canonicalJson(value),
-        label:
-          value.namespace === "kmodels"
-            ? commercialValueLabel(value.value)
-            : `${value.value} (${value.provider_id})`,
-      })),
-    };
-  }),
+  [...new Set(props.choices.filter(isAvailable).map(({ dimension }) => dimension))].map(
+    (dimension) => {
+      const choices = props.choices.filter((choice) => choice.dimension === dimension);
+      const inferred = props.inferred.find((choice) => choice.dimension === dimension);
+      return {
+        dimension,
+        section: choices.some(
+          (choice) => choice.targets?.includes("offer") || choice.targets?.includes("book"),
+        )
+          ? "Plan"
+          : "Usage conditions",
+        label: commercialDimensionLabels[dimension],
+        description: commercialDefinitions[dimension],
+        selected: props.selected.find((choice) => choice.dimension === dimension) ?? inferred,
+        fixed: choices.length === 1 && inferred !== undefined,
+        options: choices.map(({ value }) => ({
+          value: canonicalJson(value),
+          disabled: !isAvailable({ dimension, value }),
+          label:
+            value.namespace === "kmodels"
+              ? commercialValueLabel(value.value)
+              : `${value.value} (${value.provider_id})`,
+        })),
+      };
+    },
+  ),
 );
 const sections = computed(() =>
   ["Plan", "Usage conditions"]
@@ -75,6 +88,7 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
     (choice) => choice.dimension === dimension && canonicalJson(choice.value) === key,
   );
   const previous = props.selected.filter((choice) => choice.dimension !== dimension);
+  if (choice !== undefined && !isAvailable(choice)) return;
   emit("change", choice ? [...previous, { dimension, value: choice.value }] : previous);
 }
 </script>

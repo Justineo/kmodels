@@ -1,6 +1,7 @@
 import { createVaporApp, nextTick } from "vue";
 import PricingHarness from "./PricingHarness.vue";
 import type { PricingPerformanceCase } from "./pricing-fixture.ts";
+import { pricingTransitionAudit } from "./pricing-transitions.ts";
 import "../../src/tokens.css";
 
 const root = document.querySelector("#app");
@@ -16,7 +17,7 @@ function state() {
       value: select.value,
       options: [...select.options]
         .filter(({ value }) => value !== "")
-        .map(({ value, label }) => ({ value, label })),
+        .map(({ value, label, disabled }) => ({ value, label, disabled })),
     })),
   };
 }
@@ -28,6 +29,18 @@ async function settle(start: number) {
   return { update_ms, frame_ms: performance.now() - start, ...state() };
 }
 const benchmark = {
+  audit(
+    subject: PricingPerformanceCase,
+    mode: "inference" | "offer",
+  ): Promise<{
+    regions: number;
+    paths: number;
+    states: number;
+    transitions: number;
+    blocked: number;
+  }> {
+    return pricingTransitionAudit(benchmark, subject, mode);
+  },
   async mount(subject: PricingPerformanceCase, mode: "inference" | "offer") {
     app?.unmount();
     const start = performance.now();
@@ -39,7 +52,7 @@ const benchmark = {
     const select = document.getElementById(id);
     if (
       !(select instanceof HTMLSelectElement) ||
-      ![...select.options].some((option) => option.value === value)
+      ![...select.options].some((option) => option.value === value && !option.disabled)
     )
       throw new Error(`Unavailable option ${id}: ${value}`);
     const start = performance.now();

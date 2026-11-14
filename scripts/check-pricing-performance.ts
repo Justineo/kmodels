@@ -100,7 +100,7 @@ async function change(page: Page, state: State, suffix: string, label: string): 
     ({ id, label }) => id.endsWith(suffix) || label.toLowerCase() === suffix,
   );
   assert(control, `Missing control ${suffix}: ${JSON.stringify(state.controls)}`);
-  const option = control.options.find((value) => value.label === label);
+  const option = control.options.find((value) => value.label === label && !value.disabled);
   assert(option, `Missing ${label} option in ${suffix}`);
   return page.evaluate(({ id, value }) => window.pricingBenchmark.select(id, value), {
     id: control.id,
@@ -185,6 +185,7 @@ async function measure(
           const next = state.controls
             .flatMap((control) =>
               control.options
+                .filter(({ disabled }) => !disabled)
                 .slice(0, 2)
                 .map((option) => ({ id: control.id, control: control.label, ...option })),
             )
@@ -258,6 +259,25 @@ try {
   browser = await chromium.launch({ headless: true });
   for (const mode of ["inference", "offer"] as const)
     await measure(pricingPerformanceFixture(), mode, true, origin);
+  const page = await browser.newPage();
+  const transitionErrors: string[] = [];
+  page.on("pageerror", (error) => transitionErrors.push(error.message));
+  await page.goto(`${origin}/tests/performance/index.html`);
+  for (const mode of ["inference", "offer"] as const) {
+    try {
+      const transitions = await page.evaluate(
+        ({ subject, mode }) => window.pricingBenchmark.audit(subject, mode),
+        { subject: pricingPerformanceFixture(4, true), mode },
+      );
+      assert.deepEqual(transitionErrors, [], "Browser errors invalidate transition results");
+      reports.push({ name: `regional-transitions/${mode}`, ...transitions });
+      console.log(JSON.stringify({ name: `regional-transitions/${mode}`, ...transitions }));
+    } catch (error) {
+      await page.screenshot({ path: join(dirname(reportPath), `failure-transitions-${mode}.png`) });
+      throw error;
+    }
+  }
+  await page.close();
   if (!process.argv.includes("--fixture-only")) {
     const catalog = await catalogCases();
     reports.push({

@@ -5,6 +5,7 @@ import UiIcon from "./UiIcon.vue";
 interface SelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 const props = defineProps<{
@@ -26,7 +27,12 @@ const selectedOption = computed(() =>
         <slot name="placeholder-prefix"></slot>
         <span class="ui-select-option-label">{{ placeholder }}</span>
       </option>
-      <option v-for="option in options" :key="option.value" :value="option.value">
+      <option
+        v-for="option in options"
+        :key="option.value"
+        :value="option.value"
+        :disabled="option.disabled"
+      >
         <slot name="option-prefix" :option="option"></slot>
         <span class="ui-select-option-label">{{ option.label }}</span>
       </option>
@@ -126,6 +132,10 @@ const selectedOption = computed(() =>
 .ui-select option:checked {
   color: var(--color-accent);
   background: var(--color-accent-soft);
+}
+
+.ui-select option:disabled {
+  color: var(--color-text-muted);
 }
 
 .ui-select option::checkmark {

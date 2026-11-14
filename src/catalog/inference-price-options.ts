@@ -10,14 +10,20 @@ import type {
 import { canonicalJsonKey } from "./canonical-value.ts";
 import { evaluatePricingCondition, type PricingSelection } from "./pricing-applicability.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
-import type { CommercialChoice, PriceCondition, PublishedValidity } from "./pricing-schema.ts";
+import type {
+  CommercialChoice,
+  PriceApplicability,
+  PriceCondition,
+  PublishedValidity,
+} from "./pricing-schema.ts";
 import {
   fixedCommercialChoices,
   fixedPricingSelections,
-  pricingSelection,
+  filterPricingSelectorValues,
 } from "./pricing-selector-input.ts";
 import {
   commercialBranchesCoverScopes,
+  intersectCommercialScope,
   resolveCommercialChoices,
   type AvailableCommercialChoice,
 } from "../pricing/commercial-matching.ts";
@@ -93,7 +99,7 @@ export function inferencePriceOptions(
     required.flatMap((option) => ("values" in option ? [canonicalJsonKey(option.dimension)] : [])),
   );
   if (dimensions.size === 0) return required;
-  const indexes = indexCurrentChoices(data, initial, dimensions, evaluatedAt);
+  const indexes = indexCurrentChoices(data, initial, dimensions, evaluatedAt, choices);
   const isAvailable = (selection: PricingSelection) => {
     if (indexes !== undefined) return indexes.some((matches) => matches(selection));
     const { reason } = matchInferencePrices(
@@ -106,19 +112,11 @@ export function inferencePriceOptions(
     );
     return reason !== "incompatible_conditions" && reason !== "no_applicable_price";
   };
-  return required.flatMap<WebsitePricingSelector>((option) =>
-    "values" in option ? retainAvailableValues(option, isAvailable) : [option],
-  );
-}
-
-function retainAvailableValues<
-  Option extends Extract<WebsitePricingSelector, { values: unknown[] }>,
->(option: Option, isAvailable: (selection: PricingSelection) => boolean): Option[] {
-  const values = option.values.filter((value) => {
-    const selection = pricingSelection(option, typeof value === "string" ? value : value.key);
-    return selection !== undefined && isAvailable(selection);
+  return required.flatMap<WebsitePricingSelector>((option) => {
+    if (!("values" in option)) return [option];
+    const filtered = filterPricingSelectorValues(option, isAvailable);
+    return filtered.values.length === 0 ? [] : [filtered];
   });
-  return values.length === 0 ? [] : [{ ...option, values }];
 }
 
 function indexCurrentChoices(
@@ -126,6 +124,7 @@ function indexCurrentChoices(
   initial: InferenceMatchResult,
   dimensions: ReadonlySet<string>,
   evaluatedAt: string,
+  choices: readonly CommercialChoice[],
 ): Array<(selection: PricingSelection) => boolean> | undefined {
   // A time gap can change whether a surviving row counts as price evidence.
   if (
@@ -152,7 +151,17 @@ function indexCurrentChoices(
       offer.terms.some(hasTimeGap)
     )
       return;
-    const matches = indexOfferChoices(offer, candidate, dimensions);
+    const branches = resolveCommercialChoices(
+      offer,
+      candidate.selectors,
+      choices,
+      evaluatedAt,
+      data.observed_at,
+    ).branches;
+    const scopes = Array.from(inferenceCandidateScopes(offer, candidate)).flatMap((price) =>
+      branches.flatMap(({ scope }) => intersectCommercialScope(price, scope) ?? []),
+    );
+    const matches = indexOfferChoices(scopes, candidate, dimensions);
     if (matches === undefined) return;
     indexes.push(matches);
   }
@@ -184,7 +193,7 @@ export function* inferenceCandidateScopes(
 }
 
 function indexOfferChoices(
-  offer: InferenceMatchOffer,
+  scopes: Iterable<PriceApplicability>,
   candidate: InferenceMatchCandidate,
   dimensions: ReadonlySet<string>,
 ): ((selection: PricingSelection) => boolean) | undefined {
@@ -193,7 +202,7 @@ function indexOfferChoices(
   );
   const domains = new Map<string, ChoiceDomain>();
   let clauses = 0;
-  for (const scope of inferenceCandidateScopes(offer, candidate)) {
+  for (const scope of scopes) {
     for (const { all_of } of scope.any_of) {
       if (
         all_of.some(

@@ -37,7 +37,10 @@ function category(
 }
 
 /** Fixed scale and correlated scopes reproduce the regression without volatile provider prices. */
-export function pricingPerformanceFixture(regionCount = 24): PricingPerformanceCase {
+export function pricingPerformanceFixture(
+  regionCount = 24,
+  diverseRegions = false,
+): PricingPerformanceCase {
   const modelRef = "fixture/regional-model";
   const offerId = "a".repeat(64);
   const inputId = "b".repeat(64);
@@ -49,8 +52,18 @@ export function pricingPerformanceFixture(regionCount = 24): PricingPerformanceC
     [commercialChoice("service_tier", "priority")],
     [commercialChoice("service_tier", "flex")],
   ];
-  const contexts = regions.flatMap((region) =>
-    modes.map((choices) => {
+  const contexts = regions.flatMap((region, regionIndex) =>
+    modes.flatMap((mode, modeIndex) => {
+      // Both speeds, Standard only, unmapped speed, and no Standard tier.
+      if (
+        diverseRegions &&
+        ((regionIndex % 4 === 3 && modeIndex < 2) || (regionIndex % 4 !== 0 && modeIndex === 1))
+      )
+        return [];
+      const choices =
+        diverseRegions && regionIndex % 4 === 2
+          ? mode.filter(({ dimension }) => dimension !== "speed")
+          : mode;
       const bindings = choices.map(({ dimension, value }) =>
         category(dimension === "speed" ? "speed" : "service_tier", value.value),
       );
@@ -59,7 +72,7 @@ export function pricingPerformanceFixture(regionCount = 24): PricingPerformanceC
           { all_of: [category("region", region), category("execution", "request"), ...bindings] },
         ],
       };
-      return { choices, applicability };
+      return [{ choices, applicability }];
     }),
   );
   const ttl: PriceCondition = {
@@ -75,14 +88,19 @@ export function pricingPerformanceFixture(regionCount = 24): PricingPerformanceC
   }));
   const cacheVariants = contexts.map(({ applicability }, semantics) => ({
     applicability: {
-      any_of: applicability.any_of.map(({ all_of }) => ({ all_of: [...all_of, ttl] })),
+      any_of: applicability.any_of.map(({ all_of }) => ({
+        all_of: [
+          ...all_of.filter(({ dimension }) => !diverseRegions || dimension.value !== "speed"),
+          ttl,
+        ],
+      })),
     },
     semantics,
   }));
   const claims = contexts.flatMap(({ choices, applicability }, i) => {
     const cached = cacheVariants[i];
     if (cached === undefined) throw new Error("Missing fixture cache variant");
-    return [applicability, cached.applicability].flatMap((scope) =>
+    return [applicability, ...(diverseRegions ? [] : [cached.applicability])].flatMap((scope) =>
       [...choices, commercialChoice("execution", "request")].map((choice) => ({
         dimension: choice.dimension,
         target: "condition" as const,

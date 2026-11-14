@@ -12,8 +12,84 @@ import type { CommercialChoice } from "../src/catalog/pricing-schema.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import { renderComponent } from "./render-component.ts";
 import type { InferenceMatchData } from "../src/pricing/inference-matching-schema.ts";
+import { commercialChoice, pricingPerformanceFixture } from "./performance/pricing-fixture.ts";
+import { pricingSelection } from "../src/catalog/pricing-selector-input.ts";
+import { queryWebsiteCommercialOffer } from "../src/catalog/website-commercial-query.ts";
+
+it("indexes the intersection of price and commercial scope, including rates without Speed", () => {
+  const subject = pricingPerformanceFixture(4, true);
+  const price = subject.prices[0];
+  if (!price?.matching || !price.pricing_options) throw new Error("Missing fixture pricing");
+  for (const [speed, expected] of [
+    ["standard", ["region-0", "region-1"]],
+    ["optimized", ["region-0"]],
+  ] as const) {
+    const choices = [commercialChoice("speed", speed)];
+    const initial = matchInferencePrices(price.matching, [], at, undefined, undefined, choices);
+    const options = inferencePriceOptions(
+      price.matching,
+      initial,
+      price.pricing_options,
+      at,
+      undefined,
+      choices,
+    );
+    const region = options.find(({ dimension }) => dimension.value === "region");
+    if (region?.kind !== "categorical") throw new Error("Missing Region selector");
+    expect(region.values.map(({ label }) => label)).toEqual(expected);
+    const offer = subject.offers[0];
+    if (!offer) throw new Error("Missing fixture offer");
+    const projected = queryWebsiteCommercialOffer(offer, [], choices, at).offer;
+    const projectedRegion = projected.selectors.find(
+      ({ dimension }) => dimension.value === "region",
+    );
+    expect(
+      projectedRegion?.kind === "categorical" && projectedRegion.values.map(({ label }) => label),
+    ).toEqual(expected);
+    for (const value of region.values) {
+      const selection = pricingSelection(region, value.key);
+      if (!selection) throw new Error("Missing Region selection");
+      expect(
+        matchInferencePrices(price.matching, [selection], at, undefined, undefined, choices).reason,
+      ).not.toBe("no_applicable_price");
+    }
+  }
+});
 
 const at = "2026-10-30T00:00:00.000Z";
+
+it("keeps scoped raw price evidence in the offer selector domain", () => {
+  const offer = pricingPerformanceFixture(4, true).offers[0];
+  if (!offer) throw new Error("Missing fixture offer");
+  offer.rates = offer.rates.slice(0, 1);
+  offer.unnormalized = [
+    {
+      key: "unknown-rate",
+      label: "Unmapped regional price",
+      reason: "Other",
+      impact: "base_price",
+      possible_scope: {
+        any_of: [
+          {
+            all_of: [
+              {
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: "region" },
+                values: [{ namespace: "kmodels", value: "region-2" }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ];
+  const projected = queryWebsiteCommercialOffer(offer, [], [], at).offer;
+  const region = projected.selectors.find(({ dimension }) => dimension.value === "region");
+  expect(region?.kind === "categorical" && region.values.map(({ label }) => label)).toEqual([
+    "region-0",
+    "region-2",
+  ]);
+});
 const boundary = "2026-10-31T00:00:00.000Z";
 const after = "2026-11-01T00:00:00.000Z";
 const dimension = { namespace: "kmodels", value: "region" } as const;

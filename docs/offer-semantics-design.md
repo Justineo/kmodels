@@ -133,6 +133,10 @@ Automatic selection and fixed presentation are separate decisions. A commercial 
 alternatives for the selected subject keeps an edit control even if another choice temporarily
 leaves one applicable value. Inferred values fill that control without entering explicit-choice
 state. Both selection orders must preserve the same editing paths in inference and resource views.
+Explicit native inputs constrain commercial availability without narrowing the native control's
+own domain. Incompatible commercial alternatives are disabled, and dimensions with no applicable
+alternative disappear. Resource projections preserve the intersection of each retained row and its
+commercial scope; retaining an unqualified cache row must not widen a Speed's regional coverage.
 The shared `optimized` speed value displays as **Latency optimized** in canonical controls,
 native selectors, fixed scope and condition annotations. Raw identifiers and source evidence retain
 `optimized`; display formatting does not change price matching or reinterpret other dimensions.

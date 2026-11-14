@@ -235,6 +235,12 @@ one value by other choices. Only the former becomes fixed scope. The latter can 
 but keeps its original alternatives in an editable control. Editing that control replaces
 incompatible explicit choices; inferred values are never copied into the explicit-choice state.
 The same effective tier/speed combination must have the same controls regardless of selection order.
+Commercial alternatives are additionally constrained by explicit native inputs such as Region,
+independently of other commercial choices. Alternatives excluded by those native inputs are disabled;
+a dimension with no applicable alternative is hidden. Editing a commercial field can replace an
+incompatible commercial choice, but must not silently clear a selected native Region. Native option
+domains use the intersection of price evidence and the selected commercial scope, so a selectable
+Region cannot lead to an empty match just because a sibling cache tariff omits Speed.
 Fixed scope uses descriptive text without form-control borders or dropdown arrows. Multiple scoped
 rate qualifier values remain explicit choices and share one Usage conditions fieldset and grid with native
 selectors such as context and endpoint. Canonical mapping does not create a separate UI category.
@@ -277,7 +283,8 @@ are sufficient for that decision; the website receives no copied prices, account
 audit evidence. Existing offer projections supply every displayed amount. Selected variant indexes
 identify their corresponding rows, preserving conflicts even when formatted amounts look equal.
 The inspector evaluates its immutable matching data directly. When the selected ID and plan need
-finite choices, it indexes only compatible clauses from their current candidate rows and only
+finite choices, it intersects current candidate row scopes with resolved commercial branches, then
+indexes only compatible clauses and only
 dimensions that need those choices. Categorical options use set membership, while numeric choices
 reuse the exact predicates. A compatible clause that omits a dimension admits all its published
 options. The inspector checks individual options with the shared matcher when validity gaps or

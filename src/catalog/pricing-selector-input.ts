@@ -141,6 +141,18 @@ export function retainPricingInputs(
   );
 }
 
+export function filterPricingSelectorValues<
+  Selector extends Extract<WebsitePricingSelector, { values: unknown[] }>,
+>(selector: Selector, accepts: (selection: PricingSelection) => boolean): Selector {
+  return {
+    ...selector,
+    values: selector.values.filter((value) => {
+      const selection = pricingSelection(selector, typeof value === "string" ? value : value.key);
+      return selection !== undefined && accepts(selection);
+    }),
+  };
+}
+
 export function isIntegerSelector(selector: WebsitePricingSelector): boolean {
   return isWholeNumberDimension(selector.dimension);
 }

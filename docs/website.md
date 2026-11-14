@@ -219,12 +219,14 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   Changing any condition preserves other selections whose meaning and applicable domain survive.
   The edited value takes precedence over conflicting earlier choices; there are no field-name reset
   lists. This rule applies to both model and provider-resource pricing, including plan and offer
-  changes. Inapplicable values are removed individually. Speed labels performance classes such as
+  changes. Native inputs such as Region constrain commercial alternatives: excluded alternatives
+  are disabled, and a dimension with no applicable alternative is hidden. Native option domains
+  intersect the surviving prices with the selected commercial scope. Speed labels performance classes such as
   Standard/Fast; Service tier labels service classes such as Standard/Priority/Flex. Requested and
   billed service tiers remain distinct when the provider distinguishes them.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A categorical dimension, exact decimal selector, or decimal bucket with one
-  possible value resolves internally and appears as a read-only field in the condition grid.
+  possible value in its unselected domain resolves internally and appears as descriptive Price scope.
   A categorical selector whose values carry a recurring daily or weekly billing rule exposes one
   compact UTC rule disclosure below the control. Its values render as separated marker rows rather
   than an undifferentiated text list. Selecting a value highlights its row and filters rates; the

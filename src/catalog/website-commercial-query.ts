@@ -9,7 +9,7 @@ import {
   type AvailableCommercialChoice,
 } from "../pricing/commercial-matching.ts";
 import type { InferenceMatchOffer } from "../pricing/inference-matching-schema.ts";
-import { fixedCommercialChoices } from "./pricing-selector-input.ts";
+import { fixedCommercialChoices, filterPricingSelectorValues } from "./pricing-selector-input.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 
 /** Resource and fallback offer controls use the same canonical-to-native resolver as ID lookup. */
@@ -70,6 +70,38 @@ export function queryWebsiteCommercialOffer(
       branch.selectors.some((other) => canonicalJson(other) === canonicalJson(selector)),
     ),
   ) ?? [...supplied];
+  // Retaining a row must also retain the scope that made it applicable. A cache
+  // tariff without Speed cannot widen a selected Speed's regional coverage.
+  function projectRows<T extends { applicability: PriceApplicability }>(rows: readonly T[]): T[] {
+    return rows.flatMap((row) => {
+      const scopes = resolved.branches.flatMap((branch) => {
+        const scope = intersectCommercialScope(row.applicability, branch.scope);
+        return scope !== undefined &&
+          evaluateApplicability(scope, branch.selectors).state !== "false"
+          ? [scope]
+          : [];
+      });
+      if (scopes.length === 0) return [];
+      if (scopes.includes(row.applicability)) return [row];
+      return [
+        {
+          ...row,
+          applicability: { any_of: uniqueCanonicalValues(scopes.flatMap(({ any_of }) => any_of)) },
+        },
+      ];
+    });
+  }
+  const rates = projectRows(offer.rates);
+  const states = projectRows(offer.states);
+  const priceScopes = [
+    ...rates,
+    ...states.filter(({ state }) => state !== "numeric" || offer.rates.length === 0),
+    ...projectRows(
+      offer.unnormalized.map(({ possible_scope }) => ({
+        applicability: possible_scope ?? unconditionalApplicability,
+      })),
+    ),
+  ];
   return {
     available_choices: available,
     fixed_choices: fixedCommercialChoices(available, [offer.id]).filter((choice) => {
@@ -98,10 +130,19 @@ export function queryWebsiteCommercialOffer(
     selectors,
     offer: {
       ...offer,
-      rates: offer.rates.filter(({ applicability }) => applicable(applicability)),
-      states: offer.states.filter(({ applicability }) => applicable(applicability)),
-      allowances: offer.allowances.filter(({ applicability }) => applicable(applicability)),
-      contributions: offer.contributions.filter(({ applicability }) => applicable(applicability)),
+      selectors: offer.selectors.map((selector) => {
+        if (!("values" in selector)) return selector;
+        return filterPricingSelectorValues(selector, (selection) =>
+          priceScopes.some(
+            ({ applicability }) =>
+              evaluateApplicability(applicability, [selection]).state !== "false",
+          ),
+        );
+      }),
+      rates,
+      states,
+      allowances: projectRows(offer.allowances),
+      contributions: projectRows(offer.contributions),
     },
   };
 }

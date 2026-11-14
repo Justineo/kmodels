@@ -152,6 +152,13 @@ tariffs to match, incompatible Speed to disappear, and Region to remain editable
 The offer control domain excludes user-entered native selections: those selections filter rates,
 not the controls needed to change them. A declared singleton still renders as fixed scope.
 
+A second four-region fixture varies commercial coverage: both speeds, Standard speed only,
+unmapped speed, and no Standard tier. Cache rows omit Speed to exercise commercial/price scope
+intersection. Both components run all 216 initial selection paths (including unset Speed) and all
+enabled edits and clears from the reachable rendered states. Assertions reject empty price matches
+and commercial edits that discard Region. This deterministic graph complements the fixed performance
+workload; uniform regional tariffs alone cannot detect availability regressions.
+
 Browser budgets are 750 ms for cold mount, 150 ms for first selection, and 50 ms median / 100 ms
 P95 for each interaction separately. Timing covers event dispatch, matching, Vue updates and forced
 layout; the next animation-frame delay is recorded separately, not treated as paint completion.
