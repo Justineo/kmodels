@@ -10,6 +10,7 @@ import { sha256 } from "../src/catalog/io.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 import { sourceFailure } from "../src/catalog/source-failure.ts";
+import { fireworksBundle } from "./fireworks-fixture.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -17,6 +18,51 @@ const transport = vi.hoisted(() => {
   const calls: string[] = [];
   return { failures, responses, calls };
 });
+
+it.each(["complete", "profile failure"])(
+  "requires bounded Fireworks console evidence: %s",
+  async (scenario) => {
+    const source = reviewedPublicSource("fireworks-serverless");
+    transport.responses.set(
+      "fireworks.ai",
+      [
+        fireworksBundle.index,
+        ...fireworksBundle.documents.filter(({ url }) => new URL(url).hostname === "fireworks.ai"),
+      ].map(({ body }) => `HTTP/1.1 200 OK\r\n\r\n${body}`),
+    );
+    transport.responses.set(
+      "app.fireworks.ai",
+      fireworksBundle.documents
+        .filter(({ url }) => new URL(url).hostname === "app.fireworks.ai")
+        .map(({ body }) =>
+          scenario === "complete"
+            ? `HTTP/1.1 200 OK\r\n\r\n${body}`
+            : "HTTP/1.1 404 Not Found\r\n\r\nmissing",
+        ),
+    );
+    const result = fetchSource({
+      ...source,
+      linkedDocuments: {
+        path: /^\/models\/[a-z0-9._-]+\/[a-z0-9._-]+\/$/u,
+        minDocuments: 1,
+        maxDocuments: 100,
+        concurrency: 1,
+      },
+    });
+    if (scenario === "profile failure") await expect(result).rejects.toThrow();
+    else {
+      const fetched = await result;
+      const bundle = JSON.parse(fetched.body);
+      expect(
+        bundle.documents.filter(
+          (document: { url: string }) => new URL(document.url).hostname === "app.fireworks.ai",
+        ),
+      ).toHaveLength(4);
+      expect(fetched.dependencies.filter(({ key }) => key.includes("/console/"))).toHaveLength(4);
+      expect(transport.calls.some((url) => url.includes("dedicated-only"))).toBe(false);
+    }
+  },
+);
 
 it.each(["complete", "card failure"])(
   "acquires missing Together cache price cards with %s evidence",

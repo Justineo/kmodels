@@ -91,6 +91,7 @@ network:
     - docs.cohere.com
     - docs.databricks.com
     - docs.fireworks.ai
+    - app.fireworks.ai
     - docs.mistral.ai
     - docs.ollama.com
     - docs.together.ai

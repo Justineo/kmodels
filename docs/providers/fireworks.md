@@ -22,6 +22,38 @@ publisher from the structured listing and the description from the matching card
 [media guide](https://docs.fireworks.ai/guides/video-audio-inputs) supplies video input for
 its exact documented Serverless ID. The collection requires no account credential.
 
+The anonymous [model console](https://app.fireworks.ai/models/fireworks/glm-5p3) is a
+required price companion for every admitted library card. Its server-rendered price widget
+publishes typed Serverless modes, exact invocation recipes and SKU amounts. Follow only the
+card's literal API identity, with bounded profiles, bytes and concurrency. Read genuine React
+Flight element properties, skip byte-counted text records, and validate each mode's owner.
+`usageIdentifier` supplies the literal request ID; an empty value means the card's model ID.
+`serviceTier` supplies the request flag. Do not infer router IDs from suffixes or admit
+unrendered aliases. Preserve independently documented IDs and tariffs when a console mode
+is omitted. A required profile failure rejects the fresh price partition.
+
+The [List Models API schema](https://docs.fireworks.ai/api-reference/list-models) documents
+that `ServerlessMode.skuInfos` is populated live from billing by `ListServerlessModels`,
+rather than by ordinary List Models. The evaluated management and inference model-list
+endpoints require a bearer key; the specialized method has no reviewed public REST route.
+The anonymous console exposes the consumed mode prices without credentials, so collection
+uses that first-party structured fallback. API field definitions establish the invocation
+recipe; public library flags and exact cards establish Serverless admission.
+
+Normalize USD `1M tokens` SKU amounts from exact Money units and nanos, including Flight's
+`$n` integer encoding. Input, cached input, output and retrieval-input labels own their
+respective meters. Keep unknown units or SKU labels as scoped raw evidence; an empty price
+list is not a free rate. Console prices can supply missing Priority rates and separately
+invoked Spot or decision routers. Preserve conflicting positive quotes for shared conflict
+resolution. System One decision routes never produce output tokens: their zero output SKU
+is non-applicable. Copy the evidenced decision endpoint to its literal router identity.
+
+A tariff row alone does not establish hosted availability. The price book currently lists
+`accounts/fireworks/models/gpt-oss-120b` and
+`accounts/fireworks/models/nemotron-3-ultra-nvfp4`, while the library explicitly disables
+both Serverless flags and their console pages offer Dedicated only. Retain these as unbound
+price reconciliation findings; do not create active Serverless records from those rows.
+
 The [Serverless price book](https://docs.fireworks.ai/serverless/pricing) supplies exact
 Standard and Priority rates. Priority is a service-tier selector for the same identifier.
 Fast, Ultra-fast and US-only variants with a distinct ID require an exact match in the

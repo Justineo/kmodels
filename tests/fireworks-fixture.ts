@@ -63,9 +63,47 @@ export function card(
   };
 }
 
+export function consoleProfile(id: string, modes: unknown[] = []) {
+  const parts = id.split("/");
+  const record = ["$", "$L57", null, { model: "$25:1:props:model", serverlessModes: modes }];
+  return {
+    url: `https://app.fireworks.ai/models/${parts[1]}/${parts[3]}`,
+    body: `<script>self.__next_f.push(${JSON.stringify([1, `55:${JSON.stringify(record)}\n`])})</script>`,
+  };
+}
+
+export function consoleMode(
+  id: string,
+  mode: string,
+  target: string,
+  tier: string,
+  prices: readonly [number, number, number],
+) {
+  return {
+    $typeName: "gateway.ServerlessMode",
+    name: `${id}/serverlessModes/${mode}`,
+    usageIdentifier: target,
+    serviceTier: tier,
+    skuInfos: ["LLM input tokens (uncached)", "LLM input tokens (cached)", "LLM output tokens"].map(
+      (sku, index) => ({
+        $typeName: "gateway.SKUInfo",
+        sku,
+        unit: "1M tokens",
+        amount: {
+          $typeName: "google.type.Money",
+          currencyCode: "USD",
+          units: "$n0",
+          nanos: prices[index],
+        },
+      }),
+    ),
+  };
+}
+
 export const fireworksBundle = {
   index,
   documents: [
+    ...[chatId, decisionId, embeddingId, rerankerId].map((id) => consoleProfile(id)),
     card(chatSlug, chatId, "Example"),
     card("fireworks/decide", decisionId, "Decide"),
     card(embeddingAlias, embeddingId, "Example Embedding", { price: "$0.1" }),

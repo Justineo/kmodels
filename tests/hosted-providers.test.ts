@@ -17,10 +17,14 @@ import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { togetherNextLibraryPage } from "../src/catalog/together-metadata.ts";
+import { fireworksConsoleModes } from "../src/catalog/fireworks-console.ts";
+import { fireworksFlightRecords } from "../src/catalog/fireworks-flight.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import {
   chatId,
   chatSlug,
+  consoleMode,
+  consoleProfile,
   decisionId,
   embeddingAlias,
   embeddingId,
@@ -582,6 +586,195 @@ describe("Together AI Serverless", () => {
 });
 
 describe("Fireworks AI Serverless", () => {
+  it("reads the native console price widget without interpreting Flight text as records", async () => {
+    const id = "accounts/fireworks/models/minimax-m3p1-flash";
+    const body = await readFile(
+      new URL("./fixtures/fireworks/minimax-console.html.txt", import.meta.url),
+      "utf8",
+    );
+    expect(fireworksConsoleModes(body, id)[0]).toMatchObject({
+      serviceTier: "priority",
+      skuInfos: [
+        { amount: { units: "$n0", nanos: 225000000 } },
+        { amount: { units: "$n0", nanos: 900000000 } },
+        { amount: { units: "$n0", nanos: 22500000 } },
+      ],
+    });
+    const fake = '\n55:["$","$L57",null,{"model":"$25:1","serverlessModes":[]}]\n中文';
+    const text = `a:T${Buffer.byteLength(fake).toString(16)},${fake}`;
+    const frames = [text.slice(0, 28), text.slice(28)]
+      .map((chunk) => `<script>self.__next_f.push(${JSON.stringify([1, chunk])})</script>`)
+      .join("");
+    expect(fireworksFlightRecords(frames)).toEqual([]);
+    expect(() => fireworksConsoleModes(frames, id)).toThrow(/unique price widget/);
+    expect(() => fireworksFlightRecords(frames.replace("a:T", "a:Tffff"))).toThrow(/truncated/);
+  });
+
+  function consoleBundle() {
+    const spot = "accounts/fireworks/routers/example-spot";
+    const decision = "accounts/fireworks/routers/decide";
+    const bundle = structuredClone(fireworksBundle);
+    bundle.documents = bundle.documents.map((document) => {
+      if (document.url === consoleProfile(chatId).url)
+        return consoleProfile(chatId, [
+          consoleMode(chatId, "priority", "", "priority", [225000000, 22500000, 900000000]),
+          consoleMode(chatId, "spot", spot, "", [700000000, 140000000, 210000000]),
+        ]);
+      if (document.url === consoleProfile(decisionId).url)
+        return consoleProfile(decisionId, [
+          consoleMode(decisionId, "default", decision, "", [42000000, 8400000, 0]),
+        ]);
+      return { ...document, body: document.body.replace("$2 / $0.4 / $6", "—") };
+    });
+    return { bundle, spot, decision };
+  }
+
+  it("collects exact console modes through canonical lookup and website projection", async () => {
+    const { bundle, spot, decision } = consoleBundle();
+    const parsed = parse("fireworks", JSON.stringify(bundle));
+    expect(parsed.models.find(({ model_id }) => model_id === chatId)?.price_facts).toContainEqual(
+      expect.objectContaining({ price: "0.225", conditions: { service_tier: "priority" } }),
+    );
+    expect(parsed.models.find(({ model_id }) => model_id === `${chatId}-spot`)).toBeDefined();
+    expect(parsed.models.find(({ model_id }) => model_id === decision)).toMatchObject({
+      service_families: ["System One"],
+      api_endpoints: [{ path: "/inference/v1/systemone" }],
+      price_facts: [
+        { meter: "input_text", price: "0.042" },
+        { meter: "cache_read_text", price: "0.0084" },
+      ],
+    });
+    const manifest = providerManifest("fireworks");
+    if (manifest.notConfiguredReason !== undefined)
+      throw new Error("Missing Fireworks configuration");
+    vi.mocked(fetchSource).mockResolvedValue(payload(JSON.stringify(bundle)));
+    const result = await collectProvider(manifest, undefined, { sources: {} }, observedAt);
+    const pricing = result.pricing;
+    if (!pricing) throw new Error(JSON.stringify(result.attempt));
+    const candidate = compileInferencePriceMapping(
+      prepareCatalogPair(
+        {
+          catalog_version: "1".repeat(64),
+          generated_at: observedAt,
+          providers: [result.provider],
+          models: result.models,
+          sources: result.sources,
+          coverage: [result.coverage],
+          warnings: result.warnings,
+        },
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+      ),
+      result.inferencePriceSources ?? [],
+    );
+    const lookup = createInferencePriceLookup(
+      priceDataExport(candidate.catalog, candidate.pricing),
+      candidate.inference?.mapping,
+    );
+    expect(lookup({ provider_id: "fireworks", model_id: spot }).status).toBe("matched");
+    const answer = lookup({
+      provider_id: "fireworks",
+      model_id: chatId,
+      choices: [
+        {
+          dimension: "service_tier",
+          value: { namespace: "kmodels", value: "priority" },
+        },
+      ],
+    });
+    expect(answer.status).toBe("matched");
+    expect(
+      answer.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "input_text"
+            ? term.variants.map(({ price }) => price.value)
+            : [],
+        ),
+    ).toEqual([{ numerator: "9", denominator: "40000000" }]);
+    const projection = await projectCatalogPair(candidate);
+    const details = projection.ui.manifest.assets
+      .filter(({ file_name }) => file_name.includes("/details/"))
+      .flatMap((asset) =>
+        websiteDetailChunkSchema
+          .parse(
+            JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
+          )
+          .details.map(restoreWebsiteInferenceDetail),
+      );
+    const price = details
+      .find(({ model_ref }) => model_ref === `fireworks/${spot}`)
+      ?.inference_prices?.find(({ model_id }) => model_id === spot);
+    if (!price) throw new Error("Missing console router in website");
+    expect(queryWebsiteInferencePrice(price, [], observedAt).status).toBe("matched");
+    expect(
+      lookup({ provider_id: "fireworks", model_id: "accounts/fireworks/models/dedicated-only" })
+        .status,
+    ).toBe("unknown");
+  });
+
+  it.each([
+    "foreign owner",
+    "wrong request ID",
+    "duplicate recipe",
+    "unknown unit",
+    "unknown SKU",
+    "empty prices",
+    "conflicting price",
+    "omitted profile",
+  ])("preserves the price boundary for %s", (scenario) => {
+    const { bundle } = consoleBundle();
+    const profile = bundle.documents.find(({ url }) => url === consoleProfile(chatId).url);
+    if (!profile) throw new Error("Missing fixture profile");
+    if (scenario === "omitted profile")
+      bundle.documents = bundle.documents.filter((document) => document !== profile);
+    else {
+      const modes = fireworksConsoleModes(profile.body, chatId);
+      const mode = modes[0];
+      if (!mode) throw new Error("Missing mode");
+      if (scenario === "foreign owner") mode.name = mode.name.replace(chatId, decisionId);
+      if (scenario === "wrong request ID") mode.usageIdentifier = "guessed-model";
+      if (scenario === "duplicate recipe") modes.push(mode);
+      if (scenario === "empty prices") {
+        mode.usageIdentifier = "accounts/fireworks/routers/unpriced";
+        mode.skuInfos = [];
+      }
+      if (scenario === "unknown unit") for (const sku of mode.skuInfos) sku.unit = "GPU hour";
+      if (scenario === "unknown SKU")
+        for (const sku of mode.skuInfos) sku.sku = `Unreviewed ${sku.sku}`;
+      if (scenario === "conflicting price") {
+        mode.serviceTier = "";
+        mode.name = `${chatId}/serverlessModes/default`;
+      }
+      Object.assign(profile, consoleProfile(chatId, modes));
+    }
+    if (
+      ["foreign owner", "wrong request ID", "duplicate recipe", "omitted profile"].includes(
+        scenario,
+      )
+    )
+      expect(() => parse("fireworks", JSON.stringify(bundle))).toThrow();
+    else {
+      const models = parse("fireworks", JSON.stringify(bundle)).models;
+      const model = models.find(
+        ({ model_id }) =>
+          model_id ===
+          (scenario === "empty prices" ? "accounts/fireworks/routers/unpriced" : chatId),
+      );
+      if (scenario === "conflicting price")
+        expect(
+          model?.price_facts
+            .filter(({ meter }) => meter === "input_text")
+            .map(({ price }) => price),
+        ).toEqual(["1", "0.225"]);
+      else expect(model?.raw_price_facts.length).toBeGreaterThan(0);
+    }
+  });
+
   it("discovers eligible cards and preserves published model and router identities", () => {
     const source = providerManifest("fireworks").sources[0];
     if (source === undefined) throw new Error("Missing Fireworks source");
@@ -671,7 +864,12 @@ describe("Fireworks AI Serverless", () => {
   });
 
   it("rejects an incomplete card crawl", () => {
-    const incomplete = { ...fireworksBundle, documents: fireworksBundle.documents.slice(1) };
+    const incomplete = {
+      ...fireworksBundle,
+      documents: fireworksBundle.documents.filter(
+        ({ url }) => url !== `${fireworksRoot}/${chatSlug}/`,
+      ),
+    };
     expect(() => parse("fireworks", JSON.stringify(incomplete))).toThrow(
       /omitted a serverless model card/,
     );

@@ -248,6 +248,7 @@ export interface SourceManifest {
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
     | { kind: "together-model-library"; catalogUrl: string }
     | { kind: "together-serverless" }
+    | { kind: "fireworks-serverless" }
     | {
         kind: "vercel-models";
         modelPageBaseUrl: string;
@@ -621,7 +622,8 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "fireworks-serverless" },
-        extractorVersion: "fireworks-serverless-v4",
+        extractorVersion: "fireworks-serverless-v5",
+        transport: { kind: "fireworks-serverless" },
         fields: [
           "model_id",
           "name",
@@ -639,7 +641,7 @@ export const manifests = [
           "pricing",
         ],
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
-        allowedHosts: ["fireworks.ai", "docs.fireworks.ai"],
+        allowedHosts: ["fireworks.ai", "docs.fireworks.ai", "app.fireworks.ai"],
         maxResponseBytes: mebibytes(32),
         scope: "global",
         exhaustive: false,

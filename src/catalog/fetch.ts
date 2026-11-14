@@ -3,7 +3,7 @@ import { createSign } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
-import { fireworksModelPaths } from "./fireworks.ts";
+import { fireworksConsoleTargets, fireworksModelPaths } from "./fireworks.ts";
 import { nvidiaNimCardUrls } from "./nvidia-nim.ts";
 import { togetherCatalogIds, togetherMissingCacheIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
@@ -1726,6 +1726,39 @@ async function fetchTogetherServerless(source: SourceManifest): Promise<FetchRes
   };
 }
 
+async function fetchFireworksServerless(source: SourceManifest): Promise<FetchResult> {
+  const { transport: _transport, ...documentsSource } = source;
+  const documents = await fetchSource(documentsSource);
+  const bundle = linkedBundleSchema.parse(json(documents.body));
+  const targets = fireworksConsoleTargets(bundle);
+  assertItemCount("Fireworks console profiles", targets.length, 1, 100);
+  const profiles = await mapConcurrent(targets, 4, async ({ url }) => {
+    const key = `${source.id}/console/${sha256(url)}`;
+    const payload = await fetchPayload(
+      requestSource(source, key, checkedUrl(url, source), "html", 4 * 1024 * 1024),
+    );
+    return { key, url, payload };
+  });
+  const body = JSON.stringify({
+    ...bundle,
+    documents: [
+      ...bundle.documents,
+      ...profiles.map(({ url, payload }) => ({ url, body: payload.body })),
+    ],
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Fireworks pricing evidence exceeded aggregate byte limit");
+  return {
+    ...documents,
+    body,
+    contentHash: sha256(body),
+    dependencies: [
+      ...documents.dependencies,
+      ...profiles.map(({ key, payload }) => observation(key, payload)),
+    ],
+  };
+}
+
 async function fetchConfiguredDocuments(
   source: SourceManifest,
   label: string,
@@ -2731,6 +2764,7 @@ export async function fetchSource(
 ): Promise<FetchResult> {
   if (source.transport?.kind === "dashscope-pricing") return fetchDashscopePricing(source);
   if (source.transport?.kind === "together-serverless") return fetchTogetherServerless(source);
+  if (source.transport?.kind === "fireworks-serverless") return fetchFireworksServerless(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {

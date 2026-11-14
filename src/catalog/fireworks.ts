@@ -1,11 +1,24 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import type { LinkedBundle } from "./bundle.ts";
+import {
+  fireworksConsoleModes,
+  fireworksConsoleUrl,
+  fireworksPublicId,
+} from "./fireworks-console.ts";
+import { fireworksFlightRecords } from "./fireworks-flight.ts";
 import { hostedInferencePrice, hostedUsageRate, usdAmount } from "./hosted-usage-rate.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownSection, markdownTableRows } from "./markdown.ts";
 import { baseModel } from "./model.ts";
-import { publishedRate, rawPricingFact, wholeTokenCount } from "./pricing.ts";
+import {
+  decimalsEqual,
+  publishedRate,
+  rawPricingFact,
+  scaleDecimal,
+  wholeTokenCount,
+} from "./pricing.ts";
 import type { ParsedProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertSourceConstraint, parseSourceJson } from "./source-contract.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
@@ -18,16 +31,13 @@ const hostedEntry = z.object({
   supportsImageInput: z.boolean(),
   provider: z.object({ company: z.object({ name: z.string().trim().min(1).max(2048) }) }).nullish(),
 });
-const flightFrame = z.tuple([z.literal(1), z.string()]);
 const libraryFrame = z.tuple([
   z.literal("$"),
   z.string(),
   z.null(),
   z.object({ models: z.array(z.unknown()).min(1).max(5_000) }),
 ]);
-const publicId = modelIdSchema.refine((id) =>
-  /^accounts\/[^/]+\/(?:models|routers)\/[^/]+$/u.test(id),
-);
+const publicId = fireworksPublicId;
 const libraryOrigin = "https://fireworks.ai";
 const chatPath = "/inference/v1/chat/completions";
 const tokenUnit = "USD per 1M tokens";
@@ -39,23 +49,10 @@ function documentedId(value: string | undefined): string {
 }
 
 function libraryEntries(body: string) {
-  const $ = load(body);
   const lists: unknown[][] = [];
-  for (const script of $("script").toArray()) {
-    const frame = $(script)
-      .text()
-      .trim()
-      .match(/^self\.__next_f\.push\((\[1,"(?:[^"\\]|\\.)*"\])\);?$/su)?.[1];
-    if (frame === undefined) continue;
-    const chunk = flightFrame.parse(parseSourceJson(frame, "Fireworks library frame"))[1];
-    for (const line of chunk.split("\n")) {
-      if (!/^[a-f0-9]+:\["\$","\$L[^"]+",null,\{"models":/u.test(line)) continue;
-      lists.push(
-        libraryFrame.parse(
-          parseSourceJson(line.slice(line.indexOf(":") + 1), "Fireworks library inventory"),
-        )[3].models,
-      );
-    }
+  for (const record of fireworksFlightRecords(body)) {
+    const frame = libraryFrame.safeParse(record);
+    if (frame.success) lists.push(frame.data[3].models);
   }
   const rows = lists[0];
   assertSourceConstraint(
@@ -77,6 +74,156 @@ function libraryEntries(body: string) {
 
 export function fireworksModelPaths(body: string): string[] {
   return libraryEntries(body).map(({ slug }) => `/models/${slug}/`);
+}
+
+export function fireworksConsoleTargets(bundle: LinkedBundle): { id: string; url: string }[] {
+  return fireworksModelPaths(bundle.index.body).map((path) => {
+    const document = bundle.documents.find(({ url }) => url === libraryOrigin + path);
+    assertSourceConstraint(
+      "Fireworks bundle omitted a serverless model card",
+      document !== undefined,
+      path,
+    );
+    const $ = load(document.body);
+    const id = publicId.parse($('button[aria-label="Copy model path"]').prev("span").text().trim());
+    return { id, url: fireworksConsoleUrl(id) };
+  });
+}
+
+function addConsolePrices(
+  input: SourceParseInput,
+  models: Map<string, ParsedProviderModel>,
+  bundle: LinkedBundle,
+): void {
+  for (const { id, url } of fireworksConsoleTargets(bundle)) {
+    const base = models.get(id);
+    const document = bundle.documents.find((item) => item.url === url);
+    assertSourceConstraint(
+      "Fireworks bundle omitted a required console profile",
+      base !== undefined && document !== undefined,
+      id,
+    );
+    const modes = fireworksConsoleModes(document.body, id);
+    for (const mode of modes) {
+      const target = mode.usageIdentifier || id;
+      let model = models.get(target);
+      if (model === undefined) {
+        model = {
+          ...base,
+          ...baseModel({
+            providerId: input.provider.id,
+            id: target,
+            name: `${base.name} (${mode.name.split("/").at(-1)})`,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          }),
+          status: "active",
+          tasks: base.tasks,
+          modalities: base.modalities,
+          capabilities: base.capabilities,
+          limits: base.limits,
+          ...(base.service_families === undefined
+            ? {}
+            : { service_families: base.service_families }),
+          ...(base.api_endpoints === undefined ? {} : { api_endpoints: base.api_endpoints }),
+        };
+        models.set(target, model);
+      }
+      const hasTiers =
+        modes.some((item) => (item.usageIdentifier || id) === target && item.serviceTier !== "") ||
+        model.price_facts.some((fact) => fact.conditions.service_tier !== undefined);
+      if (hasTiers)
+        for (const fact of model.price_facts) fact.conditions.service_tier ??= "standard";
+      const conditions = hasTiers ? { service_tier: mode.serviceTier || "standard" } : {};
+      const unknown = (
+        fragment: string,
+        reason:
+          | "unknown_amount"
+          | "unknown_meter"
+          | "unknown_unit"
+          | "unknown_denomination" = "unknown_meter",
+      ) =>
+        model.raw_price_facts.push(
+          rawPricingFact(
+            input.source.id,
+            "serverless",
+            "base_price",
+            reason,
+            { fragment },
+            conditions,
+          ),
+        );
+      if (
+        mode.skuInfos.length === 0 &&
+        !model.price_facts.some((fact) => fact.conditions.service_tier === conditions.service_tier)
+      )
+        unknown(JSON.stringify(mode), "unknown_amount");
+      const skus = new Set<string>();
+      for (const sku of mode.skuInfos) {
+        assertSourceConstraint("Fireworks mode repeated a SKU", !skus.has(sku.sku), mode.name);
+        skus.add(sku.sku);
+        const amount = scaleDecimal(
+          (
+            BigInt(sku.amount.units.replace(/^\$n/u, "")) * 1_000_000_000n +
+            BigInt(sku.amount.nanos)
+          ).toString(),
+          -9,
+        );
+        const meter =
+          sku.sku === "LLM input tokens (uncached)"
+            ? "input_text"
+            : sku.sku === "LLM input tokens (cached)"
+              ? "cache_read_text"
+              : sku.sku === "LLM output tokens"
+                ? "output_text"
+                : sku.sku === "Embedding input tokens" &&
+                    (model.tasks.includes("embeddings") || model.tasks.includes("reranking"))
+                  ? "input_text"
+                  : undefined;
+        if (meter === undefined || sku.unit !== "1M tokens" || sku.amount.currencyCode !== "USD") {
+          unknown(
+            JSON.stringify({ mode: mode.name, ...sku }),
+            meter === undefined
+              ? "unknown_meter"
+              : sku.unit !== "1M tokens"
+                ? "unknown_unit"
+                : "unknown_denomination",
+          );
+          continue;
+        }
+        if (meter === "output_text" && model.service_families?.includes("System One")) {
+          assertSourceConstraint(
+            "Fireworks decision model published a nonzero output charge",
+            amount === "0",
+            target,
+          );
+          continue;
+        }
+        const rate = hostedUsageRate(
+          publishedRate(meter, amount, "million_tokens", input.source.id, tokenUnit, conditions),
+          { kind: "provider_key", value: `${url}#${mode.name}/${sku.sku}` },
+          meter === "output_text"
+            ? "output_tokens"
+            : meter === "cache_read_text"
+              ? "cached_input_tokens"
+              : sku.sku === "Embedding input tokens"
+                ? "input_tokens"
+                : "uncached_input_tokens",
+        );
+        if (
+          !model.price_facts.some(
+            (fact) =>
+              fact.meter === meter &&
+              fact.unit === rate.unit &&
+              fact.currency === rate.currency &&
+              decimalsEqual(fact.price, amount) &&
+              fact.conditions.service_tier === conditions.service_tier,
+          )
+        )
+          model.price_facts.push(rate);
+      }
+    }
+  }
 }
 
 function requiredSection(body: string, depth: number, name: string, ignoreCase = false): string {
@@ -561,6 +708,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   const retrieval = docs("querying-embeddings-models", "guides");
   addLegacyEmbeddings(input, models, retrieval, pricing);
   bindRetrievalAliases(models, retrieval);
+  addConsolePrices(input, models, bundle);
   for (const model of models.values())
     if (model.price_facts.length > 0) model.pricing_state = "numeric";
   const published = [...models.values()];
