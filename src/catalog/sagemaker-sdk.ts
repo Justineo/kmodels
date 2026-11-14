@@ -250,7 +250,6 @@ export function parseSagemakerSdk(input: SourceParseInput): SourceParseResult {
       model.deployment = row.deployment;
       model.modalities = { input: row.input, output: row.output };
       model.capabilities.fine_tuning = row.fine_tuning ?? "unknown";
-      model.tasks = [...new Set(row.tasks.flatMap((task) => sagemakerTasks(row.id, task)))];
       model.task_evidence = row.tasks.flatMap((label) =>
         sagemakerTasks(row.id, label).map((task) => ({
           task,
@@ -260,6 +259,7 @@ export function parseSagemakerSdk(input: SourceParseInput): SourceParseResult {
           kind: "provider_task" as const,
         })),
       );
+      model.tasks = [...new Set(model.task_evidence.map(({ task }) => task))];
       const generativeCategory = sagemakerGenerativeCategory(row.tasks);
       if (generativeCategory !== undefined) {
         if (!model.tasks.includes("text_generation")) model.tasks.push("text_generation");
