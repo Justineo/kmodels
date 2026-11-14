@@ -60,6 +60,7 @@ const apiItemSchema = z.object({
   is_deprecated: z.boolean().optional(),
   endpoints: z.array(z.string().min(1)).optional(),
   context_length: z.number().int().nonnegative().optional(),
+  features: z.unknown().optional(),
 });
 const apiSchema = z.object({
   models: z.array(z.unknown()).min(1),
@@ -1775,6 +1776,16 @@ export function parseCohereApi(input: Input): SourceParseResult {
   });
   const unknownEndpoints = new Set<string>();
   const models: ProviderModel[] = items.map((item) => {
+    const nativeFeatures = z.array(z.unknown()).nullish().safeParse(item.features);
+    if (!nativeFeatures.success || nativeFeatures.data?.some((value) => typeof value !== "string"))
+      input.onContractFinding?.(contractExtensionEvidence(["/models/*/features"]));
+    const features = new Set(nativeFeatures.success ? (nativeFeatures.data ?? []) : []);
+    const capabilities = unknownCapabilities();
+    if (features.has("tools")) capabilities.tool_call = true;
+    if (features.has("json_schema") || features.has("json_mode"))
+      capabilities.structured_output = true;
+    if (features.has("reasoning")) capabilities.reasoning = true;
+    if (features.has("citations")) capabilities.citations = true;
     const facts = (item.endpoints ?? []).flatMap((endpoint) => {
       const parsed = endpointSchema.safeParse(endpoint);
       if (!parsed.success) {
@@ -1798,6 +1809,8 @@ export function parseCohereApi(input: Input): SourceParseResult {
         observedAt: input.observedAt,
       }),
       tasks,
+      capabilities,
+      modalities: { input: features.has("vision") ? ["image"] : [], output: [] },
       api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
       limits:
         item.context_length === undefined || item.context_length === 0

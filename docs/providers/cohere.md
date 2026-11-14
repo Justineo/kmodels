@@ -76,6 +76,21 @@ or another exact non-numeric price state. Absence of a separate price is unknown
   corroboration and cannot create global models, prices, or accounting contracts. Enable it with
   `COHERE_API_KEY`.
 
+The paginated Models API and its model-detail counterpart expose the same model metadata schema,
+without public tariffs. Its positive `features` values supplement exact public matches: `tools`,
+`json_mode`/`json_schema`, `reasoning`, `citations`, and `vision` establish their respective
+capabilities or image input. Missing, null or empty features remain unknown rather than false.
+Malformed feature containers or entries are local to this field; recognized positives, endpoint
+metadata and limits survive independently. Unconsumed sampling/tokenizer metadata and new feature
+names do not become pricing policies or additional refresh dependencies.
+
+The root `llms.txt` directs discovery to version indexes. The current default version's complete
+documentation directory is `/v2/docs/llms.txt`; `/v2/llms.txt` can return only a landing-page stub.
+The linked OpenAPI entry point can likewise return a directory linking separate version schemas.
+Follow those first-party links rather than interpreting a successful landing response as a complete
+inventory. Aya Expanse, Aya Vision and Tiny Aya detail tables currently repeat limits already owned
+by the model overview; they add no consumed claim requiring another collection dependency.
+
 Each Cohere parser returns an explicit source result. Accounting contracts belong to the model
 document source's `pricing_inputs`, independently of the presence or ordering of any model row.
 The separate public-price overlay retains its own source identity. Compilation captures the
