@@ -336,6 +336,13 @@ Status: implemented
   [provider research method](agent-provider-research.md#discover-and-judge-sources) applies to
   missing and conflicting claims as well as broken URLs. Record claim-specific source authority
   and unresolved acquisition limits; passing receipt checks cannot prove semantic completeness.
+  In particular, [gh-aw's web-tool reference](https://github.github.com/gh-aw/reference/tools/)
+  documents that Copilot offline BYOK disables native web tools. Do not declare native `web-fetch`
+  merely because an older compiler accepts it; that is not proof of a usable runtime tool. The
+  evidence CLI is the supported acquisition path here. Switching to SDK mode would not supply native
+  search; [web search requires a separately configured MCP service](https://github.github.com/gh-aw/reference/web-search/).
+  No general search service is configured in this workflow. Do not claim full web discovery or
+  convert that limitation into evidence that the provider does not publish a fact.
   For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
   reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
   smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts

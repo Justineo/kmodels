@@ -123,7 +123,6 @@ network:
 
 tools:
   edit:
-  web-fetch:
   bash:
     - "git diff:*"
     - "git status:*"
@@ -674,6 +673,10 @@ one coherent root cause, repair that cause:
    is an available tool. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
+   This offline BYOK workflow has no native web search/fetch tool or search MCP. Use the evidence
+   CLI for public acquisition. A missing search tool limits discovery; it does not establish that
+   a provider fact is absent. Report a specific remaining discovery gap when linked evidence is
+   insufficient, rather than claiming a complete web search or guessing an undocumented contract.
    For replay, read the saved `scope: source` artifact and pass its `body` unchanged to `parseSource`
    with the configured manifest. It already contains the collector's normalization and complete
    linked-document envelope. Raw `--index` HTML and individual companions are navigation/diagnostic
