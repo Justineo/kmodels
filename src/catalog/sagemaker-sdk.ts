@@ -9,6 +9,7 @@ import {
   latestSagemakerSpec,
   packageVersion,
   sagemakerTasks,
+  sagemakerGenerativeCategory,
   type SageMakerRow,
 } from "./sagemaker.ts";
 
@@ -259,13 +260,14 @@ export function parseSagemakerSdk(input: SourceParseInput): SourceParseResult {
           kind: "provider_task" as const,
         })),
       );
-      if (row.tasks.includes("Text") && row.tasks.includes("Generation")) {
+      const generativeCategory = sagemakerGenerativeCategory(row.tasks);
+      if (generativeCategory !== undefined) {
         if (!model.tasks.includes("text_generation")) model.tasks.push("text_generation");
         model.task_evidence.push({
           task: "text_generation",
           source_ref: input.source.id,
           namespace: "sagemaker.sdk.search_keywords",
-          raw_value: JSON.stringify(["Text", "Generation"]),
+          raw_value: JSON.stringify([generativeCategory, "Generation"]),
           kind: "provider_type",
         });
       }

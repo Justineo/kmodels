@@ -73,6 +73,7 @@ export const sagemakerTaskMap = new Map<string, ModelTask[]>([
   ["text2text generation", ["text_generation"]],
   ["image-text-to-text", ["text_generation"]],
   ["image2text generation", ["text_generation"]],
+  ["audio2text generation", ["text_generation"]],
   ["text embedding", ["embeddings"]],
   ["sentence similarity", ["embeddings"]],
   ["rerank", ["reranking"]],
@@ -113,6 +114,13 @@ export function sagemakerTasks(id: string, label: string): ModelTask[] {
   return correction?.raw === label
     ? [correction.task]
     : [...(sagemakerTaskMap.get(label.toLowerCase()) ?? [])];
+}
+
+export function sagemakerGenerativeCategory(
+  keywords: readonly string[] | undefined,
+): string | undefined {
+  if (!keywords?.includes("Generation")) return;
+  return ["Text", "Audio2Text"].find((category) => keywords.includes(category));
 }
 
 export function parseSagemakerCatalog(input: SourceParseInput): SourceParseResult {
@@ -230,6 +238,6 @@ export function sagemakerPricingSpecs(
       (header) =>
         admitted.has(header.model_id) ||
         header.search_keywords?.includes("Foundation Models") ||
-        (header.search_keywords?.includes("Text") && header.search_keywords.includes("Generation")),
+        sagemakerGenerativeCategory(header.search_keywords) !== undefined,
     );
 }

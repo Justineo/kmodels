@@ -32,12 +32,18 @@ The required `sagemaker-sdk` supplement joins the current
 [open-model manifest](https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/models_manifest.json)
 and proprietary SDK manifest by exact JumpStart ID. It keeps the table's admitted IDs and also
 admits current non-deprecated open specs explicitly tagged `Foundation Models`. New proprietary
-IDs require the same foundation marker or the explicit `Text` + `Generation` category pair in
+IDs require the same foundation marker or an explicit `Text` / `Audio2Text` + `Generation` category pair in
 their latest manifest record. `Open Weights` alone is not admission evidence: the Hub also uses
 that classification for classic ML. Version selection uses the SDK's PEP 440/lexical resolver,
 before applying admission, so an older eligible version cannot bypass a latest-version exclusion.
 Paths and fetched model/version identities are checked before projection. A public manifest is
 global product evidence; the optional regional API still cannot introduce global catalog IDs.
+`Audio2Text` + `Generation` is an observed proprietary generative category (PolyAI Dialog-RSN-1),
+not transcription or a broad audio-classification admission rule. It supplies text-generation task
+evidence while input/output modalities still require explicit source fields. Unknown category
+pairs remain excluded, and a latest-version exclusion cannot be bypassed by an older generative
+record. The current Hub API's `generative ai` search keyword corroborates that model's category;
+the public SDK manifest owns global discovery.
 
 The catalog supplies exact IDs, display names, tasks, and explicit fine-tuning flags. Tasks use
 reviewed source labels, not name-based guesses. Forecasting, scientific modelling and ambiguous
@@ -128,13 +134,13 @@ No create, deploy, invoke, pass-role or Marketplace subscription permission is r
 
 ## Public pricing discovery
 
-All four source parsers return the explicit source envelope. Pricing returns infrastructure and
+All five source parsers return the explicit source envelope. Pricing returns infrastructure and
 Marketplace commercial facts independently of the model observations; no arbitrary model row
 carries them. Their exact catalog/listing/instance joins remain required. Compilation stores these
-facts once and replay can assemble them against the published models without repeating the source
-model rows. Model-only catalog, SDK and regional inventory sources do not create synthetic prices.
+facts once. Public pricing replay can assemble them against the published models without repeating
+the source model rows. Model-only catalog, SDK and regional inventory sources do not create synthetic prices.
 
-The Pricebook combines two public, independently auditable sources:
+The Pricebook combines independently auditable infrastructure and publisher sources:
 
 - The [AmazonSageMaker bulk price list](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSageMaker/current/index.json)
   supplies current regional service rates. The bulk response is bounded
@@ -143,7 +149,8 @@ The Pricebook combines two public, independently auditable sources:
   authenticated enrichment Region.
 - The official [proprietary SDK manifest](https://jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com/proprietary-sdk-manifest.json)
   and exact model specs provide Marketplace listing IDs for admitted proprietary models.
-  Current public Marketplace SSR pricing queries supply structured usage rate cards. Marketing
+  The default Marketplace Discovery API supplies structured usage rate cards; public SSR pricing
+  queries provide independent corroboration and fallback. Marketing
   text, throughput examples and token-price estimates are not rate cards.
 
 AWS publishes its bucket configuration in the
@@ -161,9 +168,43 @@ and keyword order do not create conflicts. Paths must match their exact model/ve
 and fetched specs must repeat both identities. URL components are encoded; provenance uses a
 version hash rather than copying arbitrary package labels into dependency keys.
 
-Marketplace extraction verifies the route/listing identity and selects only the exact `Pricing`
-query. Unrelated page session/agreement fields are discarded. A page with no public pricing query
-is an explicit unresolved coverage item, never a free/no-offer claim. Malformed known pricing
+The optional `sagemaker-marketplace-api` source calls the first-party frontend's
+[`GetListingView`](https://discovery.marketplace.us-east-1.amazonaws.com/GetListingView) endpoint.
+Its reviewed request selects `listingPricingSummaryByListingId` version 1, exact `listingId`/`id`,
+the frontend's public integration ID `integ-v27la47re4rlo`, English locale and all-or-nothing
+execution. It never requests an agreement, buyer-specific offer or private-offer selector.
+Requests use the existing AWS SDK credential chain with SigV4 service `aws-marketplace` in
+`us-east-1`; anonymous requests return 403. Public catalog/spec reads receive no AWS credentials.
+This is a frontend API rather than a documented stable AWS SDK operation, so its exact response
+contract and bounds are reviewed and fixture-tested. It is optional: lack of credentials or a
+changed API does not erase independently accepted public prices.
+
+Treating this default listing query as public list pricing is a bounded inference from the owned
+frontend selector and field-level comparison with anonymous SSR prices. The current review matched
+all 100 listings with usable anonymous pricing and recovered 13 additional listing rate cards that
+anonymous pages omitted. It also verifies the newly discovered PolyAI listing against its public
+SSR rate cards. Agreement/amendment associations, private-offer names or badges, multiple-offer
+summaries, and unreviewed offer expiry windows withhold the quote. Partial query errors and changed
+identities fail the source. Only consumed pricing terms and scope dispositions are persisted;
+offer IDs, agreement tokens, account/session fields and source-authored timestamps are discarded.
+An offer creation date is not a model release or tariff effective date.
+The shared compilation contract excludes authenticated inputs from the public parsed replay file.
+Canonical API-derived commercial facts can be published, but offline compilation preserves that
+accepted partition instead of rebuilding it from an incomplete public-only subset. Updating these
+quotes requires another authenticated collection; raw authenticated responses are never saved.
+
+API discovery covers every SDK-selected admitted proprietary listing with bounded concurrency,
+per-response and bundle bytes, retries and redirect rejection. Empty usage rate-card arrays remain
+explicit unresolved coverage, including two listings labeled `FREE`: that label supplies no numeric
+software rate or infrastructure price. Eight current listings have empty rate cards and one
+returns 404. These observations do not establish retirement or the absence of a hosted product.
+Upfront-only contracts are excluded, while unknown term types remain diagnosed without dropping
+known usage siblings.
+
+Public Marketplace extraction verifies the route/listing identity and selects only the exact
+`Pricing` query. Unrelated page session/agreement fields are discarded. A page with no public
+pricing query remains an unresolved item for that source; a successful independent API quote can
+still supply the listing's commercial facts. Malformed known pricing
 queries, ambiguous joins, truncated rate-card arrays, or incomplete dependency bundles fail the
 pricing source. Known sibling rates survive unfamiliar supported-family price cells as bounded
 raw facts. The shared collector retains an accepted provider pricing snapshot on source failure.

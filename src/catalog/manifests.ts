@@ -43,6 +43,7 @@ export type Extractor =
   | { kind: "sagemaker-catalog" }
   | { kind: "sagemaker-sdk" }
   | { kind: "sagemaker-pricing" }
+  | { kind: "sagemaker-marketplace-pricing" }
   | { kind: "sagemaker-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
@@ -208,6 +209,7 @@ export interface SourceManifest {
   headers?: { name: string; value: string }[];
   transport?:
     | { kind: "sagemaker-pricing" }
+    | { kind: "sagemaker-marketplace-pricing" }
     | { kind: "sagemaker-sdk" }
     | { kind: "aws-sagemaker"; region: string }
     | { kind: "aws-bedrock"; region: string }
@@ -1299,7 +1301,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-catalog" },
-        extractorVersion: "sagemaker-catalog-v2",
+        extractorVersion: "sagemaker-catalog-v3",
         fields: ["model_id", "name", "tasks", "capabilities", "service_families", "status"],
         allowedHosts: ["docs.aws.amazon.com"],
         maxResponseBytes: mebibytes(4),
@@ -1315,7 +1317,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-sdk" },
-        extractorVersion: "sagemaker-sdk-v3",
+        extractorVersion: "sagemaker-sdk-v4",
         fields: [
           "model_id",
           "tasks",
@@ -1337,6 +1339,34 @@ export const manifests = [
         transport: { kind: "sagemaker-sdk" },
       },
       {
+        id: "sagemaker-marketplace-api",
+        url: "https://discovery.marketplace.us-east-1.amazonaws.com/GetListingView",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "semi_structured",
+        extractor: { kind: "sagemaker-marketplace-pricing" },
+        extractorVersion: "sagemaker-marketplace-pricing-v1",
+        fields: ["pricing"],
+        pricingEvidence: firstPartyPricing(
+          "billing_catalog",
+          "reviewed_unique_join",
+          "current_snapshot",
+        ),
+        allowedHosts: [
+          "discovery.marketplace.us-east-1.amazonaws.com",
+          "docs.aws.amazon.com",
+          "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com",
+        ],
+        maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        auth: { scheme: "aws", envs: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] },
+        transport: { kind: "sagemaker-marketplace-pricing" },
+      },
+      {
         id: "sagemaker-pricing",
         url: sagemakerCatalogUrl,
         type: "website",
@@ -1345,7 +1375,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "sagemaker-pricing" },
-        extractorVersion: "sagemaker-pricing-v7",
+        extractorVersion: "sagemaker-pricing-v8",
         fields: ["pricing"],
         pricingEvidence: firstPartyPricing(
           "billing_catalog",

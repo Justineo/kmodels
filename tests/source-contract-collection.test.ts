@@ -54,6 +54,7 @@ describe("source contract collection", () => {
         "sagemaker-models",
         "sagemaker-api-us-west-2",
         "sagemaker-sdk",
+        "sagemaker-marketplace-api",
         "sagemaker-pricing",
       ]);
       expect(timings.sort()).toEqual(manifest.sources.map(({ id }) => id).sort());

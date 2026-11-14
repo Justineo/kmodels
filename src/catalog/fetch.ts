@@ -13,6 +13,7 @@ import { fetchBedrockInventory } from "./bedrock.ts";
 import { bedrockFoundationMapUrls } from "./bedrock-geo-pricing.ts";
 import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
 import { fetchSagemakerInventory } from "./sagemaker-api.ts";
+import { fetchSagemakerMarketplaceApi } from "./sagemaker-marketplace-api.ts";
 import {
   sagemakerCatalogUrl,
   sagemakerOpenManifestUrl,
@@ -204,7 +205,7 @@ export interface FetchPayload {
   lastModified: string | undefined;
 }
 
-interface StatusPayload extends FetchPayload {
+export interface StatusPayload extends FetchPayload {
   status: 200 | 404 | 410;
 }
 
@@ -986,9 +987,12 @@ async function request(source: SourceManifest, json?: string): Promise<Response>
       source.auth === undefined &&
       json === undefined &&
       url.hostname === "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com" &&
-      ["sagemaker-sdk", "sagemaker-pricing", "aws-sagemaker"].includes(
-        source.transport?.kind ?? "",
-      );
+      [
+        "sagemaker-sdk",
+        "sagemaker-pricing",
+        "sagemaker-marketplace-pricing",
+        "aws-sagemaker",
+      ].includes(source.transport?.kind ?? "");
     const response = pooledSageMaker
       ? await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(60_000) }).catch(() => {
           throw new TransientFetchError("SageMaker public cache request failed");
@@ -1070,8 +1074,17 @@ async function attemptFetch(
   };
 }
 
-async function attemptPost(source: SourceManifest, body: string): Promise<StatusPayload> {
-  const response = await request(source, body);
+async function attemptPost(
+  source: SourceManifest,
+  body: string,
+  send?: () => Promise<Response>,
+): Promise<StatusPayload> {
+  const response =
+    send === undefined
+      ? await request(source, body)
+      : await send().catch(() => {
+          throw new TransientFetchError("Signed source request failed");
+        });
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(
       `Transient HTTP ${response.status}`,
@@ -1091,8 +1104,12 @@ async function attemptPost(source: SourceManifest, body: string): Promise<Status
   };
 }
 
-async function fetchPost(source: SourceManifest, body: string): Promise<StatusPayload> {
-  return retryTransient(() => attemptPost(source, body));
+async function fetchPost(
+  source: SourceManifest,
+  body: string,
+  send?: () => Promise<Response>,
+): Promise<StatusPayload> {
+  return retryTransient(() => attemptPost(source, body, send));
 }
 
 async function fetchResponse(
@@ -2862,6 +2879,10 @@ export async function fetchSource(
   if (source.transport?.kind === "fireworks-serverless") return fetchFireworksServerless(source);
   if (source.transport?.kind === "nvidia-nim-cards") return fetchNvidiaCards(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
+  if (source.transport?.kind === "sagemaker-marketplace-pricing")
+    return fetchSagemakerMarketplaceApi(source, readDiscovery, (body, send) =>
+      fetchPost({ ...source, maxResponseBytes: 4 * 1024 * 1024 }, body, send),
+    );
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {
     const { auth: _auth, ...publicSource } = source;

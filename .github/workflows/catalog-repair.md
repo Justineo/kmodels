@@ -119,6 +119,7 @@ network:
     - platform.kimi.com
     - prices.azure.com
     - pricing.us-east-1.amazonaws.com
+    - discovery.marketplace.us-east-1.amazonaws.com
     - raw.githubusercontent.com
     - router.huggingface.co
     - vercel.com

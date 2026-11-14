@@ -15,6 +15,7 @@ import { fetchSagemakerSdk } from "../src/catalog/sagemaker-fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { parseSagemakerCatalog, sagemakerPricingSpecs } from "../src/catalog/sagemaker.ts";
 import { readFile } from "node:fs/promises";
+import { z } from "zod";
 import { applyGroups, retainSourceFacts } from "../src/catalog/collector.ts";
 import { baseModel } from "../src/catalog/model.ts";
 
@@ -130,7 +131,7 @@ describe("SageMaker SDK catalog", () => {
     ).toHaveLength(1);
   });
 
-  it("requires positive foundation or text-generation evidence for new proprietary IDs", () => {
+  it("requires positive foundation or reviewed generation evidence for new proprietary IDs", () => {
     const body = JSON.stringify([
       {
         model_id: "new-generator",
@@ -149,6 +150,66 @@ describe("SageMaker SDK catalog", () => {
       "new-generator",
     ]);
     expect(sagemakerPricingSpecs(body, [])).toEqual([]);
+  });
+
+  it("discovers the native Audio2Text foundation category without widening classic ML admission", async () => {
+    const fixture = z
+      .object({ manifest: z.array(z.unknown()), spec: z.record(z.string(), z.unknown()) })
+      .parse(
+        JSON.parse(
+          await readFile(
+            new URL("./fixtures/sagemaker-polyai-generation.json", import.meta.url),
+            "utf8",
+          ),
+        ),
+      );
+    const selected = sagemakerPricingSpecs(JSON.stringify(fixture.manifest), [], true);
+    const header = selected[0];
+    if (!header) throw new Error("Missing reviewed audio model");
+    expect(selected).toHaveLength(1);
+    expect(header.version).toBe("dialog-rsn-1.0");
+    const projected = projectSagemakerSpec(JSON.stringify(fixture.spec), header);
+    const result = parseSagemakerSdk({
+      provider,
+      source,
+      observedAt: "2026-11-14T00:00:00Z",
+      body: JSON.stringify([projected]),
+    });
+    expect(result.models[0]).toMatchObject({
+      model_id: "polyai-dialog-rsn-1",
+      tasks: ["text_generation"],
+      modalities: { input: [], output: [] },
+      task_evidence: [expect.objectContaining({ raw_value: '["Audio2Text","Generation"]' })],
+    });
+    expect(result.models[0]?.deployment?.profiles[0]?.instance_types).toEqual([
+      "ml.p4d.24xlarge",
+      "ml.p5.48xlarge",
+    ]);
+    for (const keywords of [
+      ["Audio2Text"],
+      ["Audio2Text", "Classification"],
+      ["Image", "Classification"],
+      ["Video", "Generation"],
+    ]) {
+      expect(
+        sagemakerPricingSpecs(JSON.stringify([{ ...header, search_keywords: keywords }]), [], true),
+      ).toEqual([]);
+    }
+    expect(
+      sagemakerPricingSpecs(
+        JSON.stringify([
+          header,
+          {
+            ...header,
+            version: "zzz",
+            spec_key: "proprietary-models/polyai-dialog-rsn-1/proprietary_specs_zzz.json",
+            search_keywords: ["Classification"],
+          },
+        ]),
+        [],
+        true,
+      ),
+    ).toEqual([]);
   });
 
   it("corrects only reviewed exact task conflicts and keeps original source labels", async () => {

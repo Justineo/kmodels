@@ -21,7 +21,7 @@ import { parseAzureAccounting } from "./azure-accounting.ts";
 import { parseBedrockAccounting } from "./bedrock-accounting.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseSagemakerCatalog } from "./sagemaker.ts";
-import { parseSagemakerPricing } from "./sagemaker-pricing.ts";
+import { parseSagemakerPricing, parseSagemakerMarketplaceApi } from "./sagemaker-pricing.ts";
 import { parseSagemakerInventory } from "./sagemaker-api.ts";
 import { parseSagemakerSdk } from "./sagemaker-sdk.ts";
 import {
@@ -149,6 +149,8 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return parseSagemakerSdk(input);
     case "sagemaker-pricing":
       return parseSagemakerPricing(input);
+    case "sagemaker-marketplace-pricing":
+      return parseSagemakerMarketplaceApi(input);
     case "sagemaker-api":
       return parseSagemakerInventory(input);
     case "bedrock-api":

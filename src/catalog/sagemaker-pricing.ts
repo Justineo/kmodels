@@ -59,7 +59,12 @@ const pricingQuerySchema = z.object({
   ]),
   state: z.object({ data: z.object({ summary: z.object({ terms: z.array(z.unknown()) }) }) }),
 });
-const marketplacePageSchema = z.object({ listing_id: listingId, terms: z.array(z.unknown()) });
+const marketplacePageSchema = z.object({
+  listing_id: listingId,
+  terms: z.array(z.unknown()),
+  status: z.enum(["available", "unavailable", "no_usage_tariff", "scope_unresolved"]).optional(),
+  unreviewed_terms: z.array(z.string().max(128)).optional(),
+});
 const marketplaceTermSchema = z.object({
   termType: z.literal("UsageBasedPricingTerm"),
   currencyCode: z.string().min(1),
@@ -112,6 +117,99 @@ export function normalizeSagemakerMarketplace(body: string, id: string): string 
   return JSON.stringify({ listing_id: id, terms: queries[0]?.state.data.summary.terms ?? [] });
 }
 
+export function normalizeSagemakerMarketplaceApi(value: unknown, id: string): string {
+  const response = z
+    .object({
+      ViewQuery: z.object({
+        Name: z.literal("listingPricingSummaryByListingId"),
+        Version: z.literal(1),
+      }),
+      ListingView: z.string(),
+    })
+    .parse(value);
+  const summarySchema = z.object({
+    sourceAgreementId: z.string().nullable(),
+    amendmentAgreementId: z.string().nullable(),
+    offerSetSummary: z.union([z.null(), z.record(z.string(), z.unknown())]),
+    offerName: z.string().nullable(),
+    availabilityEndDate: z.string().nullable(),
+    badges: z.array(z.object({ badgeName: z.string(), badgeValue: z.string() })),
+    terms: z.array(z.unknown()),
+  });
+  const view = z
+    .object({
+      errors: z.array(z.unknown()).optional(),
+      data: z.object({
+        listing: z.object({
+          id: listingId,
+          listingDetail: z.object({ pricing: z.object({ summary: summarySchema.nullable() }) }),
+        }),
+      }),
+    })
+    .parse(JSON.parse(response.ListingView));
+  if ((view.errors?.length ?? 0) > 0)
+    throw new Error("SageMaker Marketplace API returned partial pricing");
+  if (view.data.listing.id !== id)
+    throw new Error("SageMaker Marketplace API listing identity changed");
+  const summary = view.data.listing.listingDetail.pricing.summary;
+  if (summary === null) return JSON.stringify({ listing_id: id, terms: [], status: "unavailable" });
+  if (
+    summary.sourceAgreementId !== null ||
+    summary.amendmentAgreementId !== null ||
+    summary.offerSetSummary !== null ||
+    summary.availabilityEndDate !== null ||
+    /\bprivate\b/i.test(summary.offerName ?? "") ||
+    summary.badges.some(({ badgeName }) => /private/i.test(badgeName))
+  )
+    return JSON.stringify({ listing_id: id, terms: [], status: "scope_unresolved" });
+  const unknownTerms: string[] = [];
+  let upfront = false;
+  const terms = summary.terms.flatMap((value) => {
+    const { termType } = z.object({ termType: z.string() }).parse(value);
+    if (termType !== "UsageBasedPricingTerm") {
+      if (["ConfigurableUpfrontPricingTerm", "FixedUpfrontPricingTerm"].includes(termType))
+        upfront = true;
+      if (
+        ![
+          "LegalTerm",
+          "SupportTerm",
+          "FreeTrialPricingTerm",
+          "ConfigurableUpfrontPricingTerm",
+          "FixedUpfrontPricingTerm",
+        ].includes(termType)
+      )
+        unknownTerms.push(termType.slice(0, 128));
+      return [];
+    }
+    const term = marketplaceTermSchema.parse(value);
+    return [
+      {
+        ...term,
+        rateCards: term.rateCards.map((card) => {
+          const parsed = marketplaceCardSchema.parse(card);
+          return {
+            ...parsed,
+            regionalPrices:
+              parsed.regionalPrices.length === 0 ? [] : [{ unresolved_region_scope: true }],
+          };
+        }),
+      },
+    ];
+  });
+  return JSON.stringify({
+    listing_id: id,
+    terms,
+    status: terms.some((term) => term.rateCards.length > 0)
+      ? "available"
+      : unknownTerms.length > 0
+        ? "scope_unresolved"
+        : upfront
+          ? "no_usage_tariff"
+          : "unavailable",
+    ...(unknownTerms.length === 0 ? {} : { unreviewed_terms: unknownTerms }),
+  });
+}
+
 export function parseSagemakerPricing(input: Input): SourceParseResult {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
   const { models } = parseSagemakerCatalog({ ...input, body: bundle.catalog });
@@ -149,6 +247,37 @@ export function parseSagemakerPricing(input: Input): SourceParseResult {
   }
   const modelRefs = models.map((model) => model.uid);
   const facts = infrastructureFacts(input, bundle.prices, modelRefs);
+  facts.push(...marketplacePricingFacts(input, bundle, admitted));
+  // JumpStart/listing identities do not establish an account-created runtime endpoint or target.
+  return { models, commercial_facts: facts, inference_prices: [] };
+}
+
+const marketplaceBundleSchema = z.object({
+  specs: z.array(sagemakerSpecSchema),
+  listings: z.array(z.object({ id: listingId, body: z.string().min(1) })),
+});
+
+export function parseSagemakerMarketplaceApi(input: Input): SourceParseResult {
+  const bundle = marketplaceBundleSchema.parse(JSON.parse(input.body));
+  const catalog = new Set(input.catalogModels?.map(({ model_id }) => model_id));
+  if (bundle.specs.some(({ model_id }) => !catalog.has(model_id)))
+    throw new Error("SageMaker Marketplace API model escaped public catalog scope");
+  return {
+    models: [],
+    commercial_facts: marketplacePricingFacts(
+      input,
+      bundle,
+      new Set(bundle.specs.map(({ model_id }) => model_id)),
+    ),
+  };
+}
+
+function marketplacePricingFacts(
+  input: Input,
+  bundle: z.infer<typeof marketplaceBundleSchema>,
+  admitted: ReadonlySet<string>,
+): SourceCommercialPricingFact[] {
+  const facts: SourceCommercialPricingFact[] = [];
   const seenSpecs = new Map<string, string>();
   const versions = new Set<string>();
   const refs = new Map<string, string[]>();
@@ -179,8 +308,7 @@ export function parseSagemakerPricing(input: Input): SourceParseResult {
   }
   if (seenListings.size !== refs.size)
     throw new Error("SageMaker Marketplace price bundle was incomplete");
-  // JumpStart/listing identities do not establish an account-created runtime endpoint or target.
-  return { models, commercial_facts: facts, inference_prices: [] };
+  return facts;
 }
 
 function record(
@@ -383,7 +511,17 @@ function marketplaceFacts(
 ): SourceCommercialPricingFact[] {
   const page = marketplacePageSchema.parse(JSON.parse(body));
   if (page.listing_id !== id) throw new Error("SageMaker Marketplace price identity changed");
-  if (page.terms.length === 0) {
+  for (const _term of page.unreviewed_terms ?? [])
+    record(input, "unsupported", "sagemaker_marketplace_non_usage_term");
+  if (page.status === "no_usage_tariff") {
+    record(input, "excluded", "sagemaker_marketplace_no_usage_term");
+    return [];
+  }
+  if (page.status === "scope_unresolved") {
+    record(input, "unresolved", "sagemaker_marketplace_default_scope_unresolved");
+    return [];
+  }
+  if (page.status === "unavailable" || page.terms.length === 0) {
     record(input, "unresolved", "sagemaker_marketplace_public_pricing_unavailable");
     return [];
   }
