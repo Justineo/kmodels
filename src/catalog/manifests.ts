@@ -1962,7 +1962,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v41",
+        extractorVersion: "vercel-catalog-v42",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -2067,6 +2067,12 @@ export const manifests = [
             [
               "reranking",
               "https://vercel.com/docs/ai-gateway/modalities/reranking.md",
+              1,
+              "markdown",
+            ],
+            [
+              "gpt-live",
+              "https://vercel.com/docs/ai-gateway/modalities/realtime/gpt-live.md",
               1,
               "markdown",
             ],

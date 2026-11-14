@@ -22,6 +22,8 @@ import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
+import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
+import { websiteProviderPricingChunkSchema } from "../src/catalog/website-schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { vercelInferenceBundle } from "./vercel-inference-fixture.ts";
 
@@ -350,4 +352,97 @@ it("exports the same conditions to the UI without audit payloads or invocation t
     ).status,
   ).toBe("matched");
   expect(JSON.stringify(price)).not.toMatch(/content_hash|invocation_target/);
+}, 15000);
+
+it("publishes service tariffs and scoped Live accounting through actual portable and website consumers", async () => {
+  const services = await readFile(
+    new URL("./fixtures/vercel/additional-services.md", import.meta.url),
+    "utf8",
+  );
+  const live = await readFile(new URL("./fixtures/vercel/live-usage.md", import.meta.url), "utf8");
+  const { candidate } = await collect((bundle) => {
+    const search = bundle.documents.find((d) => d.url.endsWith("/web-search.md"));
+    if (search) search.body += "\n" + services;
+    else
+      bundle.documents.push({
+        url: "https://vercel.com/docs/ai-gateway/models-and-providers/web-search.md",
+        body: services,
+      });
+    bundle.documents.push({
+      url: "https://vercel.com/docs/ai-gateway/modalities/realtime/gpt-live.md",
+      body: live,
+    });
+  });
+  const data = priceDataExport(candidate.catalog, candidate.pricing);
+  const query = createCommercialPriceLookup(data, candidate.inference?.mapping);
+  const fetch = candidate.pricing.data.books.find(
+    (b) => b.book_key === "service:browserbase-fetch",
+  );
+  if (!fetch) throw new Error("Missing Browserbase resource");
+  const result = query({
+    subject: { kind: "resource", provider_id: "vercel", book_ref: fetch.id },
+    selectors: [
+      {
+        kind: "categorical",
+        dimension: { namespace: "provider", provider_id: "vercel", value: "format" },
+        value: { namespace: "provider", provider_id: "vercel", value: "markdown" },
+      },
+      {
+        kind: "boolean",
+        dimension: { namespace: "provider", provider_id: "vercel", value: "proxies" },
+        value: true,
+      },
+    ],
+  });
+  expect(result.status).toBe("matched");
+  expect(
+    result.candidates.flatMap((c) =>
+      c.offer.terms.flatMap((t) => (t.kind === "rate" ? t.variants.map((v) => v.price.value) : [])),
+    ),
+  ).toEqual([{ numerator: "7", denominator: "1000" }]);
+  const modelBooks = candidate.pricing.data.books.filter((b) => b.scope.kind === "models");
+  const durationTerms = (id: string) =>
+    modelBooks
+      .filter((b) => b.scope.model_refs.includes(`vercel/${id}`))
+      .flatMap((b) =>
+        b.offers.flatMap((o) =>
+          o.terms.filter((t) => t.kind === "rate" && t.meter.value === "session_runtime"),
+        ),
+      );
+  const liveMethods = durationTerms("openai/gpt-live-1").flatMap((t) =>
+    t.kind === "rate" ? t.variants.flatMap((v) => v.charge_binding?.quantity_methods ?? []) : [],
+  );
+  expect(liveMethods).toEqual([
+    expect.objectContaining({
+      input_sources: [
+        expect.objectContaining({
+          channel: "stream_event",
+          availability: "terminal_only",
+          locator: { kind: "provider_field", value: "session.closed.usage.seconds" },
+        }),
+      ],
+    }),
+  ]);
+  expect(
+    durationTerms("google/gemini-3.8-live").flatMap((t) =>
+      t.kind === "rate" ? t.variants.flatMap((v) => v.charge_binding?.quantity_methods ?? []) : [],
+    ),
+  ).toEqual([]);
+  const projection = await projectCatalogPair(candidate);
+  const resources = projection.ui.manifest.assets
+    .filter((a) => a.file_name.includes("/providers/vercel/pricing/"))
+    .flatMap(
+      (a) =>
+        websiteProviderPricingChunkSchema.parse(
+          JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, a)).toString("utf8")),
+        ).resources,
+    );
+  expect(resources.map((r) => r.title)).toEqual(
+    expect.arrayContaining([
+      "Browserbase Search",
+      "Browserbase Fetch",
+      "DeepSeek Search",
+      "DeepSeek Fetch",
+    ]),
+  );
 }, 15000);

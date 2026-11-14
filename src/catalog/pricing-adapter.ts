@@ -1291,6 +1291,11 @@ function rateApplicability(
       definition: "Published context-cache mode, independent of the inference operation",
       resolution_phase: "request",
     },
+    {
+      key: "format",
+      definition: "Published response extraction format actually used by the service",
+      resolution_phase: "outcome",
+    },
   ] as const;
   for (const atom of providerDimensions) {
     const value = conditions[atom.key];
@@ -1369,6 +1374,19 @@ function rateApplicability(
         value: "eu_data_residency",
       },
       value: conditions.eu_data_residency,
+    });
+  }
+  if (conditions.proxies !== undefined) {
+    addAtom(context, {
+      kind: "dimension",
+      key: "proxies",
+      definition: "Whether the fetch service actually uses its proxy network",
+      resolution_phase: "outcome",
+    });
+    predicates.push({
+      kind: "boolean",
+      dimension: { namespace: "provider", provider_id: context.providerId, value: "proxies" },
+      value: conditions.proxies,
     });
   }
   const tokenRange = contextTokenRange(

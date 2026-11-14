@@ -91,6 +91,8 @@ const sourcePriceConditionsInputSchema = z.strictObject({
   context_tier: z.string().optional(),
   cache_retention: z.string().optional(),
   cache_mode: z.string().optional(),
+  format: z.string().optional(),
+  proxies: z.boolean().optional(),
   cache_ttl_seconds: z.number().int().nonnegative().optional(),
   duration_over_seconds: decimal.optional(),
   duration_max_seconds: decimal.optional(),

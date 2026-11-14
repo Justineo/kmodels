@@ -99,17 +99,22 @@ export function vercelPricingContracts(body: string): VercelPricingContracts {
       section.includes(`{label:"X posts fetched",cost:${post},unit:"posts"}`) &&
       section.includes(`{label:"X profiles fetched",cost:${profile},unit:"profiles"}`) &&
       section.includes('"/K",') &&
-      section.includes("e.unit?` ${e.unit}`")
+      /(\w+)\.unit\?` \$\{\1\.unit\}`/.test(section)
     )
       contracts.x_search_units = "fetched_posts_and_profiles";
   }
-  if (
-    body.includes("Listed prices are the off-peak rate.") &&
-    body.includes("Token prices are ${s} during ${c} UTC") &&
-    body.includes("let{windows:t,multiplier:i,holidayCalendar:r}=e") &&
-    body.includes("Off-peak on ") &&
-    body.includes("official make-up workdays are peak.")
-  )
-    contracts.token_peak_basis = "listed_off_peak_with_multiplier";
+  for (const renderer of body.matchAll(
+    /function\((\w+)\)\{let\{windows:(\w+),multiplier:(\w+),holidayCalendar:(\w+)\}=\1,([\s\S]{0,3000}?)Listed prices are the off-peak rate\.`\}/g,
+  )) {
+    const multiplier = renderer[3];
+    if (
+      multiplier !== undefined &&
+      renderer[0].includes(`Math.round(100*${multiplier})/100`) &&
+      /return`Token prices are \$\{\w+\} during \$\{\w+\} UTC/.test(renderer[0]) &&
+      body.includes("Off-peak on ") &&
+      body.includes("official make-up workdays are peak.")
+    )
+      contracts.token_peak_basis = "listed_off_peak_with_multiplier";
+  }
   return contracts;
 }

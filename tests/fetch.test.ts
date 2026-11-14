@@ -12,6 +12,8 @@ import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-
 import { sourceFailure } from "../src/catalog/source-failure.ts";
 import { fireworksBundle } from "./fireworks-fixture.ts";
 import { nvidiaBuildUrl } from "../src/catalog/nvidia-build.ts";
+import { linkedBundleSchema } from "../src/catalog/bundle.ts";
+import { parseSource } from "../src/catalog/adapters.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -458,6 +460,61 @@ const vercelBatchGuide = [
   "Synchronous requests don't accept `-batch` IDs.",
   "",
 ].join("\n");
+
+it("fetches owned price evidence when only an unqualified per-request field is published", async () => {
+  const { source } = vercelModelsSource();
+  const data: unknown[] = [
+    JSON.parse(
+      await readFile(new URL("./fixtures/vercel/zero-request.json", import.meta.url), "utf8"),
+    ),
+  ];
+  transport.responses.set("ai-gateway.vercel.sh", [
+    `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ object: "list", data })}`,
+    'HTTP/1.1 200 OK\r\n\r\n{"wrong":"endpoint envelope"}',
+  ]);
+  const html =
+    '<h1>Decisions Fast</h1><table><tr><th>Provider</th></tr></table><table><tr><th>Input</th><th>Output</th></tr></table><table><tr><td><a href="/ai-gateway/models/providers/parallel">Parallel AI</a></td><td>Free</td><td>Free</td></tr></table>';
+  transport.responses.set("vercel.com", [`HTTP/1.1 200 OK\r\n\r\n${html}`]);
+  const configured = {
+    ...source,
+    linkedDocuments: {
+      path: /$^/,
+      minDocuments: 0,
+      maxDocuments: 0,
+      concurrency: 1,
+      documents: [],
+    },
+    extractor: { kind: "vercel-catalog" as const, minModels: 1, maxModels: 1 },
+  };
+  const result = await fetchSource(configured);
+  expect(transport.calls).toContain("https://vercel.com/ai-gateway/models/parallel-decisions-fast");
+  const bundle = linkedBundleSchema.parse(JSON.parse(result.body));
+  expect(bundle.documents).toEqual([
+    {
+      url: "https://vercel.com/ai-gateway/models/parallel-decisions-fast",
+      body: expect.stringContaining('"Free"'),
+    },
+  ]);
+  const parsed = parseSource({
+    provider: {
+      id: "vercel",
+      name: "Vercel AI Gateway",
+      kind: "gateway",
+      homepage: "https://vercel.com/ai-gateway",
+      catalog_scope: "global",
+      source_ids: [source.id],
+    },
+    source: configured,
+    body: result.body,
+    observedAt: "2026-11-15T00:00:00Z",
+  });
+  expect(parsed.models[0]).toMatchObject({
+    model_id: "parallel/parallel-decisions-fast",
+    pricing_state: "free",
+    price_facts: [],
+    raw_price_facts: [],
+  });
+});
 
 it("skips synchronous endpoint discovery for reviewed batch-only Vercel IDs", async () => {
   const { source, minModels: count } = vercelModelsSource();

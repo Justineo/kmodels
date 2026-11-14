@@ -5,6 +5,7 @@ import { contractExtensionEvidence, type SourceContractEvidence } from "./source
 
 interface Contract {
   key: string;
+  modelRefs?: string[];
   document: string;
   markers: readonly RegExp[];
   channel: SourcePricingInputFact["channel"];
@@ -24,6 +25,7 @@ const imagePath = "/docs/ai-gateway/getting-started/image.md";
 const videoPath = "/docs/ai-gateway/modalities/video-generation.md";
 const transcriptionPath = "/docs/ai-gateway/modalities/speech-to-text.md";
 const rerankPath = "/docs/ai-gateway/modalities/reranking.md";
+const livePath = "/docs/ai-gateway/modalities/realtime/gpt-live.md";
 
 const contracts: readonly Contract[] = [
   generation("native_prompt_tokens", "native_tokens_prompt"),
@@ -121,6 +123,21 @@ const contracts: readonly Contract[] = [
     availability: "success_only",
   },
   ...searchContracts(),
+  {
+    key: "live.final_session_seconds",
+    modelRefs: ["vercel/openai/gpt-live-1"],
+    document: livePath,
+    markers: [
+      /`openai\/gpt-live-1`/,
+      /Read `session\.closed\.usage\.seconds`/,
+      /`session\.usage\.updated\.usage\.seconds` and `session\.closed\.usage\.seconds` are \*\*cumulative totals\*\*/,
+      /Do not sum successive snapshots/,
+      /If the transport fails or the final event never arrives, treat final usage as unconfirmed/,
+    ],
+    channel: "stream_event",
+    locator: { kind: "provider_field", value: "session.closed.usage.seconds" },
+    availability: "terminal_only",
+  },
 ];
 
 export function extractVercelPricingInputs(
@@ -154,6 +171,7 @@ export function extractVercelPricingInputs(
     return [
       {
         key: contract.key,
+        ...(contract.modelRefs === undefined ? {} : { model_refs: contract.modelRefs }),
         channel: contract.channel,
         locator: contract.locator,
         ...(contract.reduction === undefined ? {} : { reduction: contract.reduction }),
@@ -183,6 +201,7 @@ function searchContracts(): Contract[] {
     ["exa", "exaSearch", "vercel:exa_search"],
     ["tako", "takoSearch", "vercel:tako_search"],
     ["parallel", "parallelSearch", "vercel:parallel_search"],
+    ["browserbase", "browserbaseSearch", "vercel:browserbase_search"],
   ] as const;
   const successful = tools.map(([key, sdkName, wireName]): Contract => ({
     key: `search.${key}.successful_calls`,
@@ -202,6 +221,7 @@ function searchContracts(): Contract[] {
   return [
     ...successful,
     ...searchRequests("search.exa.requested_results", "exaSearch", "numResults", "num_results"),
+    ...searchRequests("search.exa.type", "exaSearch", "type", "type"),
     ...searchRequests(
       "search.parallel.requested_results",
       "parallelSearch",

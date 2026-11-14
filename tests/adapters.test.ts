@@ -397,7 +397,8 @@ function vercelDocumentation(): { url: string; body: string }[] {
         "can be used with any model regardless of the model provider or creator",
         "perplexitySearch vercel:perplexity_search",
         "Perplexity web search requests are charged at $5 per 1,000 requests",
-        "exaSearch numResults num_results vercel:exa_search",
+        "exaSearch type numResults num_results vercel:exa_search",
+        "browserbaseSearch vercel:browserbase_search",
         "Exa web search requests are charged at $7 per 1,000 requests. Each request includes up to 10 results. Additional requested results beyond 10 are charged at $1 per 1,000 additional results.",
         "takoSearch effort vercel:tako_search",
         "Tako Search costs $7 per 1,000 instant or fast requests and $12 per 1,000 deep requests.",
@@ -455,6 +456,10 @@ function vercelDocumentation(): { url: string; body: string }[] {
     {
       url: "https://vercel.com/docs/ai-gateway/modalities/reranking.md",
       body: "const result = await rerank; rerank returns a `ranking` array",
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/modalities/realtime/gpt-live.md",
+      body: "`openai/gpt-live-1` Read `session.closed.usage.seconds`\n`session.usage.updated.usage.seconds` and `session.closed.usage.seconds` are **cumulative totals**. Do not sum successive snapshots. If the transport fails or the final event never arrives, treat final usage as unconfirmed.",
     },
   ] as const;
 }
@@ -7560,7 +7565,7 @@ describe("Vercel adapter", () => {
     });
     expect(result.models).toEqual([]);
     expect(result.commercial_facts).toHaveLength(9);
-    expect(result.pricing_inputs).toHaveLength(25);
+    expect(result.pricing_inputs).toHaveLength(29);
     const captured = capturePricingReplaySources(
       [{ source, ...result }],
       [
@@ -7764,7 +7769,7 @@ describe("Vercel adapter", () => {
     const inputs = extractVercelPricingInputs(documents, "vercel-models", undefined, (item) =>
       reconciliations.push(item),
     );
-    expect(inputs).toHaveLength(25);
+    expect(inputs).toHaveLength(29);
     expect(inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -7798,7 +7803,7 @@ describe("Vercel adapter", () => {
     expect(reconciliations).toContainEqual({
       disposition: "normalized",
       reason_code: "pricing_input_contract_bound",
-      sample: "25/25 Vercel pricing inputs",
+      sample: "29/29 Vercel pricing inputs",
     });
 
     const rest = documents.get(restPath);
@@ -7809,7 +7814,7 @@ describe("Vercel adapter", () => {
     const drifted = extractVercelPricingInputs(driftedDocuments, "vercel-models", (finding) =>
       findings.push(finding),
     );
-    expect(drifted).toHaveLength(24);
+    expect(drifted).toHaveLength(28);
     expect(drifted.some(({ key }) => key === "generation.native_cached_tokens")).toBe(false);
     expect(drifted.some(({ key }) => key === "generation.native_prompt_tokens")).toBe(true);
     expect(findings).toEqual([

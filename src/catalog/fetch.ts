@@ -1988,7 +1988,8 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     ),
   );
   const missing = list.data.filter(
-    ({ id, pricing }) => Object.keys(pricing).length === 0 || searchModels.has(id),
+    ({ id, pricing }) =>
+      Object.keys(pricing).every((key) => key === "request") || searchModels.has(id),
   );
   assertItemCount(
     "Vercel model pricing pages",

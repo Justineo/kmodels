@@ -83,7 +83,15 @@ function modelBook(
       ...offer,
       name: "AI Gateway inference",
       states: statesForTerms(offer, terms),
-      terms: terms.map((term) => bindModelTerm(term, terms, input, inputIndex)),
+      terms: terms.map((term) =>
+        bindModelTerm(
+          term,
+          terms,
+          input,
+          inputIndex,
+          modelRefs.length === 1 ? modelRefs[0] : undefined,
+        ),
+      ),
       relations: [],
       enrollment: [],
       settlement: [],
@@ -134,12 +142,13 @@ function bindModelTerm(
   terms: readonly AtomicPricingTerm[],
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  modelRef: string | undefined,
 ): AtomicPricingTerm {
   if (term.kind !== "rate") return term;
   return {
     ...term,
     variants: term.variants.map((variant) => {
-      const charge_binding = modelBinding(term.meter, variant, terms, input, inputIndex);
+      const charge_binding = modelBinding(term.meter, variant, terms, input, inputIndex, modelRef);
       const selector_sources = selectorSources(variant.applicability, inputIndex);
       return {
         ...variant,
@@ -156,6 +165,7 @@ function modelBinding(
   terms: readonly AtomicPricingTerm[],
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  modelRef: string | undefined,
 ): ChargeBinding | undefined {
   if (meter.namespace === "kmodels" && isStandardUnit(variant.price.per, "token")) {
     const signal = tokenSignal(meter.value, input, variant.price.per);
@@ -245,7 +255,13 @@ function modelBinding(
   }
   if (meter.namespace === "kmodels" && meter.value === "session_runtime") {
     if (!isStandardUnit(variant.price.per, "second")) return;
-    return quantityBinding(standardSignal("active_seconds"), "session", emptyMethods(), variant);
+    const signal = standardSignal("active_seconds");
+    return quantityBinding(
+      signal,
+      "session",
+      directMethods(signal, ["live.final_session_seconds"], inputIndex, modelRef),
+      variant,
+    );
   }
   if (
     meter.namespace === "provider" &&
@@ -487,7 +503,11 @@ function bindResourceBook(
               ...term,
               variants: term.variants.map((variant) => {
                 const charge_binding = resourceBinding(resourceKey, variant, input, inputIndex);
-                const selector_sources = selectorSources(variant.applicability, inputIndex);
+                const selector_sources = selectorSources(
+                  variant.applicability,
+                  inputIndex,
+                  resourceKey,
+                );
                 return {
                   ...variant,
                   ...(charge_binding === undefined ? {} : { charge_binding }),
@@ -553,7 +573,13 @@ function resourceBinding(
 ): ChargeBinding | undefined {
   const operation = categorical(variant.applicability, "operation");
   if (
-    ["perplexity-search", "exa-search", "tako-search", "parallel-search"].includes(key) &&
+    [
+      "perplexity-search",
+      "exa-search",
+      "tako-search",
+      "parallel-search",
+      "browserbase-search",
+    ].includes(key) &&
     operation === undefined &&
     isStandardUnit(variant.price.per, "request")
   ) {
@@ -578,6 +604,21 @@ function resourceBinding(
     isStandardUnit(variant.price.per, "item")
   )
     return additionalResultBinding(key, variant, input, inputIndex);
+  if (
+    ["deepseek-search", "deepseek-fetch", "browserbase-fetch"].includes(key) &&
+    isStandardUnit(variant.price.per, "request")
+  ) {
+    const signal = providerSignal(
+      input,
+      `${key.replaceAll("-", "_")}_billable_requests`,
+      key.startsWith("deepseek-")
+        ? "Successful requests returning nonempty upstream results or page content, including results filtered before delivery"
+        : "Billable fetch requests using the options actually sent upstream",
+      unit("request"),
+      "outcome",
+    );
+    return quantityBinding(signal, "attempt", emptyMethods(), variant);
+  }
 }
 
 function additionalResultBinding(
@@ -621,6 +662,7 @@ function additionalResultBinding(
 function selectorSources(
   applicability: PriceApplicability,
   inputIndex: PricingInputIndex,
+  resourceKey?: string,
 ): PriceSelectorSource[] {
   const dimensions = new Map<string, PriceDimension>();
   for (const { all_of } of applicability.any_of)
@@ -640,7 +682,7 @@ function selectorSources(
               : dimension.value === "region"
                 ? ["gateway.served_region"]
                 : dimension.value === "search_effort"
-                  ? ["search.tako.effort"]
+                  ? [resourceKey === "exa-search" ? "search.exa.type" : "search.tako.effort"]
                   : [];
     for (const fact of pricingInputFacts(inputIndex, keys)) {
       const absent_value = selectorAbsentValue(fact, dimension, applicability);

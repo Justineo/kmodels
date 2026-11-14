@@ -26,12 +26,32 @@ export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact
     ...exaFacts(input, body),
     ...takoFacts(input, body),
     ...parallelFacts(input, body),
+    ...browserbaseFacts(input, body),
+    ...deepseekFacts(input, body),
   ];
+  const knownServices = ["perplexity-search", "exa-search", "tako-search", "parallel-search"];
+  const complete = knownServices.every((key) =>
+    facts.some(({ resource_key }) => resource_key === key),
+  );
   report(
     input,
-    facts.length === 9 ? "normalized" : "unsupported",
-    facts.length === 9 ? "generic_search_services" : "generic_search_services_partial",
+    complete ? "normalized" : "unsupported",
+    complete ? "generic_search_services" : "generic_search_services_partial",
   );
+  for (const [marker, key] of [
+    ["browserbaseSearch", "browserbase-search"],
+    ["browserbaseFetch", "browserbase-fetch"],
+    ["deepseekSearch", "deepseek-search"],
+    ["deepseekFetch", "deepseek-fetch"],
+  ]) {
+    if (
+      marker !== undefined &&
+      key !== undefined &&
+      body.includes(marker) &&
+      !facts.some(({ resource_key }) => resource_key === key)
+    )
+      report(input, "unsupported", `${key}_pricing_contract_unrecognized`);
+  }
   return facts;
 }
 
@@ -52,20 +72,34 @@ function perplexityFacts(input: Input, body: string): SourceCommercialPricingFac
 }
 
 function exaFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  const modes = has(
+    body,
+    /Exa web search requests are charged at \$7 per 1,000 `auto` or `fast` requests and \$4 per 1,000 `instant` requests/i,
+    /includes up to 10 results/i,
+    /\$1 per 1,000 additional results/i,
+  );
   if (
-    !has(
-      body,
-      /exaSearch/,
-      /Exa web search requests are charged at \$7 per 1,000 requests/i,
-      /includes up to 10 results/i,
-      /\$1 per 1,000 additional results/i,
-    )
+    !has(body, /exaSearch/, /includes up to 10 results/i, /\$1 per 1,000 additional results/i) ||
+    (!modes && !/Exa web search requests are charged at \$7 per 1,000 requests/i.test(body))
   )
     return [];
   return [
-    commercialFact(input, "exa-search", "Exa Search", [
-      rate("web_search", "7", "thousand_requests", input.sourceId),
-    ]),
+    commercialFact(
+      input,
+      "exa-search",
+      "Exa Search",
+      modes
+        ? (["auto", "fast", "instant"] as const).map((mode) =>
+            rate(
+              "web_search",
+              mode === "instant" ? "4" : "7",
+              "thousand_requests",
+              input.sourceId,
+              { search_effort: mode },
+            ),
+          )
+        : [rate("web_search", "7", "thousand_requests", input.sourceId)],
+    ),
     commercialFact(
       input,
       "exa-search",
@@ -104,7 +138,11 @@ function takoFacts(input: Input, body: string): SourceCommercialPricingFact[] {
         search_effort: "deep",
       }),
     ]),
-    ...(has(body, /sources\.data\.includeContents/, /variable export surcharges/i)
+    ...(has(
+      body,
+      /sources\.data\.includeContents/,
+      /variable export surcharges|A fee per card plus a rate per row/i,
+    )
       ? [
           commercialFact(
             input,
@@ -121,7 +159,7 @@ function takoFacts(input: Input, body: string): SourceCommercialPricingFact[] {
                 raw: {
                   label: "Tako data export surcharge",
                   fragment:
-                    "Variable export surcharge depends on requested rows and each card's content.export_pricing.",
+                    "Inline-data charges depend on each card's content.export_pricing and returned rows.",
                 },
               },
             ],
@@ -129,6 +167,96 @@ function takoFacts(input: Input, body: string): SourceCommercialPricingFact[] {
           ),
         ]
       : []),
+    ...(has(body, /Variable-cost data \| A charge per variable-cost card/, /maxVariableCostUsd/)
+      ? [
+          commercialFact(
+            input,
+            "tako-search",
+            "Tako Search",
+            [],
+            [
+              {
+                term_key: "variable_data_surcharge",
+                impact: "base_price",
+                reason: "unknown_amount",
+                conditions: { operation: "variable_cost_data" },
+                source_ref: input.sourceId,
+                raw: {
+                  label: "Tako variable-cost data",
+                  fragment:
+                    "Source-dependent charge per returned variable-cost card; the per-call cap is not a price.",
+                },
+              },
+            ],
+            "data-export",
+          ),
+        ]
+      : []),
+  ];
+}
+
+function browserbaseFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  const search = has(
+    body,
+    /browserbaseSearch/,
+    /Browserbase Search costs \$7 per 1,000 requests, regardless of how many results/i,
+  )
+    ? [
+        commercialFact(input, "browserbase-search", "Browserbase Search", [
+          rate("web_search", "7", "thousand_requests", input.sourceId),
+        ]),
+      ]
+    : [];
+  if (
+    !has(
+      body,
+      /browserbaseFetch/,
+      /A plain `raw` fetch costs \$1 per 1,000 requests/i,
+      /Routing through proxies adds \$3 per 1,000/i,
+      /extraction \(`markdown` or `json` format\) adds another \$3 per 1,000/i,
+      /surcharges are billed from the options actually sent upstream/i,
+    )
+  )
+    return search;
+  const prices = (["raw", "markdown", "json"] as const).flatMap((format) =>
+    [false, true].map((proxies) => ({
+      ...rate(
+        "retrieval",
+        String(1 + (proxies ? 3 : 0) + (format === "raw" ? 0 : 3)),
+        "thousand_requests",
+        input.sourceId,
+        { format, proxies },
+      ),
+      derived: true,
+      derivation: "One base request plus the published proxy and extraction option surcharges.",
+      raw_price: "1 base + 3 proxies + 3 extraction",
+    })),
+  );
+  return [...search, commercialFact(input, "browserbase-fetch", "Browserbase Fetch", prices)];
+}
+
+function deepseekFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  if (
+    !has(
+      body,
+      /deepseekSearch/,
+      /deepseekFetch/,
+      /Tool \| Price per 1,000 billable requests/,
+      /DeepSeek Search \| \$0\.75/,
+      /DeepSeek Fetch \| \$0\.75/,
+      /Search is billable when a successful request returns a nonempty results array/i,
+      /Fetch is billable when a successful request returns nonempty page content/i,
+      /Failed requests, timeouts, and empty results are not billed/i,
+    )
+  )
+    return [];
+  return [
+    commercialFact(input, "deepseek-search", "DeepSeek Search", [
+      rate("web_search", "0.75", "thousand_requests", input.sourceId),
+    ]),
+    commercialFact(input, "deepseek-fetch", "DeepSeek Fetch", [
+      rate("retrieval", "0.75", "thousand_requests", input.sourceId),
+    ]),
   ];
 }
 

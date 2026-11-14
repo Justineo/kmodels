@@ -39,7 +39,8 @@ The in-boundary public price book covers:
 - route provider, regional inference, Fast mode, served service tier, context band, modality,
   quality, resolution, style, and other published applicability;
 - provider-native web and Maps search attached to compatible model routes; and
-- independently callable Perplexity, Exa, Tako, and Parallel gateway search tools.
+- independently callable Perplexity, Exa, Tako, Parallel, Browserbase and DeepSeek gateway search
+  and fetch tools.
 
 Free-credit allowances, BYOK and Credits settlement, plans, team controls, budgets, logs, Trace
 Drains, invoice totals, Zero Data Retention and Custom Reporting surcharges remain outside the
@@ -107,7 +108,8 @@ for production collection; model and route joins retain their existing evidence.
 
 The model list is the exhaustive inventory and primary model-level price source. The documented
 per-model endpoint API enriches exact route identity and route-specific rates. A public model page
-is fetched when the model-list price object is empty or an endpoint publishes X Search pricing keys
+is fetched when the model-list price object is empty, contains only an unqualified per-request
+field, or an endpoint publishes X Search pricing keys
 that require independent page evidence. Endpoint discovery covers only IDs published for
 synchronous use: the reviewed Batch guide states that IDs ending in `-batch` are the complete
 batch-capable set and that synchronous requests do not accept them, so their endpoint documents are
@@ -127,7 +129,8 @@ The claim-local companions are:
 - `getting-started/image.md` for completed image results;
 - `video-generation.md` for requested duration and completed video results;
 - `speech-to-text.md` for measured input-audio duration; and
-- `reranking.md` for a successful rerank result.
+- `reranking.md` for a successful rerank result; and
+- `modalities/realtime/gpt-live.md` for the exact GPT-Live final cumulative session duration.
 
 Every companion is optional at refresh time. A missing or changed field withholds only the pricing
 input or commercial claim owned by that field. It does not erase sibling inputs, another search
@@ -260,11 +263,23 @@ applies during peak periods. With that claim and a valid native policy, publish 
 derived peak rates, retaining the policy as source evidence. The caller must supply the actual billing
 period. The weekday/UTC/Chinese-holiday policy is not an executable calendar, and request time never
 substitutes for a billed-period observation. A policy on one route cannot modify fixed-price siblings.
+The renderer recognizer follows its bounded window/multiplier/holiday structure and owned return
+text; minifier variable renaming cannot withdraw that unchanged contract.
 Missing or changed basis wording and unsupported policy fields retain affected quotes as raw
 `unknown_applicability`; independent non-token prices survive a recognized token policy.
 The reviewed image-detail registry may put the price object directly under the model slug or
 inside its `model` property. Both literal structures are parsed without executing JavaScript;
 the wrapper cannot create a fictitious model named `model`.
+
+The public Markdown model directory is a grouped presentation rather than exhaustive callable
+inventory: it omits separately callable Batch IDs and includes service tools that are not models.
+The no-key JSON model API remains the inventory authority; its response has no pagination cursor.
+The per-model endpoint API owns route prices. Account generation history and billing endpoints do
+not replace either public price surface.
+Browserbase and DeepSeek Search/Fetch are independently callable tools listed in the public model
+directory but absent from model JSON; all four corresponding model-endpoint probes return 404.
+The already collected web-search guide therefore owns their tariffs without adding model rows or
+making failed model routes a refresh dependency.
 
 The search-price prose parser removes Markdown quote prefixes and folds whitespace before matching
 reviewed sentences. Source line wrapping must not remove a known price; unrecognized commercial
@@ -287,21 +302,35 @@ item charge. Selecting ordinary Web Search still exposes its own unresolved quot
 Independent search service books publish:
 
 - Perplexity: `$5 / 1,000` successful requests;
-- Exa: `$7 / 1,000` successful requests plus `$1 / 1,000` requested results above ten;
-- Tako: `$7 / 1,000` Instant or Fast requests and `$12 / 1,000` Deep requests; and
-- Parallel: `$5 / 1,000` successful requests plus `$1 / 1,000` requested results above ten.
+- Exa: `$7 / 1,000` Auto or Fast requests, `$4 / 1,000` Instant requests, plus
+  `$1 / 1,000` requested results above ten;
+- Tako: `$7 / 1,000` Instant or Fast requests and `$12 / 1,000` Deep requests;
+- Parallel: `$5 / 1,000` successful requests plus `$1 / 1,000` requested results above ten;
+- Browserbase Search: `$7 / 1,000` requests regardless of the requested result count;
+- Browserbase Fetch: `$1 / 1,000` plain raw requests, plus `$3 / 1,000` for proxies and
+  `$3 / 1,000` for Markdown or JSON extraction; and
+- DeepSeek Search and Fetch: `$0.75 / 1,000` billable requests for each independent service.
+
+Browserbase Fetch retains independent provider-owned `format` and `proxies` conditions. The actual
+upstream options determine the six disjoint totals; a requested format or an undocumented fallback
+does not prove which option was billed. DeepSeek bills only successful nonempty upstream results
+or page content, including results filtered before delivery. Failed, timed-out and empty responses
+are unbilled. Generic successful-call telemetry does not prove that nonempty condition, so the
+caller supplies the billable count. Fetch remains retrieval rather than model inference or search.
 
 Exa and Parallel base and excess-result charges are additive terms on one offer. Their excess
 quantity is the exact calculation `max(0, requested_results - 10)`, represented with a
 unit-qualified constant and a zero-floor subtraction. Tako effort is the dedicated
-`search_effort` selector rather than an overloaded operation or service tier. Tako data export is
-retained beside the numeric request rates as a raw variable surcharge because the amount depends on
-requested rows and each result card's `content.export_pricing`.
+`search_effort` selector rather than an overloaded operation or service tier. Tako inline-data
+export and variable-cost cards remain separate raw surcharges beside numeric request rates.
+Inline data depends on the fee per card and returned rows in each card's `content.export_pricing`;
+variable-cost data depends on returned cards and their source. The default per-call cap is a spending
+limit, never an additional rate.
 The linked [Tako tariff](https://docs.tako.com/documentation/integrating-tako/contents/pricing)
 defines a baseline plus source-dependent row charges, premium record classes and possible variable
 minimums, with account-specific returned prices overriding list prices. Its current first-row
-billing rule also disagrees with the gateway guide's twenty-free-row wording. Neither the minimum
-row price nor a fixed request fee can resolve that surcharge for a gateway result card.
+billing rules require the actual returned card. Neither the minimum row price nor a fixed request
+fee can resolve that surcharge for a gateway result card.
 
 ## Published pricing inputs
 
@@ -322,6 +351,7 @@ key are alternative AI SDK and Chat Completions request locations, not quantitie
 | Video duration           | Request `duration` and successful result `videos` length          | Requested seconds multiplied by completed videos, per job          |
 | Transcription duration   | Result `durationInSeconds`                                        | Input audio seconds on success                                     |
 | Rerank request           | Presence of result `ranking`                                      | One successful rerank request                                      |
+| GPT-Live duration        | `session.closed.usage.seconds`                                    | Final cumulative session duration; never sum snapshots             |
 | Generic search calls     | `gatewayToolCalls` count for each gateway search tool             | Successful calls for that specific service                         |
 | Exa/Parallel excess      | `numResults` / `maxResults`, including snake-case Chat fields     | Zero-floor subtraction of the included ten                         |
 | Tako effort              | `effort` in AI SDK or Chat tool configuration                     | Selects Instant, Fast, or Deep request rate                        |
@@ -360,7 +390,7 @@ Vercel contracts do not establish an exact public input for:
 - provider-native Maps call counts;
 - character billing for text-to-speech;
 - generated audio duration for speech synthesis, which no reviewed Vercel response field reports;
-- realtime client-message or active-session duration counts;
+- realtime client-message counts and active-session duration outside the reviewed GPT-Live contract;
 - per-modality audio, image, or video token partitions when aggregate native counters are ambiguous;
 - output video-token counts;
 - megapixels and effective image quality, resolution, style, or operation across every underlying
