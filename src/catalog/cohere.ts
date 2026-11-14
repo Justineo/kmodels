@@ -1287,7 +1287,7 @@ function applyPricing(
   maximum: number,
 ): void {
   const $ = load(body);
-  const products = parseCoherePublicPricingProducts(body, input.onPricingReconciliation);
+  const products = pricingModels($, input.onPricingReconciliation);
   assertItemCount("Cohere pricing products", products.length, minimum, maximum);
   for (const product of products) {
     const description = nestedText(product.portableDescription);
