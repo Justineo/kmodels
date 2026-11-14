@@ -119,7 +119,7 @@ function splitModelBook(
   return partitionBook(
     preferOpenAiPricingPage(book),
     "usage",
-    modelMechanism(model).name,
+    modelOfferName(model),
     model,
     input,
     inputIndex,
@@ -154,16 +154,16 @@ function partitionBook(
   return { ...book, offers };
 }
 
-function modelMechanism(model: PublishedModel | undefined): { name: string } {
-  if (model?.tasks.includes("transcription")) return { name: "Transcription" };
-  if (model?.tasks.includes("translation")) return { name: "Translation" };
-  if (model?.tasks.includes("embeddings")) return { name: "Embedding" };
-  if (model?.tasks.includes("moderation")) return { name: "Moderation" };
-  if (model?.tasks.includes("image_generation")) return { name: "Image generation" };
-  if (model?.tasks.includes("video_generation")) return { name: "Video generation" };
-  if (model?.tasks.includes("speech_synthesis")) return { name: "Speech generation" };
-  if (model?.tasks.includes("speech_to_speech")) return { name: "Realtime speech" };
-  return { name: "Synchronous inference" };
+function modelOfferName(model: PublishedModel | undefined): string {
+  if (model?.tasks.includes("transcription")) return "Transcription";
+  if (model?.tasks.includes("translation")) return "Translation";
+  if (model?.tasks.includes("embeddings")) return "Embedding";
+  if (model?.tasks.includes("moderation")) return "Moderation";
+  if (model?.tasks.includes("image_generation")) return "Image generation";
+  if (model?.tasks.includes("video_generation")) return "Video generation";
+  if (model?.tasks.includes("speech_synthesis")) return "Speech generation";
+  if (model?.tasks.includes("speech_to_speech")) return "Realtime speech";
+  return "Synchronous inference";
 }
 
 function partitionOffer(
