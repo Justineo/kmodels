@@ -1749,25 +1749,21 @@ function currentModels(
   const modelsPage = reviewClaim(input, "models_document_drift", () =>
     section(llms, "/developers/models"),
   );
-  const publicPrices =
-    pricing === undefined || modelsPage === undefined
-      ? {
-          text: new Map<string, TextPrice[]>(),
-          warnings: new Map<string, SourceRawPricingFact[]>(),
-        }
-      : (reviewClaim(input, "public_pricing_contract_drift", () =>
-          publicPricingReview(
-            input,
-            pricing,
-            modelsPage,
-            language.filter((value) => !regionalPrices.has(value.name)),
-            images,
-            videos,
-          ),
-        ) ?? {
-          text: new Map<string, TextPrice[]>(),
-          warnings: new Map<string, SourceRawPricingFact[]>(),
-        });
+  const publicPrices = (pricing === undefined || modelsPage === undefined
+    ? undefined
+    : reviewClaim(input, "public_pricing_contract_drift", () =>
+        publicPricingReview(
+          input,
+          pricing,
+          modelsPage,
+          language.filter((value) => !regionalPrices.has(value.name)),
+          images,
+          videos,
+        ),
+      )) ?? {
+    text: new Map<string, TextPrice[]>(),
+    warnings: new Map<string, SourceRawPricingFact[]>(),
+  };
   const prices =
     pricing === undefined
       ? undefined
