@@ -585,8 +585,9 @@ still inspect what commands returned and make source-grounded judgments.
 ## Scheduled comprehensive review
 
 The daily periodic run admits one review independently of refresh errors. A deterministic UTC-day
-rotation covers every manifest provider once, then global architecture once (currently a 21-day
-cycle). A successful refresh, unchanged body hash or zero error count does not close this review.
+rotation covers every manifest provider once, then global architecture once. Each cycle has one
+daily slot per configured provider plus one global slot. A successful refresh, unchanged body hash
+or zero error count does not close this review.
 Use the same evidence records, toolchain, publication bounds and failure reporting as error repair.
 
 For `scheduled_provider_review`, apply the source-to-consumer trace in

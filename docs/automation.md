@@ -29,8 +29,8 @@ Status: implemented
   operational block. The gate excludes transient fetch failures, missing credentials and unresolved
   pricing by itself. Admission records the observed symptoms and leaves reproduction to
   investigation. Preparation admits one error-driven provider per run, using a stable
-  rotation over configured providers by six-hour UTC slot. With 20 providers, persistent error candidates receive
-  a slot within five days instead of waiting a full 20-day daily rotation.
+  rotation over configured providers by six-hour UTC slot. A complete incident rotation has one
+  six-hour slot per configured provider; its duration follows the current manifest inventory.
   All candidates for that error provider stay together. The context and immutable admission retain
   every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
   later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
@@ -89,7 +89,8 @@ Status: implemented
 - The daily 02:07 UTC schedule admits one comprehensive review with its own run and investigation
   budget. It keeps incident candidates deferred and leaves refresh execution follow-up to the incident
   schedule. UTC days rotate deterministically over sorted manifest providers,
-  then a global architecture review: currently 20 providers plus one global slot per 21-day cycle.
+  then a global architecture review. A complete cycle has one daily slot per configured provider
+  plus one global slot, following the current manifest inventory.
   Provider reviews inspect current first-party discovery, identity/lifecycle, complete price/service
   inventory and scopes, quantity/selector acquisition, retention/replay, lookup/display parity
   and simplicity. The global slot examines shared model consistency and collection/repair feedback.

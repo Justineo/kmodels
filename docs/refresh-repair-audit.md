@@ -22,8 +22,8 @@ Preparation selects one error-driven provider per six-hour UTC slot against the 
 rotation, keeping all of that provider's source and validation candidates together alongside
 relevant workflow evidence. Other candidates stay in the prepared
 deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
-list. A continuously failing provider gets its own slot at least once per configured-provider cycle
-(five days for 20 providers). Same-slot reruns select from the latest evidence. The independent
+list. A continuously failing provider gets its own slot at least once per configured-provider cycle,
+with one six-hour slot per manifest provider. Same-slot reruns select from the latest evidence. The independent
 periodic review has its own daily run and budget. Conclusions apply to the admitted scope.
 Source-acquisition review follows the admitted providers too; an unrelated transport failure must
 not silently expand a bounded batch. Keep those failures visible in the full refresh report. The
@@ -174,7 +174,7 @@ no-defect conclusion for every admitted candidate.
 ## Periodic review
 
 The serialized repair job also rotates one provider review per UTC day, followed by
-a global architecture review. The current 20 providers therefore form a nominal 21-day cycle.
+a global architecture review. Each cycle has one daily slot per manifest provider plus one global slot.
 This review is independent of error-triggered candidates and examines discovery, identity,
 lifecycle, pricing inventory and scopes, accounting, retention, replay, lookup/display behavior
 and simplicity against current first-party evidence.
