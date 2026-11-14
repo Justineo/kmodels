@@ -2205,18 +2205,12 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
       item.aliases = unique(aliases.filter((alias) => alias !== id && !models.has(alias)));
   }
   applyChangelog(models, document(bundle, "/gemini-api/docs/changelog"));
-  applyInteractions(
-    models,
-    document(bundle, "/gemini-api/docs/interactions-overview"),
+  const interactionsOverview = document(bundle, "/gemini-api/docs/interactions-overview");
+  const interactionsApi =
     optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??
-      document(bundle, "/api/interactions-api"),
-  );
-  applyInteractionStreaming(
-    models,
-    optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??
-      document(bundle, "/api/interactions-api"),
-    input.onContractFinding,
-  );
+    document(bundle, "/api/interactions-api");
+  applyInteractions(models, interactionsOverview, interactionsApi);
+  applyInteractionStreaming(models, interactionsApi, input.onContractFinding);
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );
