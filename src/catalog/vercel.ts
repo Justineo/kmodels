@@ -1654,7 +1654,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
   const bundled = bundleSchema.safeParse(value);
   if (input.source.transport?.kind === "vercel-models" && !bundled.success)
     throw new Error("Vercel models transport omitted its source bundle");
-  const list = listSchema.parse(JSON.parse(bundled.success ? bundled.data.index.body : input.body));
+  const list = listSchema.parse(bundled.success ? JSON.parse(bundled.data.index.body) : value);
   assertItemCount(
     "Vercel model catalog",
     list.data.length,
@@ -1706,7 +1706,7 @@ export function parseVercelCatalog(input: Input): SourceParseResult {
             [
               {
                 error: parsedDocument.error,
-                input: JSON.parse(document.body),
+                input: endpointValue,
                 itemIndex: 0,
                 modelId: id,
               },
