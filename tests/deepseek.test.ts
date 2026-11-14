@@ -783,7 +783,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v28",
+      extractorVersion: "deepseek-catalog-v29",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
@@ -808,8 +808,19 @@ describe("DeepSeek adapters", () => {
         url: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
       },
       { id: "search-billing", url: "https://api-docs.deepseek.com/guides/search/" },
+      { id: "messages", url: "https://api-docs.deepseek.com/api/create-message" },
+      { id: "file-parsing", url: "https://api-docs.deepseek.com/guides/document_parsing.md" },
+      { id: "ocr-billing", url: "https://api-docs.deepseek.com/guides/ocr.md" },
+      { id: "ocr-response", url: "https://api-docs.deepseek.com/api/ocr" },
+      { id: "tts-billing", url: "https://api-docs.deepseek.com/guides/tts.md" },
+      { id: "asr-billing", url: "https://api-docs.deepseek.com/guides/asr.md" },
+      { id: "web-tools", url: "https://api-docs.deepseek.com/guides/web_tools" },
     ]);
-    expect(catalogSource.linkedDocuments?.documents?.every(({ optional }) => optional)).toBe(true);
+    expect(
+      catalogSource.linkedDocuments?.documents
+        ?.filter(({ optional }) => !optional)
+        .map(({ id }) => id),
+    ).toEqual(["web-tools"]);
     const findings: SourceContractEvidence[] = [];
     const modelsSource = await deepseekSource({
       onContractFinding: (finding) => findings.push(finding),

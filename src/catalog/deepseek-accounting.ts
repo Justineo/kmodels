@@ -19,10 +19,13 @@ interface Contract {
 const chatPath = "/api/create-chat-completion";
 const responsesPath = "/api/create-response";
 const fimPath = "/api/create-completion";
+const messagesPath = "/api/create-message";
 const operations = new Map([
   [chatPath, "/chat/completions"],
   [responsesPath, "/responses"],
   [fimPath, "/completions"],
+  [messagesPath, "/anthropic/v1/messages"],
+  ["/api/ocr", "/v1/tools/ocr"],
 ]);
 const contracts = [
   ...usage("chat", chatPath, "prompt_cache_hit_tokens", "cached_input_tokens"),
@@ -59,18 +62,58 @@ export function extractDeepseekPricingInputs(
       const streamText = api.text("request", [["stream", "boolean"]]);
       const stream =
         streamText !== undefined &&
-        (path === responsesPath
-          ? ["response.completed", "response.incomplete", "response.failed"].every((type) =>
-              streamText.includes(type),
-            ) && responseEnvelope(api.responseSamples)
-          : completionStream(api));
+        (path === messagesPath
+          ? streamText.includes("ending with message_stop") && messageEnvelope(api.responseSamples)
+          : path === responsesPath
+            ? ["response.completed", "response.incomplete", "response.failed"].every((type) =>
+                streamText.includes(type),
+              ) && responseEnvelope(api.responseSamples)
+            : completionStream(api));
       readers.set(path, { api, stream });
     } catch {
       // A different or ambiguous operation cannot own these usage paths.
     }
   }
+  const currentContracts = [
+    ...contracts,
+    ...(bodies.has(messagesPath)
+      ? [
+          ...usage("messages", messagesPath, "input_tokens", "uncached_input_tokens"),
+          ...usage("messages", messagesPath, "cache_read_input_tokens", "cached_input_tokens"),
+          ...usage("messages", messagesPath, "output_tokens", "output_tokens"),
+        ]
+      : []),
+    ...(documents.some(({ url }) => url === "https://api-docs.deepseek.com/guides/web_tools")
+      ? (["chat", "responses", "messages"] as const).flatMap((protocol) =>
+          ["tool_search", "tool_fetch", "tool_image_search"].flatMap((key) =>
+            usage(
+              protocol,
+              protocol === "chat"
+                ? chatPath
+                : protocol === "responses"
+                  ? responsesPath
+                  : messagesPath,
+              `server_tool_use.${key}`,
+              key,
+            ),
+          ),
+        )
+      : []),
+    ...(bodies.has("/api/ocr")
+      ? [
+          {
+            key: "ocr.processed_pages",
+            document: "/api/ocr",
+            field: [["page_count", "integer"]],
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/page_count" },
+            availability: "success_only",
+          } satisfies Contract,
+        ]
+      : []),
+  ];
   return uniquePricingInputFacts(
-    contracts.flatMap((item): SourcePricingInputFact[] => {
+    currentContracts.flatMap((item): SourcePricingInputFact[] => {
       const reader = readers.get(item.document);
       const streaming = item.channel === "stream_event";
       const media =
@@ -83,12 +126,31 @@ export function extractDeepseekPricingInputs(
         onFinding?.(contractExtensionEvidence(["/documents" + item.document + "/" + item.key]));
         return [];
       }
+      if (
+        item.key.startsWith("messages.") &&
+        item.key.endsWith("uncached_input_tokens") &&
+        !reader.api
+          .text("response", item.field)
+          ?.includes("Input tokens not served from the context cache")
+      ) {
+        onFinding?.(contractExtensionEvidence(["/documents" + item.document + "/" + item.key]));
+        return [];
+      }
+      const parentText =
+        item.field[1]?.[0] === "server_tool_use"
+          ? (reader.api.text("response", item.field.slice(0, -1)) ?? "")
+          : "";
+      const omittedZero =
+        parentText.includes("omitted when all counts are zero") ||
+        (parentText.includes("otherwise omitted") &&
+          parentText.includes("All fields are present when this object is returned"));
       return [
         {
           key: item.key,
           channel: item.channel,
           locator: item.locator,
           availability: item.availability,
+          ...(omittedZero ? { absent_value: "zero" } : {}),
           source_ref: sourceRef,
         },
       ];
@@ -96,7 +158,7 @@ export function extractDeepseekPricingInputs(
   );
 }
 function usage(
-  protocol: "chat" | "fim" | "responses",
+  protocol: "chat" | "fim" | "responses" | "messages",
   document: string,
   field: string,
   key: string,
@@ -193,4 +255,16 @@ function responseEnvelope(samples: readonly string[]): boolean {
     }
   }
   return false;
+}
+
+function messageEnvelope(samples: readonly string[]): boolean {
+  return samples.some((sample) =>
+    [...sample.matchAll(/event:\s*message_delta\s*data:\s*/g)].some((match) => {
+      const root = sampleObject(sample.slice(match.index + match[0].length));
+      return (
+        jsonProperty(root, "type")?.value === "message_delta" &&
+        jsonProperty(root, "usage")?.type === "object"
+      );
+    }),
+  );
 }

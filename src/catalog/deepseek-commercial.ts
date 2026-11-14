@@ -42,7 +42,14 @@ export function applyDeepseekCommercialTopology(
           book.scope.kind === "models" ||
           (book.scope.resource_kind.namespace === "kmodels" &&
             book.scope.resource_kind.value === "service" &&
-            ["web-search", "web-fetch"].includes(book.scope.resource_key)),
+            [
+              "web-search",
+              "web-fetch",
+              "file-parsing",
+              "ocr",
+              "text-to-speech",
+              "speech-to-text",
+            ].includes(book.scope.resource_key)),
       )
       .map((book) =>
         book.scope.kind === "models"
@@ -155,10 +162,11 @@ function protocolKeys(paths: ReadonlySet<string>, signal: string): string[] {
     ...(paths.has("/chat/completions") ? usageKeys("chat", signal) : []),
     ...(paths.has("/responses") ? usageKeys("responses", signal) : []),
     ...(paths.has("/beta/completions") ? usageKeys("fim", signal) : []),
+    ...(paths.has("/anthropic/v1/messages") ? usageKeys("messages", signal) : []),
   ];
 }
 
-function usageKeys(protocol: "chat" | "fim" | "responses", signal: string): string[] {
+function usageKeys(protocol: "chat" | "fim" | "responses" | "messages", signal: string): string[] {
   return [`${protocol}.${signal}`, `${protocol}.stream.${signal}`];
 }
 
@@ -171,6 +179,9 @@ function uncachedInputMethods(
     [
       ...(paths.has("/chat/completions") ? usageKeys("chat", "uncached_input_tokens") : []),
       ...(paths.has("/beta/completions") ? usageKeys("fim", "uncached_input_tokens") : []),
+      ...(paths.has("/anthropic/v1/messages")
+        ? usageKeys("messages", "uncached_input_tokens")
+        : []),
     ],
     inputIndex,
   );

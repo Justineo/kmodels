@@ -14,7 +14,7 @@ const requestUnit = {
 };
 
 // Only a direct, unquoted document section can own tariffs or billing policy.
-function section(body: string, title: string): string | undefined {
+export function section(body: string, title: string): string | undefined {
   const $ = load(body);
   const article = $("article");
   if (article.length !== 1 || article.parents("blockquote,pre,code,aside").length > 0) return;
@@ -34,7 +34,7 @@ function section(body: string, title: string): string | undefined {
   return owned.html() ?? undefined;
 }
 
-function document(bundle: LinkedBundle, url: string): string | undefined {
+export function document(bundle: LinkedBundle, url: string): string | undefined {
   const matches = bundle.documents.filter(
     (value) => value.url.replace(/\/$/, "") === url.replace(/\/$/, ""),
   );

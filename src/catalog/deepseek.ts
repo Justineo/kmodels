@@ -11,6 +11,7 @@ import {
   deepseekEnglishInstant,
 } from "./deepseek-pricing-policy.ts";
 import { deepseekServicePricing } from "./deepseek-services.ts";
+import { deepseekToolServices } from "./deepseek-tool-services.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel, modelUid } from "./model.ts";
@@ -1151,6 +1152,7 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
     input.onContractFinding,
   );
   const services = deepseekServicePricing(input, bundle);
+  const tools = deepseekToolServices(input, bundle, services, pricingInputs);
   return {
     models: bounded(input, models),
     inference_prices: models.map((model) => ({
@@ -1170,10 +1172,11 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
       ],
     })),
     pricing_inputs: pricingInputs,
-    commercial_facts: services.commercial_facts ?? [],
+    commercial_facts: [...(services.commercial_facts ?? []), ...(tools.commercial_facts ?? [])],
     vocabulary: [
       ...(billingRule === undefined ? [] : deepseekBillingVocabulary(billingRule)),
       ...(services.vocabulary ?? []),
+      ...(tools.vocabulary ?? []),
     ],
   };
 }

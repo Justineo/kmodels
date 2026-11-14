@@ -39,9 +39,9 @@ The fetch bundle contains only companions that contribute a current catalog or r
   [Responses](https://api-docs.deepseek.com/api/create-response), and
   [FIM](https://api-docs.deepseek.com/api/create-completion) references for exact operation model
   sets, returned usage fields, and terminal streaming envelopes;
-- the [Anthropic API guide](https://api-docs.deepseek.com/guides/anthropic_api) for the compatible
-  Messages endpoint and streaming support, but not for usage locators that the guide does not
-  document;
+- the [Anthropic API guide](https://api-docs.deepseek.com/guides/anthropic_api) for compatible
+  Messages support, and the independent [Messages API reference](https://api-docs.deepseek.com/api/create-message)
+  for its owned response usage and terminal `message_delta` envelope;
 - the [Vision guide](https://api-docs.deepseek.com/guides/vision) for the exact image-input model and
   its image-to-token billing rule;
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
@@ -49,6 +49,21 @@ The fetch bundle contains only companions that contribute a current catalog or r
 - the [Search & Fetch guide](https://api-docs.deepseek.com/guides/search/) for successful-request
   qualification and the tool-triggered billing scope. The English and Chinese price pages own
   amounts; the guide's repeated prices do not replace them.
+
+The fixed [Web Tools guide](https://api-docs.deepseek.com/guides/web_tools) owns the distinct
+native server-tool billing quantities. It is a required transport companion: an unavailable
+qualification must not withdraw previously accepted native tool tariffs. An unrecognized owned
+billing section similarly retains pricing. Historical bundles without that companion retain their
+independently evidenced standalone/client-tool branches. Optional File Parsing, OCR, TTS and ASR
+billing guides and the typed OCR response reference supply their independent usage semantics;
+the main bilingual price tables own every amount.
+
+The current `llms.txt` URL serves the documentation homepage rather than an index. Discovery uses
+the full first-party sitemap and navigation instead. Its API/model, service, billing and lifecycle
+pages are reviewed separately from account balance and integration-only pages. The authenticated
+model list contains richer metadata, but no tariffs: its exact public limits, modalities and effort
+levels agree with the typed public model reference. Account omissions cannot withdraw accepted
+legacy IDs. Unused system-prompt-update behavior does not become a catalog or refresh dependency.
 
 The [change log](https://api-docs.deepseek.com/zh-cn/updates) supplies exact-ID release and update
 dates. The English `/updates` route currently renders the docs homepage, so the reviewed source is
@@ -122,8 +137,8 @@ tokens, so the price book does not duplicate that aggregate input usage as a sec
 Vision guide establishes image input in the model catalog, while verified Chat Completions and
 Responses usage counters remain the charge bindings for the combined billable input-token totals.
 
-Model books cover generation token rates. A tool loop can cause additional
-generation requests, which an AI Gateway observes and prices individually. Generic function calling
+Model books cover generation token rates. Native server-tool responses report the whole request's
+summed inference usage; do not add the same internal steps again. Generic function calling
 does not itself establish an extra service charge. Anthropic wildcard rewriting is request routing,
 not pricing or catalog identity.
 
@@ -146,14 +161,44 @@ Each publishes one `Item | Unit | Price` table (`项目 | 计费单位 | 价格`
 headers, row labels and units are the contract: the retired `Search & Fetch Pricing` heading,
 `API` column and `successful requests` unit are rejected rather than reused, because a renamed or
 re-headed section may have changed its billing basis. The pages now state that tool-mediated use is
-billed on the same terms and defer the rules to the Web Tools `Billing` section, which is not yet a
-refresh dependency; the guide's qualification rule still governs the request outcome.
+billed on the same terms and defer the rules to the Web Tools billing section. The standalone
+guide's qualification rule still governs the standalone and client-tool request outcomes.
 
 Both services charge per successful request, independently of the number of search results.
 Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.
 Failures, empty search results and timeouts are not billable. Consumers supply these precisely
 qualified request counts. A results-array length, generated token count or emitted tool-call event
 cannot substitute for a billable request count. No response counter or model association is guessed.
+
+Native `deepseek_web_search` and `deepseek_read_url` operations have separate quantity bindings
+within those same service relationships. Web searches count successful queries, image searches
+count each image plus each selected region, and fetches count billable pages actually retrieved
+from the web. Repeated opens, page navigation, text finding and search-provided page content are
+free. The owned guide explicitly delegates to the central Search/Fetch tariffs. Typed
+`usage.server_tool_use.tool_search`, `tool_image_search` and `tool_fetch` fields supply billed
+counts in Chat, Responses and Messages, including their independently verified terminal envelopes.
+Display-only `web_search_requests` and `web_fetch_requests` include errors and cannot supply these
+quantities. A missing typed field removes its locator without discarding the published rate.
+Documented all-zero omission supplies zero only where the owned parent contract explicitly
+establishes that meaning; it is not a default for an unavailable usage payload.
+The guide positively names `deepseek-flash`; these service books do not assert compatibility with
+every model or propagate that capability through legacy redirects.
+
+Independent File Parsing and OCR books use the combined table's page tariff: USD 0.225 or CNY 1.5
+per thousand pages. Parsing is charged once on successful upload; later model input tokens remain
+separate. Ordinary `user_data` uploads do not inherit the parsing charge. OCR uses the typed
+successful `/page_count`, not its explanatory token totals. Disconnection does not cancel either
+operation or establish that it was free; an absent result leaves the billable quantity unknown.
+
+Text to Speech publishes the current limited-time USD 0.225 or CNY 1.5 per 10,000 billed
+characters. Unit conversion preserves that exact denominator. A Chinese character counts as two;
+other characters count as one. Callers supply the weighted billable count for the complete REST
+utterance or WebSocket text session. Speech to Text publishes USD 0.058 or CNY 0.39 per audio hour,
+with each request rounded up to whole seconds. The closed rounding calculation accepts canonical
+seconds from the caller; the API's millisecond duration is not mislabeled as a seconds locator.
+The price-page list amounts and limited-time labels remain observations, without a second
+simultaneously applicable tariff or an invented promotion end date. These four services do not
+create model IDs, subscription prices, or additional commercial agreements.
 
 The collector intentionally discards account balance, granted credit, recharge/refund terms,
 concurrency, capacity expansion, settlement order, and future price notices without an effective
@@ -224,11 +269,13 @@ zero. Kmodels publishes both response and terminal-stream locators as alternativ
 methods. It does not publish an arbitrary expression, CEL program, or provider-key pseudo-expression.
 All bindings aggregate per request.
 
-The Anthropic-compatible endpoint is part of the callable model catalog, but the current first-party
-guide does not define its response or stream usage envelope. Kmodels therefore does not guess a
-Messages usage locator. The same token rates remain semantically applicable to Anthropic-compatible
-requests; a cost consumer must wait for a documented provider input contract before claiming exact
-automatic extraction through that protocol.
+The Messages reference independently defines uncached `input_tokens`, cached
+`cache_read_input_tokens`, and `output_tokens` under `/usage`. The owned input description must
+explicitly exclude cached input before the first field supplies cache-miss quantity. The final
+`message_delta` has the same cumulative usage; intermediate events are not deltas to add together.
+Its request stream contract, event/type agreement and owned usage example are checked separately
+from the REST schema. A failed stream can still have billed work even without the successful
+terminal event; missing acquisition is not a zero quantity.
 
 Reasoning-token fields are subsets used for explanation, not additional charged quantities. Image
 tokens are already included in input totals, so they do not need a second charge signal. Cache
