@@ -2657,7 +2657,7 @@ async function fetchDashscopePricing(source: SourceManifest): Promise<FetchResul
             models.push(row);
           }
           dependencies.push({
-            key: `${source.id}:market:${region.id}:${scope.id}:${pageNo}`,
+            key: `${source.id}/market/${region.id}/${scope.id}/${pageNo}`,
             contentHash: sha256(JSON.stringify(value)),
             etag: undefined,
             lastModified: undefined,

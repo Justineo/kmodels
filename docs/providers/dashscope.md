@@ -102,7 +102,10 @@ Tokyo/Global and Japan, Hong Kong/Global and Hong Kong, and Virginia/Global and 
 Each origin is explicitly allowlisted. Validate the outer and nested success envelopes, stable
 totals, page numbers, exact page lengths, unique public IDs and matching service scopes; bound
 pages, model counts, bytes and concurrency. Failure rejects the pricing refresh, allowing the
-normal provider-atomic retention policy to preserve the last complete price partition.
+normal provider-atomic retention policy to preserve the last complete price partition. Each market
+page observation is retained under `dashscope-pricing/market/<region>/<scope>/<page>`; fetch-state
+keys outside the reviewed source prefix cannot be attributed to a provider, so sharded assembly
+rejects them.
 
 This is a reviewed semi-structured console interface, not a documented public pricing API. Its
 international console denomination is USD, independently corroborated by rendered model-price

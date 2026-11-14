@@ -189,6 +189,17 @@ it.each([
   expect(() => mergeCollectionShards(current, shards)).toThrow();
 });
 
+it("retains a reviewed dependency observation in the shard that owns its source", () => {
+  const current = plan();
+  const shards = emptyShards(current);
+  const other = shards.find(({ shard_id }) => shard_id === "other");
+  if (other === undefined) throw new Error("Missing shard fixture");
+  const key = "dashscope-pricing/market/cn-beijing/asia-pacific-china/1";
+  const observation = { checkedAt: observedAt, consecutiveFailures: 0 };
+  other.state.sources[key] = observation;
+  expect(mergeCollectionShards(current, shards).state.sources[key]).toEqual(observation);
+});
+
 it("validates compressed result boundaries and rejects extra or malformed artifact files", async () => {
   const current = plan();
   const shards = emptyShards(current);

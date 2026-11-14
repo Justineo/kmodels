@@ -80,11 +80,16 @@ function source() {
 }
 
 it("collects every region and deployment scope anonymously through bounded flat pagination", async () => {
-  const result = await fetchSource(source());
+  const reviewed = source();
+  const result = await fetchSource(reviewed);
   const bundle = dashscopeMarketBundleSchema.parse(JSON.parse(result.body));
   expect(bundle.market).toHaveLength(10);
   expect(bundle.market?.every(({ models }) => models.length === 2)).toBe(true);
-  expect(result.dependencies.filter(({ key }) => key.includes(":market:"))).toHaveLength(20);
+  expect(
+    result.dependencies.filter(({ key }) => key.startsWith(`${reviewed.id}/market/`)),
+  ).toHaveLength(20);
+  for (const { key } of result.dependencies)
+    expect(key === reviewed.id || key.startsWith(`${reviewed.id}/`)).toBe(true);
   for (const request of state.requests) {
     expect(request.join(" ")).not.toMatch(/Authorization|Cookie|Anonymous-Id|TraceId/i);
     const form = request.find((value) => value.startsWith("params="));
