@@ -1,0 +1,16 @@
+# 上下文缓存
+
+## 查看缓存读写用量
+
+
+不同 API 使用不同的 `usage` 字段记录缓存读写情况。依赖 `usage` 字段统计成本的应用，请按下表迁移字段：
+
+| API | 总输入 | 缓存读取 | 缓存写入 |
+| - | - | - | - |
+| Chat Completions | `usage.prompt_tokens` | `usage.prompt_tokens_details.cached_tokens` | `usage.prompt_tokens_details.cache_write_tokens` |
+| Responses | `usage.input_tokens` | `usage.input_tokens_details.cached_tokens` | `usage.input_tokens_details.cache_write_tokens` |
+| Messages | `usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens` | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` |
+
+对于 Chat Completions API 和 Responses API，缓存读取、缓存写入和未缓存部分互斥，三者之和等于总输入 Token 数。Messages 的 `usage.input_tokens` 不包含缓存读取和写入部分；其中 `usage.cache_creation.ephemeral_5m_input_tokens` 和 `usage.cache_creation.ephemeral_1h_input_tokens` 分别记录两个 TTL 下的写入 Token 数。
+
+使用 Chat Completions API 的流式请求时，需要设置 `stream_options.include_usage=true`，完整的缓存读写明细才会出现在最后一个 chunk 的 `usage` 字段中。

@@ -22,6 +22,46 @@ const transport = vi.hoisted(() => {
   return { failures, responses, calls };
 });
 
+it.each([false, true])(
+  "fetches a native JSON OpenAPI index with a claim-local cache companion (failed=%s)",
+  async (failed) => {
+    const source = reviewedPublicSource("kimi-openapi");
+    const spec = await readFile(new URL("./fixtures/kimi/openapi.json", import.meta.url), "utf8");
+    const guide = await readFile(
+      new URL("./fixtures/kimi/cache-partition-en.txt", import.meta.url),
+      "utf8",
+    );
+    transport.responses.set(source.url, [`HTTP/1.1 200 OK\r\n\r\n${spec}`]);
+    transport.responses.set("https://platform.kimi.ai/docs/guide/context-caching.md", [
+      failed ? "HTTP/1.1 404 Not Found\r\n\r\nmissing" : `HTTP/1.1 200 OK\r\n\r\n${guide}`,
+    ]);
+    const fetched = await fetchSource(source);
+    const bundle = linkedBundleSchema.parse(JSON.parse(fetched.body));
+    expect(JSON.parse(bundle.index.body)).toEqual(JSON.parse(spec));
+    expect(bundle.documents.map(({ url }) => url)).toEqual(
+      failed ? [] : ["https://platform.kimi.ai/docs/guide/context-caching.md"],
+    );
+    expect(fetched.dependencyFailures?.map(({ impact }) => impact) ?? []).toEqual(
+      failed ? ["claim"] : [],
+    );
+    expect(
+      parseSource({
+        provider: {
+          id: "kimi",
+          name: "Kimi",
+          kind: "hosted",
+          homepage: "https://platform.kimi.ai",
+          catalog_scope: "global",
+          source_ids: [source.id],
+        },
+        source,
+        observedAt: "2026-11-15T00:00:00.000Z",
+        body: fetched.body,
+      }).models.length,
+    ).toBeGreaterThan(0);
+  },
+);
+
 it.each(["native", "web fallback", "failed companion", "repeated page"])(
   "collects NVIDIA endpoint APIs with %s evidence",
   async (scenario) => {
@@ -355,7 +395,9 @@ vi.mock("node:child_process", () => ({
     const url = requestArguments.at(-1);
     if (typeof url !== "string") throw new Error("Curl invocation omitted its URL");
     transport.calls.push(url);
-    const response = transport.responses.get(new URL(url).hostname)?.shift();
+    const response =
+      transport.responses.get(url)?.shift() ??
+      transport.responses.get(new URL(url).hostname)?.shift();
     if (response !== undefined) {
       callback(null, { stdout: response, stderr: "" });
       return;

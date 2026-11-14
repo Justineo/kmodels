@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse } from "./markdown.ts";
 import {
   extractKimiCommercialFacts,
   bindKimiBatchPrices,
@@ -161,6 +162,17 @@ const apiItemSchema = z.object({
   supports_image_in: z.boolean().optional(),
   supports_video_in: z.boolean().optional(),
   supports_reasoning: z.boolean().optional(),
+  permission: z.unknown().optional(),
+  root: z.unknown().optional(),
+  parent: z.unknown().optional(),
+  modalities: z.unknown().optional(),
+  tools: z.unknown().optional(),
+  limit: z.unknown().optional(),
+  supports_dynamic_tools: z.unknown().optional(),
+  think_efforts: z.unknown().optional(),
+  reasoning_efforts: z.unknown().optional(),
+  supports_thinking_type: z.unknown().optional(),
+  reasoning: z.unknown().optional(),
 });
 
 function bounded(
@@ -367,7 +379,17 @@ function requestFacts(
 }
 
 export function parseKimiOpenApi(input: Input): SourceParseResult {
-  const spec = openApiSchema.parse(JSON.parse(input.body));
+  const raw: unknown = JSON.parse(input.body);
+  const bundle = linkedBundleSchema.safeParse(raw);
+  if (bundle.success && bundle.data.index.url !== input.source.url)
+    throw new Error("Kimi OpenAPI bundle changed its identity");
+  const spec = openApiSchema.parse(bundle.success ? JSON.parse(bundle.data.index.body) : raw);
+  const cacheGuides = bundle.success
+    ? bundle.data.documents.filter(
+        ({ url }) => url === new URL("/docs/guide/context-caching.md", input.source.url).href,
+      )
+    : [];
+  const cacheGuide = cacheGuides.length === 1 ? cacheGuides[0]?.body : undefined;
   const extractor = input.source.extractor;
   if (extractor.kind !== "kimi-openapi") throw new Error("Wrong kimi-openapi extractor");
   if (spec.servers[0]?.url !== extractor.baseUrl)
@@ -377,6 +399,7 @@ export function parseKimiOpenApi(input: Input): SourceParseResult {
     spec,
     sourceRef: input.source.id,
     baseUrl: extractor.baseUrl,
+    ...(cacheGuide === undefined ? {} : { cacheGuide }),
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
     ...(input.onPricingReconciliation === undefined
       ? {}
@@ -1190,12 +1213,49 @@ function guideModels(body: string, models: Map<string, ProviderModel>, label: st
   return ids.sort();
 }
 
-function batchGuideModels(body: string): string[] {
-  const claims = body
+function batchGuideModels(
+  body: string,
+  models: Map<string, ProviderModel>,
+  sourceUrl: string,
+): string[] {
+  const delegated = markdownProse(body)
     .split(/\r?\n/)
-    .filter(
-      (line) => /Batch API (?:supports|支持)/i.test(line) && exactDocumentModelIds(line).length > 0,
-    );
+    .flatMap((line) => {
+      const prose = line.replace(/^>\s*/, "");
+      const link =
+        prose.match(
+          /^See \[BatchJob Pricing\]\(([^)]+)\) for the models supported by Batch API\./,
+        )?.[1] ?? prose.match(/^Batch API 支持的模型见\[批量推理定价\]\(([^)]+)\)。/)?.[1];
+      return link === undefined ? [] : [link];
+    });
+  if (delegated.length > 0) {
+    const target = delegated.length === 1 ? delegated[0] : undefined;
+    const expected = new URL("/docs/pricing/batch", sourceUrl);
+    const url = target === undefined ? undefined : new URL(target, sourceUrl);
+    if (
+      url?.origin !== expected.origin ||
+      url.pathname.replace(/\.md$/, "") !== expected.pathname ||
+      url.search !== "" ||
+      url.hash !== ""
+    )
+      throw new Error("Kimi Batch guide changed its price-table delegation");
+    const ids = batchModelIds(models);
+    if (ids.length === 0)
+      throw new Error("Kimi delegated Batch table omitted supported model rows");
+    if (
+      /Batch API (?:supports|支持)\s*(?:(?:both|the)\s+)*`/i.test(markdownProse(body)) &&
+      explicitBatchGuideModels(body).join("\0") !== [...ids].sort().join("\0")
+    )
+      throw new Error("Kimi Batch guide contains conflicting scope authorities");
+    return ids;
+  }
+  return explicitBatchGuideModels(body);
+}
+
+function explicitBatchGuideModels(body: string): string[] {
+  const claims = markdownProse(body)
+    .split(/\r?\n/)
+    .filter((line) => /Batch API (?:supports|支持)\s*(?:(?:both|the)\s+)*`/i.test(line));
   const claim = claims[0];
   if (claims.length !== 1 || claim === undefined)
     throw new Error("Kimi Batch guide omitted or duplicated its exact supported model claim");
@@ -1620,7 +1680,7 @@ function commercialEvidence(
     batchGuide === undefined
       ? []
       : (reviewClaim(reconciliation, "batch_model_scope_drift", () =>
-          batchGuideModels(batchGuide),
+          batchGuideModels(batchGuide, models, input.source.url),
         ) ?? []);
   if (batchModels.length > 0) {
     const batchGuideModelIds = new Set(batchModels);

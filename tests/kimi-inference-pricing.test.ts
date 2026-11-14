@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { expect, it, vi } from "vite-plus/test";
 import type { LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
@@ -93,6 +94,68 @@ function lookup(candidate: CatalogPairCandidate) {
     candidate.inference?.mapping,
   );
 }
+
+it.each(["owned", "agree-list", "foreign", "duplicate", "conflicting-list"])(
+  "binds regional Batch result usage through its owned price-table delegation (%s)",
+  async (witness) => {
+    const fixture = (name: string) =>
+      readFile(new URL(`./fixtures/kimi/${name}`, import.meta.url), "utf8");
+    const [guide, creation, cn, en] = await Promise.all([
+      fixture("batch-guide-global.md"),
+      fixture("batch-api-global.md"),
+      fixture("batch-scope-cn.txt"),
+      fixture("batch-scope-en.txt"),
+    ]);
+    const candidate = await collect((bundle, sourceId) => {
+      const origin = new URL(bundle.index.url).origin;
+      let delegation = sourceId === "kimi-pricing" ? cn.trim() : en.trim();
+      if (sourceId === "kimi-pricing") {
+        if (witness === "foreign")
+          delegation = delegation.replace("https://platform.kimi.com", "https://example.test");
+        if (witness === "duplicate") delegation += `\n${delegation}`;
+        if (witness === "conflicting-list")
+          delegation += "\nBatch API supports `kimi-k2.6` models.";
+        if (witness === "agree-list")
+          delegation +=
+            "\nBatch API supports `kimi-k3.1-pro`, `kimi-k3`, `kimi-k2.7-code` and `kimi-k2.6` models.";
+      }
+      const savings = sourceId === "kimi-pricing" ? "节省 40%" : "saving 40%";
+      bundle.documents.push({
+        url: `${origin}/docs/guide/use-batch-api`,
+        body: guide.replace(
+          /^.*Batch API supports.*$/m,
+          `Batch inference offers ${savings} compared with real-time calls.\n\n${delegation}`,
+        ),
+      });
+      bundle.documents.push({ url: `${origin}/docs/api/batch-create`, body: creation });
+    });
+    for (const region of ["China", "International"]) {
+      const result = lookup(candidate)({
+        provider_id: "kimi",
+        model_id: "kimi-k2.7-code",
+        offer_ref: offerRef(candidate, "kimi-k2.7-code", "batch"),
+        execution_mode: "batch",
+        selectors: selectors(region),
+      });
+      expect(result.status).toBe("matched");
+      const output = result.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .find((term) => term.kind === "rate" && term.meter.value === "output_text");
+      if (output?.kind !== "rate") throw Error("Missing Batch output price");
+      const locators = output.variants.flatMap(
+        ({ charge_binding }) =>
+          charge_binding?.quantity_methods?.flatMap(
+            ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+          ) ?? [],
+      );
+      expect(locators).toEqual(
+        region === "International" || witness === "owned" || witness === "agree-list"
+          ? ["/response/body/usage/completion_tokens"]
+          : [],
+      );
+    }
+  },
+);
 
 it("assembles the rendered web-search tariffs separately and isolates a malformed regional row", async () => {
   const candidate = await collect((bundle, sourceId) => {

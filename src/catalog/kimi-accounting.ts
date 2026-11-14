@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
+import { markdownProse, markdownSection } from "./markdown.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -9,6 +10,7 @@ interface OpenApiInput {
   spec: unknown;
   sourceRef: string;
   baseUrl: string;
+  cacheGuide?: string;
   onFinding?: (evidence: SourceContractEvidence) => void;
   onReconciliation?: (item: PricingReconciliationItem) => void;
 }
@@ -93,6 +95,28 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
   const request = object(requestSchema(spec, chatPath));
   const mapping = object(property(property(request, "discriminator"), "mapping"));
   const chatModels = Object.keys(mapping).map((id) => modelIdSchema.parse(id));
+  const ttlContracts = [300, 3600]
+    .flatMap((ttl) =>
+      messagesUsage(
+        `cache_write_tokens.ttl_${ttl}`,
+        ["cache_creation", ttl === 300 ? "ephemeral_5m_input_tokens" : "ephemeral_1h_input_tokens"],
+        ttl === 300 ? /5m|5[- ]minute|5\s*分钟/i : /1h|1[- ]hour|1\s*小时/i,
+      ),
+    )
+    .filter((contract) => {
+      try {
+        return (
+          schemaAt(spec, messageSchema(spec, contract.channel === "stream_event"), [
+            "usage",
+            "cache_creation",
+          ]) !== undefined
+        );
+      } catch {
+        return false;
+      }
+    });
+  const contracts = [...openApiContracts, ...ttlContracts];
+  const guidePartition = cachePartition(input.cacheGuide);
   const facts: SourcePricingInputFact[] = [
     {
       key: `request.api_origin.${region}`,
@@ -101,7 +125,7 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
       availability: "always",
       source_ref: input.sourceRef,
     },
-    ...openApiContracts.flatMap((contract) => {
+    ...contracts.flatMap((contract) => {
       try {
         contract.verify(spec);
         const modelIds = contract.key.startsWith("chat.")
@@ -113,7 +137,7 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
         if (modelIds.length === 0) return [];
         return [
           {
-            key: profiledKey(spec, contract, input.onFinding),
+            key: profiledKey(spec, contract, input.onFinding, guidePartition),
             channel: contract.channel,
             locator: contract.locator,
             availability: contract.availability,
@@ -131,7 +155,7 @@ export function extractKimiOpenApiAccounting(input: OpenApiInput): KimiOpenApiAc
   ];
   const pricingInputs = finalizePricingInputs(
     facts,
-    openApiContracts.length + 1,
+    contracts.length + 1,
     "Kimi OpenAPI pricing inputs",
     input.onReconciliation,
   );
@@ -325,6 +349,7 @@ function profiledKey(
   spec: JsonSpec,
   contract: InputContract,
   onFinding: OpenApiInput["onFinding"],
+  guidePartition: boolean,
 ): string {
   const streaming = contract.channel === "stream_event";
   if (contract.key === "chat.input_tokens" || contract.key === "chat.stream.input_tokens") {
@@ -337,6 +362,7 @@ function profiledKey(
       integerField(spec, schema, ["usage", "prompt_tokens_details", "cache_write_tokens"]);
       const details = object(schemaAt(spec, schema, ["usage", "prompt_tokens_details"]));
       if (
+        guidePartition ||
         /cached_tokens.*cache_write_tokens.*(?:mutually exclusive.*sum to prompt_tokens|互斥.*等于 prompt_tokens)/i.test(
           String(details.description),
         )
@@ -347,6 +373,16 @@ function profiledKey(
       );
     } catch {
       /* A weak total-input contract survives without an unproved partition. */
+    }
+  }
+  if (contract.key === "responses.input_tokens" && guidePartition) {
+    try {
+      const schema = responseSchema(spec, responsesPath, "application/json");
+      integerField(spec, schema, ["usage", "input_tokens_details", "cached_tokens"]);
+      integerField(spec, schema, ["usage", "input_tokens_details", "cache_write_tokens"]);
+      return `${contract.key}.cache_write_partition`;
+    } catch {
+      /* Keep the independently typed total after a missing partition field. */
     }
   }
   if (
@@ -371,6 +407,29 @@ function profiledKey(
     }
   }
   return contract.key;
+}
+
+function cachePartition(body: string | undefined): boolean {
+  if (body === undefined) return false;
+  const section =
+    markdownSection(body, 2, "查看缓存读写用量") ?? markdownSection(body, 2, "Check cache usage");
+  const prose = markdownProse(section ?? "")
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n");
+  return (
+    [
+      "usage.input_tokens",
+      "usage.input_tokens_details.cached_tokens",
+      "usage.input_tokens_details.cache_write_tokens",
+    ].every((field) => prose.includes(`\`${field}\``)) &&
+    (prose.includes(
+      "对于 Chat Completions API 和 Responses API，缓存读取、缓存写入和未缓存部分互斥，三者之和等于总输入 Token 数",
+    ) ||
+      prose.includes(
+        "For the Chat Completions and Responses APIs, cache reads, cache writes, and the uncached remainder are mutually exclusive and sum to total input tokens",
+      ))
+  );
 }
 
 function openApiInput(

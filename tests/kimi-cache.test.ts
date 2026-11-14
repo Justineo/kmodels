@@ -16,6 +16,7 @@ async function compiled(
     editBody?: (body: string) => string;
     otherRegion?: boolean;
     modelId?: "kimi-k3" | "kimi-k2.6";
+    cacheGuide?: string;
   } = {},
 ) {
   const manifest: ProviderManifest | undefined = manifests.find(
@@ -49,6 +50,9 @@ async function compiled(
         spec: JSON.parse(source === api ? (options.editBody?.(body) ?? body) : body),
         sourceRef: source.id,
         baseUrl: source.extractor.baseUrl,
+        ...(source === api && options.cacheGuide !== undefined
+          ? { cacheGuide: options.cacheGuide }
+          : {}),
       }),
     };
   });
@@ -157,6 +161,99 @@ async function compiled(
   return { offer, region, currency };
 }
 describe("Kimi cache-write accounting", () => {
+  it.each([false, true])(
+    "uses the owned Responses partition and exact Messages TTL counters (China=%s)",
+    async (china) => {
+      const cacheGuide = await readFile(
+        new URL(`./fixtures/kimi/cache-partition-${china ? "cn" : "en"}.txt`, import.meta.url),
+        "utf8",
+      );
+      const { offer } = await compiled(china, { cacheGuide });
+      const input = offer.terms.find(
+        (term) => term.kind === "rate" && term.meter.value === "input_text",
+      );
+      if (input?.kind !== "rate") throw Error("Missing input rate");
+      expect(
+        input.variants
+          .flatMap(({ charge_binding }) => charge_binding?.quantity_methods ?? [])
+          .some(
+            ({ calculation, input_sources }) =>
+              calculation?.nodes.some(({ op }) => op === "subtract_floor_zero") &&
+              input_sources?.some(
+                ({ locator }) => locator.value === "/usage/input_tokens_details/cache_write_tokens",
+              ),
+          ),
+      ).toBe(true);
+      const write = offer.terms.find(
+        (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
+      );
+      if (write?.kind !== "rate") throw Error("Missing write rate");
+      for (const variant of write.variants) {
+        const ttl = variant.applicability.any_of
+          .flatMap(({ all_of }) => all_of)
+          .find(({ dimension }) => dimension.value === "cache_ttl_seconds");
+        if (ttl?.kind !== "decimal_range") throw Error("Missing TTL");
+        const expected =
+          ttl.lower?.value === "300" ? "ephemeral_5m_input_tokens" : "ephemeral_1h_input_tokens";
+        expect(
+          variant.charge_binding?.quantity_methods?.flatMap(
+            ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+          ),
+        ).toEqual([`/usage/cache_creation/${expected}`, `/usage/cache_creation/${expected}`]);
+      }
+    },
+  );
+
+  it("does not use quoted partition prose or aggregate writes as a TTL breakdown", async () => {
+    const cacheGuide = (
+      await readFile(new URL("./fixtures/kimi/cache-partition-en.txt", import.meta.url), "utf8")
+    ).replace(
+      "For the Chat Completions and Responses APIs",
+      "> For the Chat Completions and Responses APIs",
+    );
+    const { offer } = await compiled(false, {
+      cacheGuide,
+      otherRegion: true,
+      editBody: (body) =>
+        body.replace(/("ephemeral_5m_input_tokens":\s*{\s*"type":\s*)"integer"/g, '$1"string"'),
+    });
+    const input = offer.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    if (input?.kind !== "rate") throw Error("Missing input");
+    expect(
+      input.variants
+        .flatMap(({ charge_binding }) => charge_binding?.quantity_methods ?? [])
+        .some(
+          ({ calculation, input_sources }) =>
+            calculation !== undefined &&
+            input_sources?.some(
+              ({ locator }) => locator.value === "/usage/input_tokens_details/cache_write_tokens",
+            ),
+        ),
+    ).toBe(false);
+    const write = offer.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
+    );
+    if (write?.kind !== "rate") throw Error("Missing writes");
+    for (const variant of write.variants) {
+      const ttl = variant.applicability.any_of
+        .flatMap(({ all_of }) => all_of)
+        .find(({ dimension }) => dimension.value === "cache_ttl_seconds");
+      expect(
+        variant.charge_binding?.quantity_methods?.flatMap(
+          ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+        ) ?? [],
+      ).toEqual(
+        ttl?.kind === "decimal_range" && ttl.lower?.value === "300"
+          ? []
+          : [
+              "/usage/cache_creation/ephemeral_1h_input_tokens",
+              "/usage/cache_creation/ephemeral_1h_input_tokens",
+            ],
+      );
+    }
+  });
   it.each(["counter", "model scope"])(
     "does not replace a failed regional %s with the other region's contract",
     async (kind) => {

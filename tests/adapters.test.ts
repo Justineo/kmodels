@@ -11941,7 +11941,7 @@ describe("Kimi adapters", () => {
     expect(source("kimi-api")).toMatchObject({
       url: "https://api.moonshot.ai/v1/models",
       allowedHosts: ["api.moonshot.ai"],
-      extractorVersion: "kimi-api-v2",
+      extractorVersion: "kimi-api-v3",
     });
     expect(source("kimi-china-api")).toMatchObject({
       url: "https://api.moonshot.cn/v1/models",
@@ -11952,7 +11952,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v9",
+      extractorVersion: "kimi-openapi-v10",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({
@@ -11968,7 +11968,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v19",
+      extractorVersion: "kimi-pricing-v20",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -12001,7 +12001,7 @@ describe("Kimi adapters", () => {
       source("kimi-api"),
       body.replace(
         '"supports_reasoning": true',
-        '"supports_reasoning": true, "supports_dynamic_tools": true',
+        '"supports_reasoning": true, "future_metadata": true',
       ),
       undefined,
       (finding) => findings.push(finding),
@@ -12013,7 +12013,7 @@ describe("Kimi adapters", () => {
         diagnostics: [
           expect.objectContaining({
             kind: "unknown_field",
-            path: "/supports_dynamic_tools",
+            path: "/future_metadata",
             affected_items: 1,
             sample_model_ids: ["kimi-k3"],
           }),

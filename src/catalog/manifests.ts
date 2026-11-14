@@ -430,7 +430,7 @@ const kimiPricingSource = (
   format: "html",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v19",
+  extractorVersion: "kimi-pricing-v20",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -4632,7 +4632,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v9",
+        extractorVersion: "kimi-openapi-v10",
         fields: [
           "model_id",
           "tasks",
@@ -4647,6 +4647,22 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: optionalFixedDocuments([
+            [
+              "cache-accounting",
+              "https://platform.kimi.ai/docs/guide/context-caching.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
+        },
       },
       {
         id: "kimi-china-openapi",
@@ -4661,7 +4677,7 @@ export const manifests = [
           minModels: 4,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v9",
+        extractorVersion: "kimi-openapi-v10",
         fields: [
           "model_id",
           "tasks",
@@ -4676,6 +4692,22 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: optionalFixedDocuments([
+            [
+              "cache-accounting",
+              "https://platform.kimi.com/docs/guide/context-caching.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
+        },
       },
       {
         id: "kimi-catalog",
@@ -4778,7 +4810,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
-        extractorVersion: "kimi-api-v2",
+        extractorVersion: "kimi-api-v3",
         fields: ["model_id", "modalities", "capabilities", "limits"],
         allowedHosts: ["api.moonshot.ai"],
         maxResponseBytes: mebibytes(1),
@@ -4796,7 +4828,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
-        extractorVersion: "kimi-api-v2",
+        extractorVersion: "kimi-api-v3",
         fields: ["model_id", "modalities", "capabilities", "limits"],
         allowedHosts: ["api.moonshot.cn"],
         maxResponseBytes: mebibytes(1),

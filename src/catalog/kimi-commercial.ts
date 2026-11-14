@@ -233,26 +233,37 @@ function modelBinding(
       standardBinding(signal, "result_item", variant.observation, emptyMethods())
     );
   }
+  const scopedInputs = regionalInputs(variant.applicability, inputIndex);
+  const qualifiedWrite =
+    signal.value === "cache_write_tokens" &&
+    variant.applicability.any_of.some(({ all_of }) =>
+      all_of.some(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "cache_ttl_seconds",
+      ),
+    );
   return standardBinding(
     signal,
     "request",
     variant.observation,
-    synchronousMethods(
-      model,
-      signal,
-      regionalInputs(variant.applicability, inputIndex),
-      book.offers.some(({ terms }) =>
-        terms.some(
-          (term) =>
-            term.kind === "rate" &&
-            term.meter.namespace === "kmodels" &&
-            term.meter.value === "cache_write_text" &&
-            term.variants.some(
-              (write) => write.observation.source_ref === variant.observation.source_ref,
+    qualifiedWrite
+      ? cacheWriteMethods(model, variant.applicability, scopedInputs)
+      : synchronousMethods(
+          model,
+          signal,
+          scopedInputs,
+          book.offers.some(({ terms }) =>
+            terms.some(
+              (term) =>
+                term.kind === "rate" &&
+                term.meter.namespace === "kmodels" &&
+                term.meter.value === "cache_write_text" &&
+                term.variants.some(
+                  (write) => write.observation.source_ref === variant.observation.source_ref,
+                ),
             ),
+          ),
         ),
-      ),
-    ),
   );
 }
 
@@ -318,8 +329,12 @@ function synchronousMethods(
       separateWrites
         ? cachePartitionMethod(model?.uid, inputIndex)
         : subtractionMethod("chat", inputIndex, model?.uid),
-      ...(endpoints.has("/v1/responses") && !separateWrites
-        ? [subtractionMethod("responses", inputIndex, model?.uid)]
+      ...(endpoints.has("/v1/responses")
+        ? [
+            separateWrites
+              ? cachePartitionMethod(model?.uid, inputIndex, "responses")
+              : subtractionMethod("responses", inputIndex, model?.uid),
+          ]
         : []),
       ...(endpoints.has("/anthropic/v1/messages")
         ? [
@@ -349,13 +364,17 @@ function synchronousMethods(
 function cachePartitionMethod(
   modelRef: string | undefined,
   inputIndex: PricingInputIndex,
+  protocol: "chat" | "responses" = "chat",
 ): MethodsAndFacts {
   const total = { namespace: "kmodels", value: "input_tokens" } as const;
   const cached = { namespace: "kmodels", value: "cached_input_tokens" } as const;
   const written = { namespace: "kmodels", value: "cache_write_tokens" } as const;
   const totals = pricingInputFacts(
     inputIndex,
-    ["chat.input_tokens.cache_write_partition", "chat.stream.input_tokens.cache_write_partition"],
+    [
+      `${protocol}.input_tokens.cache_write_partition`,
+      `${protocol}.stream.input_tokens.cache_write_partition`,
+    ],
     modelRef,
   );
   if (totals.length === 0) return emptyMethods();
@@ -374,17 +393,51 @@ function cachePartitionMethod(
       { signal: total, facts: totals },
       {
         signal: cached,
-        facts: pricingInputFacts(inputIndex, usageKeys("chat", "cached_input_tokens"), modelRef),
+        facts: pricingInputFacts(inputIndex, usageKeys(protocol, "cached_input_tokens"), modelRef),
       },
       {
         signal: written,
-        facts: pricingInputFacts(inputIndex, usageKeys("chat", "cache_write_tokens"), modelRef),
+        facts: pricingInputFacts(inputIndex, usageKeys(protocol, "cache_write_tokens"), modelRef),
       },
     ],
   );
 }
 
+function cacheWriteMethods(
+  model: PublishedPricingModel | undefined,
+  applicability: PriceApplicability,
+  inputIndex: PricingInputIndex,
+): MethodsAndFacts {
+  if (!model?.api_endpoints?.some(({ path }) => path === "/anthropic/v1/messages"))
+    return emptyMethods();
+  const ttls = applicability.any_of.map(({ all_of }) => {
+    const conditions = all_of.filter(
+      ({ dimension }) =>
+        dimension.namespace === "kmodels" && dimension.value === "cache_ttl_seconds",
+    );
+    const condition = conditions.length === 1 ? conditions[0] : undefined;
+    return condition?.kind === "decimal_range" &&
+      isStandardUnit(condition.unit, "second") &&
+      condition.lower?.inclusive &&
+      condition.upper?.inclusive &&
+      condition.lower.value === condition.upper.value &&
+      ["300", "3600"].includes(condition.lower.value)
+      ? condition.lower.value
+      : undefined;
+  });
+  const ttl = ttls[0];
+  if (ttl === undefined || !ttls.every((value) => value === ttl)) return emptyMethods();
+  return directMethods(
+    { namespace: "kmodels", value: "cache_write_tokens" },
+    [`messages.cache_write_tokens.ttl_${ttl}`, `messages.stream.cache_write_tokens.ttl_${ttl}`],
+    inputIndex,
+    model.uid,
+  );
+}
+
 function usageKeys(protocol: "chat" | "messages" | "responses", signal: string): string[] {
+  if (protocol === "responses" && signal === "input_tokens")
+    return ["responses.input_tokens", "responses.input_tokens.cache_write_partition"];
   const keys = [`${protocol}.${signal}`, `${protocol}.stream.${signal}`];
   if (protocol === "chat" && signal === "input_tokens")
     keys.push(

@@ -1,0 +1,16 @@
+# Context caching
+
+## Check cache usage
+
+
+Different APIs record cache reads and writes in different `usage` fields. If your application uses `usage` fields for cost tracking, migrate them as shown below:
+
+| API | Total input | Cache read | Cache write |
+| - | - | - | - |
+| Chat Completions | `usage.prompt_tokens` | `usage.prompt_tokens_details.cached_tokens` | `usage.prompt_tokens_details.cache_write_tokens` |
+| Responses | `usage.input_tokens` | `usage.input_tokens_details.cached_tokens` | `usage.input_tokens_details.cache_write_tokens` |
+| Messages | `usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens` | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` |
+
+For the Chat Completions and Responses APIs, cache reads, cache writes, and the uncached remainder are mutually exclusive and sum to total input tokens. For Messages, `usage.input_tokens` excludes cache reads and writes; `usage.cache_creation.ephemeral_5m_input_tokens` and `usage.cache_creation.ephemeral_1h_input_tokens` further break cache writes down by TTL.
+
+For streaming Chat Completions API requests, set `stream_options.include_usage=true` for the complete cache read/write breakdown to appear in the `usage` field of the final chunk.
