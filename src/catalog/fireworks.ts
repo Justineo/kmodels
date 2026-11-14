@@ -79,8 +79,8 @@ export function fireworksModelPaths(body: string): string[] {
   return libraryEntries(body).map(({ slug }) => `/models/${slug}/`);
 }
 
-function requiredSection(body: string, depth: number, name: string): string {
-  const section = markdownSection(body, depth, name);
+function requiredSection(body: string, depth: number, name: string, ignoreCase = false): string {
+  const section = markdownSection(body, depth, name, { ignoreCase });
   assertSourceConstraint(
     `Fireworks documentation omitted ${name}`,
     section !== undefined,
@@ -119,14 +119,13 @@ function pricesFromTable(body: string, section: string) {
 }
 
 function routerTable(body: string, section: string, suffix = "") {
-  return markdownTableRows(requiredSection(body, 2, section), ["Model", "`model` ID"]).map(
-    (row) => {
-      const label = row.get("Model");
-      const raw = row.get("`model` ID")?.match(/^`([^`]+)`$/u)?.[1];
-      assertSourceConstraint("Fireworks route table lost a model label", !!label, undefined);
-      return { label: `${label}${suffix}`, id: publicId.parse(raw) };
-    },
-  );
+  const content = requiredSection(body, 2, section, true);
+  return markdownTableRows(content, ["Model", "`model` ID"]).map((row) => {
+    const label = row.get("Model");
+    const raw = row.get("`model` ID")?.match(/^`([^`]+)`$/u)?.[1];
+    assertSourceConstraint("Fireworks route table lost a model label", !!label, undefined);
+    return { label: `${label}${suffix}`, id: publicId.parse(raw) };
+  });
 }
 
 function tokenRates(

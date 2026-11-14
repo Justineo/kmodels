@@ -20,9 +20,20 @@ export function markdownProse(body: string): string {
     .join("\n");
 }
 
-export function markdownSection(body: string, depth: number, name: string): string | undefined {
+export function markdownSection(
+  body: string,
+  depth: number,
+  name: string,
+  options: { ignoreCase?: boolean } = {},
+): string | undefined {
   const headings = [...markdownProse(body).matchAll(/^(#{1,6}) ([^\r\n]+?)[ \t]*\r?$/gm)];
-  const matches = headings.filter((heading) => heading[1]?.length === depth && heading[2] === name);
+  const matches = headings.filter(
+    (heading) =>
+      heading[1]?.length === depth &&
+      (options.ignoreCase === true
+        ? heading[2]?.toLowerCase() === name.toLowerCase()
+        : heading[2] === name),
+  );
   const heading = matches[0];
   if (matches.length !== 1 || heading === undefined) return;
   const start = heading.index + heading[0].length;

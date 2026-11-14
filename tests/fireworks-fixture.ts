@@ -99,7 +99,7 @@ export const fireworksBundle = {
         "| Model | `model` ID |",
         "| - | - |",
         `| Example Fast | \`${routerId}\` |`,
-        "## Ultra-fast (Preview)",
+        "## Ultra-fast (preview)",
         "| Model | `model` ID |",
         "| - | - |",
         "| Another Model | `accounts/fireworks/routers/another-ultrafast` |",

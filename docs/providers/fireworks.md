@@ -27,7 +27,10 @@ Standard and Priority rates. Priority is a service-tier selector for the same id
 Fast, Ultra-fast and US-only variants with a distinct ID require an exact match in the
 [mode](https://docs.fireworks.ai/serverless/serverless-modes) or
 [US-only](https://docs.fireworks.ai/serverless/us-only-serverless) route table and keep their
-own model records even when pricing is absent. A price row without a matching card or router is a
+own model records even when pricing is absent. The route-table heading is matched
+case-insensitively because the provider controls its casing and changed
+`Ultra-fast (Preview)` to `Ultra-fast (preview)`; the published IDs and price labels stay
+exact. A price row without a matching card or router is a
 reconciliation finding. For other admitted cards, the labeled Serverless price panel
 supplies rates when the meter and unit are explicit. A retrieval model publishes no output
 tokens, so its card rate is the input rate whether the panel labels the unit

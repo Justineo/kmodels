@@ -16,6 +16,7 @@ import {
   embeddingAlias,
   embeddingId,
   fireworksBundle,
+  fireworksDocs,
   fireworksRoot,
   index,
   rerankerAlias,
@@ -443,6 +444,34 @@ describe("Fireworks AI Serverless", () => {
       price_facts: [{ price: "0.016" }],
       pricing_state: "numeric",
     });
+  });
+
+  it("matches the preview route heading without case sensitivity", () => {
+    const modesUrl = `${fireworksDocs}/serverless-modes.md`;
+    for (const heading of [
+      "## Ultra-fast (preview)",
+      "## Ultra-fast (Preview)",
+      "## ULTRA-FAST (PREVIEW)",
+    ]) {
+      const bundle = {
+        ...fireworksBundle,
+        documents: fireworksBundle.documents.map((document) =>
+          document.url === modesUrl
+            ? {
+                ...document,
+                body: document.body.replace(/^## Ultra-fast \(preview\)$/mu, heading),
+              }
+            : document,
+        ),
+      };
+      const { models } = parse("fireworks", JSON.stringify(bundle));
+      expect(models).toContainEqual(
+        expect.objectContaining({
+          model_id: "accounts/fireworks/routers/another-ultrafast",
+          release_stage: "preview",
+        }),
+      );
+    }
   });
 
   it("rejects an incomplete card crawl", () => {
