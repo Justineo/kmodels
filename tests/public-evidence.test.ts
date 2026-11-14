@@ -33,11 +33,50 @@ it("inspects a first-party successor linked by reviewed HTML without admitting i
       "host boundary",
     );
   expect(() => linkedPublicSource({ ...parent, access: "authenticated" }, body, target)).toThrow(
-    "public HTML parent",
+    "public HTML or Markdown parent",
   );
+  expect(() => linkedPublicSource({ ...parent, format: "json" }, body, target)).toThrow(
+    "public HTML or Markdown parent",
+  );
+});
+
+it("follows verified Markdown and HTML links across research steps without widening hosts", () => {
+  const index = reviewedPublicSource("bedrock-models", "--index");
+  expect(index.format).toBe("markdown");
+  const root = "https://docs.aws.amazon.com/bedrock/latest/userguide/";
+  const card = linkedPublicSource(
+    index,
+    "[Nova Pro](model-card-amazon-nova-pro.md)",
+    root + "model-card-amazon-nova-pro.md",
+  );
+  expect(card.format).toBe("markdown");
+  const guide = linkedPublicSource(
+    card,
+    "[Latency](latency-optimized-inference.html#models)",
+    root + "latency-optimized-inference.html",
+  );
+  expect(guide.format).toBe("html");
+  const pricing = linkedPublicSource(
+    guide,
+    '<a href="https://aws.amazon.com/bedrock/pricing/">Pricing</a>',
+    "https://aws.amazon.com/bedrock/pricing/",
+  );
+  expect(pricing.allowedHosts).toEqual(index.allowedHosts);
+  expect(pricing.linkedDocuments).toBeUndefined();
+  expect(pricing.maxResponseBytes).toBeLessThanOrEqual(index.maxResponseBytes);
+  for (const body of [
+    "![Image](model-card-amazon-nova-pro.md)",
+    "```md\n[Nova Pro](model-card-amazon-nova-pro.md)\n```",
+    "[Nova Pro](model-card-amazon-nova-lite.md)",
+  ])
+    expect(() => linkedPublicSource(index, body, card.url)).toThrow("not linked");
   expect(() =>
-    linkedPublicSource(reviewedPublicSource("cohere-models", "--index"), body, target),
-  ).toThrow("public HTML parent");
+    linkedPublicSource(
+      card,
+      "[External](https://example.com/doc.md)",
+      "https://example.com/doc.md",
+    ),
+  ).toThrow("host boundary");
 });
 
 it("distinguishes a provider-ID mistake from authentication and names the public source", () => {
@@ -129,7 +168,7 @@ it("isolates raw index evidence without widening the reviewed source boundary", 
   const index = reviewedPublicSource("cohere-models", "--index");
   expect(index.url).toBe(source.url);
   expect(index.allowedHosts).toEqual(source.allowedHosts);
-  expect(index.format).toBe(source.format);
+  expect(index.format).toBe("markdown");
   expect(index.maxResponseBytes).toBe(source.linkedDocuments?.maxDocumentBytes);
   expect(index.linkedDocuments).toBeUndefined();
   expect(index.transport).toBeUndefined();

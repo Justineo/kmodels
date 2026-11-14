@@ -682,15 +682,32 @@ one coherent root cause, repair that cause:
    Copy the exact prepared evidence commands. `amazon-bedrock` is a provider ID;
    `bedrock-models` is its public source ID. Unknown-source, bad-argument, JSON/HTML decoding, and
    missing-local-file errors require correcting the command, not reporting unavailable credentials.
-   For a successor linked by a reviewed HTML companion, use
-   `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL`.
-   Use `--index` as the parent for a supported raw index. This refetches the reviewed parent,
-   checks the actual link, and saves one bounded target within the existing public host policy;
+   For research linked by a reviewed HTML or Markdown companion, use
+   `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL [TARGET_URL...]`.
+   Use `--index` as the root for a supported raw index. Follow up to four targets per command;
+   each must be linked by the preceding freshly fetched page. The receipt retains all parent
+   bytes/hashes and the final target within the existing public host and byte limits;
    it does not add the target to collection. A non-fixed-URL rejection from the ordinary mode
    is a command limitation, not evidence that the provider's contract is unavailable. Follow
    method-page links to parameter/result types: a generic method may omit the very fields its
    linked type explicitly documents. Verify the content, then update the fixed URL and extraction
    with a regression. Keep independent partial repairs even if other inputs remain undocumented.
+   Apply `docs/agent-provider-research.md` to conflicting and missing claims, not just broken URLs.
+   In the candidate's `reason` and referenced evidence, identify the exact claim (model ID,
+   route, source Region, tier, speed or meter), supporting and contrary first-party sources,
+   their authority for that field, and the resolution or remaining uncertainty. Distinguish
+   explicit support, explicit exclusion and omission: a table that does not list a Region is
+   not proof of non-support. Follow relevant feature guides, model cards, current billing data
+   and dated announcements before declaring a public fact unavailable. Current exact SKU/page
+   joins can establish a regional amount; a launch announcement alone cannot set today's price.
+   API enums alone do not establish that every selector combination is supported or priced.
+   State bounded inferences and never fabricate confidence scores, zero prices or negative facts.
+   A tool's unsupported link syntax or a depth/host limit is an acquisition limit, not a provider
+   omission. Use other permitted tools where possible, otherwise report the exact remaining gap.
+   Close the finite claim list with evidenced resolutions or explicit limits; do not turn best
+   effort into an unbounded crawl. Regressions must cover the resolved claim and plausible false
+   joins, not merely the number of parsed rows. Existing completion checks validate receipts,
+   not the truth or completeness of an agent's source interpretation.
    For each parser rejection, inspect its structured diagnostic and the relevant table/row/field.
    Matching hashes establish persistence, not that code is correct; changed hashes still permit a
    current-source repair. Compare labeled input IDs with parsed IDs, including Markdown/HTML

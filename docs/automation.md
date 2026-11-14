@@ -318,15 +318,24 @@ Status: implemented
   `sha256` for review references. `source_hash` hashes only the source body; it is not the review
   artifact digest. Refetching identical bytes cannot replace an earlier receipt's timestamp or
   baseline metadata and invalidate evidence already cited by an investigation.
-  For relocation research, `SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL` fetches the
-  reviewed HTML companion afresh, requires an actual anchor to the target, and fetches just that
-  target within the same public host/redirect boundary and a maximum 4 MiB response budget.
-  `--index` may replace the parent URL for a supported raw index. The artifact records both
-  parent bytes/hash and target bytes/hash with `scope: linked`; it has no whole-source baseline
+  For research, `SOURCE_ID --linked FIXED_COMPANION_URL TARGET_URL [TARGET_URL...]` follows one
+  to four verified links. Each parent is fetched afresh; HTML anchors and plain inline Markdown
+  links qualify the next target within the same public host/redirect boundary and a maximum
+  4 MiB response budget per target, also bounded by the root's byte limit.
+  `--index` may replace the root URL; its format comes from the reviewed index configuration.
+  The artifact records every parent's bytes/hash in the ordered `linked_from` array and the
+  final target's bytes/hash with `scope: linked`; it has no whole-source baseline
   comparison and does not admit a new collection dependency. Never treat a fixed-companion
   rejection as evidence that a linked first-party contract is unavailable. Verify the successor
   content before changing its manifest URL and parser. A method reference may delegate its
   actual fields to linked parameter/result types; inspect those types before declaring omission.
+  The repair engine uses Copilot CLI through gh-aw, with multi-turn tool execution and BYOK;
+  it is not an application built on Copilot SDK. The SDK also exposes custom tools and MCP,
+  so a different agent runtime is not required merely to support research. Current repair tools
+  provide bounded first-party fetch/navigation, not a general web search engine. The
+  [provider research method](agent-provider-research.md#discover-and-judge-sources) applies to
+  missing and conflicting claims as well as broken URLs. Record claim-specific source authority
+  and unresolved acquisition limits; passing receipt checks cannot prove semantic completeness.
   For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
   reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
   smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts

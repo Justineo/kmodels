@@ -616,6 +616,57 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
   ).toBe("matched");
 }, 20_000);
 
+it("retains Nova Pro optimized tariffs in all three evidenced source Regions through public lookup", async () => {
+  const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-pro-latency.json")));
+  const query = lookup(await collect((bundle) => overlayDocuments(bundle, reviewed.documents)));
+  for (const region of ["us-east-1", "us-east-2", "us-west-2"]) {
+    for (const [meter, denominator] of [
+      ["input_text", "1000000"],
+      ["output_text", "250000"],
+    ] as const) {
+      const result = query({
+        provider_id: "amazon-bedrock",
+        model_id: "us.amazon.nova-pro-v1:0",
+        meter: { namespace: "kmodels", value: meter },
+        selectors: [
+          select("region", region),
+          select("service_tier", "standard"),
+          select("speed", "optimized"),
+        ],
+      });
+      expect(result.status, `${region}/${meter}`).toBe("matched");
+      expect(
+        result.candidates.flatMap(({ offer }) =>
+          offer.terms.flatMap((term) =>
+            term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
+          ),
+        ),
+      ).toEqual([{ numerator: "1", denominator }]);
+    }
+  }
+  for (const [model_id, region, tier] of [
+    ["us.amazon.nova-pro-v1:0", "us-west-1", "standard"],
+    ["eu.amazon.nova-pro-v1:0", "us-west-2", "standard"],
+    ["amazon.nova-pro-v1:0", "us-west-2", "standard"],
+    ["us.amazon.nova-pro-v1:0", "us-west-2", "priority"],
+    ["us.amazon.nova-pro-v1:0", "us-west-2", "flex"],
+  ] as const) {
+    expect(
+      query({
+        provider_id: "amazon-bedrock",
+        model_id,
+        meter: { namespace: "kmodels", value: "input_text" },
+        selectors: [
+          select("region", region),
+          select("service_tier", tier),
+          select("speed", "optimized"),
+        ],
+      }).reason,
+      `${model_id}/${region}/${tier}`,
+    ).toBe("no_applicable_price");
+  }
+}, 20_000);
+
 it("collects actual IDs through static output and uses the same commercial conditions in the UI", async () => {
   const candidate = await collect();
   const query = lookup(candidate);

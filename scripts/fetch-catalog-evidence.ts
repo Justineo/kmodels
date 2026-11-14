@@ -14,17 +14,19 @@ import {
 const sourceId = process.argv[2];
 if (!sourceId)
   throw new Error(
-    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [--index | FIXED_COMPANION_URL | --linked FIXED_COMPANION_URL TARGET_URL]",
+    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [--index | FIXED_COMPANION_URL | --linked ROOT_URL_OR_--index TARGET_URL [TARGET_URL...]]",
   );
 const linked = process.argv[3] === "--linked";
-if (linked && (process.argv[4] === undefined || process.argv[5] === undefined || process.argv[6]))
-  throw new Error("Linked evidence requires exactly one fixed companion and one target URL");
+const targets = linked ? process.argv.slice(5) : [];
+if (linked && (process.argv[4] === undefined || targets.length < 1 || targets.length > 4))
+  throw new Error("Linked evidence requires a reviewed root and one to four target URLs");
+if (!linked && process.argv.length > 4) throw new Error("Unexpected evidence arguments");
 let source = reviewedPublicSource(sourceId, linked ? process.argv[4] : process.argv[3]);
-let linkedFrom: { source_url: string; source_hash: string; body: string } | undefined;
-if (linked) {
+const linkedFrom: { source_url: string; source_hash: string; body: string }[] = [];
+for (const target of targets) {
   const parent = await fetchSource(source);
-  linkedFrom = { source_url: source.url, source_hash: sha256(parent.body), body: parent.body };
-  source = linkedPublicSource(source, parent.body, z.string().parse(process.argv[5]));
+  linkedFrom.push({ source_url: source.url, source_hash: sha256(parent.body), body: parent.body });
+  source = linkedPublicSource(source, parent.body, target);
 }
 const directory = "/tmp/gh-aw/agent/catalog-evidence";
 const fetched = await fetchSource(source);
@@ -82,7 +84,7 @@ const receipt = JSON.stringify({
   source_url: source.url,
   observed_at: new Date().toISOString(),
   source_hash: hash,
-  ...(linkedFrom === undefined ? {} : { linked_from: linkedFrom }),
+  ...(linked ? { linked_from: linkedFrom } : {}),
   refresh,
   ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
   body: fetched.body,
@@ -96,11 +98,14 @@ console.log(
     scope,
     source_url: source.url,
     source_hash: hash,
-    ...(linkedFrom === undefined
-      ? {}
-      : {
-          linked_from: { source_url: linkedFrom.source_url, source_hash: linkedFrom.source_hash },
-        }),
+    ...(linked
+      ? {
+          linked_from: linkedFrom.map(({ source_url, source_hash }) => ({
+            source_url,
+            source_hash,
+          })),
+        }
+      : {}),
     refresh,
     ...summarizeDependencyFailures(fetched.dependencyFailures ?? []),
   }),

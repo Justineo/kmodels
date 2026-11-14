@@ -22,6 +22,14 @@ missing or conflicting model facts. The [collection contract](collection.md), th
    A model card can establish that a structured quote is an estimate. A dated launch price
    needs current evidence before it becomes a tariff. Record the chosen authority and any
    uncertainty in the provider guide.
+   Do not assign equal authority merely because two pages share the provider's domain. For each
+   disputed claim, distinguish an explicit positive, an explicit exclusion, and an omission. An
+   incomplete table is not a negative assertion. Compare exact model/route/region/operation scope,
+   field ownership, specificity, currency, and corroboration; duplicated prose is not independent
+   evidence. Follow relevant first-party links beyond the first page, including current prices,
+   feature guides and dated announcements. A historical announcement can corroborate availability
+   but cannot alone establish a current tariff. Record the supporting and contrary evidence, the
+   resolution, and any bounded inference separately. Do not invent numerical confidence scores.
 4. Require an explicit bridge between identity and claims from another source. Prefer an exact
    request ID, an explicit redirect, a shared canonical link, or a provider-defined join.
    A page slug is a discovery lead. For hosted admission, verify both the request identifier
@@ -45,6 +53,13 @@ missing or conflicting model facts. The [collection contract](collection.md), th
   applicability of a tariff. Give those failures the corresponding scope. Verify new public
   origins against the repair workflow allowlist. Keep live captures and replay notes in
   ignored task state and commit only reviewed, minimal fixtures.
+- For repair research, use `fetch-catalog-evidence.ts SOURCE_ID --linked ROOT TARGET [TARGET...]`.
+  `ROOT` is an exact reviewed companion or `--index`; up to four targets must each be linked by
+  the preceding freshly fetched HTML or Markdown document. The receipt retains the entire
+  navigation chain. Plain inline Markdown links and HTML anchors are supported; an unsupported
+  link syntax is a tool limitation, not provider unavailability. Inspect other permitted public
+  tools or report the concrete acquisition gap. Research links do not become collection inputs
+  without a reviewed manifest/parser change and deterministic fixtures.
 
 ## Extract and prove the result
 

@@ -91,6 +91,31 @@ native unit, amount, cache TTL and any explicitly qualified speed. A rate code c
 multiple exact model labels without making their identities interchangeable. Nova's latency-optimized
 page suffix qualifies speed and requires the native optimized SKU; it is not another model.
 
+For Nova Pro, the [latency guide](https://docs.aws.amazon.com/bedrock/latest/userguide/latency-optimized-inference.html)
+explicitly names `us-east-1`, `us-east-2` and `us-west-2` through cross-Region inference, although
+its profile summary table omits Oregon. The [March 2025 launch announcement](https://aws.amazon.com/about-aws/whats-new/2025/03/latency-optimized-inference-amazon-nova-pro-foundation-model-bedrock/)
+corroborates those three Regions. The omission does not negate the explicit support statement.
+Current pricing provides stronger evidence for the amounts: the owned Standard table's optimized
+input/output tokens resolve to six exact native rate codes across those three source Regions.
+The [Nova Pro card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html)
+independently establishes the US profile and its source Regions. Intersect these facts; do not
+hardcode the three Regions or copy Virginia's price into another Region. Equal current prices
+($1 input and $4 output per million tokens in the reviewed evidence) do not make Region irrelevant.
+`tests/fixtures/bedrock/nova-pro-latency.json` retains the reviewed card, owned price row, six optimized
+SKUs, two non-optimized tier controls, the optimized unit-map entries and the source-Region billing
+guide. The regression replays collection and
+public lookup for all three Regions, with Northern California, EU geography, bare-ID routing and
+other tiers as negative controls against borrowing those quotes. It establishes published price
+applicability, not authenticated invocation success or an exhaustive feature compatibility matrix.
+
+The guide's positive evidence concerns cross-Region inference. General model availability and
+the pricing page's combined Geo/in-Region heading are less specific about optimized in-Region
+execution; do not describe an in-Region catalog price as proof that this feature works on a bare-ID
+request. Likewise, the Standard table owns the optimized quotes; absent optimized rows in Priority
+or Flex do not by themselves prove that the API rejects that combination. Service tier and actual
+returned latency class remain distinct fields, and neither API enums nor broad availability may
+create missing prices. The API's actual response owns the billed tier/speed, including fallback.
+
 Geo applicability requires positive Runtime source-region evidence. Prefer the profile's own Source
 Region row. A sole published Geo ID within an AWS partition can use the card's Runtime Geo
 availability rows without discovering its destination topology. This requires a literal ID in the
