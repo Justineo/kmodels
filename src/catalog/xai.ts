@@ -4,7 +4,7 @@ import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
-import { markdownProse, markdownSection } from "./markdown.ts";
+import { markdownProse, markdownSection, markdownTableRows } from "./markdown.ts";
 import { multiplyDecimal, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type {
   ParsedProviderModel as ProviderModel,
@@ -217,6 +217,8 @@ const publicModelFieldEntries = [
       "pricePerInputImage",
       "rateLimits",
       "resolutionPricing",
+      "defaultQuality",
+      "supportedQualities",
       "rpm",
       "rps",
     ]),
@@ -229,6 +231,7 @@ const publicModelFieldEntries = [
       "cluster",
       "pricePerInputImage",
       "pricePerInputVideoSecond",
+      "rateLimits",
       "resolutionPricing",
       "rpm",
       "rps",
@@ -259,36 +262,10 @@ const voicePricingFieldEntries = [
   ],
 ] as const;
 
-const apiPriceSchema = z.number().int().nonnegative();
-const imagePricingSchema = z
-  .array(
-    z
-      .object({
-        price_per_image: apiPriceSchema,
-        quality: z.string().min(1),
-        resolution: z.string().min(1),
-      })
-      .strip(),
-  )
-  .min(1)
-  .optional();
 const apiItemShape = {
   id: modelIdSchema,
   aliases: z.array(modelIdSchema),
   context_length: z.number().int().positive().nullable().optional(),
-  created: z.number().int().nonnegative(),
-  object: z.literal("model"),
-  owned_by: z.string().min(1),
-  prompt_text_token_price: apiPriceSchema.nullable().optional(),
-  cached_prompt_text_token_price: apiPriceSchema.nullable().optional(),
-  prompt_image_token_price: apiPriceSchema.nullable().optional(),
-  completion_text_token_price: apiPriceSchema.nullable().optional(),
-  prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-  cached_prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-  completion_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-  long_context_threshold: z.number().int().nonnegative().nullable().optional(),
-  image_price: apiPriceSchema.nullable().optional(),
-  pricing: imagePricingSchema,
 } as const;
 const apiItemSchema = z.object(apiItemShape).strip();
 const apiListSchema = z
@@ -297,37 +274,11 @@ const apiListSchema = z
 const detailedApiShape = {
   id: modelIdSchema,
   aliases: z.array(modelIdSchema),
-  fingerprint: z.string().min(1),
-  created: z.number().int().nonnegative(),
-  object: z.literal("model"),
-  owned_by: z.string().min(1),
   version: z.string().min(1),
   input_modalities: z.array(modalitySchema).min(1),
   output_modalities: z.array(modalitySchema).min(1),
 };
-const languageApiSchema = z
-  .object({
-    ...detailedApiShape,
-    prompt_text_token_price: apiPriceSchema,
-    cached_prompt_text_token_price: apiPriceSchema,
-    prompt_image_token_price: apiPriceSchema,
-    completion_text_token_price: apiPriceSchema,
-    search_price: apiPriceSchema,
-    prompt_text_token_price_long_context: apiPriceSchema,
-    cached_prompt_text_token_price_long_context: apiPriceSchema,
-    completion_text_token_price_long_context: apiPriceSchema,
-    long_context_threshold: apiPriceSchema,
-  })
-  .strip();
-const imageApiSchema = z
-  .object({
-    ...detailedApiShape,
-    image_price: apiPriceSchema,
-    max_prompt_length: z.number().int().positive(),
-    pricing: imagePricingSchema,
-  })
-  .strip();
-const videoApiSchema = z.object(detailedApiShape).strip();
+const detailedApiSchema = z.object(detailedApiShape).strip();
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
@@ -1512,7 +1463,7 @@ function commercialEvidence(
   const imageGenerationModelId = reviewClaim(input, "image_generation_tool_contract_drift", () => {
     const body = section(llms, "/developers/tools/image-generation").replace(/\s+/gu, " ");
     const current = body.match(
-      /It uses the latest Imagine image models \(`(grok-[a-z0-9.-]+)`\)/,
+      /It uses the latest (?:Imagine )?image models \(`(grok-[a-z0-9.-]+)`\)/,
     )?.[1];
     if (current !== undefined && body.includes("`image_generation_call`")) return current;
     requireClaims(
@@ -1522,6 +1473,30 @@ function commercialEvidence(
     );
     return "grok-imagine-image-quality";
   });
+  const imageGenerationPricing =
+    reviewClaim(input, "image_generation_tool_pricing_drift", () => {
+      const costs = markdownSection(pricing, 3, "Tool Invocation Costs");
+      const lines = markdownProse(costs ?? "")
+        .split("\n")
+        .map((line) => line.trim());
+      const header = lines.findIndex((line) => line.startsWith("|"));
+      const selected = [
+        lines[header] ?? "",
+        lines[header + 1] ?? "",
+        ...lines.slice(header + 2).filter((line) => /\|\s*`image_generation`\s*\|/.test(line)),
+      ].join("\n");
+      const rows = markdownTableRows(selected, ["Tool Name", "Cost / 1k Calls"]).filter(
+        (row) => row.get("Tool Name") === "`image_generation`",
+      );
+      if (
+        rows.length !== 1 ||
+        !/^\[(?:Image|Imagine) API rates\]\(\/developers\/pricing#imagine-api-pricing\)$/.test(
+          rows[0]?.get("Cost / 1k Calls") ?? "",
+        )
+      )
+        throw new Error("xAI image tool has no verified Image API price delegation");
+      return true;
+    }) ?? false;
   const voiceTools =
     reviewClaim(input, "voice_tool_contract_drift", () => {
       requireClaims(
@@ -1546,6 +1521,7 @@ function commercialEvidence(
   });
   return {
     imageGenerationModelId,
+    imageGenerationPricing,
     toolRates: toolRates(input, pricing),
     ...(voice?.speech === undefined
       ? {}
@@ -2597,7 +2573,9 @@ export function parseXaiApi(input: ParseInput): SourceParseResult {
       items: envelope.data,
       schema: apiItemSchema,
       modelId: "id",
-      rootKeys: Object.keys(apiItemShape),
+      rootKeys: [
+        ...new Set([...Object.keys(apiItemShape), ...languageApiFields, ...imageApiFields]),
+      ],
       skipInvalidItems: true,
       ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
     });
@@ -2605,18 +2583,12 @@ export function parseXaiApi(input: ParseInput): SourceParseResult {
       models: values.map((value) =>
         model(input, value.id, {
           aliases: value.aliases,
-          limits: value.context_length === null ? {} : { context_tokens: value.context_length },
+          limits: value.context_length == null ? {} : { context_tokens: value.context_length },
           scope: "runtime_observation",
         }),
       ),
     };
   }
-  const schema =
-    extractor.category === "language"
-      ? languageApiSchema
-      : extractor.category === "image"
-        ? imageApiSchema
-        : videoApiSchema;
   const envelope = z
     .object({ models: z.array(z.unknown()).min(1) })
     .strip()
@@ -2624,7 +2596,7 @@ export function parseXaiApi(input: ParseInput): SourceParseResult {
   const values = recognizeItems({
     label: `xAI ${extractor.category} model inventory`,
     items: envelope.models,
-    schema,
+    schema: detailedApiSchema,
     modelId: "id",
     rootKeys:
       extractor.category === "language"

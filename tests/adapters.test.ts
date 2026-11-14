@@ -7403,12 +7403,12 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v27");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v28");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
     expect(value.sources[0]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
-    expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v3");
+    expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v4");
     const priceItems: PricingReconciliationItem[] = [];
     const changedPrice = await xaiCatalog(
       "xai/models.txt",
@@ -7492,6 +7492,44 @@ describe("xAI adapter", () => {
         return JSON.stringify({ ...value, data: [{ ...first, future_price: 1 }] });
       }),
     ).resolves.toHaveLength(1);
+  });
+
+  it("keeps consumed API metadata independent of unused account price and registry fields", async () => {
+    for (const [sourceId, path, root] of [
+      ["xai-api", "xai/api.json", "data"],
+      ["xai-language-api", "xai/language-api.json", "models"],
+      ["xai-image-api", "xai/image-api.json", "models"],
+      ["xai-video-api", "xai/video-api.json", "models"],
+    ]) {
+      if (!sourceId || !path || !root) throw Error("Missing API fixture");
+      const baseline = await parsed("xai", path, sourceId);
+      const changed = await parsed("xai", path, sourceId, (body) => {
+        const envelope = z.record(z.string(), z.unknown()).parse(JSON.parse(body));
+        const rows = z.array(z.record(z.string(), z.unknown())).parse(envelope[root]);
+        return JSON.stringify({
+          ...envelope,
+          [root]: rows.map((row) =>
+            Object.fromEntries(
+              Object.entries(row).map(([key, value]) => [
+                key,
+                /price|pricing|created|fingerprint|owned_by|max_prompt_length|long_context_threshold/.test(
+                  key,
+                )
+                  ? { unreviewed: true }
+                  : value,
+              ]),
+            ),
+          ),
+        });
+      });
+      expect(changed).toEqual(baseline);
+      expect(changed.every(({ price_facts }) => price_facts.length === 0)).toBe(true);
+    }
+    await expect(
+      parsed("xai", "xai/language-api.json", "xai-language-api", (body) =>
+        body.replace('"input_modalities": ["text", "image"]', '"input_modalities": ["unreviewed"]'),
+      ),
+    ).resolves.toEqual([]);
   });
 
   it("retains a source when its canonical API ID matches a public alias", async () => {

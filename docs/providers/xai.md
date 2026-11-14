@@ -78,6 +78,11 @@ dynamic product documentation as a refresh dependency.
 - Optional authenticated model inventories are enabled by `XAI_API_KEY`. They are
   account-scoped observations and may enrich a matching public identity, but cannot
   create global presence or replace the public price book.
+  Validate only consumed IDs, aliases, versions, modalities and context limits. Unused account
+  price, registry timestamp, fingerprint and owner fields do not gate these independent facts.
+  A 403 is an access failure, not an empty model list or evidence of unpublished prices. A console
+  stopped at team creation likewise cannot establish an account-only inventory; collection does
+  not create a team or change account settings to obtain it.
 - Comparator catalogs and Azure, OCI, or Agent Platform listings are audit evidence only. Their
   identities and prices belong to their respective sellers.
 
@@ -157,6 +162,10 @@ bounds still protect against an empty or obviously truncated primary catalog.
 Resolution and quality values are source-owned strings with bounded structural
 validation rather than a closed provider allowlist. This lets new published choices
 refresh mechanically while preserving their exact applicability.
+The UI payload's `defaultQuality` and `supportedQualities` are recognized metadata;
+prices still come from the explicit resolution/quality tariff rows. A display default
+does not choose a caller's requested or realized output quality. Video `rateLimits` is
+operational metadata and does not qualify a public unit price.
 
 ## Shared price projection
 
@@ -202,10 +211,15 @@ refresh mechanically while preserving their exact applicability.
   tool-call counter cannot substitute for either quantity. The legacy per-call layout remains
   supported only when that rate is actually published.
 - The image-generation tool reuses the exact Imagine model named by its dedicated tool guide,
-  resolved against an existing public catalog identity. xAI reports successful
-  calls, but the reviewed result contract does not establish an exact completed-image extraction
-  or the resolution/quality needed to choose a variant. Those quantities and selectors remain
-  caller supplied. Synchronous tool prices never inherit the source model's Batch variants.
+  resolved against an existing public catalog identity. The dedicated pricing table must also
+  delegate `image_generation` to Image API rates. The current guide's "latest image models" and
+  older "latest Imagine image models" declarations establish the same exact-ID bridge; neither
+  names an inferred family. Missing identity or price delegation preserves the independently
+  published service as unknown, with raw evidence, instead of dropping it or copying unrelated
+  prices. Synchronous tool prices never inherit the source model's Batch variants.
+  The current guide identifies completed calls and their base64 `result`; it still lacks the
+  complete per-request filtered count and effective resolution/quality needed by the reviewed
+  quantity contract. Those quantities and selectors remain caller supplied.
 - The pre-generation violation amount is normalized and displayed, but stays unbound
   until a stable request/result signal distinguishes that outcome.
 
@@ -265,6 +279,11 @@ formulas without executable expressions or a provider-specific calculation engin
   TTS billing characters, streaming STT duration aggregation, accepted image/video input quantities,
   and effective media selectors lack the reviewed exact extraction contracts needed for automation.
   They retain semantic quantities or known formulas, without invented provider-field paths.
+  The current STT guide does publish a terminal `transcript.done.duration`, but multichannel mode
+  emits one final event per channel. That is not a proved aggregate billable duration. TTS bills
+  original submitted text even when `replace` changes the spoken text, and timestamp
+  `graph_chars` can describe that replacement text. Neither audio duration nor timestamp characters
+  substitute for the original billable character quantity, whose exact counting remains unbound.
 - File Attachment Search has a successful-call rate without a reviewed returned category counter.
 - Multimodal Responses input has no documented text/image partition; aggregate cache cannot establish
   the Text cache quantity. Explicit SDK text-cache and output methods remain independently usable.

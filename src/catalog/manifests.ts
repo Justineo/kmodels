@@ -371,7 +371,7 @@ const xaiApiSource = (
   format: "json",
   stability: "documented",
   extractor: { kind: "xai-api", category },
-  extractorVersion: "xai-api-v3",
+  extractorVersion: "xai-api-v4",
   fields,
   allowedHosts: ["api.x.ai"],
   maxResponseBytes: mebibytes(4),
@@ -3771,7 +3771,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v27",
+        extractorVersion: "xai-catalog-v28",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

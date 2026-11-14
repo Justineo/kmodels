@@ -1,0 +1,22 @@
+# Image Generation Tool
+
+The image generation tool lets Grok create and edit images with [Grok image models](/developers/model-capabilities/images/generation) as part of a conversation. It uses the latest image models (`grok-imagine-image-2.0`).
+
+In the Responses API, each image arrives as an `image_generation_call` output item whose `result` field carries the base64-encoded image with no data-URL prefix, so you can decode it directly.
+
+A completed `image_generation_call` output item looks like this:
+
+```json
+{
+  "type": "image_generation_call",
+  "id": "ig_d817cfd0-4f39-9cb3-bda2-44e538841ef2_call-a1b4dd05",
+  "status": "completed",
+  "result": "/9j/4AAQSkZJRgABAQAAAQABAAD..."
+}
+```
+
+The tool takes no size or format parameters; the model picks an aspect ratio for each call.
+
+## Streaming
+
+When streaming, each image generation call emits progress events—`in_progress`, then `generating`, then `completed`—followed by a `response.output_item.done` event whose item carries the base64 result. Partial image previews are not emitted.

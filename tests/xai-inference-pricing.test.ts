@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { expect, it, vi } from "vite-plus/test";
 import type { LinkedBundle } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
@@ -28,8 +29,25 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   fetchSource: vi.fn(),
 }));
 const at = "2026-10-30T17:45:00.000Z";
+async function currentImageTool(bundle: LinkedBundle): Promise<void> {
+  const document = bundle.documents.find(({ url }) => url.endsWith("llms-full.txt"));
+  if (!document) throw Error("Missing native docs");
+  const body = await readFile(
+    new URL("./fixtures/xai/image-generation-tool-current.txt", import.meta.url),
+    "utf8",
+  );
+  document.body = document.body
+    .replace(
+      /===\/developers\/tools\/image-generation===[\s\S]*?(?=\n\n===|$)/,
+      `===/developers/tools/image-generation===\n${body}`,
+    )
+    .replace(
+      "[Imagine API rates](/developers/pricing#imagine-api-pricing)",
+      "[Image API rates](/developers/pricing#imagine-api-pricing)",
+    );
+}
 async function collect(
-  change?: (bundle: LinkedBundle) => void,
+  change?: (bundle: LinkedBundle) => void | Promise<void>,
   previous?: CatalogPairCandidate,
   observedAt = at,
 ) {
@@ -37,7 +55,7 @@ async function collect(
   const catalog = manifest?.sources.find(({ id }) => id === "xai-models");
   if (!manifest || !catalog) throw new Error("Missing xAI sources");
   const bundle = await xaiInferenceBundle();
-  change?.(bundle);
+  await change?.(bundle);
   const bodies = new Map([[catalog.id, JSON.stringify(bundle)]]);
   vi.mocked(fetchSource).mockImplementation(async (source) => {
     const body = bodies.get(source.id);
@@ -346,6 +364,55 @@ function removeRetiredImage(bundle: LinkedBundle): void {
     "",
   );
 }
+
+it("retains the current image tool's explicitly delegated Image API rates", async () => {
+  const { candidate } = await collect(currentImageTool);
+  const tool = candidate.pricing.data.books.find(
+    ({ scope }) =>
+      scope.kind === "provider_resource" && scope.resource_key === "image-generation-tool",
+  );
+  expect(tool).toBeDefined();
+  const rates =
+    tool?.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+    ) ?? [];
+  expect(rates.length).toBeGreaterThan(0);
+  expect(
+    rates.every(({ applicability }) =>
+      applicability.any_of.every(({ all_of }) =>
+        all_of.every(
+          (condition) =>
+            condition.kind !== "categorical" ||
+            condition.dimension.value !== "execution" ||
+            condition.values.every(({ value }) => value !== "batch"),
+        ),
+      ),
+    ),
+  ).toBe(true);
+});
+
+it("keeps the published image service unknown when its price delegation disappears", async () => {
+  const { candidate } = await collect(async (bundle) => {
+    await currentImageTool(bundle);
+    const doc = bundle.documents.find(({ url }) => url.endsWith("llms-full.txt"));
+    if (!doc) throw Error("Missing docs");
+    doc.body = doc.body.replace(
+      "[Image API rates](/developers/pricing#imagine-api-pricing)",
+      "[Contact us](/developers/contact)",
+    );
+  });
+  const tool = candidate.pricing.data.books.find(
+    ({ scope }) =>
+      scope.kind === "provider_resource" && scope.resource_key === "image-generation-tool",
+  );
+  expect(tool?.offers.flatMap(({ terms }) => terms).some((term) => term.kind === "raw")).toBe(true);
+  expect(tool?.offers.flatMap(({ terms }) => terms).some((term) => term.kind === "rate")).toBe(
+    false,
+  );
+  expect(
+    lookup(candidate)({ provider_id: "xai", model_id: "grok-4.7" }).candidates.length,
+  ).toBeGreaterThan(0);
+});
 
 it("prices both November image redirects at Low on direct requests", async () => {
   const { candidate } = await collect(removeRetiredImage, undefined, "2026-11-03T00:00:00.000Z");

@@ -3,9 +3,11 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
 } from "./pricing-source.ts";
+import { rawPricingFact } from "./pricing.ts";
 
 export interface XaiCommercialEvidence {
   imageGenerationModelId: string | undefined;
+  imageGenerationPricing: boolean;
   toolRates: Array<{
     key:
       | "attachment-search"
@@ -57,23 +59,39 @@ export function extractXaiCommercialFacts(
     raw_price_facts: [],
   }));
 
-  if (evidence.imageGenerationModelId !== undefined) {
+  if (evidence.imageGenerationModelId !== undefined || evidence.imageGenerationPricing) {
     const image = models.find(({ model_id }) => model_id === evidence.imageGenerationModelId);
-    if (image !== undefined)
-      facts.push({
-        ...service(
-          sourceId,
-          "service:image-generation-tool",
-          "Responses image generation tool",
-          "image-generation-tool",
-          [],
-        ),
-        offer_key: "execution",
-        offer_name: "Agentic image generation",
-        pricing_state: "numeric",
-        price_facts: image.price_facts.filter((rate) => rate.conditions.service_tier !== "batch"),
-        raw_price_facts: [],
-      });
+    const rates = evidence.imageGenerationPricing
+      ? (image?.price_facts.filter((rate) => rate.conditions.service_tier !== "batch") ?? [])
+      : [];
+    facts.push({
+      ...service(
+        sourceId,
+        "service:image-generation-tool",
+        "Responses image generation tool",
+        "image-generation-tool",
+        [],
+      ),
+      offer_key: "execution",
+      offer_name: "Agentic image generation",
+      pricing_state: rates.length > 0 ? "numeric" : "unknown",
+      price_facts: rates,
+      raw_price_facts:
+        rates.length > 0
+          ? []
+          : [
+              rawPricingFact(
+                sourceId,
+                "image_generation_tool_policy",
+                "base_price",
+                "unsupported_structure",
+                {
+                  label:
+                    "The image tool is published, but its exact model or delegated Image API tariff is unverified",
+                },
+              ),
+            ],
+    });
   }
 
   const voiceRates = [
