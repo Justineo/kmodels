@@ -94,6 +94,11 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   companions remain claim-local, so their failure withholds only the affected mappings.
 - Optional authenticated `/v1/models` confirms only exact existing public base models or aliases.
   Private fine-tunes never create rows or enter durable data. Enable it with `MISTRAL_API_KEY`.
+  The first-party model-list schema owns capability, context, alias and deprecation metadata,
+  without public tariff fields. The public inventory and every indexed model card remain the
+  global catalog authority when authentication fails. An HTTP 401 is an access failure, not an
+  empty model inventory or evidence that a price is unpublished. The console's sign-in boundary
+  likewise cannot establish the contents of an account-only price surface.
 
 ## Direct inference ID association
 
@@ -201,6 +206,12 @@ The [regional guide](https://docs.mistral.ai/inference/regional-inference) publi
 uplift but requires separate model availability evidence. The broad UI toggle alone cannot
 establish a model/region tuple. The adapter records this explicit exclusion and does not create a
 regional resource book that could masquerade as the missing request-service topology.
+The guide explicitly owns `api.eu.mistral.ai/v1/models` and `api.us.mistral.ai/v1/models` as the
+regional availability queries; the global list does not substitute for them. An authentication
+failure on either leaves that region's model tuples unresolved. The guide excludes regional Batch,
+Files and stateful Agents, so a future positive regional model observation must not copy those
+global mechanisms or service fees into a regional tariff. Regional prices remain a known policy
+with unverified model applicability rather than an invented global-to-regional inheritance rule.
 
 Conflicting numeric rows within one price page have equal authority. Both survive parsing and
 become local canonical conflict evidence; their order cannot select a winner. An explicit page
