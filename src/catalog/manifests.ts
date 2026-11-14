@@ -4191,7 +4191,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v20",
+        extractorVersion: "cerebras-catalog-v21",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -4262,7 +4262,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "cerebras-public", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-public-v6",
+        extractorVersion: "cerebras-public-v7",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -4279,6 +4279,7 @@ export const manifests = [
         scope: "global",
         exhaustive: true,
         role: "catalog",
+        fillOnly: true,
       },
       {
         id: "cerebras-lifecycle",

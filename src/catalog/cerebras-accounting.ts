@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { htmlText } from "./html.ts";
-import { markdownProse, markdownSection } from "./markdown.ts";
+import { markdownProse, markdownSection, markdownTableRows } from "./markdown.ts";
 import { openApiYamlSchemaReader } from "./openapi-yaml.ts";
 import { finalizePricingInputs } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
@@ -92,6 +92,7 @@ export function readCerebrasReferences(input: Input) {
       input.onReconciliation,
     ),
     chatModels: chat?.models ?? new Set<string>(),
+    effortModels: chat?.effortModels ?? new Set<string>(),
     allCompletions: html?.allModels ?? false,
   };
 }
@@ -144,13 +145,75 @@ function chatReference(body: string | undefined) {
           "reasoning_effort",
         ])
       : undefined;
-  const models = new Set(
-    [...(reasoning ?? "").matchAll(/^\s+- \*\*([a-z0-9][a-z0-9.-]+)\*\*:/gm)].flatMap(
-      (match) => match[1] ?? [],
-    ),
-  );
+  const description =
+    reasoning !== undefined && scalar(reasoning, "type", 10) === "string"
+      ? yamlDescription(reasoning, 10)
+      : undefined;
+  const models = new Set<string>();
+  const effortModels = new Set<string>();
+  for (const match of markdownProse(description ?? "").matchAll(
+    /^\s*- \*\*([a-z0-9][a-z0-9.-]+)\*\*:([^\r\n]*)/gm,
+  )) {
+    if (match[1] === undefined) continue;
+    models.add(match[1]);
+    if (!/ignored|not supported|not applicable/i.test(match[2] ?? "")) effortModels.add(match[1]);
+  }
+  if (description !== undefined && description.includes("| Model | Supported values | Default |")) {
+    try {
+      const rows = markdownTableRows(description, ["Model", "Supported values", "Default"]);
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        const id = row.get("Model")?.match(/^`([a-z0-9][a-z0-9.-]+)`$/)?.[1];
+        if (id === undefined) continue;
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+        models.add(id);
+        if (
+          /^`[a-z][a-z0-9_-]*`(?:,\s*`[a-z][a-z0-9_-]*`)+$/.test(row.get("Supported values") ?? "")
+        )
+          effortModels.add(id);
+      }
+      for (const [id, count] of counts)
+        if (count > 1) {
+          models.delete(id);
+          effortModels.delete(id);
+        }
+    } catch {
+      // A malformed parameter table cannot establish model-specific compatibility.
+    }
+  }
   const media = yamlPath(operation, ["responses", "200", "content", "application/json"], 6);
-  return { media, schemaReader: openApiYamlSchemaReader(spec), models };
+  return { media, schemaReader: openApiYamlSchemaReader(spec), models, effortModels };
+}
+
+function yamlDescription(body: string, indentation: number): string | undefined {
+  const lines = body.split(/\r?\n/);
+  const prefix = " ".repeat(indentation);
+  const positions = lines.flatMap((line, index) =>
+    line === `${prefix}description: |` || line === `${prefix}description: >` ? [index] : [],
+  );
+  const start = positions.length === 1 ? positions[0] : undefined;
+  if (start === undefined) return;
+  let end = start + 1;
+  while (end < lines.length && (lines[end]?.trim() === "" || lines[end]?.startsWith(`${prefix}  `)))
+    end++;
+  const content = lines.slice(start + 1, end).map((line) => line.slice(indentation + 2));
+  if (lines[start] === `${prefix}description: |`) return content.join("\n");
+  // The Markdown export wraps folded YAML lines and inserts paragraph separators.
+  return content
+    .map(
+      (line, index) =>
+        line +
+        (index + 1 >= content.length
+          ? ""
+          : line.trim() === ""
+            ? "\n"
+            : content[index + 1]?.trim() === ""
+              ? ""
+              : line.startsWith(" ") || content[index + 1]?.startsWith(" ")
+                ? "\n"
+                : " "),
+    )
+    .join("");
 }
 
 function chatCounter(

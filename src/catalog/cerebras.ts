@@ -339,6 +339,32 @@ function publicModel(input: Input, item: PublicItem): ProviderModel {
   };
 }
 
+function paidCardLimits(prose: string, id: string): ProviderModel["limits"] {
+  const summaries = [...prose.matchAll(/^Model ID: `([^`]+)`\. ([^\r\n]+)$/gm)].filter(
+    (match) => match[1] === id,
+  );
+  const summary = summaries.length === 1 ? summaries[0]?.[2] : undefined;
+  const limit = (label: string): number | undefined => {
+    const matches = [
+      ...(summary ?? "").matchAll(
+        new RegExp(`\\b${label}: [^.]*?\\(([\\d,]+)\\) for paid tiers and trial customers\\.`, "g"),
+      ),
+    ];
+    const value = matches.length === 1 ? matches[0]?.[1] : undefined;
+    const count =
+      value === undefined || !/^(?:[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(value)
+        ? undefined
+        : Number(value.replaceAll(",", ""));
+    return count !== undefined && Number.isSafeInteger(count) && count > 0 ? count : undefined;
+  };
+  const context = limit("Context window");
+  const output = limit("(?:Max|Maximum) output");
+  return {
+    ...(context === undefined ? {} : { context_tokens: context }),
+    ...(output === undefined ? {} : { max_output_tokens: output }),
+  };
+}
+
 interface MarkdownTable {
   section: string;
   headers: string[];
@@ -690,10 +716,11 @@ function catalogCard(
     return {
       ...base,
       ...(endpoints.length === 0 ? {} : { api_endpoints: endpoints }),
+      limits: paidCardLimits(prose, row.id),
       capabilities: {
         ...base.capabilities,
         prompt_cache: promptCache ? true : "unknown",
-        effort_control: references.chatModels.has(row.id) ? true : "unknown",
+        effort_control: references.effortModels.has(row.id) ? true : "unknown",
       },
       pricing_state: rates.length === 0 ? "unknown" : "numeric",
       price_facts: rates,

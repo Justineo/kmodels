@@ -82,8 +82,30 @@ Flattened Markdown cards use the labeled Model ID and title to corroborate the e
 The owned Pricing section publishes independent Input and Output quotes per million tokens. These
 quotes supply a missing public API rate. The scoped capability prose also establishes prompt-cache
 support. Structured historical cards remain readable. For flattened cards, the exact model IDs in
-the Chat request's reasoning options establish Chat compatibility. The Completions request's
+the Chat request's reasoning options establish Chat compatibility. The current typed parameter
+description uses a Model/Supported values/Default table; historical bullet rows remain supported.
+Folded YAML descriptions are decoded before reading that Markdown table, including wrapped cells
+and paragraph separators introduced by the documentation export.
+An explicitly ignored compatibility parameter can establish a named route but cannot establish
+effort control. Duplicate rows withhold that model's interpretation, and examples outside the
+owned request property do not supply it. The Completions request's
 documented model field explicitly links to the available Shared Inference inventory for its scope.
+
+Model metadata and monetary authority are independent. Exact parenthesized token counts in the
+same model card's paid-tier summary own its PAYG context and output limits. Rounded labels and
+Free Trial-only counts do not establish a larger paid limit. The public model API's unqualified
+limits fill missing metadata; they do not override these explicitly qualified card facts. This
+also preserves card-owned capabilities and maturity while admitting exact API-only identities.
+Canonical pricing still reads each source's independent rates and gives the native API quote
+precedence over a conflicting card amount, regardless of the merged model's intermediate prices.
+
+The default public API format owns the native prompt/completion quotes. Compatibility serializer
+fields such as zero-valued OpenRouter cache prices cannot override the caching guide's explicit
+same-rate billing contract. The authenticated model list supplies account IDs only. Its registry
+timestamps are not model release dates. The complete documentation index also links the pricing
+page, which redirects to the marketing site, and the private-preview service-tier guide; neither
+creates another public request tariff. No unused account-billing or management API is added to
+refresh merely because it is first-party.
 
 Cached and freshly processed input use the same standard rate. Kmodels charges the entire prompt
 once and does not derive a duplicate cache tariff from a card's input quote:

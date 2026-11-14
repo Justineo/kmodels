@@ -8,6 +8,12 @@ paths:
   /v1/chat/completions:
     post:
       operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
       responses:
         "200":
           description: Successful response
@@ -24,6 +30,46 @@ paths:
                       completion_tokens: 26
 components:
   schemas:
+    ChatCompletionRequest:
+      type: object
+      properties:
+        reasoning_effort:
+          type: string
+          nullable: true
+          enum:
+            - low
+            - medium
+            - high
+            - max
+            - none
+          description: |
+            Selects a model-specific reasoning level. Effort levels don't reserve
+            or guarantee an exact reasoning-token budget.
+
+            Supported values and defaults vary by model.
+
+            | Model | Supported values | Default |
+            | --- | --- | --- |
+            | `qwen-3.8-27b` | `none`, `low`, `medium`, `high` | `high` |
+            | `kimi-k2.7-code` | Accepted for compatibility; ignored | Not applicable |
+            | `kimi-k3` | `low`, `high`, `max` | `max` |
+            | `kimi-k3.1-pro` | `low`, `medium`, `high`, `max` | `max` |
+            | `zai-glm-5.3-flash` | `low`, `high`, `max` | `max` |
+            | `gpt-oss-120b` | `low`, `medium`, `high` | `medium` |
+            | `gemma-4-31b` | `none`, `low`, `medium`, `high` | `none` |
+
+            For `qwen-3.8-27b`, `high` selects the model's native `xhigh` mode.
+            For `gemma-4-31b`, `low`, `medium`, and `high` enable reasoning
+            equivalently.
+
+            The value `none` disables reasoning for `qwen-3.8-27b` and
+            `gemma-4-31b`. For `kimi-k2.7-code`, all accepted values, including
+            `none`, are ignored and reasoning stays enabled. The other listed
+            models don't support `none`.
+
+            Reasoning tokens count toward `max_completion_tokens` and
+            `usage.completion_tokens`. See [Reasoning](/capabilities/reasoning)
+            for model-specific examples.
     ChatCompletionResponse:
       type: object
       properties:

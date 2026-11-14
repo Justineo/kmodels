@@ -9547,7 +9547,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v20",
+      extractorVersion: "cerebras-catalog-v21",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -9795,19 +9795,22 @@ describe("Cerebras adapter", () => {
       "cerebras-releases",
       "cerebras-api",
     ]);
-    expect(
-      merged
-        .find(({ model_id }) => model_id === "gpt-oss-120b")
-        ?.price_facts.map(({ meter, source_ref }) => [meter, source_ref]),
-    ).toEqual([
-      ["input_text", "cerebras-models"],
-      ["output_text", "cerebras-models"],
+    const partition = assembleParsedProviderPricing(
+      "cerebras",
+      observedAt,
+      catalogs,
+      merged,
+      manifest("cerebras").pricingCategoricalLabels,
+    );
+    const gemmaBook = partition?.books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes("cerebras/gemma-4-31b"),
+    );
+    const input = gemmaBook?.offers
+      .flatMap(({ terms }) => terms)
+      .find((term) => term.kind === "rate" && term.meter.value === "input_text");
+    expect(input?.kind === "rate" ? input.variants.map(({ price }) => price.value) : []).toEqual([
+      { numerator: "99", denominator: "100000000" },
     ]);
-    expect(
-      merged
-        .find(({ model_id }) => model_id === "gemma-4-31b")
-        ?.price_facts.find(({ meter }) => meter === "input_text"),
-    ).toMatchObject({ price: "0.99", source_ref: "cerebras-models" });
   });
 
   it("publishes request-cost inference rates without inventing a Batch price state", async () => {

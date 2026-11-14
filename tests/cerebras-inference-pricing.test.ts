@@ -27,6 +27,8 @@ import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import type { Catalog } from "../src/catalog/schema.ts";
+import { yamlBlock } from "../src/catalog/yaml.ts";
+import { readCerebrasReferences } from "../src/catalog/cerebras-accounting.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -43,8 +45,24 @@ type Input = {
   catalog: ReturnType<typeof linkedBundleSchema.parse>;
   inventory: z.infer<typeof inventorySchema>;
 };
+async function currentReasoning(catalog: Input["catalog"]): Promise<void> {
+  let document = catalog.documents.find(({ url }) => url.endsWith("/chat-completions.md"));
+  if (document === undefined) {
+    document = {
+      url: "https://inference-docs.cerebras.ai/api-reference/chat-completions.md",
+      body: await fixture("chat-completions.md"),
+    };
+    catalog.documents.push(document);
+  }
+  const before = yamlBlock(document.body, "reasoning_effort", 8);
+  if (before === undefined) throw Error("Missing owned parameter");
+  document.body = document.body.replace(
+    before,
+    (await fixture("reasoning-options-folded.txt")).trimEnd(),
+  );
+}
 async function collect(
-  change?: (input: Input) => void,
+  change?: (input: Input) => void | Promise<void>,
   previous?: CatalogPairCandidate,
   publicOnly = false,
 ) {
@@ -56,7 +74,7 @@ async function collect(
     catalog: linkedBundleSchema.parse(JSON.parse(await fixture("inference-current-catalog.json"))),
     inventory: inventorySchema.parse(JSON.parse(await fixture("inference-current-public.json"))),
   };
-  change?.(input);
+  await change?.(input);
   vi.mocked(fetchSource).mockImplementation(async (source) => {
     const body = JSON.stringify(source.id === catalog.id ? input.catalog : input.inventory);
     return {
@@ -101,6 +119,108 @@ function lookup(candidate: CatalogPairCandidate) {
     candidate.inference?.mapping,
   );
 }
+
+it("uses exact paid card limits and the current typed reasoning table without changing API price authority", async () => {
+  const candidate = await collect(async ({ catalog }) => {
+    await currentReasoning(catalog);
+    const card = catalog.documents.find(({ url }) => url.endsWith("/qwen-3.8-27b.md"));
+    if (!card) throw Error("Missing model card");
+    card.body = card.body.replace("\\$0.99", "\\$1.23");
+  });
+  const model = candidate.catalog.models.find(({ model_id }) => model_id === "qwen-3.8-27b");
+  expect(model).toMatchObject({
+    limits: { context_tokens: 131072, max_output_tokens: 40960 },
+    capabilities: { effort_control: true },
+    api_endpoints: expect.arrayContaining([
+      { name: "Chat Completions", path: "v1/chat/completions" },
+    ]),
+  });
+  const result = lookup(candidate)({ provider_id: "cerebras", model_id: "qwen-3.8-27b" });
+  const input = result.candidates
+    .flatMap(({ offer }) => offer.terms)
+    .find((term) => term.kind === "rate" && term.meter.value === "input_text");
+  expect(input?.kind === "rate" ? input.variants.map(({ price }) => price.value) : []).toEqual([
+    { numerator: "99", denominator: "100000000" },
+  ]);
+  expect(
+    input?.kind === "rate"
+      ? input.variants.flatMap(
+          ({ charge_binding }) =>
+            charge_binding?.quantity_methods?.flatMap(
+              ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+            ) ?? [],
+        )
+      : [],
+  ).toContain("/usage/prompt_tokens");
+});
+
+it("distinguishes ignored reasoning parameters and duplicate model rows from controllable effort", async () => {
+  const catalog = linkedBundleSchema.parse(
+    JSON.parse(await fixture("inference-current-catalog.json")),
+  );
+  await currentReasoning(catalog);
+  const first = readCerebrasReferences({
+    documents: catalog.documents,
+    sourceRef: "cerebras-catalog",
+  });
+  expect(first.chatModels.has("qwen-3.8-27b")).toBe(true);
+  expect(first.chatModels.has("kimi-k2.7-code")).toBe(true);
+  expect(first.effortModels.has("kimi-k2.7-code")).toBe(false);
+  const doc = catalog.documents.find(({ url }) => url.endsWith("/chat-completions.md"));
+  if (!doc) throw Error("Missing native reference");
+  const line = doc.body.split("\n").find((line) => line.includes("| `qwen-3.8-27b` |"));
+  if (!line) throw Error("Missing owned model row");
+  doc.body = doc.body.replace(line, `${line}\n\n${line}`);
+  const duplicate = readCerebrasReferences({
+    documents: catalog.documents,
+    sourceRef: "cerebras-catalog",
+  });
+  expect(duplicate.chatModels.has("qwen-3.8-27b")).toBe(false);
+  expect(duplicate.effortModels.has("qwen-3.8-27b")).toBe(false);
+  expect(duplicate.effortModels.has("gpt-oss-120b")).toBe(true);
+});
+
+it("does not promote free-only card limits into paid metadata", async () => {
+  const candidate = await collect(({ catalog }) => {
+    const card = catalog.documents.find(({ url }) => url.endsWith("/qwen-3.8-27b.md"));
+    if (!card) throw Error("Missing card");
+    card.body = card.body.replaceAll("for paid tiers and trial customers", "for Free Trial only");
+  });
+  expect(
+    candidate.catalog.models.find(({ model_id }) => model_id === "qwen-3.8-27b")?.limits,
+  ).toEqual({ context_tokens: 65536, max_output_tokens: 32768 });
+});
+
+it("does not select a paid limit from conflicting summaries", async () => {
+  const candidate = await collect(({ catalog }) => {
+    const card = catalog.documents.find(({ url }) => url.endsWith("/qwen-3.8-27b.md"));
+    const summary = card?.body
+      .split("\n")
+      .find((line) => line.startsWith("Model ID: `qwen-3.8-27b`."));
+    if (!card || !summary) throw Error("Missing owned limits");
+    card.body += `\n${summary.replace("131,072", "262,144")}`;
+  });
+  expect(
+    candidate.catalog.models.find(({ model_id }) => model_id === "qwen-3.8-27b")?.limits,
+  ).toEqual({ context_tokens: 65536, max_output_tokens: 32768 });
+});
+
+it("does not use a parameter table moved to another schema property", async () => {
+  const catalog = linkedBundleSchema.parse(
+    JSON.parse(await fixture("inference-current-catalog.json")),
+  );
+  await currentReasoning(catalog);
+  const doc = catalog.documents.find(({ url }) => url.endsWith("/chat-completions.md"));
+  if (!doc) throw Error("Missing native request reference");
+  doc.body = doc.body.replace("        reasoning_effort:", "        request_metadata:");
+  const parsed = readCerebrasReferences({
+    documents: catalog.documents,
+    sourceRef: "cerebras-catalog",
+  });
+  expect([...parsed.chatModels]).toEqual([]);
+  expect([...parsed.effortModels]).toEqual([]);
+  expect(parsed.pricingInputs.some(({ key }) => key === "chat.input_tokens")).toBe(true);
+});
 
 it("uses a flattened card's exact price when the public model omits that quote", async () => {
   const completions = await fixture("completions-rendered.html");
