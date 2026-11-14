@@ -1,9 +1,30 @@
 # Agent guidelines for provider research and collection
 
-Use this workflow when adding a provider, revisiting its source coverage, or investigating
-missing or conflicting model facts. The [collection contract](collection.md), the
+Use this workflow for scheduled repair and local provider work, including source discovery,
+optimization and behavior-preserving refactoring. The [collection contract](collection.md), the
 [review method](refresh-repair-audit.md#review-method), and the relevant
 [provider guide](../design.md#providers) define the repository's requirements.
+
+## Recurring failure checks
+
+These are current requirements, not an execution log. Apply the rows affected by the change;
+an unrelated cleanup does not require a fresh crawl of every source. Keep provider-specific
+resolutions and remaining evidence limits in the provider guide.
+
+| Failure pattern                                                                               | Required response                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A local probe reports a missing key although collection has one.                              | Load the repository environment and check the registered credential name before probing. Never print the value. Repeat affected probes when a key changes; an earlier authentication failure cannot describe the new key.                                                                                                                    |
+| An ordinary model list is treated as the complete price API.                                  | Inspect the owned full API definition for specialized model, mode and billing methods, pagination and regional origins. Verify their exact routes and access. An undiscovered route is pending research; an observed 401/403 is an access limit. Use owned structured console data or pages for missing claims.                              |
+| A successful first-party response is treated as authoritative for every field.                | Resolve authority per claim: paid model limits can differ from trial inventory; nested SDK metadata, compatibility zeros and release timestamps do not establish service limits, free prices or release dates. Validate consumed fields, not unused metadata.                                                                                |
+| An account list or omitted row changes the global catalog.                                    | Require a positive public identity bridge. Account visibility cannot admit private IDs, withdraw publicly documented models, or turn an omission into an exclusion. Distinguish local, hosted, preview and retired scopes.                                                                                                                   |
+| A price is joined by a plausible name, region or API enum.                                    | Require exact owned model/route/operation/currency scope. Preserve documented deployment/region and tier correlations; do not invent their Cartesian product or identify the caller's location as the serving region. Keep conflicting evidence explicit.                                                                                    |
+| Parser success hides a missed table, moved guide or delegated contract.                       | Compare consumed facts with the complete relevant first-party index and companions. Follow explicit delegations. Inspect native HTML, structured console data and schema/Markdown syntax before adding heuristics or lowering completeness bounds.                                                                                           |
+| Known amounts disappear because a unit, condition or usage counter is missing.                | Preserve amount, currency, native label and applicability as raw evidence when normalization is unsupported. Keep independently known rates numeric when only acquisition is unknown. An estimate, credit, promotional label or empty cell is not a tariff or a zero price; preserve date precision.                                         |
+| Similar token or duration fields are used as the same billable quantity.                      | Verify total/subset partitions, protocol and terminal-event ownership, units and rounding. Aggregate cache writes do not identify a TTL; request defaults do not identify an existing cache entry. Attempt counts and displayed results do not establish completed billable work. Keep a disjoint or missing-field control.                  |
+| Independent tool/service charges depend on an arbitrary model row.                            | Collect and publish them under their own subject. Model price coverage cannot prove service coverage; another protocol's counter or a related seller's tariff cannot fill a gap.                                                                                                                                                             |
+| A missing companion erases unrelated facts or a retained partition appears fresh.             | Preserve claim-local versus required-bundle failure scope, diagnostics, source revisions and retention behavior. A refactor must not change failure ordering, accepted inputs or historical replay compatibility accidentally.                                                                                                               |
+| An inspector presents fixed metadata as a choice or vague additional conditions as a setting. | Use the shared pricing controls and matching semantics. Hide fixed request/billing/cache controls while retaining predicates. Name affected charges and evidence gaps; keep known siblings visible. Follow the [website contract](website.md#product-shape) for dependent selectors and notes.                                               |
+| A green parser/test, one provider commit or old board closes unfinished work.                 | Reconcile the requested provider list with manifests, inspect residual findings against current evidence, and trace changed facts through normal assembly and actual consumers. Separate verified producer behavior, stored-data adoption and delivery. Keep task progress in ignored state and continue until the requested list is closed. |
 
 ## Discover and judge sources
 
@@ -96,3 +117,17 @@ missing or conflicting model facts. The [collection contract](collection.md), th
   Report the verified claims, the remaining limits, and any adoption in durable data
   separately. A live replay can verify a producer without publishing a catalog. Use
   `vp run collect` only when refreshing `data/` is explicitly in scope.
+
+## Simplify without changing evidence
+
+Read the complete requested provider implementation and relevant tests before selecting cleanup.
+Remove real repetition, redundant state or unnecessary dependencies; no change is an acceptable
+review outcome. Similar-looking protocols or source rows can have different ownership and failure
+semantics and must not be merged merely to shorten code.
+
+Use existing fixtures and sibling/negative controls to verify equivalent IDs, ordering, rates,
+raw evidence, conditions, accounting locators, diagnostics and source ownership. Preserve fetch
+bounds, optionality, asynchronous ordering and historical input compatibility. If a change alters
+source interpretation, treat it as a separate evidenced repair, including the extractor version;
+do not hide it in a refactor or weaken expected results. Run the validation planner for the actual
+changed dependency closure and reuse unchanged passing evidence within that boundary.

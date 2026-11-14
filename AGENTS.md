@@ -20,8 +20,10 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 ## Start here
 
 - Read `design.md` first, then only the linked topic or provider documents relevant to the change.
-- Follow the [provider research and collection guidelines](docs/agent-provider-research.md) when
-  discovering, fetching, parsing, or reviewing provider sources.
+- Follow the [provider research and collection guidelines](docs/agent-provider-research.md),
+  including their recurring failure checks, for provider changes in scheduled repair, local
+  optimization, source research and code review. A refactor must preserve the same evidence and
+  failure boundaries as a repair.
 - Treat those documents as the source of truth. Update the relevant guide in the same change whenever behavior or understanding changes.
 - Record only the current decision and its rationale; replace obsolete guidance instead of appending history.
 - Keep task plans, progress boards, and execution history in ignored local task state. Versioned documentation describes the current design, its rationale, and known implementation limits.
@@ -39,6 +41,9 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 
 - Define the affected contract, evidence and completion condition before expanding an investigation. Fix demonstrated correctness defects; select cleanup for concrete duplication or maintenance benefit. An unproved completeness concern is not an unlimited rewrite mandate.
 - For a comprehensive review, complete each provider's source-to-consumer path and review cross-provider consistency. Keep a finite closing list; reopen accepted work only for new concrete evidence or a regression. Progress means accepted scope and remaining work, not commit or test counts.
+- When the requested scope includes every provider, reconcile the closing list with the registered
+  manifests. A completed provider or a pushed commit does not finish the remaining providers.
+  Record a justified no-change review instead of manufacturing a refactor.
 - Trace claims from owned source evidence through extraction, canonical assembly, persistence and actual consumers. Parser success and retained publication do not establish semantic correctness or complete discovery. Use the [review method](docs/refresh-repair-audit.md#review-method) for catalog/pricing reviews and repairs.
 - Re-auditing prior work means enumerating deferred and residual findings against current evidence. An old completed board, green workflow, parser count or unrelated passing suite cannot close them. Distinguish a reproduced code defect, honest source uncertainty, operational failure and verified stored-data correction.
 - Fix a rule at the layer that owns it. Keep independent commercial facts independent of arbitrary model rows, and converge provider mappings on the shared price model rather than adding provider-specific evaluator or UI policies. Validate only consumed contracts; unused SDK metadata or historical promotion pages should not become refresh dependencies.

@@ -478,7 +478,8 @@ Source-acquisition review is scoped to admitted providers; a periodic architectu
 covers acquisition across the full catalog. Failures outside a provider batch remain in the full
 refresh report and cannot be declared resolved by this run.
 
-Read `design.md`, `AGENTS.md`, the review method in `docs/refresh-repair-audit.md`,
+Read `design.md`, `AGENTS.md`, `docs/agent-provider-research.md` (including recurring failure
+checks), the review method in `docs/refresh-repair-audit.md`,
 `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 refresh report identified in that context, `data/fetch-state.json`, and only the provider guides relevant to the listed candidates.
 Review any failed refresh execution in that context, including collection, generated-data tests,
