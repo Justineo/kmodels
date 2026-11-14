@@ -4,6 +4,13 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { baseModel } from "./model.ts";
+import {
+  nvidiaBuildPage,
+  nvidiaBuildUrl,
+  nvidiaEndpointBase,
+  nvidiaEndpointMetadataSchema,
+  nvidiaEndpointSpecSchema,
+} from "./nvidia-build.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
 import { modalitySchema, type ModelTask } from "./schema.ts";
 import { parseSourceJson, assertSourceConstraint } from "./source-contract.ts";
@@ -280,11 +287,30 @@ function readCard(
     }
   }
   if (identity === undefined || configuration === undefined) return;
-  const { attributes } = configuration;
   const routes = exactRoutes(configuration.openAPISpec, id);
   // A page-slug variant needs a hosted request that names the original inventory ID.
   if (slug !== id && routes.length === 0) return;
-  const description = $('meta[name="description"]').attr("content")?.trim();
+  return cardModel(
+    input,
+    id,
+    configuration,
+    artifact,
+    $('meta[name="description"]').attr("content")?.trim(),
+    identity.isDeprecated === true,
+    routes,
+  );
+}
+
+function cardModel(
+  input: SourceParseInput,
+  id: string,
+  configuration: z.infer<typeof cardConfiguration>,
+  artifact: z.infer<typeof cardArtifact> | undefined,
+  description: string | undefined,
+  deprecatedIdentity: boolean,
+  routes: ReturnType<typeof exactRoutes>,
+): ParsedProviderModel {
+  const { attributes } = configuration;
   const model = baseModel({
     providerId: input.provider.id,
     id,
@@ -293,6 +319,7 @@ function readCard(
     observedAt: input.observedAt,
   });
   if (description) model.description = description;
+  if (artifact !== undefined) model.model_card = { publisher: artifact.publisher };
   if (artifact?.updatedDate !== undefined) model.updated_date = artifact.updatedDate.slice(0, 10);
   const specs = attributes.specifications;
   if (specs?.contextLength !== undefined) model.limits.context_tokens = specs.contextLength;
@@ -304,8 +331,7 @@ function readCard(
   model.capabilities.tool_call = capabilities?.functionCalling ?? "unknown";
   model.capabilities.structured_output = capabilities?.structuredOutput ?? "unknown";
   model.capabilities.reasoning = capabilities?.reasoning ?? "unknown";
-  const deprecated =
-    identity.isDeprecated === true || Boolean(attributes.deprecationNotice?.trim());
+  const deprecated = deprecatedIdentity || Boolean(attributes.deprecationNotice?.trim());
   if (deprecated) model.status = "deprecated";
   if (!deprecated && attributes.showUnavailableBanner === false && routes.length > 0) {
     model.tasks = [...new Set(routes.map(({ task }) => task))];
@@ -314,12 +340,160 @@ function readCard(
   return model;
 }
 
+function apiCard(
+  input: SourceParseInput,
+  slug: string,
+  metadataBody: string,
+  specBody: string,
+  inventory: ReadonlySet<string>,
+): ParsedProviderModel | undefined {
+  const { artifact } = nvidiaEndpointMetadataSchema.parse(
+    parseSourceJson(metadataBody, "NVIDIA endpoint metadata"),
+  );
+  const raw = nvidiaEndpointSpecSchema.parse(
+    parseSourceJson(specBody, "NVIDIA endpoint specification"),
+  );
+  if (`${artifact.publisher}/${artifact.name}` !== slug || raw.artifactName !== artifact.name)
+    return;
+  if (!artifact.isPublic) return;
+  const configuration = cardConfiguration.parse({
+    artifactName: raw.artifactName,
+    attributes: parseSourceJson(raw.attributes, "NVIDIA endpoint attributes"),
+    openAPISpec:
+      raw.openAPISpec == null || raw.openAPISpec.trim() === ""
+        ? undefined
+        : parseSourceJson(raw.openAPISpec, "NVIDIA endpoint OpenAPI"),
+  });
+  const spec = openApi.safeParse(configuration.openAPISpec);
+  const ids = new Set([...inventory].filter((id) => candidateSlugs(id).includes(slug)));
+  if (spec.success)
+    for (const endpoint of Object.values(spec.data.paths)) {
+      const operation = operationSchema.safeParse(endpoint);
+      if (!operation.success) continue;
+      const properties = modelParameter.safeParse(
+        requestSchema(
+          operation.data.post.requestBody.content["application/json"].schema,
+          spec.data.components?.schemas,
+        ),
+      );
+      if (!properties.success) continue;
+      const model = properties.data.properties.model;
+      for (const id of model.default !== undefined
+        ? [model.default]
+        : model.example !== undefined
+          ? [model.example]
+          : model.enum?.length === 1
+            ? model.enum
+            : [])
+        if (exactRoutes(configuration.openAPISpec, id).length > 0) ids.add(modelIdSchema.parse(id));
+    }
+  const hosted = [...ids].filter((id) => exactRoutes(configuration.openAPISpec, id).length > 0);
+  assertSourceConstraint(
+    "NVIDIA endpoint specification repeated model identities",
+    hosted.length <= 1,
+    slug,
+  );
+  const fixed =
+    spec.success &&
+    spec.data.servers.some(({ url }) =>
+      /^https:\/\/(?:ai|health|vision)\.api\.nvidia\.com(?:\/v1)?\/?$/u.test(url),
+    )
+      ? [...inventory].filter((id) =>
+          Object.keys(spec.data.paths).some(
+            (path) => path.endsWith(`/${id}`) || path.includes(`/${id}/`),
+          ),
+        )
+      : [];
+  const id = hosted[0] ?? (fixed.length === 1 ? fixed[0] : undefined) ?? modelIdSchema.parse(slug);
+  const model = cardModel(
+    input,
+    id,
+    configuration,
+    artifact,
+    artifact.shortDescription,
+    artifact.attributes.some(({ key, value }) => key === "DEPRECATED" && value === "true"),
+    exactRoutes(configuration.openAPISpec, id),
+  );
+  if (!inventory.has(id) && !artifact.labels.includes("nimType:endpoint:nim_type_preview")) return;
+  if (configuration.attributes.showUnavailableBanner !== false || model.status === "deprecated")
+    return inventory.has(id) ? model : undefined;
+  if (hosted.length > 0) return model;
+  const endpoints: { name: string; path: string }[] = [];
+  if (spec.success)
+    for (const { url } of spec.data.servers) {
+      if (!/^https:\/\/(?:ai|health|vision)\.api\.nvidia\.com(?:\/v1)?\/?$/u.test(url)) continue;
+      for (const [path, value] of Object.entries(spec.data.paths)) {
+        const post = z
+          .object({ post: z.object({ summary: z.string().optional() }) })
+          .safeParse(value);
+        if (
+          !post.success ||
+          !(path.endsWith(`/${id}`) || path.includes(`/${id}/`)) ||
+          path.endsWith("/models") ||
+          path.includes("{")
+        )
+          continue;
+        endpoints.push({
+          name: post.data.post.summary?.trim() || "Inference",
+          path: url.replace(/\/$/u, "") + path,
+        });
+      }
+    }
+  if (endpoints.length === 0 && z.uuid().safeParse(raw.nvcfFunctionId).success) {
+    const usage =
+      z
+        .object({ usage: z.string().optional() })
+        .parse(parseSourceJson(raw.attributes, "NVIDIA hosted usage")).usage ?? "";
+    if (
+      /--target\s+grpc\.nvcf\.nvidia\.com:443\b/u.test(usage) &&
+      /--function-id\s+<%- nvcfFunctionId %>/u.test(usage)
+    ) {
+      endpoints.push({ name: "NVCF gRPC", path: "grpc.nvcf.nvidia.com:443" });
+      for (const [flag, modality] of [
+        ["--video-input", "video"],
+        ["--audio-input", "audio"],
+        ["--image-input", "image"],
+      ] as const)
+        if (usage.includes(`${flag} `) && !model.modalities.input.includes(modality))
+          model.modalities.input.push(modality);
+    } else if (raw.nvcfInferencePath !== "/grpc" && raw.nvcfInferencePath?.startsWith("/"))
+      endpoints.push({
+        name: "NVCF function invocation",
+        path: `https://api.nvcf.nvidia.com/v2/nvcf/pexec/functions/${raw.nvcfFunctionId}`,
+      });
+  }
+  if (endpoints.length === 0) return inventory.has(id) ? model : undefined;
+  model.api_endpoints = endpoints;
+  model.model_card = {
+    publisher: artifact.publisher,
+    access: "Free Endpoint",
+  };
+  return model;
+}
+
 export function parseNvidiaNimCards(input: SourceParseInput): ParsedProviderModel[] {
   const bundle = linkedBundleSchema.parse(parseSourceJson(input.body, "NVIDIA model card bundle"));
   const documents = new Map(bundle.documents.map(({ url, body }) => [url, body]));
   const ids = new Set(hostedIds(bundle.index.body));
+  const buildPages = bundle.documents.filter(({ url }) =>
+    url.startsWith(nvidiaBuildUrl().origin + nvidiaBuildUrl().pathname),
+  );
+  const extraSlugs = buildPages.flatMap(({ body }, page) => nvidiaBuildPage(body, page).slugs);
+  const native = new Map<string, ParsedProviderModel>();
+  for (const slug of new Set([
+    ...nvidiaNimCardUrls(bundle.index.body).map((url) => url.slice(buildOrigin.length + 1)),
+    ...extraSlugs,
+  ])) {
+    const name = slug.split("/")[1];
+    const url = nvidiaEndpointBase + name;
+    const metadata = documents.get(url),
+      spec = documents.get(url + "/spec");
+    if (metadata === undefined || spec === undefined) continue;
+    const model = apiCard(input, slug, metadata, spec, ids);
+    if (model !== undefined) native.set(model.model_id, model);
+  }
   const models = (input.catalogModels ?? []).flatMap(({ model_id }) => {
-    if (!ids.has(model_id)) return [];
+    if (!ids.has(model_id) || native.has(model_id)) return [];
     for (const slug of candidateSlugs(model_id)) {
       const body = documents.get(`${buildOrigin}/${slug}`);
       if (body === undefined) continue;
@@ -330,10 +504,10 @@ export function parseNvidiaNimCards(input: SourceParseInput): ParsedProviderMode
   });
   assertSourceConstraint(
     "NVIDIA cards did not match any hosted model IDs",
-    models.length > 0,
+    models.length + native.size > 0,
     models.length,
   );
-  return models;
+  return [...models, ...native.values()];
 }
 
 export function parseNvidiaNimRetrieval(input: SourceParseInput): ParsedProviderModel[] {

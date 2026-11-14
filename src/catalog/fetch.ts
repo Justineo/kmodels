@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { fireworksConsoleTargets, fireworksModelPaths } from "./fireworks.ts";
 import { nvidiaNimCardUrls } from "./nvidia-nim.ts";
+import { nvidiaBuildPage, nvidiaBuildUrl, nvidiaEndpointBase } from "./nvidia-build.ts";
 import { togetherCatalogIds, togetherMissingCacheIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
 import { z } from "zod";
@@ -1759,6 +1760,100 @@ async function fetchFireworksServerless(source: SourceManifest): Promise<FetchRe
   };
 }
 
+async function fetchNvidiaCards(source: SourceManifest): Promise<FetchResult> {
+  const index = await fetchPayload(
+    requestSource(source, `${source.id}/index`, new URL(source.url), "json", 1024 * 1024),
+  );
+  const documents: { url: string; body: string }[] = [];
+  const dependencies = [observation(`${source.id}/index`, index)];
+  const slugs = new Set(nvidiaNimCardUrls(index.body).map((url) => new URL(url).pathname.slice(1)));
+  const names = new Set<string>();
+  let pages = 1,
+    total: number | undefined;
+  for (let page = 0; page < pages; page++) {
+    const url = checkedUrl(nvidiaBuildUrl(page).href, source);
+    const payload = await fetchPayload(
+      requestSource(source, `${source.id}/build/${page}`, url, "json", 4 * 1024 * 1024),
+    );
+    const parsed = nvidiaBuildPage(payload.body, page);
+    assertSourceConstraint(
+      "NVIDIA Build changed totals during pagination",
+      total === undefined || total === parsed.total,
+      page,
+    );
+    pages = parsed.pages;
+    total = parsed.total;
+    for (const name of parsed.names) {
+      assertSourceConstraint(
+        "NVIDIA Build repeated an endpoint across pages",
+        !names.has(name),
+        name,
+      );
+      names.add(name);
+    }
+    for (const slug of parsed.slugs) slugs.add(slug);
+    documents.push({ url: url.href, body: payload.body });
+    dependencies.push(observation(`${source.id}/build/${page}`, payload));
+  }
+  assertItemCount("NVIDIA endpoint profiles", slugs.size, 1, 180);
+  // Endpoint names are unique within the public NGC namespace; publishers still qualify identity.
+  const requests = new Map([...slugs].map((slug) => [slug.split("/")[1], slug]));
+  const results = await mapConcurrent([...requests.values()], 8, async (slug) => {
+    const name = slug.split("/")[1];
+    const base = nvidiaEndpointBase + name;
+    const key = `${source.id}/endpoint/${name}`;
+    try {
+      const metadata = await fetchPayload(
+        requestSource(source, key, checkedUrl(base, source), "json", 1024 * 1024),
+      );
+      const spec = await fetchPayload(
+        requestSource(
+          source,
+          key + "/spec",
+          checkedUrl(base + "/spec", source),
+          "json",
+          4 * 1024 * 1024,
+        ),
+      );
+      return {
+        documents: [
+          { url: base, body: metadata.body },
+          { url: base + "/spec", body: spec.body },
+        ],
+        dependencies: [observation(key, metadata), observation(key + "/spec", spec)],
+      };
+    } catch {
+      const url = checkedUrl(`https://build.nvidia.com/${slug}`, source);
+      try {
+        const payload = await fetchPayload(
+          requestSource(source, key + "/card", url, "html", 4 * 1024 * 1024),
+        );
+        return {
+          documents: [{ url: url.href, body: payload.body }],
+          dependencies: [observation(key + "/card", payload)],
+        };
+      } catch (error) {
+        return {
+          failure: { dependency_id: key, impact: "claim" as const, ...sourceFailure(error) },
+        };
+      }
+    }
+  });
+  for (const result of results)
+    if (result.documents !== undefined && result.dependencies !== undefined) {
+      documents.push(...result.documents);
+      dependencies.push(...result.dependencies);
+    }
+  const body = JSON.stringify({ index: { url: source.url, body: index.body }, documents });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("NVIDIA endpoint bundle exceeded aggregate byte limit");
+  return {
+    ...generatedFetchResult(body),
+    dependencies,
+    dependencyFailures: results.flatMap((result) => ("failure" in result ? [result.failure] : [])),
+  };
+}
+
 async function fetchConfiguredDocuments(
   source: SourceManifest,
   label: string,
@@ -2765,6 +2860,7 @@ export async function fetchSource(
   if (source.transport?.kind === "dashscope-pricing") return fetchDashscopePricing(source);
   if (source.transport?.kind === "together-serverless") return fetchTogetherServerless(source);
   if (source.transport?.kind === "fireworks-serverless") return fetchFireworksServerless(source);
+  if (source.transport?.kind === "nvidia-nim-cards") return fetchNvidiaCards(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {

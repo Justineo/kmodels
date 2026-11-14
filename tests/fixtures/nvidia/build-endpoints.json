@@ -1,0 +1,55 @@
+[
+  {
+    "metadata": {
+      "artifact": {
+        "artifactType": "ENDPOINT",
+        "orgName": "qc69jvmznzxy",
+        "name": "kimi-k3_1-pro",
+        "publisher": "moonshotai",
+        "isPublic": true,
+        "displayName": "kimi-k3.1-pro",
+        "shortDescription": "3T-class open model with 1M-token context specialized for agentic coding, 3D modeling, and finance",
+        "updatedDate": "2026-11-04T17:01:19.566Z",
+        "labels": [
+          "nimType:endpoint:nim_type_preview",
+          "nimType:endpoint:nim_type_run_anywhere",
+          "nimType:endpoint:nim_type_upgrade_available"
+        ],
+        "attributes": []
+      }
+    },
+    "spec": {
+      "artifactName": "kimi-k3_1-pro",
+      "artifactType": "ENDPOINT",
+      "namespace": "qc69jvmznzxy",
+      "attributes": "{\"showUnavailableBanner\":false,\"specifications\":{\"contextLength\":1048576,\"parameters\":\"2.8T\",\"inputModalities\":[\"Text\",\"Image\"],\"outputModalities\":[\"Text\"]},\"modelCapability\":{\"functionCalling\":true,\"structuredOutput\":true,\"reasoning\":true}}",
+      "openAPISpec": "{\"servers\":[{\"url\":\"https://integrate.api.nvidia.com/v1\"}],\"paths\":{\"/chat/completions\":{\"post\":{\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/NIMLLMChatCompletionRequest\"}}},\"required\":true}}}},\"components\":{\"schemas\":{\"NIMLLMChatCompletionRequest\":{\"properties\":{\"model\":{\"type\":\"string\",\"title\":\"Model\",\"description\":\"The model to use.\",\"default\":\"moonshotai/kimi-k3.1-pro\"}}}}}}",
+      "nvcfFunctionId": "b79234a1-64e1-479e-87e7-1c8e3af74262",
+      "nvcfInferencePath": "/v1/chat/completions"
+    }
+  },
+  {
+    "metadata": {
+      "artifact": {
+        "artifactType": "ENDPOINT",
+        "orgName": "qc69jvmznzxy",
+        "name": "body-pose",
+        "publisher": "nvidia",
+        "isPublic": true,
+        "displayName": "3D Body Pose",
+        "shortDescription": "Estimate 3D human body pose and skeleton from video input.",
+        "updatedDate": "2026-09-30T22:21:37.105Z",
+        "labels": ["nimType:endpoint:nim_type_preview", "nimType:endpoint:nim_type_run_anywhere"],
+        "attributes": []
+      }
+    },
+    "spec": {
+      "artifactName": "body-pose",
+      "artifactType": "ENDPOINT",
+      "namespace": "qc69jvmznzxy",
+      "attributes": "{\"showUnavailableBanner\":false,\"modelCapability\":{\"functionCalling\":false},\"usage\":\"python body_pose.py --preview-mode \\\\\\n--target grpc.nvcf.nvidia.com:443 \\\\\\n--function-id <%- nvcfFunctionId %> \\\\\\n--api-key <%- apiKey %> \\\\\\n--video-input <input_file_path> \\\\\\n--output <output_file_path>\"}",
+      "nvcfFunctionId": "254b3621-bb66-4b7b-9c89-621c352b4d91",
+      "nvcfInferencePath": "/grpc"
+    }
+  }
+]

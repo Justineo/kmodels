@@ -249,6 +249,7 @@ export interface SourceManifest {
     | { kind: "together-model-library"; catalogUrl: string }
     | { kind: "together-serverless" }
     | { kind: "fireworks-serverless" }
+    | { kind: "nvidia-nim-cards" }
     | {
         kind: "vercel-models";
         modelPageBaseUrl: string;
@@ -705,11 +706,13 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "nvidia-nim-cards" },
-        extractorVersion: "nvidia-nim-cards-v1",
+        extractorVersion: "nvidia-nim-cards-v2",
+        transport: { kind: "nvidia-nim-cards" },
         fields: [
           "model_id",
           "name",
           "description",
+          "model_card",
           "updated_date",
           "limits",
           "modalities",
@@ -718,11 +721,11 @@ export const manifests = [
           "tasks",
           "api_endpoints",
         ],
-        allowedHosts: ["integrate.api.nvidia.com", "build.nvidia.com"],
+        allowedHosts: ["integrate.api.nvidia.com", "build.nvidia.com", "api.ngc.nvidia.com"],
         maxResponseBytes: mebibytes(48),
         scope: "global",
         exhaustive: false,
-        role: "overlay",
+        role: "supplement",
         optional: true,
         retainOmittedFacts: true,
         linkedDocuments: {

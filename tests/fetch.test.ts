@@ -11,6 +11,7 @@ import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { linkedPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
 import { sourceFailure } from "../src/catalog/source-failure.ts";
 import { fireworksBundle } from "./fireworks-fixture.ts";
+import { nvidiaBuildUrl } from "../src/catalog/nvidia-build.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -18,6 +19,83 @@ const transport = vi.hoisted(() => {
   const calls: string[] = [];
   return { failures, responses, calls };
 });
+
+it.each(["native", "web fallback", "failed companion", "repeated page"])(
+  "collects NVIDIA endpoint APIs with %s evidence",
+  async (scenario) => {
+    const source = reviewedPublicSource("nvidia-nim-cards");
+    const body = JSON.stringify({
+      object: "list",
+      data: [{ object: "model", id: "nvidia/body-pose" }],
+    });
+    transport.responses.set("integrate.api.nvidia.com", [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+    const labels = [
+      { key: "publisher", values: ["nvidia"], unresolvedValues: ["nvidia"] },
+      { key: "nimType", values: ["Free Endpoint"], unresolvedValues: ["nim_type_preview"] },
+    ];
+    const resource = (name: string) => ({
+      resourceType: "ENDPOINT",
+      resourceId: `qc69jvmznzxy/${name}`,
+      name,
+      labels: name === "body-pose" ? labels : [],
+    });
+    const first = [
+      resource("body-pose"),
+      ...Array.from({ length: 99 }, (_value, index) => resource(`download-${index}`)),
+    ];
+    const page = (index: number, resources: ReturnType<typeof resource>[]) =>
+      JSON.stringify({
+        params: { page: index, pageSize: 100 },
+        resultPageTotal: 2,
+        resultTotal: 101,
+        results: [{ groupValue: "ENDPOINT", resources }],
+      });
+    const fixture = JSON.parse(
+      await readFile(new URL("./fixtures/nvidia/build-endpoints.json", import.meta.url), "utf8"),
+    );
+    const endpoint = fixture[1];
+    transport.responses.set(
+      "api.ngc.nvidia.com",
+      [
+        page(0, first),
+        page(scenario === "repeated page" ? 0 : 1, [resource("last-download")]),
+        scenario === "native" ? JSON.stringify(endpoint.metadata) : undefined,
+        JSON.stringify({ ...endpoint.spec, unconsumedPadding: "x".repeat(3 * 1024 * 1024) }),
+      ].map((value) =>
+        value === undefined
+          ? "HTTP/1.1 404 Not Found\r\n\r\nmissing"
+          : `HTTP/1.1 200 OK\r\n\r\n${value}`,
+      ),
+    );
+    transport.responses.set("build.nvidia.com", [
+      scenario === "failed companion"
+        ? "HTTP/1.1 404 Not Found\r\n\r\nmissing"
+        : "HTTP/1.1 200 OK\r\n\r\n<html>Reviewed card</html>",
+    ]);
+    const result = fetchSource(source);
+    if (scenario === "repeated page") await expect(result).rejects.toThrow(/pagination/);
+    else {
+      const fetched = await result;
+      expect(transport.calls.slice(1, 3)).toEqual([nvidiaBuildUrl().href, nvidiaBuildUrl(1).href]);
+      if (scenario === "native") {
+        expect(transport.calls.some((url) => new URL(url).hostname === "build.nvidia.com")).toBe(
+          false,
+        );
+        expect(JSON.parse(fetched.body).documents).toContainEqual(
+          expect.objectContaining({
+            url: "https://api.ngc.nvidia.com/v2/endpoints/qc69jvmznzxy/body-pose/spec",
+          }),
+        );
+      } else if (scenario === "web fallback")
+        expect(JSON.parse(fetched.body).documents).toContainEqual({
+          url: "https://build.nvidia.com/nvidia/body-pose",
+          body: "<html>Reviewed card</html>",
+        });
+      else
+        expect(fetched.dependencyFailures).toEqual([expect.objectContaining({ impact: "claim" })]);
+    }
+  },
+);
 
 it.each(["complete", "profile failure"])(
   "requires bounded Fireworks console evidence: %s",

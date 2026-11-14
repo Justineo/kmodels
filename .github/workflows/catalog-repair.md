@@ -81,6 +81,7 @@ network:
     - bailian-cs.console.alibabacloud.com
     - bailian-singapore-cs.alibabacloud.com
     - build.nvidia.com
+    - api.ngc.nvidia.com
     - cloud.google.com
     - cohere.com
     - console.groq.com
