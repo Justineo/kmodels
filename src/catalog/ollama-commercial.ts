@@ -1,7 +1,6 @@
 import { compareCanonicalValues } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
-  AtomicPricingTerm,
   AtomicProviderPricing,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
@@ -76,23 +75,16 @@ function modelBook(
         offer_key: "cloud-inference",
         name: "Ollama Cloud inference",
         enrollment: [],
-        terms: offer.terms.map((term) => bindTerm(term, inputIndex, hasCacheRate, decision)),
+        terms: offer.terms.map((term) =>
+          bindRateTerm(term, (meter, variant) =>
+            binding(meter, variant, inputIndex, hasCacheRate, decision),
+          ),
+        ),
         relations: [],
         settlement: [],
       };
     }),
   };
-}
-
-function bindTerm(
-  term: AtomicPricingTerm,
-  inputIndex: PricingInputIndex,
-  hasCacheRate: boolean,
-  decision: boolean,
-): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) =>
-    binding(meter, variant, inputIndex, hasCacheRate, decision),
-  );
 }
 
 // Commercial selection describes owned tariffs, independently of model capabilities.
