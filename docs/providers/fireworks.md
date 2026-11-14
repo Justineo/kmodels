@@ -34,11 +34,19 @@ is omitted. A required profile failure rejects the fresh price partition.
 
 The [List Models API schema](https://docs.fireworks.ai/api-reference/list-models) documents
 that `ServerlessMode.skuInfos` is populated live from billing by `ListServerlessModels`,
-rather than by ordinary List Models. The evaluated management and inference model-list
-endpoints require a bearer key; the specialized method has no reviewed public REST route.
+rather than by ordinary List Models. The native
+[Gateway OpenAPI](https://docs.fireworks.ai/gateway.openapi.yaml), linked by the documentation
+index, owns `GET https://api.fireworks.ai/v1/accounts/{account_id}/serverlessModels`.
+It returns base models with nested priced, Spot-gated configurations, accepts `pageSize`
+up to 200, and paginates with `pageToken` and `nextPageToken`. The schema requires a bearer
+API key. The collector-transport probe of the exact `fireworks` account route returns HTTP 401
+without one, as do the ordinary management and inference inventories. This is an access
+limit, not evidence that the API lacks prices or that the public catalog is empty.
 The anonymous console exposes the consumed mode prices without credentials, so collection
-uses that first-party structured fallback. API field definitions establish the invocation
-recipe; public library flags and exact cards establish Serverless admission.
+uses that first-party structured fallback. A future authenticated inventory must preserve
+account-specific mode gates rather than turning them into global exclusions. API field
+definitions establish the invocation recipe; public library flags and exact cards establish
+Serverless admission.
 
 Normalize USD `1M tokens` SKU amounts from exact Money units and nanos, including Flight's
 `$n` integer encoding. Input, cached input, output and retrieval-input labels own their
