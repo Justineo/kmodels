@@ -2692,7 +2692,7 @@ export const manifests = [
           minModelDocuments: 20,
           maxModelDocuments: 40,
         },
-        extractorVersion: "vertex-catalog-v12",
+        extractorVersion: "vertex-catalog-v13",
         fields: [
           "model_id",
           "name",
@@ -2789,7 +2789,7 @@ export const manifests = [
           minModelDocuments: 20,
           maxModelDocuments: 45,
         },
-        extractorVersion: "vertex-catalog-v10",
+        extractorVersion: "vertex-catalog-v11",
         fields: [
           "model_id",
           "name",
@@ -2861,7 +2861,7 @@ export const manifests = [
           maxModelDocuments: 40,
           managedInventory: true,
         },
-        extractorVersion: "vertex-catalog-v11",
+        extractorVersion: "vertex-catalog-v12",
         fields: [
           "model_id",
           "name",
@@ -2925,7 +2925,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v25",
+        extractorVersion: "vertex-pricing-v26",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: [

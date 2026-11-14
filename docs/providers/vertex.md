@@ -69,6 +69,11 @@ model family. Display names omit the procedural Generate suffix and its revision
 model IDs and inference aliases stay unchanged. This preserves exact price-label matching without
 guessing a family tariff from an arbitrary similar model ID.
 
+A trailing standalone `Preview` qualifier in an owned card title or variant heading describes
+launch stage rather than an additional price variant. Display names omit that qualifier while
+literal IDs, aliases and lifecycle evidence stay unchanged. This joins the pricing page's exact
+Omni Flash, Omni 1.1 Flash and Lyria 3 Pro labels without removing `-preview` from request IDs.
+
 The optional merged [Imagen 3 card](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/3-0-generate)
 retains exact revision tables, owned family names and discontinuation dates after their individual
 URLs redirect. It supplements discovery and preserves their family-quote association without
@@ -81,10 +86,19 @@ join, so these models remain Unknown.
 The pricing source explicitly owns both `pricing` and `pricing_inputs`. Accounting contracts are not
 treated as rate evidence. The optional authenticated Model Garden API validates known public
 identities only; it cannot create rows, contribute private prices, or retain account data.
-Its service-account key must be active: an OAuth `invalid_grant` is reported as a credential
-failure and skips only this optional account-scoped validation source. Replacing
-`GOOGLE_SERVICE_ACCOUNT_JSON` with a current key restores it; public catalog and pricing sources do
-not depend on that credential.
+The first-party Discovery schema documents pagination, `view` and `listAllVersions` independently.
+The transport exhausts pages for all twelve reviewed publishers. FULL view adds no consumed
+pricing, capability or limit fields to the current BASIC response; listing historical versions
+adds version records rather than public managed identities. Keep BASIC/latest acquisition and
+exclude self-deployment inventory from hosted admission. API omission is not public unavailability.
+An OAuth `invalid_grant` is a credential failure that skips only this optional source.
+Public catalog and pricing sources do not depend on that credential.
+
+Cloud Billing Catalog is a separate structured tariff surface. It requires an enabled service and
+appropriate project access; `SERVICE_DISABLED` and `ACCESS_DENIED` responses cannot establish an
+empty price book or provider non-publication. The reviewed public pricing pages remain the
+programmatic tariff sources when that API is inaccessible. Account billing configuration is not
+changed by collection, and an inaccessible, unconsumed API is not a refresh dependency.
 
 Each source owns only its claims. A pricing-page failure does not reject model discovery. A changed
 route guide withholds only that route. A missing accounting field removes only the affected input
@@ -234,6 +248,9 @@ from source collection and mapping implementation.
   part of a model name. The annotations still contribute applicability dates. Cache-read and
   cache-write rows retain their distinct meters and explicit five-minute/one-hour TTLs. An exact
   `Free` or `No charge` cell establishes zero, while a missing cell never does.
+  A trailing bracketed numeric reference such as Nano Banana 2.1's `[4]` is excluded from the
+  identity comparison; its source label and notes remain evidence. This does not remove arbitrary
+  bracketed variant names or infer per-image tariffs from the footnote's illustrative costs.
 - A reviewed Gemini Omni table can name both Flash versions in one model cell; each target must
   resolve independently to an existing catalog identity. Lyria's `$ / 1 count` entries price
   generated music outputs as items, counting each full song or clip once: a request can return multiple
@@ -380,6 +397,12 @@ queries, so a Maps query-priced rate has a semantic binding but no quantity meth
 Maps widget context token is not treated as a query count.
 
 ## Known calculation gaps
+
+Price labels without a verified identity bridge remain unbound, including abbreviated Robotics,
+Gemma and Lyria Clip labels and lifecycle-only older managed model IDs. An abbreviated label does
+not justify deleting arbitrary ID suffixes or assigning a family tariff to every revision.
+Unexplained Imagen counts, Veo Lite counts and text-embedding counts remain raw units as described
+above. Account-credit quotes and disputed context boundaries retain their independent evidence.
 
 The following remain explicit downstream inputs rather than invented mappings:
 

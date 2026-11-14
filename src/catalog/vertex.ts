@@ -645,6 +645,8 @@ function regions($: LoadedDocument, table: Selection): ProviderModel["availabili
 }
 
 function pageName(title: string, heading: string, count: number): string {
+  title = title.replace(/\s+\(?Preview\)?$/i, "");
+  heading = heading.replace(/\s+\(?Preview\)?$/i, "");
   if (count === 1 || heading === "") return title;
   const media = title.match(/^(Imagen|Veo)(?:\s+(\d+(?:\.\d+)?))?$/i);
   const generation = heading.match(
@@ -1122,6 +1124,7 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
 
 function priceName(value: string): string {
   return value
+    .replace(/\s*\[\d+\]\s*$/, "")
     .replace(/\((?:Promotional Price|Standard Price|Deprecated)[^)]*\)/gi, " ")
     .replace(
       /\s*\(?\*?\s*(?:through|beginning|starting)\s+[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4}\s*\)?\s*$/i,
