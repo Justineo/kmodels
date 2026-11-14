@@ -102,11 +102,13 @@ export function projectWebsitePricingNotes(
       return rows;
     }
   });
-  return notes.map((note) =>
-    note.details === undefined
-      ? note
-      : { ...note, details: note.details.map((detail) => detail.replace(/\\+\$(?=\d)/g, "$")) },
-  );
+  return notes.map((note) => ({
+    ...note,
+    label: note.label === "Unpublished cache read" ? "Cache read" : note.label,
+    ...(note.details === undefined
+      ? {}
+      : { details: note.details.map((detail) => detail.replace(/\\+\$(?=\d)/g, "$")) }),
+  }));
 }
 
 export function projectWebsitePricingTimeline(

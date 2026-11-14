@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
 import { dashscopeInferenceFixture } from "./dashscope-inference-fixture.ts";
 import type { LinkedBundle } from "../src/catalog/bundle.ts";
@@ -402,3 +403,70 @@ it("uses the same conditions and reasons in static output and compact UI data", 
   expect(JSON.stringify(detail)).not.toContain("content_hash");
   expect(JSON.stringify(detail)).not.toContain("observations");
 }, 15000);
+
+it("publishes exact console cache tariffs through collection, portable lookup and website details", async () => {
+  const implicit: Selector = {
+    kind: "categorical",
+    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
+    value: { namespace: "provider", provider_id: "dashscope", value: "implicit" },
+  };
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/market-prices.json", import.meta.url), "utf8"),
+  );
+  const candidate = await collect((bundles) => {
+    const bundle = bundles.get("dashscope-pricing");
+    if (!bundle) throw new Error("Missing fixture");
+    const updated = { ...bundle, market };
+    bundles.set("dashscope-pricing", updated);
+  });
+  const query = lookup(candidate);
+  for (const [region, scope, numerator, denominator] of [
+    ["Germany (Frankfurt)", "Global", "69", "500000000"],
+    ["Singapore", "International", "1", "5000000"],
+    ["Japan (Tokyo)", "Japan", "1", "5000000"],
+  ]) {
+    if (!region || !scope) throw new Error("Missing scope");
+    const selectors = [condition("region", region), condition("deployment_scope", scope), implicit];
+    const result = query({ provider_id: "dashscope", model_id: "deepseek-v4-pro", selectors });
+    expect(result.status, JSON.stringify(result.missing_conditions)).toBe("matched");
+    expect(
+      result.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .filter((term) => term.kind === "rate" && term.meter.value === "cache_read_text")
+        .flatMap((term) =>
+          term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
+        ),
+    ).toContainEqual({ numerator, denominator });
+    expect(JSON.stringify(result.candidates)).not.toContain("unpublished_cache_read");
+  }
+  expect(
+    query({
+      provider_id: "dashscope",
+      model_id: "deepseek-v4-pro",
+      selectors: [
+        condition("region", "Germany (Frankfurt)"),
+        condition("deployment_scope", "Japan"),
+      ],
+    }).reason,
+  ).toBe("no_applicable_price");
+  const projection = await projectCatalogPair(candidate);
+  const detail = projection.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "dashscope/deepseek-v4-pro");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "deepseek-v4-pro");
+  if (!price) throw new Error("Missing console price in website");
+  const selectors = [
+    condition("region", "Germany (Frankfurt)"),
+    condition("deployment_scope", "Global"),
+    implicit,
+  ];
+  expect(queryWebsiteInferencePrice(price, selectors, at).status).toBe("matched");
+  expect(JSON.stringify(queryWebsiteInferencePrice(price, selectors, at))).not.toContain(
+    "unpublished_cache_read",
+  );
+}, 20000);

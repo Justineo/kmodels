@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, type LinkedBundle } from "./bundle.ts";
 import { extractDashscopePricingInputs } from "./dashscope-accounting.ts";
+import { parseDashscopeMarket } from "./dashscope-market.ts";
 import {
   extractDashscopeImageSearchFacts,
   extractDashscopeTextToImageSearchFacts,
@@ -2276,10 +2277,11 @@ function cacheRate(
   };
 }
 
-function publishedCacheRead(
+function publishedCacheRate(
   model: ProviderModel,
   input: SourcePriceFact,
   mode: "explicit" | "implicit",
+  meter: "cache_read_text" | "cache_write_text" = "cache_read_text",
 ): boolean {
   const scope = {
     ...input.conditions,
@@ -2288,7 +2290,7 @@ function publishedCacheRead(
   };
   return model.price_facts.some(
     (rate) =>
-      rate.meter === "cache_read_text" &&
+      rate.meter === meter &&
       !rate.derived &&
       rate.unit === input.unit &&
       rate.currency === input.currency &&
@@ -2644,7 +2646,69 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     }
   }
   assertCoverage("DashScope pricing model rows", coveredRows, observedRows, 1);
+  const market = parseDashscopeMarket(input, JSON.parse(input.body));
+  for (const model of market.models) {
+    const current = models.get(model.model_id);
+    // The guide owns its detailed modality/operation rules. The market fills uncovered
+    // regional meters and publishes exact cache tariffs before generic cache derivation.
+    model.price_facts = model.price_facts.filter((rate) => {
+      if (rate.meter.startsWith("cache_")) return true;
+      const covered =
+        current?.price_facts.filter(
+          (existing) =>
+            existing.meter === rate.meter &&
+            existing.currency === rate.currency &&
+            existing.conditions.region === rate.conditions.region &&
+            existing.conditions.deployment_scope === rate.conditions.deployment_scope &&
+            existing.conditions.service_tier === rate.conditions.service_tier &&
+            (rate.conditions.operation === undefined ||
+              existing.conditions.operation === rate.conditions.operation) &&
+            (existing.conditions.context_max_tokens ?? Infinity) >
+              (rate.conditions.context_min_tokens ?? -1) &&
+            (rate.conditions.context_max_tokens ?? Infinity) >
+              (existing.conditions.context_min_tokens ?? -1),
+        ) ?? [];
+      if (covered.length > 0) {
+        if (
+          !covered.every(
+            (existing) => existing.unit === rate.unit && decimalsEqual(existing.price, rate.price),
+          )
+        ) {
+          model.raw_price_facts.push({
+            term_key: `market:conflict:${rate.meter}`,
+            impact: "base_price",
+            reason: "unknown_applicability",
+            conditions: rate.conditions,
+            source_ref: input.source.id,
+            raw: {
+              meter: rate.meter,
+              amount: rate.price,
+              denomination: rate.currency,
+              unit: rate.raw_unit ?? rate.unit,
+              fragment:
+                "The console quote differs from the pricing guide in this regional meter scope.",
+            },
+          });
+        }
+        input.onPricingReconciliation?.({
+          disposition: covered.every(
+            (existing) => existing.unit === rate.unit && decimalsEqual(existing.price, rate.price),
+          )
+            ? "excluded"
+            : "raw",
+          reason_code: "market_meter_owned_by_pricing_guide",
+          sample: `${model.model_id}:${rate.meter}:${rate.conditions.region}`,
+        });
+      }
+      return covered.length === 0;
+    });
+    const marketUrl = market.inferenceUrls.get(model.model_id);
+    if (marketUrl === undefined) throw new Error("Missing DashScope market identity evidence");
+    if (!inferenceIds.has(model.model_id)) inferenceIds.set(model.model_id, marketUrl);
+    add(models, model);
+  }
   const commercialFacts = [
+    ...market.commercial,
     ...extractDashscopeWebSearchFacts(
       models,
       input.source.id,
@@ -2722,14 +2786,16 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
       const region = item.conditions.region;
       if (region === undefined) continue;
       if (cacheApplies(cache, "Explicit cache", id, item)) {
-        const rates = [cacheRate(item, "cache_write_text", "1.25", "explicit", 300)];
+        const rates = publishedCacheRate(model, item, "explicit", "cache_write_text")
+          ? []
+          : [cacheRate(item, "cache_write_text", "1.25", "explicit", 300)];
         const exception = explicitExceptions.get(id);
-        if (!publishedCacheRead(model, item, "explicit")) {
+        if (!publishedCacheRate(model, item, "explicit")) {
           if (exception !== undefined) {
             unknownCacheRead(model, item, "explicit", exception);
             input.onPricingReconciliation?.({
               disposition: "raw",
-              reason_code: "explicit_cache_price_not_public",
+              reason_code: "explicit_cache_price_not_collected",
               sample: `${id}:${region}`,
             });
           } else rates.push(cacheRate(item, "cache_read_text", "0.1", "explicit", 300));
@@ -2743,13 +2809,13 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
           });
       }
       if (cacheApplies(cache, "Implicit cache", id, item)) {
-        if (publishedCacheRead(model, item, "implicit")) continue;
+        if (publishedCacheRate(model, item, "implicit")) continue;
         const exception = implicitExceptions.get(id);
         if (exception !== undefined) {
           unknownCacheRead(model, item, "implicit", exception);
           input.onPricingReconciliation?.({
             disposition: "raw",
-            reason_code: "implicit_cache_price_not_public",
+            reason_code: "implicit_cache_price_not_collected",
             sample: `${id}:${region}`,
           });
           continue;

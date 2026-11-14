@@ -1,0 +1,444 @@
+[
+  {
+    "region": "ap-southeast-1",
+    "scope": "international",
+    "models": [
+      {
+        "model": "qwen3.7-plus",
+        "scope": "PUBLIC",
+        "serviceSites": ["international"],
+        "supports": {
+          "inference": true
+        },
+        "multiPrices": [
+          {
+            "rangeStart": 0,
+            "rangeName": "Input<=256k",
+            "prices": [
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.4",
+                "timeBand": "standard",
+                "discount": 0.8,
+                "ntmAmountType": "context_0-256k_input_token",
+                "type": "input_token",
+                "priceName": "Input"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "1.6",
+                "timeBand": "standard",
+                "discount": 0.8,
+                "ntmAmountType": "context_0-256k_output_token",
+                "type": "output_token",
+                "priceName": "Output"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.08",
+                "timeBand": "standard",
+                "discount": 0.8,
+                "ntmAmountType": "context_0-256k_input_token_cache",
+                "type": "input_token_cache",
+                "priceName": "Input(Implicit Cache)"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.2",
+                "timeBand": "standard",
+                "ntmAmountType": "context_0-256k_input_token_batch",
+                "type": "input_token_batch",
+                "priceName": "Input(Batch File)"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.8",
+                "timeBand": "standard",
+                "ntmAmountType": "context_0-256k_output_token_batch",
+                "type": "output_token_batch",
+                "priceName": "Output(Batch File)"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.5",
+                "timeBand": "standard",
+                "discount": 0.8,
+                "ntmAmountType": "context_0-256k_input_token_cache_creation_5m",
+                "type": "input_token_cache_creation_5m",
+                "priceName": "5-Minute Explicit Cache Creation"
+              },
+              {
+                "priceUnit": "Per 1M tokens",
+                "price": "0.04",
+                "timeBand": "standard",
+                "discount": 0.8,
+                "ntmAmountType": "context_0-256k_input_token_cache_read",
+                "type": "input_token_cache_read",
+                "priceName": "Explicit Cache Read"
+              }
+            ],
+            "rangeEnd": 262144
+          }
+        ],
+        "builtInToolMultiPrices": [
+          {
+            "supportedApi": "Responses API",
+            "name": "code_interpreter",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-code-interpreter",
+            "type": "code_interpreter",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "i2i_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/image-search",
+            "type": "i2i_search",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "8",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "t2i_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search-image",
+            "type": "t2i_search",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "8",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "web_extractor",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-extractor",
+            "type": "web_extractor",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "web_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search",
+            "type": "web_search",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "10",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search",
+            "type": "web_search_anthropic",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "10",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_fetch",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-extractor",
+            "type": "web_fetch",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "scope": "PUBLIC",
+        "serviceSites": ["international"],
+        "supports": {
+          "inference": true
+        },
+        "prices": [
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "2.4",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token",
+            "type": "input_token",
+            "priceName": "Input"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "4.8",
+            "timeBand": "standard",
+            "ntmAmountType": "output_token",
+            "type": "output_token",
+            "priceName": "Output"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.2",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache",
+            "type": "input_token_cache",
+            "priceName": "Input(Implicit Cache)"
+          }
+        ],
+        "builtInToolMultiPrices": [
+          {
+            "supportedApi": "Responses API",
+            "name": "web_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search",
+            "type": "web_search",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "10",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "web_extractor",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-extractor",
+            "type": "web_extractor",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Responses API",
+            "name": "code_interpreter",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-code-interpreter",
+            "type": "code_interpreter",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search",
+            "type": "web_search_anthropic",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "10",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_fetch",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-extractor",
+            "type": "web_fetch",
+            "prices": [
+              {
+                "priceUnit": "",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "region": "eu-central-1",
+    "scope": "global",
+    "models": [
+      {
+        "model": "deepseek-v4-pro",
+        "scope": "PUBLIC",
+        "serviceSites": ["global"],
+        "supports": {
+          "inference": true
+        },
+        "prices": [
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "1.65",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token",
+            "type": "input_token",
+            "priceName": "Input"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "3.301",
+            "timeBand": "standard",
+            "ntmAmountType": "output_token",
+            "type": "output_token",
+            "priceName": "Output"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.138",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache",
+            "type": "input_token_cache",
+            "priceName": "Input(Implicit Cache)"
+          }
+        ],
+        "builtInToolMultiPrices": [
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_search",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-search",
+            "type": "web_search_anthropic",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "0.573411",
+                "currency": "USD"
+              }
+            ]
+          },
+          {
+            "supportedApi": "Anthropic API",
+            "name": "web_fetch",
+            "docUrl": "https://docs.modelstudio.console.alibabacloud.com/en/model-studio/web-extractor",
+            "type": "web_fetch",
+            "prices": [
+              {
+                "priceUnit": "Per 1K calls",
+                "price": "0",
+                "currency": "USD"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "region": "eu-central-1",
+    "scope": "european-union",
+    "models": [
+      {
+        "model": "qwen3.8-flash",
+        "scope": "PUBLIC",
+        "serviceSites": ["european-union", "global"],
+        "supports": {
+          "inference": true
+        },
+        "prices": [
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.15",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token",
+            "type": "input_token",
+            "priceName": "Input"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.47",
+            "timeBand": "standard",
+            "ntmAmountType": "output_token",
+            "type": "output_token",
+            "priceName": "Output"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.016",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache",
+            "type": "input_token_cache",
+            "priceName": "Input(Implicit Cache)"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.2",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache_creation_5m",
+            "type": "input_token_cache_creation_5m",
+            "priceName": "Explicit Cache Creation"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.016",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache_read",
+            "type": "input_token_cache_read",
+            "priceName": "Explicit Cache Read"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "region": "ap-northeast-1",
+    "scope": "japan",
+    "models": [
+      {
+        "model": "deepseek-v4-pro",
+        "scope": "PUBLIC",
+        "serviceSites": ["japan", "global"],
+        "supports": {
+          "inference": true
+        },
+        "prices": [
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "2.4",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token",
+            "type": "input_token",
+            "priceName": "Input"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "4.8",
+            "timeBand": "standard",
+            "ntmAmountType": "output_token",
+            "type": "output_token",
+            "priceName": "Output"
+          },
+          {
+            "priceUnit": "Per 1M tokens",
+            "price": "0.2",
+            "timeBand": "standard",
+            "ntmAmountType": "input_token_cache",
+            "type": "input_token_cache",
+            "priceName": "Input(Implicit Cache)"
+          }
+        ]
+      }
+    ]
+  }
+]

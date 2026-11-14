@@ -5,6 +5,7 @@ import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 import { fixedPricingSelection } from "../catalog/pricing-selector-input.ts";
+import { fixedPricingDetailVisible } from "../pricing/condition-presentation.ts";
 import {
   commercialDimensionLabels,
   commercialDefinitions,
@@ -76,9 +77,15 @@ const sections = computed(() =>
         (section.label === "Usage conditions" && editableSelectors.value.length),
     ),
 );
-const fixedGroups = computed(() => groups.value.filter((group) => group.fixed));
+const fixedGroups = computed(() =>
+  groups.value.filter((group) => group.fixed && fixedPricingDetailVisible(group.dimension)),
+);
 const fixedSelectors = computed(() =>
-  props.selectors.filter((selector) => fixedPricingSelection(selector) !== undefined),
+  props.selectors.filter(
+    (selector) =>
+      fixedPricingSelection(selector) !== undefined &&
+      fixedPricingDetailVisible(selector.dimension.value),
+  ),
 );
 const editableSelectors = computed(() =>
   props.selectors.filter((selector) => fixedPricingSelection(selector) === undefined),

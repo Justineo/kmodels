@@ -13,6 +13,8 @@ import {
 } from "../catalog/pricing-presentation.ts";
 import UiSelect from "./UiSelect.vue";
 import UiIcon from "./UiIcon.vue";
+import UiTooltip from "./UiTooltip.vue";
+import { pricingConditionDescription } from "../pricing/condition-presentation.ts";
 
 const props = defineProps<{
   prefix: string;
@@ -70,9 +72,27 @@ function scheduleRows(selector: WebsitePricingSelector) {
 <template>
   <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
     <span v-if="fixedPricingSelection(selector) !== undefined" class="pricing-condition-label">
-      {{ selector.label }}
+      <UiTooltip
+        v-if="pricingConditionDescription(selector)"
+        class="tooltip-text-trigger"
+        tabindex="0"
+        :content="pricingConditionDescription(selector) ?? ''"
+        :aria-label="`${selector.label}: ${pricingConditionDescription(selector)}`"
+        >{{ selector.label }}</UiTooltip
+      >
+      <template v-else>{{ selector.label }}</template>
       <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
     </span>
+    <label v-else-if="pricingConditionDescription(selector)" :for="`${prefix}-selector-${index}`">
+      <UiTooltip
+        class="tooltip-text-trigger"
+        tabindex="0"
+        :content="pricingConditionDescription(selector) ?? ''"
+        :aria-label="`${selector.label}: ${pricingConditionDescription(selector)}`"
+        >{{ selector.label }}</UiTooltip
+      >
+      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
+    </label>
     <label v-else :for="`${prefix}-selector-${index}`">
       {{ selector.label }}
       <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>

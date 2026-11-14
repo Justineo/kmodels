@@ -81,9 +81,48 @@ Missing or malformed companion evidence leaves the primary book usable.
 
 The authenticated deployment inventory supplies deployable base models and available capacity
 plans. The separate [inference inventory](https://help.aliyun.com/en/model-studio/list-models)
-requires an account key and, for Beijing and certain other regions, a workspace-specific origin.
-Its inference filters and optional price fields describe the queried region and account context.
-They cannot be substituted for deployment plans or treated as exhaustive public price evidence.
+requires an account key and a regional origin; workspace-specific origins are documented for
+Beijing, Singapore, Hong Kong, Frankfurt and Tokyo. The existing Singapore DashScope origin also
+serves this read-only route. Exact `model` and `service_site` filters retain the model and deployment
+scope. `prices[].prices[]` can include `input_token_cache`, its amount, denominator and `time_band`;
+cache prices are not limited to prose multipliers. The response does not necessarily declare a
+currency, so retain the endpoint/account context and corroborate denomination independently.
+These prices cannot be substituted for deployment plans or treated as an exhaustive public price
+inventory. Production uses the anonymous console market below instead: it covers the reviewed
+regional scopes without regional account credentials. The authenticated inference route remains
+corroborating evidence, not a required refresh dependency.
+
+The pricing source also collects the console's first-party `listFoundationModels` JSON operation
+through `IntlBroadScopeAspnGateway`. Requests use flat model pagination (`group: false`),
+`supports.inference`, `queryPrice`, the exact regional origin and a separate `serviceSite` filter.
+Only static console routing metadata is sent; no Cookie, API key, anonymous tracking ID or trace
+ID is needed. Collect Beijing/Chinese mainland, Singapore/International, Frankfurt/Global and EU,
+Tokyo/Global and Japan, Hong Kong/Global and Hong Kong, and Virginia/Global and US independently.
+`serviceSites` is an availability list, not permission to copy a returned quote into its other scopes.
+Each origin is explicitly allowlisted. Validate the outer and nested success envelopes, stable
+totals, page numbers, exact page lengths, unique public IDs and matching service scopes; bound
+pages, model counts, bytes and concurrency. Failure rejects the pricing refresh, allowing the
+normal provider-atomic retention policy to preserve the last complete price partition.
+
+This is a reviewed semi-structured console interface, not a documented public pricing API. Its
+international console denomination is USD, independently corroborated by rendered model-price
+cards; token rows themselves omit currency. Preserve the separate explicitly denominated CNY
+guide. Exact console cache tariffs precede generic guide multipliers. The pricing guide retains
+its detailed modality and operation rules for overlapping non-cache meters; a differing console
+amount remains raw, scoped evidence instead of silently replacing a more specific tariff.
+Console-only regional meters and literal IDs enter the same price and inference-ID contracts.
+Tier labels use the pricing guide's decimal K/M billing convention. The console's power-of-two
+`rangeStart`/`rangeEnd` UI metadata does not override those published billing labels.
+
+Every console price cell has a normalized or retained raw disposition. Reviewed token, cache,
+Batch File, image, video, audio and embedding meters preserve their native amounts and units.
+Tool prices have independent service subjects with exact model, region, deployment and API
+compatibility; a known per-call quote does not require an invented runtime counter binding.
+Blank tool units, Batch Chat accounting, combined text/audio output, ambiguous unified Omni
+meters, voice/world-operation units and the contradictory `video_ratio_540p`/`480P` label retain
+their literal evidence. They remain explicit normalization limits. Limited-time discount factors
+remain informational evidence; their eligibility and validity are not guessed from an original
+list price. An inventory row with no quote never establishes a free service.
 
 The mapping fixes no region or deployment scope from an ID's spelling. The same ID can have multiple
 published regional prices; region, deployment scope, input-token bands and other commercial
@@ -91,6 +130,23 @@ conditions remain on those prices. Missing conditions produce candidates. A supp
 the published price scope produces no applicable price. Private deployment names and unreviewed
 prefix or suffix variants remain unknown. Account plans and endpoint access are separate from this
 public pay-as-you-go lookup; these rates do not describe subscription entitlements.
+
+The [regions and service deployment scopes guide](https://www.alibabacloud.com/help/en/model-studio/regions)
+distinguishes the API access/data storage region from the permitted inference execution scope.
+Region never means the caller's location. A Global scope can execute inference outside the selected
+API region; geographic scopes constrain that execution. Supported combinations vary by region
+and model, so prices retain both conditions rather than treating either as an alias for the other.
+
+The context-cache guide excludes `deepseek-v4-pro` from the ordinary implicit-cache multiplier
+and directs readers to the Model Studio console for its price. The exact model detail pages expose
+ordinary input, output and implicit-cache prices even when signed out, including
+[Singapore International](https://modelstudio.console.alibabacloud.com/ap-southeast-1/model/market/detail/deepseek-v4-pro)
+and [Frankfurt Global](https://modelstudio.console.alibabacloud.com/eu-central-1/model/market/detail/deepseek-v4-pro).
+The Singapore inference API's cache amount agrees with that region's console price. Do not transfer
+it to Frankfurt or derive either cache price from a generic multiplier.
+The historical `unpublished_cache_read` key means the accepted collection lacks an exact price;
+it does not establish that Alibaba has not published one. Display it as a missing catalog price,
+not an extra user-selectable condition. Known ordinary input/output rates remain usable.
 
 A parsed numeric context band is one condition, not both a token range and an independently
 selectable tier label. Unparsed labels remain categorical conditions; no numeric range is guessed.
@@ -119,6 +175,9 @@ Production collection uses only Alibaba Cloud first-party sources:
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
   `USD/million tokens` suffixes and currency-bearing headers for audio token rates;
+- the anonymous console `listFoundationModels` operation supplies the complete reviewed
+  regional public inference inventory, exact cache tariffs, uncovered regional meters and
+  API-specific built-in tool quotes described above;
 - the new realtime modality table may declare `Prices in USD per million tokens.` in the paragraph
   immediately before the table. Only that local declaration supplies the otherwise missing currency
   and denominator. Text/image/video input expands into its three exact modality meters; audio input,
@@ -161,8 +220,10 @@ Production collection uses only Alibaba Cloud first-party sources:
 - the documented, authenticated regional deployment inventory is an optional availability
   cross-check when `DASHSCOPE_API_KEY` is configured.
 
-The product `llms.txt`, individual announcements, bulletin IDs, undocumented content APIs, images,
-OCR, console data, and third-party catalogs are not refresh inputs. Announcement links may remain
+The product `llms.txt`, individual announcements, bulletin IDs, unreviewed content APIs, images,
+OCR, and third-party catalogs are not refresh inputs. Console rendering corroborates the collected
+market JSON; the authenticated inference-price route remains independent research evidence.
+Announcement links may remain
 human-facing provenance on Alibaba's maintained summary pages, but the collector does not fetch or
 interpret them.
 
@@ -296,8 +357,9 @@ mode boundaries retain their ownership; eligibility in a US deployment scope doe
 Global prices in the same physical region. The provider dimension `cache_mode` distinguishes
 `explicit` and `implicit` independently of the inference `operation`, including thinking mode.
 A directly published cache-read tariff takes precedence over a generic multiplier where its scope
-covers the base rate. When the guide explicitly withholds an exception's read price, that charge
-remains raw `unknown_amount`; it is not silently omitted or zero. The base price, explicit write,
+covers the base rate. When the guide excludes an exception from its multiplier and the collected
+sources supply no applicable exact tariff, that charge remains raw `unknown_amount`; it is not
+silently omitted, zero, or evidence of provider non-publication. The base price, explicit write,
 other cache mode and sibling regions survive. The explicit cache contract retains its published
 five-minute TTL as a fixed cache-write rate condition. Preserve it in applicability and display
 it as readonly when it is the sole applicable value. No request creation time or undocumented native mode selector is inferred.

@@ -44,6 +44,13 @@ import {
 import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 import { ollamaPricedModelPageIds, ollamaPricingUrl } from "./ollama-pricing.ts";
 import { vercelPageSearchPrices, vercelPricingContracts } from "./vercel-pricing-contracts.ts";
+import {
+  dashscopeMarketRegions,
+  dashscopeMarketRequest,
+  dashscopeMarketPage,
+  dashscopeMarketIdentity,
+} from "./dashscope-market.ts";
+import { linkedBundleSchema } from "./bundle.ts";
 
 const execute = promisify(execFile);
 
@@ -428,6 +435,7 @@ async function cloudJson(
   headers: string[],
   options: {
     form?: { name: string; value: string }[];
+    authentication?: true;
     onSuccess?: (response: Response) => void;
   } = {},
 ): Promise<unknown> {
@@ -493,7 +501,7 @@ async function cloudJson(
     } catch {
       if (/^Too many requests\b/i.test(body.trim()))
         throw new TransientFetchError(`${label} was throttled`, retryDelay(response));
-      if (options.form !== undefined)
+      if (options.authentication === true)
         throw new Error("Authentication service returned invalid JSON");
       throw new SourceContractError(label, invalidJsonContractEvidence());
     }
@@ -883,6 +891,7 @@ async function googleAccessToken(
       1024 * 1024,
       ["Accept: application/json"],
       {
+        authentication: true,
         form: [
           { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
           { name: "assertion", value: assertion },
@@ -2596,10 +2605,92 @@ function sagemakerDiscoveryPayload(
   return payload;
 }
 
+async function fetchDashscopePricing(source: SourceManifest): Promise<FetchResult> {
+  const { transport, ...documentsSource } = source;
+  if (transport?.kind !== "dashscope-pricing") throw new Error("Invalid DashScope transport");
+  const documents = await fetchSource(documentsSource);
+  const bundle = linkedBundleSchema.parse(json(documents.body));
+  const regions = await mapConcurrent(
+    dashscopeMarketRegions,
+    transport.concurrency,
+    async (region) => {
+      const contexts = [];
+      const dependencies: FetchObservation[] = [];
+      for (const scope of region.scopes) {
+        const models: unknown[] = [];
+        const ids = new Set<string>();
+        let total: number | undefined;
+        for (let pageNo = 1; ; pageNo += 1) {
+          assertItemCount("DashScope market pages", pageNo, 1, transport.maxPages);
+          const request = dashscopeMarketRequest(region, scope, pageNo, transport.pageSize);
+          const url = checkedUrl(request.url.href, source);
+          const value = await cloudJson(
+            "DashScope public market",
+            url,
+            source.maxResponseBytes,
+            [],
+            {
+              form: request.form,
+            },
+          );
+          const page = dashscopeMarketPage(value);
+          total ??= page.total;
+          assertItemCount("DashScope market models", total, 1, transport.maxModelsPerContext);
+          assertSourceConstraint(
+            "DashScope market pagination changed",
+            page.total === total &&
+              page.pageNo === pageNo &&
+              page.pageSize === transport.pageSize &&
+              page.list.length === Math.min(transport.pageSize, total - models.length),
+            value,
+            [],
+          );
+          for (const row of page.list) {
+            const identity = dashscopeMarketIdentity(row);
+            assertSourceConstraint(
+              "DashScope market repeated or foreign model",
+              !ids.has(identity.model) && identity.serviceSites.includes(scope.id),
+              row,
+              ["model"],
+            );
+            ids.add(identity.model);
+            models.push(row);
+          }
+          dependencies.push({
+            key: `${source.id}:market:${region.id}:${scope.id}:${pageNo}`,
+            contentHash: sha256(JSON.stringify(value)),
+            etag: undefined,
+            lastModified: undefined,
+          });
+          if (models.length === total) break;
+        }
+        contexts.push({ region: region.id, scope: scope.id, models });
+      }
+      return { contexts, dependencies };
+    },
+  );
+  const body = JSON.stringify({ ...bundle, market: regions.flatMap(({ contexts }) => contexts) });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("DashScope pricing bundle exceeded byte limit");
+  return {
+    ...generatedFetchResult(body),
+    dependencies: [
+      ...documents.dependencies,
+      ...regions.flatMap(({ dependencies }) => dependencies),
+    ],
+    ...(documents.dependencyFailures === undefined
+      ? {}
+      : {
+          dependencyFailures: documents.dependencyFailures,
+        }),
+  };
+}
+
 export async function fetchSource(
   source: SourceManifest,
   discoveryCache?: SagemakerDiscoveryCache,
 ): Promise<FetchResult> {
+  if (source.transport?.kind === "dashscope-pricing") return fetchDashscopePricing(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {

@@ -299,9 +299,13 @@ const visibleUnnormalized = computed(() =>
           : scopeCopy(row.possible_scope, row.validity),
     })),
 );
-const hasIncompletePricing = computed(() =>
-  visibleUnnormalized.value.some(({ impact }) => impact === "base_price"),
-);
+const incompletePrices = computed(() => [
+  ...new Map(
+    visibleUnnormalized.value
+      .filter(({ impact }) => impact === "base_price")
+      .map((note) => [canonicalJson([note.label, note.reason]), note]),
+  ).values(),
+]);
 const hasConflictingPrices = computed(() =>
   visibleUnnormalized.value.some(
     ({ impact, reason }) => impact === "base_price" && reason === "Conflicting values",
@@ -545,6 +549,10 @@ function selection(selector: WebsitePricingSelector): PricingSelection | undefin
 function noteExplanation(reason: string, impact: string): string {
   if (impact === "base_price" && reason === "Conflicting values")
     return "Published prices conflict in this context. No single rate is available.";
+  if (reason === "Unknown amount") return "This catalog has no exact price for this charge.";
+  if (reason === "Unknown unit") return "The billing unit for this charge is unresolved.";
+  if (reason === "Unknown applicability")
+    return "The published evidence does not establish when this charge applies.";
   if (impact === "base_price") return "May change the price in the matching context.";
   if (impact === "allowance") return "May change the included usage in the matching context.";
   if (reason === "Requires usage aggregation")
@@ -637,9 +645,12 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <strong>Conflicting published prices</strong>
       <span>No single rate is available for the affected contexts. Review the pricing notes.</span>
     </div>
-    <div v-else-if="hasIncompletePricing" class="pricing-warning" role="status">
-      <strong>Additional provider conditions may affect this rate</strong>
-      <span>Review the pricing notes before comparing costs.</span>
+    <div v-else-if="incompletePrices.length" class="pricing-warning" role="status">
+      <strong>Some prices are unresolved</strong>
+      <span v-for="note in incompletePrices" :key="note.key">
+        {{ note.label }}: {{ noteExplanation(note.reason, note.impact) }}
+      </span>
+      <span>See Pricing notes for the published details.</span>
     </div>
 
     <section v-if="visibleAllowances.length > 0" class="offer-section">

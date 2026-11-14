@@ -238,6 +238,13 @@ export interface SourceManifest {
     | { kind: "gemini-models"; pageSize: number; maxPages: number; maxModels: number }
     | { kind: "cohere-models"; pageSize: number; maxPages: number; maxModels: number }
     | { kind: "dashscope-deployable-models"; pageSize: number; maxPages: number; maxModels: number }
+    | {
+        kind: "dashscope-pricing";
+        pageSize: number;
+        maxPages: number;
+        maxModelsPerContext: number;
+        concurrency: number;
+      }
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
     | { kind: "together-model-library"; catalogUrl: string }
     | {
@@ -3654,9 +3661,9 @@ export const manifests = [
         type: "website",
         access: "public",
         format: "html",
-        stability: "documented",
+        stability: "semi_structured",
         extractor: { kind: "dashscope-pricing", maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v28",
+        extractorVersion: "dashscope-pricing-v29",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3670,7 +3677,24 @@ export const manifests = [
           "status",
           "release_stage",
         ],
-        allowedHosts: ["www.alibabacloud.com", "help.aliyun.com"],
+        source: ["website", "api"],
+        allowedHosts: [
+          "www.alibabacloud.com",
+          "help.aliyun.com",
+          "bailian-cs.console.alibabacloud.com",
+          "bailian-singapore-cs.alibabacloud.com",
+          "modelstudio-eu-central-1-cs.data.alibabacloud.com",
+          "modelstudio-ap-northeast-1-cs.data.alibabacloud.com",
+          "modelstudio-cn-hk-cs.data.alibabacloud.com",
+          "modelstudio-us-va-cs.data.alibabacloud.com",
+        ],
+        transport: {
+          kind: "dashscope-pricing",
+          pageSize: 50,
+          maxPages: 12,
+          maxModelsPerContext: 600,
+          concurrency: 2,
+        },
         maxResponseBytes: mebibytes(16),
         scope: "region",
         exhaustive: false,

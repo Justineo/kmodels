@@ -78,6 +78,8 @@ network:
     - aws.amazon.com
     - azure.microsoft.com
     - b0.p.awsstatic.com
+    - bailian-cs.console.alibabacloud.com
+    - bailian-singapore-cs.alibabacloud.com
     - build.nvidia.com
     - cloud.google.com
     - cohere.com
@@ -105,6 +107,10 @@ network:
     - jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com
     - learn.microsoft.com
     - mistral.ai
+    - modelstudio-ap-northeast-1-cs.data.alibabacloud.com
+    - modelstudio-cn-hk-cs.data.alibabacloud.com
+    - modelstudio-eu-central-1-cs.data.alibabacloud.com
+    - modelstudio-us-va-cs.data.alibabacloud.com
     - ollama.com
     - platform.claude.com
     - platform.kimi.ai

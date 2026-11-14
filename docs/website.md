@@ -24,7 +24,10 @@ pricing program; request mode and billed tier qualify its rates. Canonical condi
 native price selectors share one **Usage conditions** fieldset and one continuous two-column grid.
 The canonical mapping is an input convenience, not a separate category of pricing condition.
 Resolve native single-value fields before generating mapped commercial controls, and keep those
-values as descriptive text in **Price scope**, outside the editable **Usage conditions** fieldset.
+values in the matching context. Fixed request mode, billing basis, and cache mode are omitted
+from controls and rate annotations because they offer no choice. Other fixed values remain
+descriptive text in **Price scope**, outside the editable **Usage conditions** fieldset, so a
+regional or tier restriction is still visible.
 For mapped commercial fields, determine fixedness from the unselected subject's domain, not the
 values left after another commercial selection. A dependent singleton fills its editable control
 while preserving alternatives; editing it removes only incompatible explicit selections. Derived
@@ -37,7 +40,10 @@ fixed scope would hide Region immediately after selection and prevent further ed
 Apply their native predicates without restricting unrelated price rows to a commercial claim's
 narrower scope. Unknown price evidence remains unknown.
 Use consistent control heights and borders, collapsing to one column on narrow
-screens. Keep labels above controls and definitions in their titles, without persistent help text.
+screens. Keep labels above controls without persistent help text. Region and deployment-scope
+labels use the shared keyboard- and touch-accessible tooltip. For Alibaba Cloud Model Studio,
+these explain API access/data storage region versus inference execution scope; Global does not
+guarantee inference within the selected API region. Other commercial definitions remain in titles.
 Automatically apply a sole condition value only when its mapping covers every remaining price
 context, not merely every offer ID. A Standard speed scoped to Request cannot silently discard
 Batch while Request mode is still unselected. Show fixed values as labeled text without input
@@ -76,6 +82,11 @@ messages and rate annotations; namespace-qualified machine identifiers remain in
 See [Inference model ID pricing](inference-pricing.md) for producer limits.
 
 Pricing notes distinguish conflicting published prices from other unnormalized provider conditions.
+A non-conflict warning names each affected charge and explains its evidence gap directly; an
+unknown amount is an unavailable price, not an additional user-selectable condition. Keep the
+known sibling rates visible and limit warnings to the applicable pricing context.
+Describe the catalog's missing evidence without claiming the provider has not published a price.
+Historical `Unpublished cache read` notes render as **Cache read** with an explicit catalog gap.
 A conflict warning states that no single rate is available for the affected contexts. Group visible
 conflicting quotes by billing meter in collapsed disclosures; count those groups in the notes summary
 and show the quote count on each group. Expanding a group preserves every displayed quote, its

@@ -17,6 +17,7 @@ import type { WebsitePricingOffer, WebsitePricingSelector } from "../src/catalog
 import { matchInferencePrices } from "../src/pricing/inference-matching.ts";
 import type { InferenceMatchData } from "../src/pricing/inference-matching-schema.ts";
 import PricingControls from "../src/components/PricingControls.vue";
+import InferencePrices from "../src/components/InferencePrices.vue";
 import { renderComponent } from "./render-component.ts";
 
 const at = "2026-11-01T00:00:00.000Z";
@@ -252,4 +253,173 @@ it("uses the same speed labels for canonical controls, native choices and fixed 
     ),
   ).toBe("Provider quality");
   expect(optimized.value.value).toBe("optimized");
+});
+
+it("hides fixed billing and request modes while retaining real request and cache choices", async () => {
+  const request: CommercialChoice = {
+    dimension: "execution",
+    value: { namespace: "kmodels", value: "request" },
+  };
+  const billing: CommercialChoice = {
+    dimension: "billing_mode",
+    value: { namespace: "kmodels", value: "usage" },
+  };
+  const cache: WebsitePricingSelector = {
+    key: "cache",
+    label: "Cache mode",
+    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
+    kind: "categorical",
+    values: ["implicit", "explicit"].map((value) => ({
+      key: value,
+      label: value,
+      value: { namespace: "provider", provider_id: "dashscope", value },
+    })),
+  };
+  const props = {
+    prefix: "modes",
+    selected: [],
+    inferred: [request, billing],
+    choices: [request, billing].map((choice) => ({ ...choice, offer_refs: ["plan"] })),
+    inputs: {},
+    selectors: [{ ...cache, values: cache.values.slice(0, 1) }],
+  };
+  const fixed = await renderComponent(PricingControls, props);
+  for (const label of ["Billing basis", "Request mode", "Cache mode", "Price scope"])
+    expect(fixed).not.toContain(label);
+
+  const selectable = await renderComponent(PricingControls, {
+    ...props,
+    selectors: [cache],
+    choices: [
+      ...props.choices,
+      ...["batch", "realtime"].map((value) => ({
+        ...request,
+        value: { namespace: "kmodels" as const, value },
+        offer_refs: ["plan"],
+      })),
+    ],
+  });
+  expect(selectable).toContain("Request mode");
+  expect(selectable).toContain("Batch");
+  expect(selectable).toContain("Realtime");
+  expect(selectable).toContain("Cache mode");
+  expect(selectable).toContain("explicit");
+  expect(selectable).not.toContain("Billing basis");
+});
+
+it("still matches hidden singleton modes without repeating them beside inference rates", async () => {
+  const execution = { namespace: "kmodels", value: "execution" } as const;
+  const cache = { namespace: "provider", provider_id: "dashscope", value: "cache_mode" } as const;
+  const modes: WebsitePricingSelector[] = [
+    {
+      key: "request",
+      label: "Request mode",
+      dimension: execution,
+      kind: "categorical",
+      values: [
+        { key: "request", label: "Request", value: { namespace: "kmodels", value: "request" } },
+      ],
+    },
+    {
+      key: "cache",
+      label: "Cache mode",
+      dimension: cache,
+      kind: "categorical",
+      values: [
+        {
+          key: "implicit",
+          label: "Implicit",
+          value: { namespace: "provider", provider_id: "dashscope", value: "implicit" },
+        },
+      ],
+    },
+  ];
+  const applicability: PriceApplicability = {
+    any_of: [
+      {
+        all_of: [
+          {
+            kind: "categorical",
+            dimension: execution,
+            values: [{ namespace: "kmodels", value: "request" }],
+          },
+          {
+            kind: "categorical",
+            dimension: cache,
+            values: [{ namespace: "provider", provider_id: "dashscope", value: "implicit" }],
+          },
+        ],
+      },
+    ],
+  };
+  const matching = structuredClone(data);
+  const mappedOffer = matching.offers[0];
+  const rate = offer.rates[0];
+  if (!mappedOffer || !rate) throw new Error("Missing mode fixture");
+  mappedOffer.selection = [];
+  mappedOffer.terms = [
+    { id: "input", kind: "rate", variants: [{ applicability, semantics: 0 }], raw_variants: [] },
+  ];
+  const html = await renderComponent(InferencePrices, {
+    modelRef: "fixture/model",
+    prices: [
+      {
+        model_id: "fixture-request",
+        status: "candidates",
+        explanation: "Fixture pricing",
+        missing_conditions: [],
+        evidence_urls: [],
+        candidates: [],
+        matching,
+        pricing_options: modes,
+      },
+    ],
+    offers: [{ ...offer, rates: [{ ...rate, key: "input:rate:0", applicability }] }],
+  });
+  expect(html).toContain("Applicable prices");
+  expect(html).toContain("$1");
+  expect(html).not.toContain("Request mode");
+  expect(html).not.toContain("Cache mode");
+  expect(html).not.toContain("Price scope");
+  expect(
+    matchInferencePrices(
+      matching,
+      [
+        {
+          kind: "categorical",
+          dimension: cache,
+          value: { namespace: "provider", provider_id: "dashscope", value: "explicit" },
+        },
+      ],
+      at,
+    ).candidates,
+  ).toEqual([]);
+});
+
+it("explains the API region and inference scope with provider-specific meanings", async () => {
+  const selectors: WebsitePricingSelector[] = ["region", "deployment_scope"].map((dimension) => ({
+    key: dimension,
+    label: dimension === "region" ? "Region" : "Deployment scope",
+    dimension: {
+      namespace: "kmodels",
+      value: dimension === "region" ? "region" : "deployment_scope",
+    },
+    kind: "categorical",
+    values: ["first", "second"].map((value) => ({
+      key: value,
+      label: value,
+      value: { namespace: "provider", provider_id: "dashscope", value },
+    })),
+  }));
+  const html = await renderComponent(PricingControls, {
+    prefix: "geography",
+    choices: [],
+    selected: [],
+    inferred: [],
+    selectors,
+    inputs: {},
+  });
+  expect(html).toContain("API access and data storage region");
+  expect(html).toContain("Global can use compute outside the API region");
+  expect(html).toContain('tabindex="0"');
 });

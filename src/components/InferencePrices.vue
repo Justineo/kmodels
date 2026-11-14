@@ -27,6 +27,7 @@ import {
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
+import { fixedPricingDetailVisible } from "../pricing/condition-presentation.ts";
 import {
   formatConditionValue,
   formatDimension,
@@ -351,6 +352,7 @@ const candidates = computed(() => {
         .filter(
           ({ dimension }) =>
             !(dimension.namespace === "kmodels" && dimension.value === "model") &&
+            fixedPricingDetailVisible(dimension.value) &&
             !commercialChoices.value.some(
               (choice) =>
                 dimension.namespace === "kmodels" &&

@@ -11362,7 +11362,7 @@ describe("DashScope adapters", () => {
     ).toBe(true);
     expect(reconciliation).toContainEqual({
       disposition: "raw",
-      reason_code: "explicit_cache_price_not_public",
+      reason_code: "explicit_cache_price_not_collected",
       sample: "qwen3.8-max:Singapore",
     });
   });
@@ -11386,7 +11386,7 @@ describe("DashScope adapters", () => {
       expect.arrayContaining([
         expect.objectContaining({
           disposition: "raw",
-          reason_code: "implicit_cache_price_not_public",
+          reason_code: "implicit_cache_price_not_collected",
           sample: "deepseek-v4-pro:Singapore",
         }),
       ]),
@@ -11756,7 +11756,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v28",
+      extractorVersion: "dashscope-pricing-v29",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),

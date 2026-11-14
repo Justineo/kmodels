@@ -136,6 +136,23 @@ describe("website pricing query", () => {
     expect(projectWebsitePricingNotes(data)).toHaveLength(5);
   });
 
+  it("does not interpret a historical missing-cache label as provider non-publication", () => {
+    const data = offer([]);
+    data.unnormalized = [
+      {
+        key: "cache",
+        label: "Unpublished cache read",
+        reason: "Unknown amount",
+        impact: "base_price",
+        possible_scope: region("eu"),
+      },
+    ];
+    const projected = projectWebsitePricingNotes(data);
+    expect(projected).toMatchObject([{ label: "Cache read", reason: "Unknown amount" }]);
+    expect(projected[0]?.possible_scope).toEqual(region("eu"));
+    expect(data.unnormalized[0]?.label).toBe("Unpublished cache read");
+  });
+
   it("displays escaped currency in pricing notes as plain text", () => {
     const data = offer([]);
     const details = [

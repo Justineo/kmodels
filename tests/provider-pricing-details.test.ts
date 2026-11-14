@@ -274,10 +274,44 @@ describe("provider pricing details", () => {
       { key: "information", label: "Billing policy", impact: "informational", reason: "Other" },
     ];
     const html = await renderComponent(PricingOfferBreakdown, { offer });
-    expect(html).toContain("Additional provider conditions may affect this rate");
+    expect(html).toContain("Some prices are unresolved");
+    expect(html).toContain("Unreviewed unit: The billing unit for this charge is unresolved.");
     expect(html).not.toContain("Conflicting published prices");
     expect(html).toContain("Unreviewed unit");
     expect(html).toContain("Billing policy");
+  });
+
+  it("names a missing catalog price without claiming provider non-publication", async () => {
+    const offer = pricingOffer();
+    offer.unnormalized = [
+      {
+        key: "cache-read",
+        label: "Unpublished cache read",
+        impact: "base_price",
+        reason: "Unknown amount",
+        possible_scope: promotion(true),
+      },
+    ];
+    offer.unnormalized_count = 1;
+    const html = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      boundSelectors: [
+        { kind: "boolean", dimension: { namespace: "kmodels", value: "promotion" }, value: true },
+      ],
+    });
+    const warning = html.match(/<div\b[^>]*class="pricing-warning"[\s\S]*?<\/div>/)?.[0];
+    expect(warning).toContain("Cache read: This catalog has no exact price for this charge.");
+    expect(html).not.toContain("Unpublished cache read");
+    expect(html).not.toContain("Additional provider conditions");
+    expect(html).not.toContain("May change the price in the matching context.");
+    const outside = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      boundSelectors: [
+        { kind: "boolean", dimension: { namespace: "kmodels", value: "promotion" }, value: false },
+      ],
+    });
+    expect(outside).not.toContain('class="pricing-warning"');
+    expect(outside).not.toContain("Unpublished cache read");
   });
 
   it("uses the shared context controls for conditional service pricing", async () => {
