@@ -36,9 +36,14 @@ const source = manifest?.sources.find(({ id }) => id === "gemini-pricing");
 const catalog = manifest?.sources.find(({ id }) => id === "gemini-models");
 if (!manifest || !source || !catalog) throw new Error("Missing Gemini sources");
 const configured: ProviderManifest = { ...manifest, sources: [catalog, source] };
-async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
+async function collect(
+  change?: (bundle: LinkedBundle) => void,
+  previous?: CatalogPairCandidate,
+  changeCatalog?: (bundle: LinkedBundle) => void,
+) {
   const fixtures = await geminiInferenceFixtures();
   change?.(fixtures.pricing);
+  changeCatalog?.(fixtures.catalog);
   const bodies = new Map([
     [catalog?.id, JSON.stringify(fixtures.catalog)],
     [source?.id, JSON.stringify(fixtures.pricing)],
@@ -143,6 +148,53 @@ it("selects independent account programs with canonical ownership and preserves 
     value: "account_eligibility",
   });
 });
+
+it("publishes current wrapped Contributor tariffs and typed Interactions streaming to lookup and website", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const pricing = await readFile(
+    new URL("./fixtures/gemini/pricing-current-programs.txt", import.meta.url),
+    "utf8",
+  );
+  const api = await readFile(
+    new URL("./fixtures/gemini/interactions-streaming.md", import.meta.url),
+    "utf8",
+  );
+  const candidate = await collect(
+    (bundle) => {
+      bundle.index.body = pricing;
+    },
+    undefined,
+    (bundle) => {
+      const url = "https://aistudio.google.com/api-reference/interactions-api/create-interaction";
+      bundle.documents = bundle.documents.filter((d) => d.url !== url);
+      bundle.documents.push({ url, body: api });
+    },
+  );
+  const selectors = [condition("account_eligibility", "paid_tier_contributor")];
+  const result = lookup(candidate)({
+    provider_id: "gemini",
+    model_id: "gemini-4-argon",
+    execution_mode: "request",
+    selectors,
+  });
+  expect(result.status).toBe("matched");
+  expect(rates(result, "input_text")).toEqual([{ numerator: "1", denominator: "1000000" }]);
+  const projection = await projectCatalogPair(candidate);
+  const detail = projection.ui.manifest.assets
+    .filter((a) => a.file_name.includes("/details/"))
+    .flatMap((a) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, a)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find((d) => d.model_ref === "gemini/gemini-4-argon");
+  expect(detail?.capabilities.streaming).toBe(true);
+  const price = detail?.inference_prices?.find((p) => p.model_id === "gemini-4-argon");
+  if (!price) throw new Error("Missing current Contributor website quote");
+  expect(queryWebsiteInferencePrice(price, selectors, at, undefined, "request").status).toBe(
+    result.status,
+  );
+}, 15000);
 
 function rates(result: ReturnType<ReturnType<typeof lookup>>, meter: string) {
   return result.candidates.flatMap(({ offer }) =>

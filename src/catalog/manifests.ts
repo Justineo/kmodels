@@ -2513,7 +2513,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v12",
+        extractorVersion: "gemini-catalog-v13",
         fields: [
           "model_id",
           "name",
@@ -2575,7 +2575,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v15",
+        extractorVersion: "gemini-pricing-v16",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
@@ -2638,7 +2638,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "gemini-api" },
-        extractorVersion: "gemini-api-v3",
+        extractorVersion: "gemini-api-v4",
         fields: [
           "name",
           "description",

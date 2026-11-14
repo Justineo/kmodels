@@ -79,6 +79,13 @@ input mapping; rates, sibling mappings, and model identity still refresh.
 
 The authenticated `/v1beta/models` source is an optional account-scoped inventory overlay enabled
 by `GEMINI_API_KEY`. It enriches existing public rows and never creates the global catalog.
+The paginated Models API owns model metadata and explicit positive method observations, not public
+tariffs. Its method list does not establish a negative for omitted streaming or Batch variants;
+unknown methods likewise cannot erase an independently recognized positive. The already collected
+Interactions create reference owns its typed request `stream` declaration. When all declarations
+agree on streaming semantics, it supplies positive support only to exact catalog models whose
+Interactions endpoint is independently established. A changed field withholds that supplement
+without inventing a negative or affecting prices. Specific known model facts remain authoritative.
 
 All collection is deterministic and non-LLM. Exact model IDs or one unique documented alias bind
 price rows. An unknown model, meter, unit, or table shape affects only that claim and is reported as
@@ -117,6 +124,9 @@ an observed Standard tier. The website labels this condition as data sharing. Mi
 eligibility/data-use evidence leaves the Contributor table raw while other tariff tables survive.
 Fresh removal of an ID from the price declaration withdraws its association even if an older
 ordinary catalog price is retained. Independent grounding books remain separately scoped services.
+Invitation prose accepts native soft line wraps, and grounding labels retain their meaning when
+whitespace precedes an explicit footnote marker. Neither rendering detail can turn observed program
+rates or separately billed Search queries into unknown fees.
 
 The website and public lookup use the same matcher. Price schedules stated only as calendar dates
 retain that precision. Lookup displays their published amounts and validity labels as candidates

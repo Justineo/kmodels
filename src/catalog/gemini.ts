@@ -1221,9 +1221,9 @@ export function studioPriceMarkup(body: string): string {
       const panel = $("<section></section>");
       if (tier !== "") panel.append($("<h3></h3>").text(tier));
       const contributor = block.match(
-        /Contributor Tier is offered as a private preview on an invite-only basis/,
+        /Contributor Tier is offered as a private preview on an\s+invite-only basis/,
       )?.[0];
-      if (contributor !== undefined) panel.append($("<p></p>").text(contributor));
+      if (contributor !== undefined) panel.append($("<p></p>").text(text(contributor)));
       panel.append(parsed.html(tables));
       article.append(panel);
     }
@@ -2130,6 +2130,42 @@ function applyInteractions(
   }
 }
 
+function applyInteractionStreaming(
+  models: Map<string, ProviderModel>,
+  body: string,
+  onFinding: Input["onContractFinding"],
+): void {
+  const markdown = geminiStudioMarkdown(body);
+  if (markdown === undefined) return;
+  const sections = markdown.split(/^## Request Body\b[^\n]*$/m);
+  if (sections.length !== 2) return;
+  const request = sections[1]?.split(/^## /m)[0]?.replace(/```[\s\S]*?```/g, "") ?? "";
+  const declarations = [
+    ...request.matchAll(
+      /^\s*\*\*stream\*\*:\s*`([^`]+)`[^\n]*\n([\s\S]*?)(?=\{% hr|^\s*\*\*|\{% \/section)/gm,
+    ),
+  ];
+  const count = [...request.matchAll(/^\s*\*\*stream\*\*:/gm)].length;
+  if (count === 0) return;
+  if (
+    declarations.length !== count ||
+    !declarations.every(
+      (m) =>
+        m[1] === "boolean" &&
+        text(m[2] ?? "") === "Input only. Whether the interaction will be streamed.",
+    )
+  ) {
+    onFinding?.(contractExtensionEvidence(["/interactions/request/stream"]));
+    return;
+  }
+  for (const model of models.values())
+    if (
+      model.capabilities.streaming === "unknown" &&
+      model.api_endpoints?.some((e) => e.path === "/v1beta/interactions")
+    )
+      model.capabilities.streaming = true;
+}
+
 export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "gemini-catalog") throw new Error("Wrong Gemini catalog extractor");
@@ -2174,6 +2210,12 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
     document(bundle, "/gemini-api/docs/interactions-overview"),
     optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??
       document(bundle, "/api/interactions-api"),
+  );
+  applyInteractionStreaming(
+    models,
+    optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??
+      document(bundle, "/api/interactions-api"),
+    input.onContractFinding,
   );
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
@@ -2352,8 +2394,6 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
       const fact = methodFacts.get(method);
       return fact === undefined ? [] : [{ method, ...fact }];
     });
-    const methodsReviewed =
-      item.supportedGenerationMethods !== undefined && facts.length === methods.length;
     const modelTasks = facts.flatMap((fact): ModelTask[] => fact.tasks ?? []);
     const endpoints = facts.flatMap(({ method, path, pathField }): ApiEndpoint[] => {
       if (pathField !== undefined)
@@ -2376,8 +2416,8 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
       capabilities: {
         ...unknownCapabilities(),
         reasoning: item.thinking ?? "unknown",
-        streaming: methodsReviewed ? facts.some((fact) => fact.streaming === true) : "unknown",
-        batch: methodsReviewed ? facts.some((fact) => fact.batch === true) : "unknown",
+        streaming: facts.some((fact) => fact.streaming === true) ? true : "unknown",
+        batch: facts.some((fact) => fact.batch === true) ? true : "unknown",
       },
       limits: {
         context_tokens: item.inputTokenLimit,
