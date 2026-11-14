@@ -28,13 +28,23 @@ The [Muse Wonder](https://dev.meta.ai/docs/muse-wonder#availability) and
 [Muse Spark](https://dev.meta.ai/docs/muse-spark#availability) model pages own the exact hosted
 reasoning IDs and modes. The [Pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits)
 page independently owns tariffs. The `meta-model-api` source reads these four public HTML
-documents without authentication.
+documents without authentication. Each document must expose exactly one main landmark; the parser
+accepts the current `<main>` element and the historical `role="main"` region, and a missing or
+duplicated landmark rejects the source for review.
 
 - Muse Wonder and Muse Spark publish cached input, uncached input and output token prices.
   Standard and Contributor are distinct literal request IDs. The model availability row and the
   pricing declaration must agree on the mode; a `-contributor` suffix alone establishes nothing.
   Contributor mode permits Meta to use submitted content and responses to train future models.
   This distinction is described on the model, rather than exposed as a redundant price selector.
+  The pricing tables may order the two mode columns either way; each rate is read from the column
+  header that names its mode, never from a fixed position.
+- Muse Ember publishes Standard-mode cached input, uncached input and output token prices in two
+  input-token tiers. A request with up to 200,000 input tokens pays the first column; a request
+  above that pays the long-context column in full. The tiers become `context_max_tokens` and
+  `context_min_tokens` conditions rather than separate model rows, so the caller's context-token
+  selector chooses the rate. The Models overview table and the pricing declaration must agree on
+  the exact ID and its Standard-only scope.
 - Muse Image is priced per successfully generated and returned image. Failed or safety-filtered
   images do not count. Built-in search is included; response token counts do not add token charges.
 - Muse Voice Transcribe is priced per hour of processed audio, rounded down to whole seconds.

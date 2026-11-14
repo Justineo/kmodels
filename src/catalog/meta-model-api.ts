@@ -11,7 +11,9 @@ const modelsUrl = "https://dev.meta.ai/docs/models";
 const pricingUrl = "https://dev.meta.ai/docs/pricing-rate-limits";
 
 function section($: CheerioAPI, id: string): CheerioAPI {
-  const heading = $(`[role="main"] h2#${id},[role="main"] h3#${id}`);
+  const main = $("main,[role='main']");
+  if (main.length !== 1) throw new Error("Meta page main region changed");
+  const heading = main.find(`h2#${id},h3#${id}`);
   if (heading.length !== 1) throw new Error(`Missing Meta section ${id}`);
   return load(
     heading
@@ -42,6 +44,41 @@ function table($: CheerioAPI, headers: string[]): string[][] {
   )
     throw new Error("Meta pricing or model table changed");
   return body;
+}
+
+function priceTable(
+  $: CheerioAPI,
+  headers: readonly string[],
+): { label: string; price: (header: string) => string }[] {
+  const tables = $("table");
+  const rows = tables
+    .find("tr")
+    .toArray()
+    .map((row) =>
+      $(row)
+        .find("th,td")
+        .toArray()
+        .map((cell) => $(cell).text().trim()),
+    );
+  const [header, ...body] = rows;
+  const expected = ["Usage", ...headers];
+  if (
+    tables.length !== 1 ||
+    header?.length !== expected.length ||
+    new Set(header).size !== header.length ||
+    expected.some((label) => !header.includes(label)) ||
+    body.some((row) => row.length !== expected.length)
+  )
+    throw new Error("Meta token pricing table changed");
+  const positions = new Map(header.map((label, position) => [label, position] as const));
+  return body.map((row) => ({
+    label: row[0] ?? "",
+    price: (label) => {
+      const position = positions.get(label);
+      if (position === undefined) throw new Error("Meta token pricing column changed");
+      return row[position] ?? "";
+    },
+  }));
 }
 
 function requireText($: CheerioAPI, text: string): void {
@@ -97,6 +134,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     sectionId: string,
     signal: UsageSignal,
     rawUnit: string,
+    conditions: SourcePriceFact["conditions"] = {},
   ): SourcePriceFact {
     const locator = { kind: "fragment" as const, value: `${pricingUrl}#${sectionId}` };
     return {
@@ -104,7 +142,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       price,
       unit,
       currency: "USD",
-      conditions: {},
+      conditions,
       source_ref: input.source.id,
       source_locator: locator,
       derived: false,
@@ -133,12 +171,11 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       "Model API (pay-as-you-go)",
       "Muse Code",
     ]);
-    const tariffs = table(prices, [
-      "Usage",
+    const tariffs = priceTable(prices, [
       "Standard mode (per 1M tokens)",
       "Contributor mode (per 1M tokens)",
     ]);
-    if (tariffs.length !== 3 || new Set(tariffs.map(([label]) => label)).size !== 3)
+    if (tariffs.length !== 3 || new Set(tariffs.map(({ label }) => label)).size !== 3)
       throw new Error("Meta token meters changed");
     const declaration = prices("p").first();
     const clauses = declaration.text().split(";");
@@ -155,29 +192,27 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       if (!match?.[1] || !match[2]) throw new Error("Meta hosted model identity changed");
       const item = model(match[2], match[1]);
       availabilityLocators.set(item.model_id, `https://dev.meta.ai${path}#availability`);
-      const column =
+      const modeColumn =
         mode === "Contributor mode"
-          ? 2
+          ? "Contributor"
           : mode === "Standard mode" || mode === "Available (Standard mode only)"
-            ? 1
+            ? "Standard"
             : undefined;
-      if (column === undefined) throw new Error("Meta pricing mode changed");
+      if (modeColumn === undefined) throw new Error("Meta pricing mode changed");
       if (!priceIds.has(item.model_id)) continue;
       // Mode comes from the exact availability row, never from an ID suffix heuristic.
       if (family === "muse-spark") {
-        const clause = clauses[column - 1];
-        if (
-          !clause?.includes(`in ${column === 1 ? "Standard" : "Contributor"} mode`) ||
-          !clause.match(/[a-z][a-z0-9.-]+/g)?.includes(item.model_id)
-        )
+        const clause = clauses.find((part) => part.includes(`in ${modeColumn} mode`));
+        if (!clause?.match(/[a-z][a-z0-9.-]+/g)?.includes(item.model_id))
           throw new Error("Meta model-to-price mode association changed");
       }
       item.description =
-        column === 2
+        modeColumn === "Contributor"
           ? "Contributor mode allows Meta to use submitted content and responses to train future models."
           : "Standard mode does not use submitted content to train Meta models.";
-      item.price_facts = tariffs.map(([label, standard, contributor]) => {
-        const price = usd(column === 1 ? standard : contributor);
+      const column = `${modeColumn} mode (per 1M tokens)`;
+      item.price_facts = tariffs.map(({ label, price: cell }) => {
+        const price = usd(cell(column));
         switch (label) {
           case "Input":
             return rate(
@@ -212,6 +247,87 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
       });
     }
   }
+
+  const ember = section(catalog, "muse-ember");
+  requireText(ember, "On Model API, Muse Ember runs in Standard mode only");
+  const emberIdentities = table(ember, ["Model ID", "Input", "Output"]);
+  const emberId = emberIdentities[0]?.[0];
+  if (emberIdentities.length !== 1 || emberId === undefined)
+    throw new Error("Meta Muse Ember identity changed");
+  const emberPricing = section(pricing, "muse-ember-pricing");
+  requireText(emberPricing, `Model: ${emberId}, in Standard mode only`);
+  requireText(
+    emberPricing,
+    "Muse Ember has two price tiers, and the input tokens in your API request set the tier, cached tokens included",
+  );
+  requireText(
+    emberPricing,
+    "A request with up to 200K input tokens is billed at the rates in the first column",
+  );
+  requireText(
+    emberPricing,
+    "A request with more is billed at the long-context rates in full, not only for the tokens past 200K",
+  );
+  const emberTiers = [
+    {
+      header: "Up to 200K input tokens (per 1M tokens)",
+      conditions: { context_max_tokens: 200_000 },
+    },
+    {
+      header: "Over 200K input tokens (per 1M tokens)",
+      conditions: { context_min_tokens: 200_001 },
+    },
+  ] as const;
+  const emberTariffs = priceTable(
+    emberPricing,
+    emberTiers.map(({ header }) => header),
+  );
+  if (emberTariffs.length !== 3 || new Set(emberTariffs.map(({ label }) => label)).size !== 3)
+    throw new Error("Meta Muse Ember token meters changed");
+  const emberModel = model(emberId, "Muse Ember");
+  availabilityLocators.set(emberId, `${modelsUrl}#muse-ember`);
+  emberModel.description =
+    "Efficient execution model for high-volume, repeated work. Standard mode only.";
+  emberModel.price_facts = emberTariffs.flatMap(({ label, price: cell }) =>
+    emberTiers.map(({ header, conditions }) => {
+      const price = usd(cell(header));
+      const rawUnit = `${label} tokens; ${header}`;
+      switch (label) {
+        case "Input":
+          return rate(
+            "input_text",
+            price,
+            "million_tokens",
+            "muse-ember-pricing",
+            { namespace: "kmodels", value: "uncached_input_tokens" },
+            rawUnit,
+            conditions,
+          );
+        case "Cached input":
+          return rate(
+            "cache_read_text",
+            price,
+            "million_tokens",
+            "muse-ember-pricing",
+            { namespace: "kmodels", value: "cached_input_tokens" },
+            rawUnit,
+            conditions,
+          );
+        case "Output":
+          return rate(
+            "output_text",
+            price,
+            "million_tokens",
+            "muse-ember-pricing",
+            { namespace: "kmodels", value: "output_tokens" },
+            rawUnit,
+            conditions,
+          );
+        default:
+          throw new Error("Unreviewed Meta Muse Ember token meter");
+      }
+    }),
+  );
 
   const image = section(pricing, "image-generation");
   requireText(image, "only for images the model successfully generates and returns");

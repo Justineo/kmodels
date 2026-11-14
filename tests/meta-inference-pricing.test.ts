@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
+import { z } from "zod";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
 import { linkedBundleSchema, type LinkedBundle } from "../src/catalog/bundle.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
@@ -33,26 +34,68 @@ const configured = manifests.find(({ provider }) => provider.id === "meta");
 const source = configured?.sources.find(({ id }) => id === "meta-model-api");
 if (!configured || !source) throw new Error("Missing Meta Model API source");
 const manifest: ProviderManifest = configured;
+const emberSections = z.object({ models: z.string(), pricing: z.string() });
+function landMarked($: CheerioAPI) {
+  $("div[role='main']").each((_, node) => {
+    const main = $("<main></main>");
+    main.append($(node).contents());
+    $(node).replaceWith(main);
+  });
+  return $;
+}
+function contributorFirst($: CheerioAPI) {
+  $("table").each((_, table) => {
+    const rows = $(table)
+      .find("tr")
+      .toArray()
+      .map((row) => $(row).find("th,td").toArray());
+    const header = (rows[0] ?? []).map((cell) => $(cell).text().trim());
+    const standard = header.indexOf("Standard mode (per 1M tokens)");
+    const contributor = header.indexOf("Contributor mode (per 1M tokens)");
+    if (standard < 0 || contributor < 0 || standard > contributor) return;
+    for (const row of rows) {
+      const first = row[standard];
+      const second = row[contributor];
+      if (!first || !second) continue;
+      const standardCell = $(first).clone();
+      const contributorCell = $(second).clone();
+      $(first).replaceWith(contributorCell);
+      $(second).replaceWith(standardCell);
+    }
+  });
+  return $;
+}
 async function fixture(): Promise<LinkedBundle> {
   const bundle = linkedBundleSchema.parse(
     JSON.parse(
       await readFile(new URL("./fixtures/meta/model-api-current.json", import.meta.url), "utf8"),
     ),
   );
-  const $ = load(bundle.index.body);
+  const ember = emberSections.parse(
+    JSON.parse(
+      await readFile(new URL("./fixtures/meta/muse-ember-current.json", import.meta.url), "utf8"),
+    ),
+  );
+  const $ = landMarked(load(bundle.index.body));
   for (const family of ["muse-wonder", "muse-spark"]) {
-    const table = $(`[role="main"] #${family}-availability`).nextUntil("h2,h3");
+    const table = $(`main #${family}-availability`).nextUntil("h2,h3");
     bundle.documents.push({
       url: `https://dev.meta.ai/docs/${family}`,
-      body: `<main role="main"><h2 id="availability">Availability</h2>${table
+      body: `<main><h2 id="availability">Availability</h2>${table
         .toArray()
         .map((node) => $.html(node))
         .join("")}</main>`,
     });
     table.remove();
-    $(`[role="main"] #${family}-availability`).remove();
+    $(`main #${family}-availability`).remove();
   }
+  $("main").append(ember.models);
   bundle.index.body = $.html();
+  const pricing = bundle.documents[0];
+  if (!pricing) throw new Error("Missing Meta pricing fixture");
+  const pricingPage = contributorFirst(landMarked(load(pricing.body)));
+  pricingPage("main").append(ember.pricing);
+  pricing.body = pricingPage.html();
   return bundle;
 }
 async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
@@ -114,6 +157,7 @@ it("uses exact Standard and Contributor IDs without asking for a redundant prici
     { id: "meta", name: "Meta", kind: "hosted", source_ids: ["meta-model-api"] },
   ]);
   expect(baseline.catalog.models.map(({ model_id }) => model_id).sort()).toEqual([
+    "muse-ember-1.0",
     "muse-image-1.0",
     "muse-spark-1.1",
     "muse-spark-1.2",
@@ -124,7 +168,7 @@ it("uses exact Standard and Contributor IDs without asking for a redundant prici
     "muse-wonder-1.0",
     "sam-3.1",
   ]);
-  expect(baseline.inference?.mapping.rules).toHaveLength(9);
+  expect(baseline.inference?.mapping.rules).toHaveLength(10);
   for (const model_id of ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-wonder-1.0"]) {
     const result = lookup()({ provider_id: "meta", model_id });
     expect(result.status).toBe("matched");
@@ -142,6 +186,53 @@ it("uses exact Standard and Contributor IDs without asking for a redundant prici
   expect(prices("muse-spark-1.2-contributor", "cache_read_text")).toEqual([
     { numerator: "1", denominator: "500000000" },
   ]);
+});
+
+it("prices Muse Ember by the documented 200K input-token tiers in Standard mode only", () => {
+  const tiers: { tokens: string; input: string; cached: string; output: string }[] = [
+    { tokens: "150000", input: "1/10000000", cached: "1/250000000", output: "1/2000000" },
+    { tokens: "250000", input: "3/10000000", cached: "3/250000000", output: "3/2000000" },
+  ];
+  for (const { tokens, input, cached, output } of tiers) {
+    for (const [meter, value] of [
+      ["input_text", input],
+      ["cache_read_text", cached],
+      ["output_text", output],
+    ] as const) {
+      const [numerator, denominator] = value.split("/");
+      const result = lookup()({
+        provider_id: "meta",
+        model_id: "muse-ember-1.0",
+        meter: { namespace: "kmodels", value: meter },
+        selectors: [
+          {
+            kind: "decimal",
+            dimension: { namespace: "kmodels", value: "context_tokens" },
+            value: tokens,
+            unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+          },
+        ],
+      });
+      expect(result.missing_conditions).toEqual([]);
+      const terms = result.candidates.flatMap(({ offer }) => offer.terms);
+      expect(terms).toHaveLength(1);
+      expect(terms[0]).toMatchObject({
+        kind: "rate",
+        variants: [{ price: { value: { numerator, denominator } } }],
+      });
+    }
+  }
+  expect(prices("muse-ember-1.0", "input_text")).toEqual([
+    { numerator: "1", denominator: "10000000" },
+    { numerator: "3", denominator: "10000000" },
+  ]);
+});
+
+it("accepts the current main landmark and Contributor-first pricing columns", async () => {
+  const bundle = await fixture();
+  expect(bundle.index.body).toContain("<main>");
+  expect(bundle.index.body).not.toContain('role="main"');
+  expect(bundle.documents[0]?.body).not.toContain('role="main"');
 });
 
 it("preserves media units and binds billable quantities, including the frame minimum", () => {
@@ -225,6 +316,11 @@ it("detects commercial drift instead of silently swapping modes or losing media 
     ["at least 50 frames", "at least 100 frames"],
     ["Video segmentation</td>", "Image segmentation</td>"],
     ["per 1M tokens", "per 1K tokens"],
+    ["Over 200K input tokens (per 1M tokens)", "Over 500K input tokens (per 1M tokens)"],
+    [
+      "Model: <code>muse-ember-1.0</code>, in Standard mode only.",
+      "Model: <code>muse-ember-1.0</code>, in Contributor mode only.",
+    ],
   ]) {
     const bundle = await fixture();
     const document = bundle.documents[0];
