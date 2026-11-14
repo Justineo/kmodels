@@ -2426,7 +2426,8 @@ function billingItemPrices(
 export function parseDashscopePricing(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-pricing") throw new Error("Wrong DashScope pricing extractor");
-  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const sourceValue: unknown = JSON.parse(input.body);
+  const bundle = linkedBundleSchema.parse(sourceValue);
   const evidence = commercialEvidence(input, bundle);
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
@@ -2646,7 +2647,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
     }
   }
   assertCoverage("DashScope pricing model rows", coveredRows, observedRows, 1);
-  const market = parseDashscopeMarket(input, JSON.parse(input.body));
+  const market = parseDashscopeMarket(input, sourceValue);
   for (const model of market.models) {
     const current = models.get(model.model_id);
     // The guide owns its detailed modality/operation rules. The market fills uncovered
@@ -2669,11 +2670,10 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
               (existing.conditions.context_min_tokens ?? -1),
         ) ?? [];
       if (covered.length > 0) {
-        if (
-          !covered.every(
-            (existing) => existing.unit === rate.unit && decimalsEqual(existing.price, rate.price),
-          )
-        ) {
+        const agrees = covered.every(
+          (existing) => existing.unit === rate.unit && decimalsEqual(existing.price, rate.price),
+        );
+        if (!agrees) {
           model.raw_price_facts.push({
             term_key: `market:conflict:${rate.meter}`,
             impact: "base_price",
@@ -2691,11 +2691,7 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
           });
         }
         input.onPricingReconciliation?.({
-          disposition: covered.every(
-            (existing) => existing.unit === rate.unit && decimalsEqual(existing.price, rate.price),
-          )
-            ? "excluded"
-            : "raw",
+          disposition: agrees ? "excluded" : "raw",
           reason_code: "market_meter_owned_by_pricing_guide",
           sample: `${model.model_id}:${rate.meter}:${rate.conditions.region}`,
         });
