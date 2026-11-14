@@ -735,36 +735,21 @@ function catalogCard(
     arrayBlock(body, "features"),
   );
   const features = featureValues === undefined ? undefined : new Set(featureValues);
-  const inputPrice = claim(input, "model_card_input_price_drift", row.id, () =>
-    cardPrice(body, "inputPrice"),
-  );
-  const outputPrice = claim(input, "model_card_output_price_drift", row.id, () =>
-    cardPrice(body, "outputPrice"),
-  );
-  const rates: SourcePriceFact[] = [
-    ...(inputPrice === undefined
+  const quotes = [
+    [
+      "input_text",
+      claim(input, "model_card_input_price_drift", row.id, () => cardPrice(body, "inputPrice")),
+    ],
+    [
+      "output_text",
+      claim(input, "model_card_output_price_drift", row.id, () => cardPrice(body, "outputPrice")),
+    ],
+  ] as const;
+  const rates = quotes.flatMap(([meter, price]) =>
+    price === undefined
       ? []
-      : [
-          publishedRate(
-            "input_text",
-            inputPrice,
-            "million_tokens",
-            input.source.id,
-            "million tokens",
-          ),
-        ]),
-    ...(outputPrice === undefined
-      ? []
-      : [
-          publishedRate(
-            "output_text",
-            outputPrice,
-            "million_tokens",
-            input.source.id,
-            "million tokens",
-          ),
-        ]),
-  ];
+      : [publishedRate(meter, price, "million_tokens", input.source.id, "million tokens")],
+  );
   // Equal-price cache hits are part of the prompt total, not a separate tariff.
   if (features?.has("Prompt Caching") && !cacheAccounting)
     diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
