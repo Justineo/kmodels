@@ -247,6 +247,7 @@ export interface SourceManifest {
       }
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
     | { kind: "together-model-library"; catalogUrl: string }
+    | { kind: "together-serverless" }
     | {
         kind: "vercel-models";
         modelPageBaseUrl: string;
@@ -492,7 +493,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "together-serverless" },
-        extractorVersion: "together-serverless-v3",
+        extractorVersion: "together-serverless-v4",
         fields: [
           "model_id",
           "name",
@@ -509,8 +510,9 @@ export const manifests = [
           "pricing",
         ],
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
-        allowedHosts: ["docs.together.ai"],
-        maxResponseBytes: mebibytes(4),
+        allowedHosts: ["docs.together.ai", "www.together.ai"],
+        maxResponseBytes: mebibytes(16),
+        transport: { kind: "together-serverless" },
         scope: "global",
         exhaustive: false,
         role: "catalog",

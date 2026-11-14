@@ -2,13 +2,26 @@ import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { hostedInferencePrice, hostedUsageRate, usdAmount } from "./hosted-usage-rate.ts";
 import { modelIdSchema } from "./identity.ts";
-import { markdownSection, markdownTableRows } from "./markdown.ts";
+import { markdownProse, markdownSection, markdownTableRows } from "./markdown.ts";
 import { baseModel } from "./model.ts";
-import { multiplyDecimal, publishedRate, rawPricingFact, wholeTokenCount } from "./pricing.ts";
+import { togetherCardTokenPrices } from "./together-metadata.ts";
+import {
+  decimalsEqual,
+  multiplyDecimal,
+  publishedRate,
+  rawPricingFact,
+  wholeTokenCount,
+} from "./pricing.ts";
 import type { ParsedProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertItemCount, assertSourceConstraint, parseSourceJson } from "./source-contract.ts";
+import {
+  assertItemCount,
+  assertSourceConstraint,
+  contractExtensionEvidence,
+  parseSourceJson,
+} from "./source-contract.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import type { Modality, ModelTask } from "./schema.ts";
+import type { PriceSourceLocator } from "./pricing-schema.ts";
 
 const sectionRoutes = [
   [
@@ -206,6 +219,23 @@ export function togetherCatalogIds(body: string): Set<string> {
   ]);
 }
 
+export function togetherMissingCacheIds(body: string): Set<string> {
+  const rows = ["Chat models", "Vision models"].flatMap((heading) =>
+    catalogRows(body, heading, "API model string"),
+  );
+  const known = new Set(
+    rows
+      .filter((row) => {
+        const cached = row.get(cachedColumn);
+        return cached !== undefined && cached !== "-";
+      })
+      .map((row) => tableModelId(row, "API model string")),
+  );
+  return new Set(
+    rows.map((row) => tableModelId(row, "API model string")).filter((id) => !known.has(id)),
+  );
+}
+
 function togetherModel(input: SourceParseInput, row: Row, idColumn: string): ParsedProviderModel {
   const id = tableModelId(row, idColumn);
   const name = cell(row, "Model name").replace(/\\([[\]])/gu, "$1");
@@ -229,6 +259,7 @@ function tokenRates(
   values: readonly [string, string | undefined, string | undefined],
   conditions: SourcePriceFact["conditions"],
   sectionName: string,
+  cacheLocator?: PriceSourceLocator,
 ): SourcePriceFact[] {
   const [standard, cached, output] = values;
   const prices = [
@@ -248,7 +279,9 @@ function tokenRates(
     return [
       hostedUsageRate(
         publishedRate(meter, amount, "million_tokens", input.source.id, usdTokenUnit, conditions),
-        { kind: "table", value: `${sectionName}/${id}/${label}` },
+        cacheLocator !== undefined && meter !== "output_text"
+          ? cacheLocator
+          : { kind: "table", value: `${sectionName}/${id}/${label}` },
         signal,
       ),
     ];
@@ -341,6 +374,7 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
   const docs = (path: string) =>
     linkedDocumentBody(bundle, path, `Together bundle omitted ${path}`);
   const body = bundle.index.body;
+  const cardPrices = togetherCardTokenPrices(bundle.documents);
   const models = new Map<string, ParsedProviderModel>();
   const usPrices = new Map<string, Row>();
   const usSection = markdownSection(body, 2, "US-only inference");
@@ -410,7 +444,48 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
         }
         const us = usPrices.get(model.name);
         const conditions = us === undefined ? {} : { endpoint: "api.together.ai" };
-        const cached = row.get(cachedColumn);
+        let cached = row.get(cachedColumn);
+        let cacheLocator: PriceSourceLocator | undefined;
+        if (cached === undefined || cached === "-") {
+          const card = cardPrices.get(id);
+          const inputPrice = usdAmount(cell(row, inputColumn));
+          const outputPrice = usdAmount(cell(row, outputColumn));
+          if (
+            card !== undefined &&
+            inputPrice !== undefined &&
+            outputPrice !== undefined &&
+            decimalsEqual(inputPrice, card.input) &&
+            decimalsEqual(outputPrice, card.output)
+          ) {
+            cached = `$${card.cached}`;
+            cacheLocator = {
+              kind: "provider_key",
+              value: `${heading}/${id}; cache price and partition: ${card.url}`,
+            };
+          } else if (card !== undefined) {
+            model.raw_price_facts.push(
+              rawPricingFact(
+                input.source.id,
+                "cache_read_text",
+                "base_price",
+                "unknown_applicability",
+                {
+                  label: "Cached input",
+                  amount: card.cached,
+                  denomination: "USD",
+                  unit: usdTokenUnit,
+                  fragment: `The card's ordinary quotes disagree with the directory: ${card.url}`,
+                },
+                conditions,
+              ),
+            );
+            input.onPricingReconciliation?.({
+              disposition: "ambiguous",
+              reason_code: "cache_card_base_quote_disagreement",
+              sample: id,
+            });
+          }
+        }
         if (cached !== undefined && cached !== "-") model.capabilities.prompt_cache = true;
         model.price_facts = tokenRates(
           input,
@@ -418,6 +493,7 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
           [cell(row, inputColumn), cached, cell(row, outputColumn)],
           conditions,
           heading,
+          cacheLocator,
         );
         if (us !== undefined) {
           assertSourceConstraint(
@@ -475,11 +551,24 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
       ({ url }) => new URL(url).pathname === `/docs/inference/${path}-api.md`,
     );
     if (guide === undefined) continue;
-    for (const row of markdownTableRows(section(guide.body, "Supported models"), [
-      "API model string",
-      "Serverless inference",
-    ])) {
-      if (row.get("Serverless inference") !== "✓") continue;
+    let supported: string;
+    let rows: Row[];
+    try {
+      supported = section(guide.body, "Supported models");
+      rows = markdownTableRows(supported, ["API model string"]);
+    } catch {
+      input.onContractFinding?.(
+        contractExtensionEvidence([`/documents/${path}-api/supported-models`]),
+      );
+      continue;
+    }
+    const shared = new RegExp(
+      `^These models support the ${name} API on both serverless inference and `,
+      "mu",
+    ).test(markdownProse(supported));
+    for (const row of rows) {
+      if (row.has("Serverless inference") ? row.get("Serverless inference") !== "✓" : !shared)
+        continue;
       const model = models.get(tableModelId(row, "API model string"));
       model?.api_endpoints?.push({ name, path: `/v1/${path}` });
     }

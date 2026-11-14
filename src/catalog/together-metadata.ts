@@ -10,6 +10,70 @@ import type { SourceParseInput } from "./source-parse.ts";
 
 const libraryUrl = "https://www.together.ai/models";
 
+export function togetherCardTokenPrices(documents: readonly { url: string; body: string }[]) {
+  const prices = new Map<string, { input: string; cached: string; output: string; url: string }>();
+  const cards = documents
+    .filter(({ url }) => url === libraryUrl || url.startsWith(libraryUrl + "?"))
+    .flatMap(({ body }) => togetherLibraryPage(body).cards);
+  const byId = new Map<string, Set<string>>();
+  for (const { id, url } of cards) {
+    const urls = byId.get(id) ?? new Set<string>();
+    urls.add(url);
+    byId.set(id, urls);
+  }
+  for (const [id, candidates] of byId) {
+    const urls = [...candidates];
+    if (urls.length !== 1) continue;
+    const card = documents.find(({ url }) => url === urls[0]);
+    if (card === undefined) continue;
+    const $ = load(card.body);
+    const exactId = $("main p[data-copy-target]")
+      .toArray()
+      .some((target) => $(target).text().trim() === id);
+    const standardEndpoint = $("main a[href]")
+      .toArray()
+      .some((target) => {
+        try {
+          const url = new URL($(target).attr("href") ?? "", libraryUrl);
+          return (
+            url.origin === "https://api.together.ai" &&
+            decodeURIComponent(url.pathname) === `/playground/${id}`
+          );
+        } catch {
+          return false;
+        }
+      });
+    if (!exactId || !standardEndpoint) continue;
+    const box = (label: string) =>
+      $("main .models-d-content_box-item-inner").filter(
+        (_index, item) => $(item).children().first().text().trim() === label,
+      );
+    const amounts = (label: string) => {
+      const value = box(label).children().last();
+      return (value.is("p") ? value.toArray() : value.find("p").toArray()).map((element) =>
+        $(element).text().replace(/\s+/gu, " ").trim(),
+      );
+    };
+    const input = amounts("Input price");
+    const output = amounts("Output price");
+    const rate = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\s*\/\s*1M tokens$/u;
+    const cached = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\s*\(cached\)\s*\/\s*1M$/u;
+    const inputPrice = input[0]?.match(rate)?.[1];
+    const cachePrice = input[1]?.match(cached)?.[1];
+    const outputPrice = output[0]?.match(rate)?.[1];
+    if (
+      input.length !== 2 ||
+      output.length !== 1 ||
+      inputPrice === undefined ||
+      cachePrice === undefined ||
+      outputPrice === undefined
+    )
+      continue;
+    prices.set(id, { input: inputPrice, cached: cachePrice, output: outputPrice, url: card.url });
+  }
+  return prices;
+}
+
 export function togetherLibraryPage(body: string) {
   const $ = load(body);
   const cards = $("main .models_link")

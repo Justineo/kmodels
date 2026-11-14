@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   fetchSource,
@@ -16,6 +17,61 @@ const transport = vi.hoisted(() => {
   const calls: string[] = [];
   return { failures, responses, calls };
 });
+
+it.each(["complete", "card failure"])(
+  "acquires missing Together cache price cards with %s evidence",
+  async (scenario) => {
+    const source = reviewedPublicSource("together-serverless");
+    const library = await readFile(
+      new URL("./fixtures/together/cache-library.html", import.meta.url),
+      "utf8",
+    );
+    const card = await readFile(
+      new URL("./fixtures/together/cache-card.html", import.meta.url),
+      "utf8",
+    );
+    const body = [
+      "## Chat models",
+      "| Model name | API model string | Cached input pricing (per 1M tokens) |",
+      "| - | - | - |",
+      "| Ripple | ricursive-ai/Ripple-65B-Preview | - |",
+      "## Vision models",
+      "| Model name | API model string | Cached input pricing (per 1M tokens) |",
+      "| - | - | - |",
+      "| Other | Example/Other | $0.1 |",
+    ].join("\n");
+    transport.responses.set("docs.together.ai", [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+    transport.responses.set("www.together.ai", [
+      `HTTP/1.1 200 OK\r\n\r\n${library.replace("</main>", '<a class="w-pagination-next" href="?dac2a22c_page=2">Next</a></main>')}`,
+      `HTTP/1.1 200 OK\r\n\r\n${library}`,
+      scenario === "complete"
+        ? `HTTP/1.1 200 OK\r\n\r\n${card}`
+        : "HTTP/1.1 404 Not Found\r\n\r\nmissing",
+    ]);
+    const result = fetchSource({
+      ...source,
+      linkedDocuments: { path: /$a/, minDocuments: 0, maxDocuments: 0, concurrency: 1 },
+    });
+    if (scenario === "card failure") {
+      await expect(result).rejects.toThrow("failed");
+    } else {
+      const fetched = await result;
+      expect(JSON.parse(fetched.body)).toMatchObject({
+        index: { body },
+        documents: expect.arrayContaining([
+          { url: "https://www.together.ai/models/ripple-65b-preview", body: card },
+        ]),
+      });
+      expect(transport.calls).toEqual([
+        source.url,
+        "https://www.together.ai/models",
+        "https://www.together.ai/models?dac2a22c_page=2",
+        "https://www.together.ai/models/ripple-65b-preview",
+      ]);
+      expect(fetched.dependencies.some(({ key }) => key.includes("/price-cards"))).toBe(true);
+    }
+  },
+);
 
 it.each(["complete", "changed filter", "repeated cursor"])(
   "validates HF Inference pagination with a %s response",

@@ -1,4 +1,13 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { readFile } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
+import { linkedBundleSchema } from "../src/catalog/bundle.ts";
+import { togetherMissingCacheIds } from "../src/catalog/together.ts";
+import { projectCatalogPair } from "../src/catalog/projections.ts";
+import { compressedAsset } from "../src/catalog/asset-pack.ts";
+import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
+import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
@@ -141,6 +150,193 @@ function payload(body: string) {
 }
 
 describe("Together AI Serverless", () => {
+  async function cacheBundle() {
+    const body = togetherCatalog.replace(
+      "| Text Chat | Example/Text-Chat | - | Free | - | $2 | - |",
+      "| Ripple | ricursive-ai/Ripple-65B-Preview | 131072 | $0.20 | - | $0.60 | Yes |",
+    );
+    const bundle = linkedBundleSchema.parse(JSON.parse(togetherBundle(body)));
+    bundle.documents.push(
+      {
+        url: "https://www.together.ai/models",
+        body: await readFile(
+          new URL("./fixtures/together/cache-library.html", import.meta.url),
+          "utf8",
+        ),
+      },
+      {
+        url: "https://www.together.ai/models/ripple-65b-preview",
+        body: await readFile(
+          new URL("./fixtures/together/cache-card.html", import.meta.url),
+          "utf8",
+        ),
+      },
+    );
+    return bundle;
+  }
+
+  it("collects exact model-card cache prices and excludes cached tokens from ordinary input", async () => {
+    const bundle = await cacheBundle();
+    expect([...togetherMissingCacheIds(bundle.index.body)]).toEqual([
+      "ricursive-ai/Ripple-65B-Preview",
+    ]);
+    const parsed = parse("together", JSON.stringify(bundle));
+    const ripple = parsed.models.find(
+      ({ model_id }) => model_id === "ricursive-ai/Ripple-65B-Preview",
+    );
+    expect(ripple).toMatchObject({
+      capabilities: { prompt_cache: true },
+      price_facts: expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.20",
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+          }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.02",
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "cached_input_tokens" },
+          }),
+        }),
+      ]),
+    });
+    const manifest = providerManifest("together");
+    if (manifest.notConfiguredReason !== undefined) throw new Error("Together is not configured");
+    const source = manifest.sources[0];
+    if (!source) throw new Error("Missing source");
+    vi.mocked(fetchSource).mockResolvedValue(payload(JSON.stringify(bundle)));
+    const result = await collectProvider(
+      { ...manifest, sources: [source] },
+      undefined,
+      { sources: {} },
+      observedAt,
+    );
+    const pricing = result.pricing;
+    if (!pricing) throw new Error(JSON.stringify(result.attempt));
+    const candidate = compileInferencePriceMapping(
+      prepareCatalogPair(
+        {
+          catalog_version: "1".repeat(64),
+          generated_at: observedAt,
+          providers: [result.provider],
+          models: result.models,
+          sources: result.sources,
+          coverage: [result.coverage],
+          warnings: result.warnings,
+        },
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+      ),
+      result.inferencePriceSources ?? [],
+    );
+    const lookup = createInferencePriceLookup(
+      priceDataExport(candidate.catalog, candidate.pricing),
+      candidate.inference?.mapping,
+    );
+    const answer = lookup({ provider_id: "together", model_id: "ricursive-ai/Ripple-65B-Preview" });
+    expect(answer.status).toBe("matched");
+    expect(
+      answer.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "cache_read_text"
+            ? term.variants.map(({ price }) => price.value)
+            : [],
+        ),
+    ).toEqual([{ numerator: "1", denominator: "50000000" }]);
+    const projection = await projectCatalogPair(candidate);
+    const detail = projection.ui.manifest.assets
+      .filter(({ file_name }) => file_name.includes("/details/"))
+      .flatMap((asset) =>
+        websiteDetailChunkSchema
+          .parse(
+            JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
+          )
+          .details.map(restoreWebsiteInferenceDetail),
+      )
+      .find(({ model_ref }) => model_ref === "together/ricursive-ai/Ripple-65B-Preview");
+    const price = detail?.inference_prices?.find(
+      ({ model_id }) => model_id === "ricursive-ai/Ripple-65B-Preview",
+    );
+    if (!price) throw new Error("Missing cache price in website");
+    expect(queryWebsiteInferencePrice(price, [], observedAt).status).toBe("matched");
+  });
+
+  it.each([
+    "foreign ID",
+    "dedicated only",
+    "wrong endpoint",
+    "unknown unit",
+    "different base quote",
+  ])("does not copy a cache quote with %s", async (scenario) => {
+    const bundle = await cacheBundle();
+    const card = bundle.documents.find(({ url }) => url.endsWith("ripple-65b-preview"));
+    const library = bundle.documents.find(({ url }) => url === "https://www.together.ai/models");
+    if (!card || !library) throw new Error("Missing card fixture");
+    if (scenario === "foreign ID")
+      card.body = card.body.replace(
+        "data-copy-target>ricursive-ai/Ripple-65B-Preview",
+        "data-copy-target>Example/Other",
+      );
+    if (scenario === "dedicated only")
+      library.body = library.body.replace("Serverless", "Dedicated");
+    if (scenario === "wrong endpoint")
+      card.body = card.body.replace("api.together.ai", "us-api.together.ai");
+    if (scenario === "unknown unit") card.body = card.body.replaceAll("1M", "1B");
+    if (scenario === "different base quote") card.body = card.body.replace("$0.20", "$0.21");
+    const model = parse("together", JSON.stringify(bundle)).models.find(
+      ({ model_id }) => model_id === "ricursive-ai/Ripple-65B-Preview",
+    );
+    if (!model) throw new Error("Missing catalog model");
+    expect(model.price_facts.some(({ meter }) => meter === "cache_read_text")).toBe(false);
+    if (scenario === "different base quote")
+      expect(model.raw_price_facts).toContainEqual(
+        expect.objectContaining({
+          reason: "unknown_applicability",
+          raw: expect.objectContaining({ amount: "0.02", denomination: "USD" }),
+        }),
+      );
+    expect(
+      model.price_facts.find(({ meter }) => meter === "input_text")?.charge_binding?.signal.value,
+    ).toBe("input_tokens");
+  });
+
+  it.each(["both serverless inference and", "only dedicated model inference;", "fenced claim"])(
+    "qualifies compact protocol tables with %s evidence",
+    (scope) => {
+      const bundle = linkedBundleSchema.parse(JSON.parse(togetherBundle()));
+      const guide = bundle.documents.find(({ url }) => url.endsWith("messages-api.md"));
+      if (!guide) throw new Error("Missing protocol fixture");
+      guide.body = [
+        "## Supported models",
+        ...(scope === "fenced claim"
+          ? [
+              "```text",
+              "These models support the Messages API on both serverless inference and dedicated model inference:",
+              "```",
+            ]
+          : [`These models support the Messages API on ${scope} dedicated model inference:`]),
+        "| Model | API model string |",
+        "| - | - |",
+        "| Vision | `Example/Vision-Chat` |",
+      ].join("\n");
+      const model = parse("together", JSON.stringify(bundle)).models.find(
+        ({ model_id }) => model_id === "Example/Vision-Chat",
+      );
+      if (!model) throw new Error("Missing model");
+      expect(model.api_endpoints?.some(({ path }) => path === "/v1/messages")).toBe(
+        scope === "both serverless inference and",
+      );
+      expect(model.price_facts.length).toBeGreaterThan(0);
+    },
+  );
   it("keeps exact public IDs, cache accounting, and endpoint-specific prices", () => {
     const result = parse("together", togetherBundle());
     expect(result.models).toHaveLength(5);

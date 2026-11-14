@@ -28,7 +28,11 @@ Fine-tuning removals are outside this Serverless scope. Active redirects add exa
 only when the target is admitted and the old identifier has no separate catalog row.
 The [Messages](https://docs.together.ai/docs/inference/messages-api) and
 [Responses](https://docs.together.ai/docs/inference/responses-api) support tables add routes
-only for exact Serverless IDs with a positive support marker.
+only for exact Serverless IDs. A per-row positive marker qualifies the older table. The compact
+two-column table instead needs its explicit prose statement that all listed models support both
+Serverless and Dedicated inference. Fenced examples and dedicated-only statements supply no
+Serverless support. An unrecognized optional protocol table signals claim-local drift and leaves
+independent catalog and price facts usable.
 
 The optional authenticated `GET /v1/models` uses `TOGETHER_API_KEY`. Treat it as a scoped
 inventory. It can fill a license label or a missing token context on an exact public match.
@@ -36,6 +40,11 @@ Context enrichment requires a token-based model type and a value greater than on
 inventory values do not establish a token context window. Account-only
 entries and inventory pricing cannot define a public model or rate. A missing credential or
 failed inventory leaves the public source independently usable.
+The API is not an anonymous public catalog: it also returns Dedicated/scoped entries, omits
+price denomination and exposes inactive-meter zero placeholders. Its JSON numbers can contain
+binary floating-point artifacts in cached prices. Exact public IDs and currency-bearing price
+evidence remain necessary; a successful API response alone does not make these values current
+public tariffs.
 
 The optional [Model Library](https://www.together.ai/models) overlay follows its bounded
 public pagination and fetches Serverless cards for exact catalog IDs. A card's displayed
@@ -45,6 +54,20 @@ positive metadata. Rounded context
 labels stay separate from exact token limits. The optional
 [changelog](https://docs.together.ai/docs/changelog) supplies release dates from dated
 Serverless launch entries for exact catalog IDs.
+
+The primary pricing collector separately checks the public Model Library for Chat/Vision IDs
+whose directory rows lack a cached rate. It completes the bounded library pagination and fetches
+only their Serverless cards. Pricing evidence requires the library's exact ID, the detail card's
+same copyable endpoint and standard Together playground route, explicit per-million token units,
+and ordinary input/output amounts matching the directory. A card can then fill the missing
+cached quote without replacing published directory rates, adding another model, or transferring
+the quote to a US-only endpoint. A disagreement in the ordinary quotes retains the cache amount
+as raw, scoped evidence. The specific public card's positive quote is more precise than
+the directory's omission and the overview's generic statement about unpriced caches.
+The input binding consequently excludes the cached partition, preventing double billing. Failed
+price-card acquisition rejects the pricing refresh through the existing retention boundary;
+the independent metadata-only overlay retains its optional, claim-local behavior. Provider API
+credentials are not needed for these price companions.
 
 The public tables supply exact USD token rates and the listed audio duration and character
 rates. Cached input is an independent quantity where Together publishes a cached rate.

@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { fireworksModelPaths } from "./fireworks.ts";
 import { nvidiaNimCardUrls } from "./nvidia-nim.ts";
-import { togetherCatalogIds } from "./together.ts";
+import { togetherCatalogIds, togetherMissingCacheIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
@@ -1628,12 +1628,15 @@ function documentEntry(
 async function fetchTogetherModelLibrary(
   source: SourceManifest,
   catalogUrl: string,
+  pricing?: { catalog: FetchPayload; ids: ReadonlySet<string> },
 ): Promise<FetchResult> {
   const catalogKey = `${source.id}/serverless`;
-  const catalog = await fetchPayload(
-    requestSource(source, catalogKey, new URL(catalogUrl), "markdown", 1024 * 1024),
-  );
-  const ids = togetherCatalogIds(catalog.body);
+  const catalog =
+    pricing?.catalog ??
+    (await fetchPayload(
+      requestSource(source, catalogKey, new URL(catalogUrl), "markdown", 1024 * 1024),
+    ));
+  const ids = pricing?.ids ?? togetherCatalogIds(catalog.body);
   const pages: FetchedDocument[] = [];
   const urls = new Set<string>();
   const maxPages = 16;
@@ -1650,7 +1653,7 @@ async function fetchTogetherModelLibrary(
   }
   if (pageUrl !== undefined)
     throw new Error("Together Model Library exceeded the reviewed page limit");
-  assertItemCount("Together Serverless model cards", urls.size, 1, 150);
+  assertItemCount("Together Serverless model cards", urls.size, pricing === undefined ? 1 : 0, 150);
   const [index, ...otherPages] = pages;
   if (index === undefined) throw new Error("Together Model Library omitted its index");
   const results = await mapConcurrent([...urls].sort(), 8, (href) => {
@@ -1660,8 +1663,8 @@ async function fetchTogetherModelLibrary(
       url,
       format: "html",
       maxResponseBytes: 1024 * 1024,
-      optional: true,
-      claimLocal: true,
+      optional: pricing === undefined,
+      claimLocal: pricing === undefined,
     });
   });
   const documents = [
@@ -1684,6 +1687,42 @@ async function fetchTogetherModelLibrary(
     dependencyFailures: results.filter(
       (result): result is DependencyFailure => "dependency_id" in result,
     ),
+  };
+}
+
+async function fetchTogetherServerless(source: SourceManifest): Promise<FetchResult> {
+  const { transport: _transport, ...documentsSource } = source;
+  const documents = await fetchSource(documentsSource);
+  const bundle = linkedBundleSchema.parse(json(documents.body));
+  const ids = togetherMissingCacheIds(bundle.index.body);
+  if (ids.size === 0) return documents;
+  const library = await fetchTogetherModelLibrary(
+    requestSource(
+      source,
+      `${source.id}/price-cards`,
+      new URL("https://www.together.ai/models"),
+      "html",
+      source.maxResponseBytes,
+    ),
+    source.url,
+    {
+      catalog: { ...documents, body: bundle.index.body, contentHash: sha256(bundle.index.body) },
+      ids,
+    },
+  );
+  const cards = linkedBundleSchema.parse(json(library.body));
+  const body = JSON.stringify({
+    ...bundle,
+    documents: [...bundle.documents, cards.index, ...cards.documents],
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Together pricing evidence exceeded aggregate byte limit");
+  return {
+    ...generatedFetchResult(body),
+    dependencies: [...documents.dependencies, ...library.dependencies],
+    ...(documents.dependencyFailures === undefined
+      ? {}
+      : { dependencyFailures: documents.dependencyFailures }),
   };
 }
 
@@ -2691,6 +2730,7 @@ export async function fetchSource(
   discoveryCache?: SagemakerDiscoveryCache,
 ): Promise<FetchResult> {
   if (source.transport?.kind === "dashscope-pricing") return fetchDashscopePricing(source);
+  if (source.transport?.kind === "together-serverless") return fetchTogetherServerless(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {
