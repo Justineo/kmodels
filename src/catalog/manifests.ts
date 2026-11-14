@@ -1811,7 +1811,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v21",
+        extractorVersion: "databricks-catalog-v22",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1885,7 +1885,17 @@ export const manifests = [
               "model-types",
               "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
             ],
+            [
+              "function-calling",
+              "https://docs.databricks.com/aws/en/machine-learning/model-serving/function-calling",
+              1,
+            ],
             ["release-feed", "https://docs.databricks.com/aws/en/feed.xml", 2],
+            [
+              "unity-releases",
+              "https://docs.databricks.com/aws/en/release-notes/unity-gateway/",
+              1,
+            ],
           ]).map((document) =>
             ["pricing-open", "pricing-partner", "priority-mode", "google-image-pricing"].includes(
               document.id,
@@ -1901,10 +1911,10 @@ export const manifests = [
         type: "api",
         access: "authenticated",
         format: "json",
-        stability: "documented",
+        stability: "semi_structured",
         extractor: { kind: "databricks-api" },
-        extractorVersion: "databricks-api-v1",
-        fields: ["tasks", "modalities"],
+        extractorVersion: "databricks-api-v2",
+        fields: ["tasks", "modalities", "capabilities"],
         allowedHosts: ["workspace.cloud.databricks.com"],
         maxResponseBytes: mebibytes(8),
         scope: "workspace",

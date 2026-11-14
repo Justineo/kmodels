@@ -5049,7 +5049,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v21");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v22");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5068,6 +5068,8 @@ describe("Databricks adapters", () => {
     });
     expect(companions.get("api-reference")).toMatchObject({ optional: true, claimLocal: true });
     expect(companions.get("model-types")).toMatchObject({ optional: true, claimLocal: true });
+    expect(companions.get("function-calling")).toMatchObject({ optional: true, claimLocal: true });
+    expect(companions.get("unity-releases")).toMatchObject({ optional: true, claimLocal: true });
   });
 
   it("reads delegated Standard image prices from the current AI Studio Markdown", async () => {

@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { load } from "cheerio";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
 import { databricksInferenceFixture } from "./databricks-inference-fixture.ts";
@@ -34,20 +35,28 @@ const at = "2026-10-30T19:45:00.000Z";
 const manifest = manifests.find(({ provider }) => provider.id === "databricks");
 const source = manifest?.sources.find(({ id }) => id === "databricks-models");
 if (!manifest || !source) throw new Error("Missing Databricks source");
-async function collect(change?: (bundle: LinkedBundle) => void, previous?: CatalogPairCandidate) {
+async function collect(
+  change?: (bundle: LinkedBundle) => void,
+  previous?: CatalogPairCandidate,
+  apiBody?: string,
+) {
   const bundle = await databricksInferenceFixture();
   change?.(bundle);
   const body = JSON.stringify(bundle);
-  vi.mocked(fetchSource).mockResolvedValue({
-    body,
-    contentHash: sha256(body),
-    etag: undefined,
-    lastModified: undefined,
-    dependencies: [],
+  const api = manifest?.sources.find((s) => s.id === "databricks-api");
+  vi.mocked(fetchSource).mockImplementation(async (current) => {
+    const payload = current.id === api?.id && apiBody !== undefined ? apiBody : body;
+    return {
+      body: payload,
+      contentHash: sha256(payload),
+      etag: undefined,
+      lastModified: undefined,
+      dependencies: [],
+    };
   });
-  if (!manifest || !source) throw new Error("Missing Databricks source");
+  if (!manifest || !source || !api) throw new Error("Missing Databricks source");
   const result = await collectProvider(
-    { ...manifest, sources: [source] },
+    { ...manifest, sources: apiBody === undefined ? [source] : [source, api] },
     previous?.catalog,
     { sources: {} },
     at,
@@ -107,6 +116,71 @@ function prices(result: ReturnType<ReturnType<typeof lookup>>, meter: string) {
     ),
   );
 }
+it("publishes API and public-guide capabilities with owned launch dates and unchanged DBU rates", async () => {
+  const guide = await readFile(
+    new URL("./fixtures/databricks-function-calling.html", import.meta.url),
+    "utf8",
+  );
+  const releases = await readFile(
+    new URL("./fixtures/databricks-unity-releases.html", import.meta.url),
+    "utf8",
+  );
+  const apiBody = await readFile(
+    new URL("./fixtures/databricks-capabilities.json", import.meta.url),
+    "utf8",
+  );
+  vi.stubEnv("DATABRICKS_TOKEN", "fixture");
+  vi.stubEnv("DATABRICKS_HOST", "https://workspace.cloud.databricks.com");
+  try {
+    const candidate = await collect(
+      (bundle) =>
+        bundle.documents.push(
+          {
+            url: "https://docs.databricks.com/aws/en/machine-learning/model-serving/function-calling",
+            body: guide,
+          },
+          {
+            url: "https://docs.databricks.com/aws/en/release-notes/unity-gateway/",
+            body: releases,
+          },
+        ),
+      undefined,
+      apiBody,
+    );
+    const sonnet = candidate.catalog.models.find(
+      (m) => m.model_id === "databricks-claude-sonnet-5-5",
+    );
+    const sol = candidate.catalog.models.find((m) => m.model_id === "databricks-gpt-6-1-sol");
+    expect(candidate.catalog.models).toHaveLength(69);
+    expect(sonnet).toMatchObject({
+      capabilities: { tool_call: true },
+      modalities: { input: expect.arrayContaining(["image"]) },
+    });
+    expect(sol?.release_date).toBe("2026-09-29");
+    const request = {
+      provider_id: "databricks",
+      model_id: "databricks-gpt-oss-20b",
+      selectors: [standard],
+    };
+    expect(prices(lookup(candidate)(request), "input_text")).toEqual(
+      prices(lookup(baseline)(request), "input_text"),
+    );
+    const projection = await projectCatalogPair(candidate);
+    const details = projection.ui.manifest.assets
+      .filter((a) => a.file_name.includes("/details/"))
+      .flatMap((asset) => {
+        const body = gunzipSync(compressedAsset(projection.ui.pack, asset));
+        return websiteDetailChunkSchema.parse(JSON.parse(body.toString())).details;
+      });
+    const detail = details.find((d) => d.model_ref === sonnet?.uid);
+    expect(detail).toMatchObject({
+      capabilities: { tool_call: true },
+      modalities: { input: expect.arrayContaining(["image"]) },
+    });
+  } finally {
+    vi.unstubAllEnvs();
+  }
+}, 15_000);
 it("publishes exact endpoint IDs and preserves DBU prices, including the input-only partner table", () => {
   expect(baseline.inference?.mapping.rules).toHaveLength(69);
   for (const [model_id, numerator, denominator] of [

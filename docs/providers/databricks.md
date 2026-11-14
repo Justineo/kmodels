@@ -70,7 +70,8 @@ companions:
 - exact [Google AI Studio pricing](https://aistudio.google.com/docs/pricing) sections used by
   the two delegated image endpoints. Current Markdown uses the shared Gemini pricing projection.
   Historical Google HTML bundles remain replayable; and
-- the release feed.
+- the release feed and [Unity Gateway release notes](https://docs.databricks.com/aws/en/release-notes/unity-gateway/); and
+- the owned [function-calling support table](https://docs.databricks.com/aws/en/machine-learning/model-serving/function-calling).
 
 Commercial product cards, system billing tables, account list-price tables, and unrelated AI
 product pages are not fetched. They cannot establish an admitted request rate and previously made
@@ -81,6 +82,24 @@ may observe task and modality facts but cannot add or remove public catalog rows
 workspace data, or establish public prices. Enable it with `DATABRICKS_HOST` and
 `DATABRICKS_TOKEN`. The undocumented `serving-endpoints:foundation-models` route is not a refresh
 dependency.
+
+The current official SDK lists all endpoints in one response without a pagination token. Both
+routes were probed with the configured credentials and returned the same 55 Foundation Model API
+endpoints; neither response contains prices. The public catalog has additional products outside
+this workspace inventory, so its omission cannot withdraw them. Creation/update timestamps belong
+to serving endpoints and never become model release dates. Account configuration and permissions
+are discarded.
+
+For exact public matches whose `endpoint_type` is `FOUNDATION_MODEL_API`, reviewed positive
+`function_calling`, `image_input` and `image_output` flags can supplement missing tool and modality
+facts. The capability extension is first-party observed JSON rather than an SDK-declared schema.
+False flags do not establish a global negative. Malformed fields withhold only their own fact;
+an unknown container preserves independently recognized task metadata. Custom/external endpoints
+and unreviewed reasoning, translation, context and Priority flags create no model capability,
+numeric limit or tariff. The public function-calling table independently supplies positive support
+through uniquely matched model labels and explicit pay-per-token or Unity Gateway notes.
+External-model and provisioned-only rows are outside this claim. Consistent expanded-view copies
+are accepted; conflicting copies withdraw this optional supplement while identity and prices survive.
 
 Catalog and workspace inventory parsers return the explicit source envelope. Accounting contracts
 belong to the public source independently of its model observations, and compilation captures them
@@ -108,7 +127,11 @@ pricing joins remain required.
 - Lifecycle affects this catalog only when the official row publishes a pay-per-token date. A
   provisioned-throughput-only retirement does not retire the callable pay-per-token endpoint.
   Documented redirects keep the old ID deprecated through the redirect interval.
-- Release-feed links may supply exact dates. Missing dates remain unknown.
+- Release-feed links may supply exact dates. Unity Gateway launch entries supply their own dated
+  model-availability announcement and exact supported-model link. Feature-change headlines,
+  unowned links and invalid dates cannot establish a launch. The earliest explicitly observed
+  launch remains authoritative; staged workspace rollout is a separate access fact. Missing dates
+  remain unknown.
 - Databricks delegates partner-model limits to their originating providers, but Kmodels does not
   copy values through fuzzy cross-provider name matching.
 

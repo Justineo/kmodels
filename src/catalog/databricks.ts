@@ -24,6 +24,8 @@ type Selection = ReturnType<Document>;
 const endpointSchema = z.object({
   name: modelIdSchema,
   task: z.string().optional(),
+  endpoint_type: z.string().optional(),
+  capabilities: z.unknown().optional(),
 });
 const endpointListSchema = z.object({ endpoints: z.array(z.unknown()).min(1) });
 
@@ -346,6 +348,46 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
       },
     ];
   }
+}
+
+function applyFunctionCalling(models: ProviderModel[], body: string): void {
+  const $ = load(body);
+  const heading = $("main h2#supported-models");
+  if (heading.length !== 1) throw new Error("Databricks function-calling owner changed");
+  const copies: string[] = [];
+  let staged = new Set<string>();
+  const scope = heading.nextUntil("h2");
+  scope
+    .filter("table")
+    .add(scope.find("table"))
+    .each((_index, table) => {
+      const headers = $(table)
+        .find("thead th")
+        .map((_i, cell) => text($(cell).text()))
+        .get();
+      if (headers.join("|") !== "Model|Made available using model serving feature|Notes") return;
+      const rows = $(table).find("tbody tr");
+      if (rows.length === 0 || rows.length > 256)
+        throw new Error("Databricks function-calling table bound changed");
+      staged = new Set<string>();
+      rows.each((_i, row) => {
+        const cells = $(row).children("td");
+        if (cells.length !== 3) throw new Error("Databricks function-calling row changed");
+        if (
+          text(cells.eq(1).text()) !== "Foundation Model APIs" ||
+          !/pay-per-token|Supported through Unity Gateway/.test(text(cells.eq(2).text()))
+        )
+          return;
+        for (const model of matched(models, text(cells.eq(0).text()), false))
+          staged.add(model.model_id);
+      });
+      copies.push([...staged].sort().join("\n"));
+    });
+  if (copies.length === 0 || staged.size === 0 || copies.some((copy) => copy !== copies[0]))
+    throw new Error("Databricks function-calling copies were missing or conflicting");
+  for (const model of models)
+    if (staged.has(model.model_id) && model.capabilities.tool_call === "unknown")
+      model.capabilities.tool_call = true;
 }
 
 function applyBatch(models: ProviderModel[], body: string, input: Input): void {
@@ -1550,6 +1592,36 @@ function applyReleases(models: ProviderModel[], body: string): void {
   if (observed === 0) throw new Error("Databricks release feed contained no matching models");
 }
 
+function applyUnityReleases(models: ProviderModel[], body: string): void {
+  const $ = load(body);
+  let observed = 0;
+  $("main h2").each((_index, heading) => {
+    if (!/ is now available on Unity Gateway$/i.test(text($(heading).text()))) return;
+    const scope = $(heading).nextUntil("h2");
+    const dateText = text(scope.filter("p").first().text());
+    if (!/^[A-Z][a-z]+ \d{1,2}, \d{4}$/.test(dateText)) return;
+    const released = date(dateText);
+    if (released === undefined) return;
+    scope.find("a[href]").each((_i, link) => {
+      const href = $(link).attr("href") ?? "";
+      const url = new URL(href, "https://docs.databricks.com");
+      if (
+        url.origin !== "https://docs.databricks.com" ||
+        url.pathname !== "/aws/en/machine-learning/foundation-model-apis/supported-models" ||
+        !url.hash
+      )
+        return;
+      for (const model of matched(models, text($(link).text()), false)) {
+        if (model.release_date === undefined || released < model.release_date)
+          model.release_date = released;
+        observed++;
+      }
+    });
+  });
+  if (observed === 0)
+    throw new Error("Databricks Unity release notes contained no owned model launch");
+}
+
 export function parseDatabricksCatalog(input: Input): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const apiReference = document(
@@ -1557,6 +1629,12 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
     "/aws/en/machine-learning/foundation-model-apis/api-reference",
   );
   const models = parseModels({ ...input, body: bundle.index.body });
+  try {
+    const calling = document(bundle, "/aws/en/machine-learning/model-serving/function-calling");
+    if (calling !== undefined) applyFunctionCalling(models, calling);
+  } catch {
+    input.onContractFinding?.(contractExtensionEvidence(["/documents/function-calling"]));
+  }
   const modelTypes = document(
     bundle,
     "/aws/en/machine-learning/model-serving/score-foundation-models",
@@ -1578,6 +1656,12 @@ export function parseDatabricksCatalog(input: Input): SourceParseResult {
   if (limits !== undefined) applyOutputLimits(models, limits);
   const releases = document(bundle, "/aws/en/feed.xml");
   if (releases !== undefined) applyReleases(models, releases);
+  try {
+    const unity = document(bundle, "/aws/en/release-notes/unity-gateway/");
+    if (unity !== undefined) applyUnityReleases(models, unity);
+  } catch {
+    input.onContractFinding?.(contractExtensionEvidence(["/documents/unity-releases"]));
+  }
   const priorityBody = document(
     bundle,
     "/aws/en/machine-learning/foundation-model-apis/priority-mode",
@@ -1722,18 +1806,47 @@ export function parseDatabricksApi(input: Input): SourceParseResult {
     modelId: "name",
   });
   return {
-    models: endpoints.map((endpoint) => {
+    models: endpoints.map((endpoint, index) => {
       const task = apiTask(endpoint.task);
+      const model = baseModel({
+        providerId: input.provider.id,
+        id: endpoint.name,
+        name: endpoint.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      });
+      const native =
+        endpoint.endpoint_type === "FOUNDATION_MODEL_API" && endpoint.capabilities !== undefined
+          ? z.record(z.string(), z.unknown()).safeParse(endpoint.capabilities)
+          : undefined;
+      const report = (field: string) =>
+        input.onContractFinding?.(
+          contractExtensionEvidence([`/endpoints/${index}/capabilities${field}`]),
+        );
+      if (native && !native.success) report("");
+      const positive = (field: string) => {
+        const value = native?.success ? native.data[field] : undefined;
+        if (value !== undefined && typeof value !== "boolean") report(`/${field}`);
+        return value === true;
+      };
+      if (positive("function_calling")) model.capabilities.tool_call = true;
       return {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: endpoint.name,
-          name: endpoint.name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
+        ...model,
         tasks: task.operation === undefined ? [] : [task.operation],
-        modalities: task.modalities,
+        modalities: {
+          input: [
+            ...new Set<Modality>([
+              ...task.modalities.input,
+              ...(positive("image_input") ? ["image" as const] : []),
+            ]),
+          ],
+          output: [
+            ...new Set<Modality>([
+              ...task.modalities.output,
+              ...(positive("image_output") ? ["image" as const] : []),
+            ]),
+          ],
+        },
         scope: "runtime_observation",
       };
     }),
