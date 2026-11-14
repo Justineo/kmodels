@@ -15,8 +15,12 @@ Kmodels covers [HF Inference](https://huggingface.co/docs/inference-providers/en
 the Hugging Face-operated serverless inference provider. A Hub repository qualifies when an exact
 concrete mapping names `hf-inference` with status `live`, a provider model ID, and a task.
 Router listings, partner mappings, documentation recommendations, and ordinary Hub repositories
-cannot establish eligibility. The catalog includes all qualifying tasks. An unfamiliar task keeps
-its raw route while canonical tasks and modalities remain unknown.
+cannot establish eligibility. The catalog includes all qualifying tasks. A task in the Hub task
+vocabulary maps through the shared canonical task mapping, so the masked-language (`fill-mask`),
+extractive (`question-answering`) and tabular (`table-question-answering`) question-answering
+pipelines resolve to `text_generation` alongside the other Hugging Face text-output pipelines. A
+task outside that vocabulary keeps its raw route while canonical tasks and modalities remain
+unknown.
 
 The [Hub API](https://huggingface.co/docs/inference-providers/en/hub-api) lists candidates with
 `inference_provider=hf-inference`. One paginated query expands `inferenceProviderMapping` and

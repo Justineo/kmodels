@@ -22,7 +22,11 @@ it("publishes only live HF Inference mappings from the exhaustive Hub source", a
     "utf8",
   );
   const result = parseSource({ ...input, body });
-  expect(result.models.map(({ model_id }) => model_id)).toEqual(["org/model-1", "org/model-2"]);
+  expect(result.models.map(({ model_id }) => model_id)).toEqual([
+    "org/model-1",
+    "org/model-2",
+    "org/model-3",
+  ]);
   expect(result.models[0]).toMatchObject({
     status: "active",
     pricing_state: "unknown",
@@ -38,6 +42,20 @@ it("publishes only live HF Inference mappings from the exhaustive Hub source", a
   });
   expect(result.models[1]?.updated_date).toBeUndefined();
   expect(result.models[1]?.routes).toHaveLength(1);
+  // An unfamiliar task keeps its raw route without contributing a canonical task.
+  expect(result.models[0]?.tasks).toEqual(["embeddings"]);
+  expect(result.models[2]).toMatchObject({
+    status: "active",
+    updated_date: "2026-09-12",
+    tasks: ["text_generation"],
+    modalities: { input: ["text"], output: ["text"] },
+  });
+  expect(result.models[2]?.routes?.map(({ task }) => task)).toEqual([
+    "fill-mask",
+    "future-task",
+    "question-answering",
+    "table-question-answering",
+  ]);
   const [first, omitted] = result.models;
   if (first === undefined || omitted === undefined) throw new Error("Missing fixture models");
   const reconciled = reconcileCatalog([first], [first, omitted], {

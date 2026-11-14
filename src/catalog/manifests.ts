@@ -3564,7 +3564,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-hub", minModels: 1, maxModels: 50_000 },
-        extractorVersion: "huggingface-hub-hf-inference-v2",
+        extractorVersion: "huggingface-hub-hf-inference-v3",
         fields: ["model_id", "routes", "tasks", "modalities", "status", "updated_date"],
         allowedHosts: ["huggingface.co"],
         maxResponseBytes: mebibytes(16),
