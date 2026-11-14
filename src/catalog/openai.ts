@@ -41,6 +41,7 @@ const openAiItemSchema = z.object({
   object: z.literal("model"),
   created: z.number().int().nonnegative(),
   owned_by: z.string().min(1),
+  shutdown_date: z.unknown().optional(),
 });
 
 const listSchema = z.object({ data: z.array(z.unknown()) });
@@ -469,8 +470,52 @@ const openAiRegionalProcessingRegions = [
   "United States",
   "Europe (EEA + Switzerland)",
   "United Arab Emirates",
+  "Australia",
+  "India",
+  "Japan",
 ] as const;
 const openAiRegionalProcessingRegionSet = new Set<string>(openAiRegionalProcessingRegions);
+
+function openAiProcessingExceptions(
+  input: ParseInput,
+  cell: string,
+  modelIds: readonly string[],
+  regions: readonly string[],
+) {
+  const exceptions = new Map<string, Set<string>>();
+  if (cell === "None") return exceptions;
+  for (const group of cell.split(/<br\s*\/?>/iu).map(normalizedText)) {
+    const colon = group.indexOf(":");
+    const scopedRegions = colon < 0 ? [] : group.slice(0, colon).split(", ");
+    const ids = markdownCodeValues(group.slice(colon + 1));
+    if (
+      scopedRegions.length === 0 ||
+      ids.length === 0 ||
+      ids.some((id) => !modelIds.includes(id)) ||
+      scopedRegions.some((region) => !openAiRegionalProcessingRegionSet.has(region))
+    ) {
+      input.onContractFinding?.(
+        contractExtensionEvidence(["/data-residency/regional-processing-exception"]),
+      );
+      for (const region of scopedRegions.length === 0 ? regions : scopedRegions)
+        exceptions.set(region, new Set());
+      continue;
+    }
+    for (const region of scopedRegions) {
+      const previous = exceptions.get(region);
+      if (
+        previous !== undefined &&
+        (previous.size !== ids.length || ids.some((id) => !previous.has(id)))
+      ) {
+        input.onContractFinding?.(
+          contractExtensionEvidence(["/data-residency/regional-processing-exception/conflict"]),
+        );
+        exceptions.set(region, new Set());
+      } else exceptions.set(region, new Set(ids));
+    }
+  }
+  return exceptions;
+}
 // The residency table can establish routes outside the model-card endpoint matrix.
 const openAiResidencyEndpoints = new Map<string, { name: string; tasks: ModelTask[] }>([
   ...openAiEndpointDefinitions,
@@ -559,19 +604,12 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
         openAiRegionalProcessingRegionSet.has(region),
       );
       const exceptionCell = cell(row, "Regional processing snapshot exceptions");
-      let exceptionIds = markdownCodeValues(exceptionCell).filter((id) => modelIds.includes(id));
-      const validException =
-        exceptionCell === "None" || exceptionCell.startsWith("United Arab Emirates:");
-      if (!validException) {
-        input.onContractFinding?.(
-          contractExtensionEvidence(["/data-residency/regional-processing-exception"]),
-        );
-        processingRegions = processingRegions.filter((region) => region !== "United Arab Emirates");
-        exceptionIds = [];
-      } else if (markdownCodeValues(exceptionCell).length !== exceptionIds.length)
-        input.onContractFinding?.(
-          contractExtensionEvidence(["/data-residency/regional-processing-exception/models"]),
-        );
+      const exceptions = openAiProcessingExceptions(
+        input,
+        exceptionCell,
+        modelIds,
+        processingRegions,
+      );
       for (const modelId of modelIds) {
         const classifiedTasks = classifyModelTasks({
           modelId,
@@ -589,9 +627,7 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
         );
         const availability: NonNullable<ProviderModel["availability"]> = processingRegions.flatMap(
           (region) =>
-            region === "United Arab Emirates" &&
-            exceptionIds.length > 0 &&
-            !exceptionIds.includes(modelId)
+            exceptions.has(region) && !exceptions.get(region)?.has(modelId)
               ? []
               : [{ region, deployment_type: "regional_processing" }],
         );
@@ -803,13 +839,13 @@ function openAiToolCommercialFacts(
   };
   if (
     tool === "Web search" &&
-    /^(?:Web search \(all models\)|Image Web search \(all models\)|Web search preview \((?:non-reasoning models|reasoning models, including `gpt-5`(?:, `o-series`)?)\))$/.test(
+    /^(?:Web search \((?:all models|incl\. images)\)|Image Web search \(all models\)|Web search preview \((?:non-reasoning models|other models|reasoning models(?:, including `gpt-5`(?:, `o-series`)?)?)\))$/.test(
       details,
     )
   ) {
     const preview = details.startsWith("Web search preview");
     const operation = preview
-      ? details.includes("non-reasoning")
+      ? details.includes("non-reasoning") || details.includes("other models")
         ? "preview_non_reasoning"
         : "preview_reasoning"
       : details.startsWith("Image Web search")
@@ -832,7 +868,21 @@ function openAiToolCommercialFacts(
         preview ? "preview" : "current",
         preview ? "Web Search Preview" : "Web Search",
         modelRefs,
-        claim.rate === undefined ? [] : [claim.rate],
+        claim.rate === undefined
+          ? []
+          : [
+              claim.rate,
+              ...(details === "Web search (incl. images)"
+                ? [
+                    {
+                      ...claim.rate,
+                      conditions: { ...claim.rate.conditions, operation: "image" },
+                      derived: true,
+                      derivation: "Published Web search rate includes image search",
+                    },
+                  ]
+                : []),
+            ],
         claim.raw === undefined ? [] : [claim.raw],
       ),
     ];
@@ -979,10 +1029,38 @@ function openAiRegionalProcessingRates(rates: readonly SourcePriceFact[]): Sourc
   });
 }
 
+function openAiUltrafastRegions(body: string, modelId: string): readonly string[] | undefined {
+  const scopes: string[][] = [];
+  for (const sentence of markdownProse(body)
+    .split(/\n\s*\n/)
+    .flatMap((paragraph) => normalizedText(paragraph).split(/(?<=\.)\s+/))) {
+    const specific =
+      /^(?:Ultrafast mode for (GPT-[\w.]+ \w+)|(GPT-[\w.]+ \w+) Ultrafast) supports (US(?: and EU)?) data residency and global processing( only)?\.$/.exec(
+        sentence,
+      );
+    if (specific !== null) {
+      if ((specific[1] ?? specific[2])?.toLowerCase().replaceAll(" ", "-") !== modelId) continue;
+      scopes.push(
+        specific[3] === "US and EU"
+          ? ["United States", "Europe (EEA + Switzerland)"]
+          : ["United States"],
+      );
+    } else if (sentence === "Ultrafast supports US data residency and global processing only.") {
+      scopes.push(["United States"]);
+    }
+  }
+  const first = scopes[0];
+  return first !== undefined &&
+    scopes.every((scope) => JSON.stringify(scope) === JSON.stringify(first))
+    ? first
+    : undefined;
+}
+
 export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
   let containerChangelog = "";
   let fastGuide = "";
   let ultrafastGuide = "";
+  let residencyGuide = "";
   if (input.body.trimStart().startsWith("{")) {
     const bundle = linkedBundleSchema.parse(parseJson(input.body));
     const documentBody = (path: string): string => {
@@ -994,6 +1072,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     containerChangelog = documentBody("changelog");
     fastGuide = documentBody("guides/fast-mode");
     ultrafastGuide = documentBody("guides/ultrafast-mode");
+    residencyGuide = documentBody("guides/data-residency");
     input = { ...input, body: bundle.index.body };
   }
   if (input.catalogModels === undefined)
@@ -1127,7 +1206,9 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         const outsideScope =
           (row[0] === "File search" && details === "Storage") ||
           (row[0] === "Agent Kit" && details === "ChatKit file and image upload storage");
-        const quotes = facts.flatMap(({ price_facts }) => price_facts);
+        const quotes = facts
+          .flatMap(({ price_facts }) => price_facts)
+          .filter(({ derived }) => derived !== true);
         const rawQuotes = facts
           .flatMap(({ raw_price_facts }) => raw_price_facts)
           .filter(({ term_key }) => term_key !== "billing-minimum");
@@ -1302,8 +1383,8 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       .split(/,\s*(?:or\s+)?|\s+or\s+/)
       .map((name) => name.trim().toLowerCase().replaceAll(" ", "-")),
   );
-  const ultrafastRegionsKnown = normalizedText(ultrafastGuide).includes(
-    "Ultrafast supports US data residency and global processing only.",
+  const lunaStandardRegions = normalizedText(markdownProse(residencyGuide)).includes(
+    "In Australia, India, and Japan, `gpt-6-luna` supports regional processing. These regions support Standard pay-as-you-go only.",
   );
   const fastRegionsKnown =
     fastEuGuideRestriction !== null ||
@@ -1327,6 +1408,18 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
             ],
     ),
   );
+  const promotionEnds = new Map<string, string | undefined>();
+  for (const match of markdownProse(input.body).matchAll(
+    /(GPT-[\w.]+ \w+)’s promotional pricing is available until ([^.\n]+)\./g,
+  )) {
+    const id = match[1]?.toLowerCase().replaceAll(" ", "-");
+    if (id === undefined || match[2] === undefined) continue;
+    const date = openAiShutdownDate(match[2]);
+    promotionEnds.set(
+      id,
+      promotionEnds.has(id) && promotionEnds.get(id) !== date ? undefined : date,
+    );
+  }
   const modelIds = new Set([...rates.keys(), ...rawByModel.keys(), ...created.keys()]);
   const output = [...modelIds]
     .map((modelId): ProviderModel => {
@@ -1334,6 +1427,8 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
       const modelRates = rates.get(modelId);
       const billing = billingStarts.get(target.model_id);
+      const ultrafastRegions = openAiUltrafastRegions(ultrafastGuide, modelId);
+      const promotionEnd = promotionEnds.get(modelId);
       const rawPriceFacts = [...(rawByModel.get(modelId) ?? [])];
       const restriction = fastEuModels.has(target.model_id)
         ? fastEuGuideRestriction?.[0]
@@ -1365,8 +1460,9 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       const scopedRates = priceFacts.flatMap((rate): SourcePriceFact[] => {
         const tier = rate.conditions.service_tier;
         if (
-          (tier !== "ultrafast" || ultrafastRegionsKnown) &&
+          (tier !== "ultrafast" || ultrafastRegions !== undefined) &&
           (tier !== "fast" || fastRegionsKnown) &&
+          (!promotionEnds.has(modelId) || promotionEnd !== undefined) &&
           (billing === undefined || billing.effectiveFrom !== undefined)
         )
           return [
@@ -1374,6 +1470,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
               ...rate,
               conditions: {
                 ...rate.conditions,
+                ...(promotionEnd === undefined ? {} : { effective_until: promotionEnd }),
                 ...(billing?.effectiveFrom === undefined
                   ? {}
                   : { effective_from: billing.effectiveFrom }),
@@ -1384,9 +1481,11 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
             },
           ];
         const unresolved =
-          billing !== undefined && billing.effectiveFrom === undefined
-            ? "billing_start_unresolved"
-            : `${tier}_region_scope_unresolved`;
+          promotionEnds.has(modelId) && promotionEnd === undefined
+            ? "promotion_end_unresolved"
+            : billing !== undefined && billing.effectiveFrom === undefined
+              ? "billing_start_unresolved"
+              : `${tier}_region_scope_unresolved`;
         rawPriceFacts.push({
           term_key: "unparsed:" + rate.meter,
           impact: "base_price",
@@ -1408,20 +1507,43 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         hasRegionalUplift && openAiRegionalUpliftEligible(target)
           ? openAiRegionalProcessingRates(scopedRates)
           : scopedRates
-      ).map((rate) =>
-        rate.conditions.service_tier === "ultrafast"
-          ? {
-              ...rate,
-              conditions: {
-                ...rate.conditions,
-                deployment_scope: rate.conditions.deployment_scope ?? "global_processing",
-                ...(rate.conditions.deployment_scope === "regional_processing"
-                  ? { region: "United States" }
-                  : {}),
+      ).flatMap((rate): SourcePriceFact[] => {
+        if (rate.conditions.service_tier === "ultrafast") {
+          if (rate.conditions.deployment_scope !== "regional_processing")
+            return [
+              {
+                ...rate,
+                conditions: { ...rate.conditions, deployment_scope: "global_processing" },
               },
-            }
-          : rate,
-      );
+            ];
+          return (ultrafastRegions ?? [])
+            .filter((region) =>
+              target.availability?.some(
+                (item) => item.region === region && item.deployment_type === "regional_processing",
+              ),
+            )
+            .map((region) => ({ ...rate, conditions: { ...rate.conditions, region } }));
+        }
+        if (
+          modelId === "gpt-6-luna" &&
+          rate.conditions.deployment_scope === "regional_processing" &&
+          target.availability?.some(({ region }) =>
+            ["Australia", "India", "Japan"].includes(region),
+          )
+        ) {
+          return (target.availability ?? [])
+            .filter(
+              ({ region, deployment_type }) =>
+                deployment_type === "regional_processing" &&
+                (["United States", "Europe (EEA + Switzerland)"].includes(region) ||
+                  (lunaStandardRegions &&
+                    rate.conditions.service_tier === "standard" &&
+                    ["Australia", "India", "Japan"].includes(region))),
+            )
+            .map(({ region }) => ({ ...rate, conditions: { ...rate.conditions, region } }));
+        }
+        return [rate];
+      });
       const fullyFree =
         target.tasks.includes("moderation") &&
         rawPriceFacts.length === 0 &&
@@ -1906,15 +2028,23 @@ export function parseOpenAiApi(input: ParseInput): ProviderModel[] {
     items: list.data,
     schema: openAiItemSchema,
     modelId: "id",
-  }).map((item) =>
-    baseModel({
+  }).map((item) => {
+    const model = baseModel({
       providerId: input.provider.id,
       id: item.id,
       name: item.id,
       sourceId: input.source.id,
       observedAt: input.observedAt,
-    }),
-  );
+    });
+    if (item.shutdown_date != null) {
+      const date = z.iso.date().safeParse(item.shutdown_date);
+      if (date.success) {
+        model.retired_at = date.data;
+        model.status = date.data <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
+      } else input.onContractFinding?.(contractExtensionEvidence(["/data/shutdown_date"]));
+    }
+    return model;
+  });
 }
 
 const openAiMonths = new Map(
@@ -2007,7 +2137,9 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
 }
 
 function openAiShutdownDate(value: string): string | undefined {
-  const normalized = normalizedText(value).replace(/[‐‑‒–—−]/g, "-");
+  const normalized = normalizedText(value)
+    .replace(/^\*\*(.*?)\*\*$/, "$1")
+    .replace(/[‐‑‒–—−]/g, "-");
   if (z.iso.date().safeParse(normalized).success) return normalized;
   const match = normalized.match(/^([A-Z][a-z]+) ([1-9]|[12]\d|3[01]), (\d{4})$/);
   if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined)
@@ -2026,9 +2158,11 @@ function openAiShutdownDate(value: string): string | undefined {
 function openAiBoundedShutdownDate(value: string): boolean {
   const normalized = normalizedText(value).replace(/[‐‑‒–—−]/g, "-");
   const prefix = "at earliest ";
+  const estimate = /^\*\*([^*]+)\*\* Earliest estimate$/.exec(normalized)?.[1];
   return (
-    normalized.startsWith(prefix) &&
-    openAiShutdownDate(normalized.slice(prefix.length)) !== undefined
+    (normalized.startsWith(prefix) &&
+      openAiShutdownDate(normalized.slice(prefix.length)) !== undefined) ||
+    (estimate !== undefined && openAiShutdownDate(estimate) !== undefined)
   );
 }
 
@@ -2051,6 +2185,8 @@ export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
         header === "model / system" ||
         header === "model family / snapshot" ||
         header === "deprecated model" ||
+        header === "affected model" ||
+        header === "affected model or feature" ||
         header === "legacy model" ||
         header === "model snapshot" ||
         header === "model",
@@ -2059,6 +2195,7 @@ export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
       (header) =>
         header === "recommended replacement" ||
         header === "recommended replacement base model" ||
+        header === "listed replacement" ||
         header === "substitute model",
     );
     if (dateIndex < 0 || modelIndex < 0) continue;
@@ -2084,7 +2221,9 @@ export function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
               );
         const modelCell = cells[modelIndex] ?? "";
         const ids = unique(
-          markdownCodeValues(modelCell).filter((id) => modelIdSchema.safeParse(id).success),
+          markdownCodeValues(modelCell).filter(
+            (id) => modelIdSchema.safeParse(id).success && !id.startsWith("/"),
+          ),
         );
         const entries = normalizedText(modelCell).includes("|")
           ? ids[0] === undefined

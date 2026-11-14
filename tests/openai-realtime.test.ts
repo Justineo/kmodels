@@ -383,6 +383,21 @@ describe("OpenAI native Realtime accounting", () => {
       );
     },
   );
+  it("accepts the current const event discriminator without weakening event ownership", async () => {
+    const original = await native();
+    const body = original.replace("enum:\n            - response.done", "const: response.done");
+    expect(body).not.toBe(original);
+    expect(accounting(body).inputs).toEqual(accounting(original).inputs);
+    for (const changed of [
+      body.replace("const: response.done", "const: response.created"),
+      body.replace("const: response.done", "const: response.done\n          const: response.done"),
+      body.replace(
+        "const: response.done",
+        "const: response.done\n          enum:\n            - response.created",
+      ),
+    ])
+      expect(() => accounting(changed)).toThrow("no recognized pricing inputs");
+  });
   it.each([
     "event-type",
     "event-value-type",

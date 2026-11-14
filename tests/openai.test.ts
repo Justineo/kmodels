@@ -804,6 +804,38 @@ describe("OpenAI adapters", () => {
     });
     expect(findings).toEqual([]);
   });
+  it("keeps independently scoped regional exception groups separate", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-data-residency");
+    if (!source) throw new Error("Missing residency source");
+    const body = await fixture("openai/regional-modes.md");
+    const parse = (body: string) =>
+      parseSource({ provider: provider(value), source, body, observedAt }).models;
+    const regions = (models: ProviderModel[], id: string) =>
+      models.find(({ model_id }) => model_id === id)?.availability?.map(({ region }) => region);
+    const models = parse(body);
+    expect(regions(models, "gpt-6.1-sol")).toEqual(["Europe (EEA + Switzerland)", "United States"]);
+    expect(regions(models, "gpt-6-luna")).toEqual([
+      "Australia",
+      "Europe (EEA + Switzerland)",
+      "India",
+      "Japan",
+      "United States",
+    ]);
+    expect(regions(models, "gpt-5.6-luna")).toEqual([
+      "Europe (EEA + Switzerland)",
+      "United Arab Emirates",
+      "United States",
+    ]);
+    const changed = parse(
+      body.replace(
+        "Australia, India, Japan: `gpt-6-luna`",
+        "Australia, India, Japan: `unknown-model`",
+      ),
+    );
+    expect(regions(changed, "gpt-6-luna")).toEqual(["Europe (EEA + Switzerland)", "United States"]);
+    expect(regions(changed, "gpt-5.6-luna")).toEqual(regions(models, "gpt-5.6-luna"));
+  });
   it("takes the earliest exact model release from changelog feature entries", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-changelog");
@@ -1780,6 +1812,179 @@ describe("OpenAI adapters", () => {
     ).toBe(true);
     expect(noGuides.flatMap(({ raw_price_facts }) => raw_price_facts)).toHaveLength(6);
   });
+  it("reads current inclusive and preview Web Search labels without losing call tariffs", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (!source) throw new Error("Missing pricing source");
+    const model = openAiModel("gpt-test", ["text_generation"]);
+    const result = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: [
+        {
+          ...model,
+          capabilities: { ...model.capabilities, reasoning: true },
+          api_endpoints: [{ name: "Responses", path: "v1/responses" }],
+        },
+      ],
+      body: [
+        "Tools",
+        "| Tool | Details | Pricing |",
+        "| --- | --- | --- |",
+        "| Web search | Web search (incl. images) | $10.00 / 1k calls + Search content tokens billed at model rates. |",
+        "| Web search | Web search preview (reasoning models) | $10.00 / 1k calls + Search content tokens billed at model rates. |",
+        "| Web search | Web search preview (other models) | $25.00 / 1k calls + Search content tokens are free. |",
+      ].join("\n"),
+    });
+    expect(
+      result.commercial_facts
+        ?.flatMap(({ price_facts }) => price_facts)
+        .map(({ price, unit, conditions }) => [price, unit, conditions.operation]),
+    ).toEqual([
+      ["10.00", "thousand_events", "search"],
+      ["10.00", "thousand_events", "image"],
+      ["10.00", "thousand_events", "preview_reasoning"],
+      ["25.00", "thousand_events", "preview_non_reasoning"],
+    ]);
+  });
+  it("qualifies current per-model Ultrafast, regional modes and promotional expiry", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (!source) throw new Error("Missing pricing source");
+    const regional = await fixture("openai/regional-modes.md");
+    const ultrafast = await fixture("openai/ultrafast-regions.md");
+    const ids = ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna", "gpt-5.6-sol"];
+    const catalogModels = ids.map((id) => ({
+      ...openAiModel(id, ["text_generation"]),
+      release_date: "2026-09-04",
+      availability: (id === "gpt-6-luna"
+        ? ["United States", "Europe (EEA + Switzerland)", "Australia", "India", "Japan"]
+        : ["United States", "Europe (EEA + Switzerland)"]
+      ).map((region) => ({ region, deployment_type: "regional_processing" })),
+    }));
+    const body = [
+      "Flagship models",
+      "Standard",
+      "| Model | Input | Output |",
+      "| --- | --- | --- |",
+      ...ids.map((id) => `| ${id} | $1 | $5 |`),
+      "Fast",
+      "| Model | Input | Output |",
+      "| --- | --- | --- |",
+      "| gpt-6-luna | $2 | $10 |",
+      "Ultrafast",
+      "| Model | Input | Output |",
+      "| --- | --- | --- |",
+      "| gpt-6-astra | $60 | $300 |",
+      "| gpt-6.1-sol | $12 | $60 |",
+      "Regional processing (data residency) endpoints are charged a 10% uplift.",
+      "GPT-5.6 Sol’s promotional pricing is available until November 30, 2026.",
+    ]
+      .join("\n")
+      .replaceAll(
+        "| Model | Input | Output |",
+        "| Model | Short context input | Short context output |",
+      );
+    const parse = (ultrafastBody: string, residencyBody = regional, pricingBody = body) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels,
+        body: JSON.stringify({
+          index: { url: source.url, body: pricingBody },
+          documents: [
+            {
+              url: "https://developers.openai.com/api/docs/guides/ultrafast-mode.md",
+              body: ultrafastBody,
+            },
+            {
+              url: "https://developers.openai.com/api/docs/guides/data-residency.md",
+              body: residencyBody,
+            },
+            {
+              url: "https://developers.openai.com/api/docs/guides/fast-mode.md",
+              body: "Fast mode is not available with EU data residency for GPT-6 Astra or GPT-6 Sol.",
+            },
+          ],
+        }),
+      }).models;
+    const models = parse(ultrafast);
+    const regionalRates = (id: string, tier: string) =>
+      models
+        .find(({ model_id }) => model_id === id)
+        ?.price_facts.filter(
+          ({ conditions }) =>
+            conditions.service_tier === tier &&
+            conditions.deployment_scope === "regional_processing",
+        );
+    expect(
+      regionalRates("gpt-6.1-sol", "ultrafast")?.map(({ price, conditions }) => [
+        price,
+        conditions.region,
+      ]),
+    ).toEqual([
+      ["13.2", "United States"],
+      ["13.2", "Europe (EEA + Switzerland)"],
+      ["66", "United States"],
+      ["66", "Europe (EEA + Switzerland)"],
+    ]);
+    expect(
+      regionalRates("gpt-6-astra", "ultrafast")?.map(({ conditions }) => conditions.region),
+    ).toEqual(["United States", "United States"]);
+    expect(
+      regionalRates("gpt-6-luna", "standard")?.map(({ conditions }) => conditions.region),
+    ).toEqual([
+      "United States",
+      "Europe (EEA + Switzerland)",
+      "Australia",
+      "India",
+      "Japan",
+      "United States",
+      "Europe (EEA + Switzerland)",
+      "Australia",
+      "India",
+      "Japan",
+    ]);
+    expect(regionalRates("gpt-6-luna", "fast")?.map(({ conditions }) => conditions.region)).toEqual(
+      [
+        "United States",
+        "Europe (EEA + Switzerland)",
+        "United States",
+        "Europe (EEA + Switzerland)",
+      ],
+    );
+    expect(
+      models
+        .find(({ model_id }) => model_id === "gpt-5.6-sol")
+        ?.price_facts.every(({ conditions }) => conditions.effective_until === "2026-11-30"),
+    ).toBe(true);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "gpt-6-luna")
+        ?.price_facts.some(({ conditions }) => conditions.effective_until !== undefined),
+    ).toBe(false);
+    const missingSol = parse(
+      "GPT-6 Astra Ultrafast supports US data residency and global processing only.",
+    );
+    expect(
+      missingSol.find(({ model_id }) => model_id === "gpt-6.1-sol")?.raw_price_facts,
+    ).toHaveLength(2);
+    const fenced = parse("```\n" + ultrafast + "\n```");
+    expect(
+      fenced
+        .flatMap(({ price_facts }) => price_facts)
+        .some(({ conditions }) => conditions.service_tier === "ultrafast"),
+    ).toBe(false);
+    const invalidExpiry = parse(ultrafast, regional, body.replace("November 30", "November 31"));
+    expect(
+      invalidExpiry.find(({ model_id }) => model_id === "gpt-5.6-sol")?.raw_price_facts,
+    ).toHaveLength(2);
+    expect(invalidExpiry.find(({ model_id }) => model_id === "gpt-6-luna")?.price_facts).toEqual(
+      models.find(({ model_id }) => model_id === "gpt-6-luna")?.price_facts,
+    );
+  });
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
@@ -1960,6 +2165,72 @@ describe("OpenAI adapters", () => {
   it("parses scoped API inventory without treating it as the global catalog", async () => {
     const models = await parsed("openai", "openai/api.json", "openai-api");
     expect(models.map((model) => model.model_id)).toEqual(["gpt-5.4", "ft:gpt-5.4:example"]);
+  });
+  it("reads optional API shutdown dates independently of inventory and creation time", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-api");
+    if (!source) throw new Error("Missing API source");
+    const data = [
+      { id: "gpt-5.4", shutdown_date: "2027-01-14" },
+      { id: "gpt-realtime", shutdown_date: "2026-07-20" },
+      { id: "gpt-6-luna", shutdown_date: null },
+      { id: "gpt-invalid", shutdown_date: "2026-02-30" },
+    ].map((item) => ({ object: "model", created: 1772668800, owned_by: "openai", ...item }));
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify({ data }),
+    }).models;
+    expect(
+      models.map(({ model_id, status, retired_at, release_date }) => ({
+        model_id,
+        status,
+        retired_at,
+        release_date,
+      })),
+    ).toEqual([
+      {
+        model_id: "gpt-5.4",
+        status: "deprecated",
+        retired_at: "2027-01-14",
+        release_date: undefined,
+      },
+      {
+        model_id: "gpt-realtime",
+        status: "retired",
+        retired_at: "2026-07-20",
+        release_date: undefined,
+      },
+      { model_id: "gpt-6-luna", status: "unknown", retired_at: undefined, release_date: undefined },
+      {
+        model_id: "gpt-invalid",
+        status: "unknown",
+        retired_at: undefined,
+        release_date: undefined,
+      },
+    ]);
+  });
+  it("reads current deprecation headers without admitting endpoint retirements", async () => {
+    const models = await parsed("openai", "openai/deprecations-current.md", "openai-deprecations");
+    expect(
+      models.map(({ model_id, retired_at, replacement_model_ids }) => ({
+        model_id,
+        retired_at,
+        replacement_model_ids,
+      })),
+    ).toEqual([
+      {
+        model_id: "gpt-4o-2024-05-13",
+        retired_at: "2026-09-28",
+        replacement_model_ids: ["gpt-6-luna"],
+      },
+      {
+        model_id: "gpt-realtime",
+        retired_at: "2027-01-20",
+        replacement_model_ids: ["gpt-realtime-2"],
+      },
+    ]);
   });
   it("keeps an explicit routed alias inside its matching Markdown card", async () => {
     const body = (await fixture("openai/catalog.json")).replace(

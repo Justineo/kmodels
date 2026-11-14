@@ -43,6 +43,10 @@ missing or conflicting model facts. The [collection contract](collection.md), th
   probe, and a successful collector fetch are separate observations. In particular, distinguish
   an authentication error, a transport-specific WAF response, and a valid response with no
   matching public rows. Keep credentials out of URLs, logs, fixtures, and research artifacts.
+  Local probes must use the same environment loading as collection:
+  `vp node --env-file-if-exists=.env <probe.ts>`. Check the registered credential names after
+  loading that environment before declaring credentials unavailable. An unset variable in an
+  unrelated shell process does not establish that the repository has no configured credential.
 - Prefer documented JSON, OpenAPI, or Markdown. When the public site is the only source,
   inspect its embedded structured data or labeled HTML before depending on visual layout.
   Bound redirects, discovered hosts and paths, pagination, document counts, bytes, and

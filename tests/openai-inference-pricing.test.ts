@@ -32,14 +32,19 @@ const fixture = (file: string) =>
   readFile(new URL(`./fixtures/openai/${file}`, import.meta.url), "utf8");
 type Bundle = ReturnType<typeof linkedBundleSchema.parse>;
 async function collect(
-  change?: (input: { catalog: Bundle; pricing: string }) => void,
+  change?: (input: {
+    catalog: Bundle;
+    pricing: string;
+    residency?: string;
+    changelog?: string;
+  }) => void,
   previous?: CatalogPairCandidate,
 ) {
   const manifest: ProviderManifest | undefined = manifests.find(
     ({ provider }) => provider.id === "openai",
   );
   if (!manifest) throw new Error("Missing OpenAI manifest");
-  const input = {
+  const input: { catalog: Bundle; pricing: string; residency?: string; changelog?: string } = {
     catalog: linkedBundleSchema.parse(JSON.parse(await fixture("catalog.json"))),
     pricing: (await fixture("pricing.md")) + "\n" + (await fixture("fixed-search.md")),
   };
@@ -47,8 +52,20 @@ async function collect(
   const catalogSource = manifest.sources.find(({ id }) => id === "openai-models");
   const pricingSource = manifest.sources.find(({ id }) => id === "openai-pricing");
   if (!catalogSource || !pricingSource) throw new Error("Missing OpenAI sources");
+  const additional = manifest.sources.filter(
+    ({ id }) =>
+      (id === "openai-data-residency" && input.residency !== undefined) ||
+      (id === "openai-changelog" && input.changelog !== undefined),
+  );
   vi.mocked(fetchSource).mockImplementation(async (source) => {
-    const body = source.id === "openai-models" ? JSON.stringify(input.catalog) : input.pricing;
+    const body =
+      source.id === "openai-models"
+        ? JSON.stringify(input.catalog)
+        : source.id === "openai-data-residency"
+          ? (input.residency ?? "")
+          : source.id === "openai-changelog"
+            ? (input.changelog ?? "")
+            : input.pricing;
     return {
       body,
       contentHash: sha256(body),
@@ -58,7 +75,7 @@ async function collect(
     };
   });
   const result = await collectProvider(
-    { ...manifest, sources: [catalogSource, pricingSource] },
+    { ...manifest, sources: [catalogSource, ...additional, pricingSource] },
     previous?.catalog,
     { sources: {} },
     at,
@@ -120,6 +137,136 @@ const selectors: Selector[] = [
     unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
   },
 ];
+
+it("publishes Sol Ultrafast EU prices while excluding Astra EU and Luna non-Standard regional modes", async () => {
+  const regional = await fixture("regional-modes.md");
+  const ultrafast = await fixture("ultrafast-regions.md");
+  const candidate = await collect((input) => {
+    input.residency = regional;
+    input.changelog = [
+      "## March, 2026",
+      "### Mar 5",
+      ...["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"].map((id) => `Feature · Model: ${id}`),
+    ].join("\n");
+    const template = input.catalog.documents[0];
+    if (!template) throw new Error("Missing model card fixture");
+    for (const id of ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"]) {
+      input.catalog.index.body += `\n- [${id}](/api/docs/models/${id}.md): Reasoning model`;
+      input.catalog.documents.push({
+        url: template.url.replaceAll("gpt-5.4", id),
+        body: template.body.replaceAll("gpt-5.4", id),
+      });
+    }
+    const body = [
+      "Flagship models",
+      "Standard",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6-astra | $10 | $50 |",
+      "| gpt-6.1-sol | $2 | $10 |",
+      "| gpt-6-luna | $0.10 | $0.50 |",
+      "| gpt-5.6-sol | $4 | $20 |",
+      "Fast",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6-luna | $0.20 | $1 |",
+      "Ultrafast",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6-astra | $60 | $300 |",
+      "| gpt-6.1-sol | $12 | $60 |",
+      "Regional processing (data residency) endpoints are charged a 10% uplift.",
+      "GPT-5.6 Sol’s promotional pricing is available until November 30, 2026.",
+    ].join("\n");
+    input.pricing = JSON.stringify({
+      index: {
+        url: "https://developers.openai.com/api/docs/pricing.md",
+        body: body + "\n" + input.pricing,
+      },
+      documents: [
+        { url: "https://developers.openai.com/api/docs/guides/ultrafast-mode.md", body: ultrafast },
+        { url: "https://developers.openai.com/api/docs/guides/data-residency.md", body: regional },
+        {
+          url: "https://developers.openai.com/api/docs/guides/fast-mode.md",
+          body: "Fast mode is not available with EU data residency for GPT-6 Astra or GPT-6 Sol.",
+        },
+      ],
+    });
+  });
+  const query = lookup(candidate);
+  const context = selectors[1];
+  if (!context) throw new Error("Missing context selector");
+  const categorical = (
+    dimension: "served_service_tier" | "deployment_scope" | "region",
+    value: string,
+  ): Selector => ({
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: dimension },
+    value: { namespace: "provider", provider_id: "openai", value },
+  });
+  const request = (model: string, tier: string, region: string) =>
+    query({
+      provider_id: "openai",
+      model_id: model,
+      selectors: [
+        mode("sync"),
+        context,
+        categorical("served_service_tier", tier),
+        categorical("deployment_scope", "regional_processing"),
+        categorical("region", region),
+      ],
+    });
+  const sol = request("gpt-6.1-sol", "ultrafast", "Europe (EEA + Switzerland)");
+  expect(sol.status).toBe("matched");
+  expect(
+    sol.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "input_text"
+          ? term.variants.map(({ price }) => price.value)
+          : [],
+      ),
+    ),
+  ).toEqual([{ numerator: "33", denominator: "2500000" }]);
+  expect(request("gpt-6-astra", "ultrafast", "Europe (EEA + Switzerland)").reason).toBe(
+    "no_applicable_price",
+  );
+  expect(request("gpt-6-luna", "standard", "Australia").status).toBe("matched");
+  expect(request("gpt-6-luna", "fast", "Australia").reason).toBe("no_applicable_price");
+  const promotional = query({
+    provider_id: "openai",
+    model_id: "gpt-5.6-sol",
+    selectors: [...selectors, mode("sync")],
+    evaluated_at: "2026-11-29T00:00:00Z",
+  });
+  expect(promotional.missing_conditions).toEqual([]);
+  expect(promotional.status).toBe("candidates");
+  expect(promotional.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
+    expect.objectContaining({ code: "unresolved_validity" }),
+  );
+  expect(
+    query({
+      provider_id: "openai",
+      model_id: "gpt-5.6-sol",
+      selectors: [...selectors, mode("sync")],
+      evaluated_at: "2026-12-01T00:00:00Z",
+    }).status,
+  ).toBe("candidates");
+  const projected = await projectCatalogPair(candidate);
+  const detail = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("details"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "openai/gpt-6.1-sol");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "gpt-6.1-sol");
+  const selected = sol.candidates[0];
+  if (!price || !selected) throw new Error("Missing Sol website tariff");
+  expect(queryWebsiteInferencePrice(price, selected.selectors, at, selected.offer.id).status).toBe(
+    "matched",
+  );
+});
 
 it("joins exact request IDs to canonical synchronous and Batch prices without API wiring", async () => {
   const candidate = await collect();

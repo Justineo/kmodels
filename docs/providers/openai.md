@@ -53,8 +53,8 @@ that call and are excluded.
 | [Fast mode](https://developers.openai.com/api/docs/guides/fast-mode)                                                      | Fast request and returned served-tier semantics                                  |
 | [Flex processing](https://developers.openai.com/api/docs/guides/flex-processing)                                          | Flex request-tier and processing semantics                                       |
 | [Deprecations](https://developers.openai.com/api/docs/deprecations)                                                       | Non-exhaustive lifecycle dates and replacements                                  |
-| [Your data](https://developers.openai.com/api/docs/guides/your-data)                                                      | Exact endpoint and regional-processing eligibility                               |
-| Authenticated `GET /v1/models`                                                                                            | Optional account-scoped positive inventory evidence                              |
+| [Data residency](https://developers.openai.com/api/docs/guides/data-residency)                                            | Exact endpoint, regional-processing and regional-mode eligibility                |
+| Authenticated `GET /v1/models`                                                                                            | Optional account-scoped inventory and exact documented shutdown dates            |
 
 No community catalog supplies production facts. `models.dev` and LiteLLM are investigation aids
 only.
@@ -157,6 +157,12 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   [Live](https://developers.openai.com/api/docs/models/gpt-live-1) card labels observed on 2026-10-04.
 - The optional API inventory can add only positive account-visible evidence. Absence and private
   IDs never remove or widen the global catalog, and raw authenticated bodies are not retained.
+  Its documented optional `shutdown_date` supplies a calendar date for exact admitted public IDs;
+  null and omission do not clear independently published lifecycle evidence. `created` is not a
+  public release date. Invalid shutdown cells are withheld locally without losing inventory.
+  Current deprecation tables also accept `Affected model`, `Affected model or feature`, and
+  `Listed replacement`; bold date cells retain their dates. Endpoint and feature shutdown rows
+  cannot create model identities.
 
 Natural catalog growth is bounded by a generous transport safety ceiling rather than a narrow
 expected-count allowlist. Provider-level regression validation, not a hard-coded current row count,
@@ -285,7 +291,7 @@ compositions, rejects duplicate schemas/properties/types, nested lookalikes, ref
 conflicting union types, and withholds only the affected mappings. Counters require integer
 types; selectors and video duration retain their source-declared String representations; generated
 image counts require an Array. Missing or partial mappings are reported as partial contracts.
-The current official OpenAPI establishes all 25 reviewed fields; the
+The current official OpenAPI establishes all 26 reviewed fields; the
 [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) independently
 establishes the total-minus-cache-read-minus-cache-write quantity equation. Cache writes form their
 own input partition rather than an additional charge on ordinary input.
@@ -350,16 +356,33 @@ Video result sizes are likewise normalized to the pricing table's size classes: 
 `1920x1080` select `1080p`. An unreviewed size remains unmapped instead of being guessed from its
 dimensions.
 
-Optional first-party Fast and Ultrafast guides are claim-local pricing companions. The Fast guide's
-explicit EU exclusion list binds exact named models, including GPT-6 Astra, GPT-6.1 Sol, GPT-6 Sol,
-and GPT-6 Luna. Their Fast variants require `eu_data_residency=false`, with `not_supported` for
+Optional first-party Fast, Ultrafast and data-residency guides are claim-local pricing companions.
+The Fast guide's explicit EU exclusion list binds exact named models, currently GPT-6 Astra and
+GPT-6 Sol. Their Fast variants require `eu_data_residency=false`, with `not_supported` for
 the excluded combination. The older pricing-page Astra declaration is still recognized.
-Ultrafast admits global processing and US regional processing only when its guide establishes that
-scope; the regional variant carries the published uplift and `region=United States`. If the guide
-is absent or that claim drifts, Ultrafast amounts remain bounded raw evidence while other tiers
+Ultrafast binds each named model's own guide statement: GPT-6.1 Sol supports US/EU regional
+processing and global processing; GPT-6 Astra supports US regional and global processing. A
+generic historical US-only statement remains recognized only as a complete standalone sentence.
+Regional variants require independent model-matrix eligibility and carry the published uplift.
+If the guide is absent, conflicting or that model's claim drifts, Ultrafast amounts remain bounded raw evidence while other tiers
 survive. The renamed Fast table likewise retains amounts as raw when neither its guide nor the
 pricing page establishes the reviewed regional restriction. Preview access alone never supplies
 another model's Ultrafast price.
+
+Regional exception groups bind their own region lists and exact IDs independently. Australia,
+India and Japan support GPT-6 Luna regional processing only at Standard pay-as-you-go. The owning
+guide qualifies those Standard prices; Fast/Flex/Batch cannot inherit those regions. An unreadable
+exception group withholds its affected tuples while known sibling regions survive. Storage
+residency alone never establishes regional execution.
+
+The pricing page's exact GPT-5.6 Sol promotional end date qualifies that model's published model
+tariffs with `effective_until=2026-11-30`. It supplies no replacement amount or intraday cutoff;
+the shared evaluator therefore reports unresolved date-precision validity instead of inventing
+an exact applicable interval.
+An unreadable or conflicting end date keeps affected quotes raw without changing sibling models.
+The current Web Search table's `incl. images`, `reasoning models` and `other models` labels retain
+the same independently selected search/image and reasoning/non-reasoning preview charges. The
+image-search variant derives from the explicit inclusive quote rather than a second source cell.
 
 ## Direct provider services
 

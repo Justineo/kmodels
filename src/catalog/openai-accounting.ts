@@ -201,9 +201,17 @@ function realtimeEvent(body: string): boolean {
     ?.split(/\r?\n/)
     .slice(1)
     .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
-  return (
+  const constants = type?.split(/\r?\n/).filter((line) => /^ {10}const:/.test(line)) ?? [];
+  const validEnum =
     entries?.length === 1 &&
-    /^ {12}- (?:response\.done|"response\.done"|'response\.done')$/.test(entries[0] ?? "") &&
+    /^ {12}- (?:response\.done|"response\.done"|'response\.done')$/.test(entries[0] ?? "");
+  const validConst =
+    constants.length === 1 &&
+    /^ {10}const: (?:response\.done|"response\.done"|'response\.done')$/.test(constants[0] ?? "");
+  return (
+    (validEnum || validConst) &&
+    (values === undefined || validEnum === true) &&
+    (constants.length === 0 || validConst) &&
     response !== undefined &&
     /^ {10}\$ref: ["']#\/components\/schemas\/RealtimeResponse["']$/m.test(response)
   );
