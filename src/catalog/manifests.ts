@@ -2330,7 +2330,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "azure-claude-pricing", minModels: 1, maxModels: 50 },
-        extractorVersion: "azure-claude-pricing-v8",
+        extractorVersion: "azure-claude-pricing-v9",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id", "observed_current"),
         fields: ["pricing"],
         allowedHosts: ["platform.claude.com"],
@@ -2339,6 +2339,20 @@ export const manifests = [
         exhaustive: false,
         role: "overlay",
         optional: true,
+        linkedDocuments: {
+          path: /$^/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: optionalFixedDocuments([
+            [
+              "fast-mode",
+              "https://platform.claude.com/docs/en/build-with-claude/fast-mode.md",
+              1,
+              "markdown",
+            ],
+          ]).map((document) => ({ ...document, claimLocal: true })),
+        },
       },
       {
         id: "azure-accounting",

@@ -15,6 +15,12 @@ import { modelIdSchema } from "./identity.ts";
 import { stableCompactJson } from "./io.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
 import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
+import {
+  divideRationals,
+  multiplyRationals,
+  rationalFromDecimal,
+  rationalToFiniteDecimal,
+} from "./pricing-rational.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 import {
   sourcePriceFactKey,
@@ -1347,7 +1353,7 @@ function azureClaudeIdentity(label: string):
 
 function azureClaudeAmount(value: string): string | undefined {
   return plain(value.replace(/<sup>\d+<\/sup>$/i, "")).match(
-    /^\$((?:0|[1-9]\d*)(?:[.]\d+)?) \/ MTok$/,
+    /^\$((?:0|[1-9]\d*)(?:[.]\d+)?)(?: USD)? \/ MTok$/,
   )?.[1];
 }
 
@@ -1401,11 +1407,15 @@ function azureClaudeFoundryContract(body: string, parsedTables: readonly Markdow
   const conceptColumn = foundry === undefined ? -1 : headerIndex(foundry, /^Concept$/i);
   const detailsColumn = foundry === undefined ? -1 : headerIndex(foundry, /^Details$/i);
   const conversion = foundry?.rows.find((row) => plain(row[conceptColumn] ?? "") === "Conversion");
-  const details = conversion === undefined ? "" : plain(conversion[detailsColumn] ?? "");
+  const rawDetails = conversion?.[detailsColumn] ?? "";
+  const details = plain(rawDetails);
   const section = body.split(/^## Claude in Microsoft Foundry pricing\s*$/m)[1]?.split(/^## /m)[0];
   return (
     /standard per-model, per-feature rates/i.test(details) &&
-    /Claude API pricing/i.test(details) &&
+    (/\[[^\]]+\]\((?:https:\/\/platform\.claude\.com\/docs\/en\/about-claude\/pricing(?:\.md)?)?#model-pricing\)/i.test(
+      rawDetails,
+    ) ||
+      (!/\]\(/.test(rawDetails) && /same as Claude API pricing/i.test(details))) &&
     section !== undefined &&
     /US Data Zone Standard/i.test(section) &&
     /1\.1x pricing multiplier/i.test(section)
@@ -1427,8 +1437,12 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
   const catalogModels = input.catalogModels;
   if (catalogModels === undefined || catalogModels.length === 0)
     throw new Error("Azure Claude pricing requires the public catalog");
-  const parsedTables = tables(input.body);
-  if (!azureClaudeFoundryContract(input.body, parsedTables))
+  const bundle = input.body.trimStart().startsWith("{")
+    ? linkedBundleSchema.parse(JSON.parse(input.body))
+    : undefined;
+  const body = bundle?.index.body ?? input.body;
+  const parsedTables = tables(body);
+  if (!azureClaudeFoundryContract(body, parsedTables))
     throw new Error("Azure Claude delegated-pricing contract drifted");
   const priceColumns = [
     [/^Base input tokens$/i, "input_text", undefined],
@@ -1492,7 +1506,9 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
     if (
       azureClaudeSupportsDataZone(identity.id) &&
       candidates.every((candidate) =>
-        candidate.availability?.some(({ deployment_type }) => /data ?zone/i.test(deployment_type)),
+        candidate.availability?.some(({ deployment_type }) =>
+          /^data ?zone ?standard$/i.test(deployment_type),
+        ),
       )
     )
       rates.push(...azureClaudeDataZoneRates(rates));
@@ -1535,6 +1551,22 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
     });
   }
 
+  const fastDocuments =
+    bundle?.documents.filter(
+      (d) =>
+        new URL(d.url).origin === "https://platform.claude.com" &&
+        new URL(d.url).pathname === "/docs/en/build-with-claude/fast-mode.md",
+    ) ?? [];
+  if (fastDocuments.length > 1)
+    input.onContractFinding?.(contractExtensionEvidence(["/documents/fast-mode"]));
+  const fastDocument = fastDocuments.length === 1 ? fastDocuments[0] : undefined;
+  if (fastDocument !== undefined) {
+    try {
+      applyAzureClaudeFast(input, body, fastDocument.body, parsedTables, models, catalogModels);
+    } catch {
+      input.onContractFinding?.(contractExtensionEvidence(["/documents/fast-mode"]));
+    }
+  }
   const values = [...models.values()].map((model) => ({
     ...model,
     price_facts: [
@@ -1556,6 +1588,144 @@ export function parseAzureClaudePricing(input: Input): SourceParseResult {
     models: values.sort((left, right) => left.uid.localeCompare(right.uid)),
     inference_prices: [],
   };
+}
+
+function applyAzureClaudeFast(
+  input: Input,
+  pricingBody: string,
+  fastBody: string,
+  pricingTables: readonly MarkdownTable[],
+  models: Map<string, ProviderModel>,
+  catalog: NonNullable<Input["catalogModels"]>,
+): void {
+  const mappings = tables(fastBody).filter(
+    (t) => t.headers.join("|") === "Model|Fast mode model ID",
+  );
+  const prices = pricingTables.filter(
+    (t) =>
+      (t.section === "Fast mode pricing" || t.subsection === "Fast mode pricing") &&
+      t.headers.join("|") === "Model|Input|Output",
+  );
+  if (
+    mappings.length !== 1 ||
+    prices.length !== 1 ||
+    !/On \[Claude in Microsoft Foundry\]\(https:\/\/platform\.claude\.com\/docs\/en\/build-with-claude\/claude-in-microsoft-foundry\), fast mode has its own model IDs, and the deployment sets the speed\./.test(
+      fastBody,
+    ) ||
+    !/leave out `speed`/.test(fastBody)
+  )
+    throw new Error("Unknown Foundry Fast identity contract");
+  const cachePolicy =
+    /\[Prompt caching multipliers\]\([^\n]+\) apply on top of fast mode pricing\./.test(
+      pricingBody,
+    );
+  const seen = new Set<string>();
+  const staged: ProviderModel[] = [];
+  for (const row of mappings[0]?.rows ?? []) {
+    const identity = azureClaudeIdentity(row[0] ?? "");
+    const id = modelIdSchema.safeParse(plain(row[1] ?? ""));
+    if (!identity || !id.success || seen.has(id.data))
+      throw new Error("Ambiguous Foundry Fast mapping");
+    seen.add(id.data);
+    const candidates = catalog.filter(
+      (m) =>
+        m.model_id === id.data &&
+        m.status !== "retired" &&
+        m.service_families?.includes(serviceFamilies.partner),
+    );
+    if (candidates.length === 0) continue;
+    const rows = prices[0]?.rows.filter((r) => plain(r[0] ?? "") === plain(row[0] ?? "")) ?? [];
+    if (rows.length !== 1) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "claude_fast_price_not_unique",
+        sample: id.data,
+      });
+      continue;
+    }
+    const rates: SourcePriceFact[] = [];
+    for (const [index, meter] of [
+      [1, "input_text"],
+      [2, "output_text"],
+    ] as const) {
+      const price = azureClaudeAmount(rows[0]?.[index] ?? "");
+      if (price !== undefined)
+        rates.push(azureClaudeRate(meter, price, { speed: "fast" }, input.source.id));
+      else
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "claude_fast_price_cell_unreadable",
+          sample: `${id.data}:${meter}`,
+        });
+    }
+    const fastInput = rates.find((r) => r.meter === "input_text");
+    const base = models.get(modelUid(input.provider.id, identity.id));
+    const inputs =
+      base?.price_facts.filter(
+        (r) =>
+          r.meter === "input_text" &&
+          r.conditions.deployment_scope === "GlobalStandard" &&
+          Object.keys(r.conditions).length === 1,
+      ) ?? [];
+    const standardInput = inputs.length === 1 ? inputs[0] : undefined;
+    if (cachePolicy && fastInput && standardInput && !decimalsEqual(standardInput.price, "0")) {
+      for (const rate of base?.price_facts ?? []) {
+        if (
+          !["cache_read_text", "cache_write_text"].includes(rate.meter) ||
+          rate.conditions.deployment_scope !== "GlobalStandard" ||
+          Object.keys(rate.conditions).some(
+            (k) => !["deployment_scope", "cache_ttl_seconds"].includes(k),
+          )
+        )
+          continue;
+        const price = rationalToFiniteDecimal(
+          multiplyRationals(
+            rationalFromDecimal(fastInput.price),
+            divideRationals(
+              rationalFromDecimal(rate.price),
+              rationalFromDecimal(standardInput.price),
+            ),
+          ),
+        );
+        if (price === undefined) continue;
+        rates.push({
+          ...rate,
+          price,
+          conditions: { ...rate.conditions, speed: "fast" },
+          derived: true,
+          raw_price: undefined,
+          raw_unit: "published prompt-cache multiplier applied to Fast input",
+          derivation: `${fastInput.price} × (${rate.price} / ${standardInput.price})`,
+        });
+      }
+    }
+    if (rates.length === 0) continue;
+    if (
+      candidates.every((m) =>
+        m.availability?.some((a) => /^data ?zone ?standard$/i.test(a.deployment_type ?? "")),
+      )
+    )
+      rates.push(...azureClaudeDataZoneRates(rates));
+    staged.push({
+      ...baseModel({
+        providerId: input.provider.id,
+        id: id.data,
+        name: id.data,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      pricing_state: "numeric",
+      price_facts: rates,
+    });
+  }
+  for (const model of staged) {
+    models.set(model.uid, model);
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "claude_fast_public_rate_row",
+      sample: model.model_id,
+    });
+  }
 }
 
 function booleanCapability(values: Map<string, string>, keys: string[]): boolean | "unknown" {

@@ -355,7 +355,10 @@ placeholders such as `Pending` before they can enter a numeric fact.
 - HTML prices parse table, row, price cell, region, and meter independently. A malformed price cell
   cannot erase another model or tool rate.
 - Delegated Claude pricing validates the semantic Foundry conversion and Data Zone contract, then
-  locates rate columns by header. Prose/link changes and unrelated new columns do not invalidate
+  locates rate columns by header. The Conversion row's owned `#model-pricing` link establishes
+  continuity even when its visible label changes from "Claude API pricing" to "Model pricing".
+  A foreign link cannot establish delegation; reviewed historical plain-text wording remains
+  replayable. Prose/link changes and unrelated new columns do not invalidate
   readable model rows. A trailing numeric superscript on an exact `MTok` cell is a first-party
   footnote marker, not part of the amount; its presence does not discard the Claude Opus 5.5 row.
   An unreadable meter leaves the readable cells in that model row intact. The delegated schedule
@@ -365,6 +368,19 @@ placeholders such as `Pending` before they can enter a numeric fact.
   all matching catalog tuples establish that deployment support. Microsoft documents
   [both hosting versions](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models)
   and their common [per-model pricing basis](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models-billing).
+- The delegated price source also collects the bounded, optional
+  [Fast guide](https://platform.claude.com/docs/en/build-with-claude/fast-mode.md). Its explicit
+  Model/Fast mode model ID table owns the identity bridge to existing public Foundry IDs; the
+  main price page owns exact Fast input/output amounts. Neither a `-fast` suffix alone nor the
+  request's `speed` field establishes that bridge. A Foundry deployment fixes speed, and a standard
+  deployment cannot be switched by that field. Unknown, duplicate or unavailable mappings withhold
+  only Fast supplements while ordinary tariffs survive.
+  Where the price page explicitly applies prompt-caching modifiers to Fast input, derive each
+  cache amount from the same model's exact ordinary cache/input ratio. Preserve the 300/3600-second
+  write alternatives and model-specific read multiplier; never assume a universal cache factor.
+  Unreadable Fast input withholds only that input and its cache derivation; known output survives.
+  US Data Zone uplift requires the exact Fast catalog identity's documented deployment support.
+  Anthropic-hosted Fable/Mythos Fast rows do not acquire Azure-only geography from a sibling model.
 - Dynamic pricing-family discovery has no minimum page-count dependency. A new family page may add
   exact prices but cannot widen identity matching.
 - If an optional pricing dependency is missing, or the assembled Azure partition fails topology
