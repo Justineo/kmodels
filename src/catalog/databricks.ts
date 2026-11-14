@@ -731,13 +731,12 @@ function tieredVariants(
 
 function tieredPrices(
   inputModels: ProviderModel[],
-  body: string,
+  $: Document,
   sourceId: string,
   targetRates: Map<string, Map<string, SourcePriceFact>>,
   prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Set<string> | undefined {
-  const $ = load(body);
   const tables = $("main table");
   if (!/Pay Per Token \(DBU Per 1M Tokens\)/.test(tables.find("thead").text())) return undefined;
   const models = inputModels.map<ProviderModel>((model) => ({ ...model, raw_price_facts: [] }));
@@ -901,16 +900,9 @@ function openPrices(
   prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Set<string> {
-  const tiered = tieredPrices(
-    models,
-    body,
-    sourceId,
-    rates,
-    prioritySupport,
-    onPricingReconciliation,
-  );
-  if (tiered !== undefined) return tiered;
   const $ = load(body);
+  const tiered = tieredPrices(models, $, sourceId, rates, prioritySupport, onPricingReconciliation);
+  if (tiered !== undefined) return tiered;
   const table = $("main table").first();
   if (table.length === 0) throw new Error("Databricks open-model pricing table is missing");
   const headers = table
@@ -1187,16 +1179,9 @@ function partnerPrices(
   prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Set<string> {
-  const tiered = tieredPrices(
-    models,
-    body,
-    sourceId,
-    rates,
-    prioritySupport,
-    onPricingReconciliation,
-  );
-  if (tiered !== undefined) return tiered;
   const $ = load(body);
+  const tiered = tieredPrices(models, $, sourceId, rates, prioritySupport, onPricingReconciliation);
+  if (tiered !== undefined) return tiered;
   const tables = $("main table");
   if (tables.length < 3 || tables.length > 4)
     throw new Error("Databricks partner pricing tables changed shape");
