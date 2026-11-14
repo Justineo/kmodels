@@ -781,6 +781,10 @@ function withoutTrailingCommas(value: string): string {
 }
 
 const renderedTableMarker = "_jsx(DocTable,";
+const renderedTableSchema = z.object({
+  columns: z.array(z.object({ title: z.string() })),
+  rows: z.array(z.array(z.string())).min(1),
+});
 
 function renderedText(body: string): string {
   const $ = load(body);
@@ -909,21 +913,10 @@ function renderedTables(body: string): string[] {
   while (index !== -1) {
     const parsed = renderedValue(body, index + renderedTableMarker.length);
     index = body.indexOf(renderedTableMarker, index + renderedTableMarker.length);
-    if (parsed === undefined || typeof parsed.value !== "object" || parsed.value === null) continue;
-    const { columns, rows } = parsed.value as Record<string, unknown>;
-    if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) continue;
-    const titles = columns.map((column) =>
-      typeof column === "object" &&
-      column !== null &&
-      typeof (column as { title?: unknown }).title === "string"
-        ? (column as { title: string }).title
-        : undefined,
-    );
-    const cells = rows.every(
-      (row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"),
-    );
-    if (!cells || titles.some((title) => title === undefined)) continue;
-    const definition = titles.map((title) => `{ title: ${JSON.stringify(title)} }`).join(", ");
+    const tableData = renderedTableSchema.safeParse(parsed?.value);
+    if (!tableData.success) continue;
+    const { columns, rows } = tableData.data;
+    const definition = columns.map(({ title }) => `{ title: ${JSON.stringify(title)} }`).join(", ");
     const table = `<DocTable columns={[${definition}]} rows={${JSON.stringify(rows)}} />`;
     if (!tables.includes(table)) tables.push(table);
   }
