@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { expect, it, vi } from "vite-plus/test";
-import { anthropicBundle } from "./anthropic-fixture.ts";
+import { anthropicBundle, anthropicCardsBundle } from "./anthropic-fixture.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests } from "../src/catalog/manifests.ts";
@@ -34,7 +34,11 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
 }));
 const at = "2026-07-21T00:00:00.000Z";
 type Bundle = Awaited<ReturnType<typeof anthropicBundle>>;
-async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPairCandidate) {
+async function collect(
+  change?: (bundle: Bundle) => void,
+  previous?: CatalogPairCandidate,
+  cards?: Awaited<ReturnType<typeof anthropicCardsBundle>>,
+) {
   const manifest = manifests.find(({ provider }) => provider.id === "anthropic");
   const source = manifest?.sources.find(({ id }) => id === "anthropic-models");
   if (!manifest || !source) throw new Error("Missing Anthropic source");
@@ -50,15 +54,16 @@ async function collect(change?: (bundle: Bundle) => void, previous?: CatalogPair
   }
   change?.(bundle);
   const body = JSON.stringify(bundle);
-  vi.mocked(fetchSource).mockResolvedValue({
-    body,
-    contentHash: sha256(body),
+  const cardSource = manifest.sources.find(({ id }) => id === "anthropic-model-cards");
+  vi.mocked(fetchSource).mockImplementation(async (source) => ({
+    body: source.id === "anthropic-model-cards" ? JSON.stringify(cards) : body,
+    contentHash: sha256(source.id === "anthropic-model-cards" ? JSON.stringify(cards) : body),
     etag: undefined,
     lastModified: undefined,
     dependencies: [],
-  });
+  }));
   const result = await collectProvider(
-    { ...manifest, sources: [source] },
+    { ...manifest, sources: cards && cardSource ? [source, cardSource] : [source] },
     previous?.catalog,
     { sources: {} },
     at,
@@ -176,6 +181,97 @@ it("publishes direct ID/alias prices and distinguishes Messages from Batch witho
     query({ provider_id: "anthropic", model_id: "claude-opus-4-7", offer_ref: "0".repeat(64) })
       .reason,
   ).toBe("no_applicable_price");
+});
+it("joins an independently collected reference-card alias to its existing public tariff", async () => {
+  const cards = await anthropicCardsBundle();
+  const candidate = await collect(
+    (bundle) => {
+      bundle.index.body +=
+        "\n| Feature | Claude Opus 4.5 |\n| --- | --- |\n| Claude API ID | claude-opus-4-5-20251101 |\n";
+      const pricing = bundle.documents.find(({ url }) => url.endsWith("/pricing.md"));
+      if (!pricing) throw new Error("Missing pricing fixture");
+      pricing.body +=
+        "\n| Model | Base Input Tokens | 5m Cache Writes | 1h Cache Writes | Cache Hits & Refreshes | Output Tokens |\n| --- | --- | --- | --- | --- | --- |\n| Claude Opus 4.5 | $5 / MTok | $6.25 / MTok | $10 / MTok | $0.50 / MTok | $25 / MTok |\n";
+    },
+    undefined,
+    cards,
+  );
+  const result = lookup(candidate)({
+    provider_id: "anthropic",
+    model_id: "claude-opus-4-5",
+    execution_mode: "request",
+    selectors,
+  });
+  expect(result.status).toBe("matched");
+  expect(result.candidates[0]?.model_ref).toBe("anthropic/claude-opus-4-5-20251101");
+  expect(result.candidates[0]?.evidence).toContainEqual(
+    expect.objectContaining({ source_ref: "anthropic-model-cards" }),
+  );
+  expect(
+    candidate.catalog.models.find(({ model_id }) => model_id === "claude-opus-4-5-20251101")
+      ?.limits,
+  ).toMatchObject({ context_tokens: 200000, max_output_tokens: 64000 });
+  const projected = await projectCatalogPair(candidate);
+  const detail = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "anthropic/claude-opus-4-5-20251101");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "claude-opus-4-5");
+  if (!price) throw new Error("Missing card alias projection");
+  expect(queryWebsiteInferencePrice(price, selectors, at, undefined, "request").status).toBe(
+    "matched",
+  );
+});
+it("selects model-scoped cache-hit multipliers through portable and website consumers", async () => {
+  const native = await readFile(
+    new URL("./fixtures/anthropic/cache-hit-multipliers.md", import.meta.url),
+    "utf8",
+  );
+  const candidate = await collect((bundle) => {
+    const pricing = bundle.documents.find(({ url }) => url.endsWith("/pricing.md"));
+    if (!pricing) throw new Error("Missing pricing fixture");
+    pricing.body =
+      pricing.body.replace("0.1x base input price", "0.1x base input price on most models") +
+      "\n" +
+      native.replaceAll("Claude Opus 5.5", "Claude Opus 4.7");
+  });
+  const ttl = selectors[2];
+  if (!ttl) throw new Error("Missing TTL selector");
+  const selected = [select("speed", "fast"), select("inference_geo", "us"), ttl];
+  const result = lookup(candidate)({
+    provider_id: "anthropic",
+    model_id: "claude-opus-4-7",
+    execution_mode: "request",
+    selectors: selected,
+  });
+  expect(result.status).toBe("matched");
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "cache_read_text"
+          ? term.variants.map(({ price }) => price.value)
+          : [],
+      ),
+    ),
+  ).toEqual([{ numerator: "11", denominator: "20000000" }]);
+  const projected = await projectCatalogPair(candidate);
+  const detail = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "anthropic/claude-opus-4-7");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "claude-opus-4-7");
+  if (!price) throw new Error("Missing website tariff");
+  expect(queryWebsiteInferencePrice(price, selected, at, undefined, "request").status).toBe(
+    "matched",
+  );
 });
 it("uses the same selected offer in public static output and the interactive UI", async () => {
   const candidate = await collect();

@@ -1,6 +1,7 @@
 import { offerContexts, executionSelector } from "./offer-context.ts";
 import { anthropicDocuments } from "./anthropic-fixture.ts";
 import { readFile } from "node:fs/promises";
+import { z } from "zod";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
@@ -1116,6 +1117,97 @@ describe("Anthropic adapters", () => {
         expect.objectContaining({ term_key: "unparsed:cache-policy" }),
       );
     }
+  });
+  it("reads the current model-scoped cache-hit table and isolates conflicting rows", async () => {
+    const hitTable = await fixture("anthropic/cache-hit-multipliers.md");
+    const overview =
+      (await fixture("anthropic/overview.md")) +
+      "\n| Feature | Claude Opus 5.5 |\n| --- | --- |\n| Claude API ID | claude-opus-5-5 |\n| Claude API alias | claude-opus-5-5 |\n";
+    const pricing =
+      (await fixture("anthropic/pricing.md")).replace(
+        "0.1x base input price",
+        "0.1x base input price on most models",
+      ) +
+      [
+        "",
+        "| Model | Base Input Tokens | 5m Cache Writes | 1h Cache Writes | Cache Hits & Refreshes | Output Tokens |",
+        "| --- | --- | --- | --- | --- | --- |",
+        "| Claude Opus 5.5 | $4 / MTok | $5 / MTok | $8 / MTok | $0.20 / MTok | $20 / MTok |",
+        "",
+        "| Model | Input | Output |",
+        "| --- | --- | --- |",
+        "| Claude Opus 5.5 | $8 / MTok | $40 / MTok |",
+        "",
+        "| Model | Batch input | Batch output |",
+        "| --- | --- | --- |",
+        "| Claude Opus 5.5 | $2 / MTok | $10 / MTok |",
+        "",
+      ].join("\n");
+    const fast =
+      (await fixture("anthropic/fast-mode.md")) + "\n- Claude Opus 5.5 (`claude-opus-5-5`)\n";
+    const parse = (table: string) =>
+      anthropicSource({
+        overview,
+        overrides: {
+          "/docs/en/about-claude/pricing.md": pricing + "\n" + table,
+          "/docs/en/build-with-claude/fast-mode.md": fast,
+        },
+      });
+    const result = await parse(hitTable);
+    validatedPricing(result);
+    const rates = (result: SourceParseResult, id: string) =>
+      result.models.find(({ model_id }) => model_id === id)?.price_facts;
+    expect(rates(result, "claude-opus-5-5")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.4",
+          conditions: { speed: "fast", inference_geo: "global" },
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.44",
+          conditions: { speed: "fast", inference_geo: "us" },
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.1",
+          conditions: { service_tier: "batch", inference_geo: "global" },
+        }),
+      ]),
+    );
+    const conflict = await parse(
+      hitTable.trimEnd() +
+        "\n| Claude Opus 5.5 | 0.1x | $0.40 USD |\n| Claude Opus 5.5 | 0.05x | $0.20 USD |\n",
+    );
+    expect(
+      rates(conflict, "claude-opus-5-5")?.some(
+        ({ meter, conditions }) => meter === "cache_read_text" && conditions.speed === "fast",
+      ),
+    ).toBe(false);
+    expect(rates(conflict, "claude-opus-4-7")).toEqual(rates(result, "claude-opus-4-7"));
+    expect(rates(conflict, "claude-opus-5-5")).toContainEqual(
+      expect.objectContaining({
+        meter: "cache_read_text",
+        price: "0.20",
+        conditions: { speed: "standard", inference_geo: "global" },
+      }),
+    );
+    const fenced = await parse("```\n" + hitTable + "\n```");
+    expect(
+      rates(fenced, "claude-opus-5-5")?.some(
+        ({ meter, conditions }) => meter === "cache_read_text" && conditions.speed === "fast",
+      ),
+    ).toBe(false);
+    const missingDefault = await parse(
+      hitTable.replace("| All other models | 0.1x", "| All other models | 0.2x"),
+    );
+    expect(rates(missingDefault, "claude-opus-5-5")).toEqual(rates(result, "claude-opus-5-5"));
+    expect(
+      rates(missingDefault, "claude-opus-4-7")?.some(
+        ({ meter, conditions }) => meter === "cache_read_text" && conditions.speed === "fast",
+      ),
+    ).toBe(false);
   });
   it("preserves an unreviewed cache operation as a raw tariff", async () => {
     const pricing = (await fixture("anthropic/pricing.md")).replace(
@@ -2390,6 +2482,58 @@ describe("Anthropic adapters", () => {
       },
       citations: true,
       structured: true,
+    });
+  });
+  it("keeps API lifecycle, nullable limits and unknown release dates independent of schedules", async () => {
+    const value = manifest("anthropic");
+    const source = value.sources.find(({ id }) => id === "anthropic-api");
+    if (!source) throw new Error("Missing API source");
+    const native = z
+      .object({ data: z.array(z.record(z.string(), z.unknown())) })
+      .parse(JSON.parse(await fixture("anthropic/api.json")));
+    const first = native.data[0];
+    if (!first) throw new Error("Missing API fixture row");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify({
+        first_id: null,
+        last_id: null,
+        has_more: false,
+        data: [
+          {
+            ...first,
+            id: "claude-deprecated",
+            lifecycle: "deprecated",
+            deprecated_at: "2026-05-01T18:30:00Z",
+            retires_at: "2026-06-01T18:30:00Z",
+            max_input_tokens: null,
+            max_tokens: null,
+            created_at: "1970-01-01T00:00:00Z",
+          },
+          {
+            ...first,
+            id: "claude-retired",
+            lifecycle: "retired",
+            retires_at: "2026-06-01T18:30:00Z",
+          },
+          { ...first, id: "claude-unknown", lifecycle: "unreviewed", deprecated_at: "invalid" },
+        ],
+      }),
+    }).models;
+    expect(models[0]).toMatchObject({
+      status: "deprecated",
+      deprecated_at: "2026-05-01T18:30:00Z",
+      limits: {},
+    });
+    expect(models[0]?.retired_at).toBeUndefined();
+    expect(models[0]?.release_date).toBeUndefined();
+    expect(models[1]).toMatchObject({ status: "retired" });
+    expect(models[1]?.retired_at).toBeUndefined();
+    expect(models[2]).toMatchObject({
+      status: "unknown",
+      limits: { context_tokens: 1000000, max_output_tokens: 128000 },
     });
   });
   it("isolates invalid inventory rows and reports additive fields", async () => {

@@ -288,6 +288,46 @@ it("applies a linked-document request suffix once and deduplicates both public s
   ]);
 });
 
+it("retains distinct Anthropic reference paths sharing the overview filename", async () => {
+  const source = reviewedPublicSource("anthropic-model-cards");
+  if (!source.linkedDocuments) throw new Error("Missing card discovery");
+  const paths = ["/docs/en/models/mythos-5-2/overview", "/docs/en/models/opus-4-5/overview"];
+  transport.responses.set(
+    "platform.claude.com",
+    [paths.map((path) => `[Model](${path})`).join("\n"), "First card", "Second card"].map(
+      (body) => `HTTP/1.1 200 OK\r\n\r\n${body}`,
+    ),
+  );
+  const result = await fetchSource({
+    ...source,
+    linkedDocuments: { ...source.linkedDocuments, documents: [] },
+  });
+  expect(new Set(result.dependencies.map(({ key }) => key)).size).toBe(3);
+  expect(result.dependencies.map(({ key }) => key)).toEqual(
+    expect.arrayContaining(paths.map((path) => `${source.id}${path}.md`)),
+  );
+  expect(transport.calls.filter((url) => url.endsWith("/overview.md"))).toHaveLength(3);
+});
+
+it("keeps the Anthropic root when an optional commercial companion fails", async () => {
+  const source = reviewedPublicSource("anthropic-models");
+  const crawl = source.linkedDocuments;
+  const pricing = crawl?.documents?.find(({ id }) => id === "pricing");
+  if (!crawl || !pricing) throw new Error("Missing pricing companion");
+  transport.responses.set("platform.claude.com", [
+    "HTTP/1.1 404 Not Found\r\n\r\nMissing pricing",
+    "HTTP/1.1 200 OK\r\n\r\n# Models overview",
+  ]);
+  const result = await fetchSource({
+    ...source,
+    linkedDocuments: { ...crawl, documents: [pricing] },
+  });
+  expect(result.body).toContain("# Models overview");
+  expect(result.dependencyFailures).toContainEqual(
+    expect.objectContaining({ dependency_id: `${source.id}/pricing`, impact: "bundle" }),
+  );
+});
+
 it("strips embedded Google Cloud browser keys before hashing reviewed evidence", async () => {
   const source = reviewedPublicSource("vertex-pricing", "--index");
   const key = "AIzaSy" + "A".repeat(33);

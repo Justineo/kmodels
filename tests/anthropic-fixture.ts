@@ -44,3 +44,31 @@ export async function anthropicBundle() {
     ),
   };
 }
+
+export async function anthropicCardsBundle() {
+  const fixture = (name: string) =>
+    readFile(new URL(`./fixtures/anthropic/${name}`, import.meta.url), "utf8");
+  const cards = ["opus-4-5", "mythos-5-2"];
+  return {
+    index: {
+      url: "https://platform.claude.com/docs/en/models/overview.md",
+      body: cards.map((slug) => `[${slug}](/docs/en/models/${slug}/overview)`).join("\n"),
+    },
+    documents: [
+      ...(await Promise.all(
+        cards.map(async (slug) => ({
+          url: `https://platform.claude.com/docs/en/models/${slug}/overview.md`,
+          body: await fixture(`model-card-${slug}.md`),
+        })),
+      )),
+      {
+        url: "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions.md",
+        body: await fixture("invocation-model-ids.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
+        body: await fixture("inference-batch-ids.md"),
+      },
+    ],
+  };
+}

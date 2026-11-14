@@ -45,8 +45,9 @@ publishes a separately metered provider service.
 ## Official sources
 
 The public catalog root is the official [model overview](https://platform.claude.com/docs/en/models/overview).
-The collector follows a fixed set of first-party documents rather than discovering commercial pages
-from `llms.txt` or scraping the dynamic `claude.com/pricing` application.
+Commercial collection follows a fixed set of first-party documents. Model references are discovered
+from that overview's reviewed links; `llms.txt` is a research index, and the dynamic
+`claude.com/pricing` application does not supply production facts.
 Model-specific launch announcements are not refresh dependencies: maintained overview and release
 notes own current identity, descriptions, and release dates.
 Release and retirement notes accept both apostrophe forms in Anthropic's announcement wording.
@@ -89,10 +90,32 @@ observations. An unreadable model-price matrix cannot discard established servic
 accounting contracts. Explicit resource model references establish compatibility; independent
 accounting evidence does not establish a model price.
 
-The optional authenticated `GET /v1/models?limit=1000` inventory can fill otherwise unknown public
+The optional authenticated `GET /v1/models?limit=1000` inventory explicitly requests all three
+`lifecycle[]` values (`active`, `deprecated`, `retired`), using the documented array query shape.
+It can fill otherwise unknown public
 fields on matching rows. Enable it with `ANTHROPIC_API_KEY`; it never creates public catalog rows or
 overrides known first-party facts. Additive response fields are accepted with a contract signal, and
 one malformed inventory item is skipped without rejecting recognized sibling rows.
+The API owns an explicit `lifecycle` state and the most recent `deprecated_at` timestamp. Its
+`retires_at` is a revisable schedule: an overdue date does not establish retirement. It is therefore
+not copied into `retired_at` or compared with the clock to manufacture a retired state. Null token
+limits remain unknown, and an epoch `created_at` cannot supply a release date. Unused model-line
+and scheduling metadata remain outside the consumed contract. Account-visible retired omissions
+cannot remove historical public rows established by lifecycle documentation.
+
+The independent optional `anthropic-model-cards` source follows exact current model-reference
+links from the overview, with bounded paths, document counts, concurrency and bytes. Full paths
+keep separate cards' common `overview.md` filenames distinct. Each card must agree between its
+single `Model ID` declaration and its owned `Model IDs` table's `Claude API` row. Only that table's
+`Claude API alias` supplies an alias; other platforms and comparison widgets cannot establish it.
+The card's own `Capabilities` and `Availability` sections supply explicit token limits, release
+date and lifecycle state. Batch beta output limits cannot replace synchronous model limits.
+Duplicate card owners are withheld together; malformed individual fields or cards preserve
+independent siblings. Card prices are not another amount source: maintained pricing owns rates.
+This metadata source's acquisition failures do not block the independent price partition.
+Its fresh identity/alias pairs can associate existing public tariffs through the separately
+fetched ID-version and Batch contracts. Retained display aliases cannot revive withdrawn
+associations, and a card without those contracts keeps metadata without inventing a price join.
 
 ## Identity and catalog mapping
 
@@ -262,7 +285,14 @@ list owns current compatibility; reviewed legacy explicit model bullets remain r
 Tool-overhead tables may use separate auto/none and any/tool columns. Their tokens remain
 included in returned model usage; column layout does not create an additional service charge.
 Conflicting facts are reported and the directly published row remains
-authoritative. Cache-read multiplier exceptions bind each model in the published comma-separated
+authoritative. The current `Model | Cache hit multiplier | Cache hit price per million tokens`
+table qualifies the generic `0.1x ... on most models` policy. Exact grouped model labels own their
+exceptions; `All other models` owns the default. Conflicting or invalid known rows withhold only
+that model's derived read price, including repeated matching rows after a conflict. A missing or
+unbound default cannot erase valid exact exceptions. Explicit ordinary cache quotes survive an
+uncertain derived Fast/Batch policy; fenced tables cannot supply multipliers. The literal table
+remains in bounded raw evidence when its affected scope is unresolved.
+Legacy inline cache-read multiplier exceptions bind each model in the published comma-separated
 or conjunction-separated list to a unique official ID. Cache policy rows are validated independently
 across all reviewed policy tables. Conflicting or unreadable operations withhold only their derived
 rates. Known sibling multipliers remain usable, and missing, malformed or unreviewed policy content

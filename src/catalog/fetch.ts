@@ -3036,7 +3036,8 @@ export async function fetchSource(
     const filename = url.pathname.split("/").filter(Boolean).at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
     const stem =
-      source.extractor.kind === "nvidia-nim-cards"
+      source.extractor.kind === "nvidia-nim-cards" ||
+      source.extractor.kind === "anthropic-model-cards"
         ? url.pathname.slice(1)
         : filename.replace(/\.(?:md|ts)$/, "");
     return {

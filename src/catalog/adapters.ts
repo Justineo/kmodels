@@ -8,7 +8,7 @@ import {
   parseNvidiaNimRetrieval,
 } from "./nvidia-nim.ts";
 import { z } from "zod";
-import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
+import { parseAnthropicApi, parseAnthropicCatalog, parseAnthropicModelCards } from "./anthropic.ts";
 import {
   parseAzureApi,
   parseAzureCatalog,
@@ -99,6 +99,8 @@ function parseSourceBody(input: ParseInput): SourceParseResult {
       return parseOpenAiAccounting(input);
     case "anthropic-catalog":
       return parseAnthropicCatalog(input);
+    case "anthropic-model-cards":
+      return parseAnthropicModelCards(input);
     case "anthropic-api":
       return { models: parseAnthropicApi(input) };
     case "vercel-catalog":

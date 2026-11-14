@@ -46,8 +46,10 @@ const itemSchema = z.object({
   type: z.literal("model"),
   display_name: z.string().min(1),
   created_at: z.iso.datetime({ offset: true }),
-  max_input_tokens: z.number().int().nonnegative(),
-  max_tokens: z.number().int().nonnegative(),
+  max_input_tokens: z.number().int().nonnegative().nullable(),
+  max_tokens: z.number().int().nonnegative().nullable(),
+  lifecycle: z.unknown().optional(),
+  deprecated_at: z.unknown().optional(),
   capabilities: z.object({
     batch: supportSchema,
     citations: supportSchema,
@@ -996,7 +998,7 @@ interface CacheMultipliers {
   fiveMinuteWrite: string | undefined;
   oneHourWrite: string | undefined;
   read: string | undefined;
-  readOverrides: ReadonlyMap<string, string>;
+  readOverrides: ReadonlyMap<string, string | undefined>;
   unknownOperations: boolean;
 }
 
@@ -1030,8 +1032,69 @@ function cached(
   return [
     ...derive("cache_write_text", multipliers.fiveMinuteWrite, 300),
     ...derive("cache_write_text", multipliers.oneHourWrite, 3600),
-    ...derive("cache_read_text", multipliers.readOverrides.get(modelId) ?? multipliers.read),
+    ...derive(
+      "cache_read_text",
+      multipliers.readOverrides.has(modelId)
+        ? multipliers.readOverrides.get(modelId)
+        : multipliers.read,
+    ),
   ];
+}
+
+function cacheReadTable(
+  parsedTables: MarkdownTable[],
+  input: Input,
+  resolve: (value: string) => ProviderModel,
+) {
+  const policies = parsedTables.filter(
+    ({ headers }) =>
+      headers.join("|") === "Model|Cache hit multiplier|Cache hit price per million tokens",
+  );
+  if (policies.length === 0) return;
+  const values = new Map<string, string | undefined>();
+  let unknownScope = false;
+  for (const row of policies.flatMap(({ rows, irregular }) => [...rows, ...irregular])) {
+    const multiplier =
+      row.length === 3 ? row[1]?.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x$/)?.[1] : undefined;
+    const ids: string[] = [];
+    let unknownRow = false;
+    try {
+      if (row[0] === "All other models") ids.push("*");
+      else
+        for (const name of (row[0] ?? "").split(/, (?:and )?| and /))
+          ids.push(resolve(name).model_id);
+    } catch {
+      unknownScope = true;
+      unknownRow = true;
+    }
+    let agreed = multiplier !== undefined && ids.length > 0 && !unknownRow;
+    for (const id of ids) {
+      const previous = values.get(id);
+      if (
+        values.has(id) &&
+        (previous === undefined || multiplier === undefined || !decimalsEqual(previous, multiplier))
+      ) {
+        values.set(id, undefined);
+        agreed = false;
+      } else values.set(id, multiplier);
+    }
+    input.onPricingReconciliation?.({
+      disposition: agreed ? "normalized" : "unresolved",
+      reason_code: agreed ? "cache_hit_multiplier_bound" : "cache_multiplier_drift",
+      ...(agreed ? {} : { sample: row.join(" | ").slice(0, 256) }),
+    });
+  }
+  const fallback = values.get("*");
+  const validDefault = fallback !== undefined && decimalsEqual(fallback, "0.1");
+  if (!validDefault || unknownScope)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "cache_multiplier_drift",
+      sample: "Default cache-hit multiplier",
+    });
+  const value = unknownScope || !validDefault ? undefined : fallback;
+  values.delete("*");
+  return { value, overrides: values };
 }
 
 function cacheMultipliers(
@@ -1058,6 +1121,13 @@ function cacheMultipliers(
       sample: values.join(" | ").slice(0, 256),
     });
   const parse = (values: string[], operation: string) => {
+    if (
+      operation === "Cache read" &&
+      values.length === 3 &&
+      values[1] === "0.1x base input price on most models" &&
+      values[2] === "Same duration as the preceding write"
+    )
+      return cacheReadTable(parsedTables, input, resolve);
     const amount = values[1]?.match(/^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \((.+)\))?$/);
     if (amount?.[1] === undefined || values.length !== 3) return;
     const duration =
@@ -1096,11 +1166,18 @@ function cacheMultipliers(
       values.every(
         (current) =>
           current !== undefined &&
-          decimalsEqual(current.value, first.value) &&
+          (current.value === undefined || first.value === undefined
+            ? current.value === first.value
+            : decimalsEqual(current.value, first.value)) &&
           current.overrides.size === first.overrides.size &&
           [...first.overrides].every(([name, value]) => {
             const candidate = current.overrides.get(name);
-            return candidate !== undefined && decimalsEqual(value, candidate);
+            return (
+              current.overrides.has(name) &&
+              (value === undefined || candidate === undefined
+                ? value === candidate
+                : decimalsEqual(value, candidate))
+            );
           }),
       );
     for (const value of values)
@@ -1169,7 +1246,7 @@ function pricing(
     item.price_facts.push(...rates);
     if (rates.length > 0) item.pricing_state = "numeric";
   };
-  const parsedTables = tables(body);
+  const parsedTables = tables(markdownProse(body));
   let multipliers: CacheMultipliers | undefined;
   try {
     multipliers = cacheMultipliers(parsedTables, input, resolve);
@@ -1202,7 +1279,12 @@ function pricing(
     }
   const cachePolicy =
     parsedTables
-      .filter(({ headers }) => headers.join("|") === "Cache operation|Multiplier|Duration")
+      .filter(({ headers }) =>
+        [
+          "Cache operation|Multiplier|Duration",
+          "Model|Cache hit multiplier|Cache hit price per million tokens",
+        ].includes(headers.join("|")),
+      )
       .map(({ headers, rows, irregular }) =>
         [headers, ...rows, ...irregular].map((values) => values.join(" | ")).join("\n"),
       )
@@ -1280,7 +1362,9 @@ function pricing(
           multipliers === undefined ||
           multipliers.fiveMinuteWrite === undefined ||
           multipliers.oneHourWrite === undefined ||
-          multipliers.read === undefined;
+          (multipliers.readOverrides.has(item.model_id)
+            ? multipliers.readOverrides.get(item.model_id)
+            : multipliers.read) === undefined;
         if ((kind !== "base" && incompleteCache) || multipliers?.unknownOperations === true)
           item.raw_price_facts.push({
             term_key: "unparsed:cache-policy",
@@ -1851,6 +1935,7 @@ function inferencePrices(
   input: Input,
   bundle: z.infer<typeof linkedBundleSchema>,
   models: readonly ProviderModel[],
+  cards: readonly AnthropicModelCard[] = [],
 ): NonNullable<SourcePricingFacts["inference_prices"]> {
   const owned = (body: string) =>
     markdownProse(body)
@@ -1887,8 +1972,12 @@ function inferencePrices(
         url.endsWith("/release-notes/overview.md"),
     ),
   ].map((document) => ({ document, ids: new Set(owned(document.body).split(/[^a-z0-9._:/-]+/i)) }));
+  identityDocuments.push(
+    ...cards.map(({ model, document }) => ({ document, ids: new Set([model.model_id]) })),
+  );
   // Read fresh labeled alias pairs; retained display aliases cannot revive a withdrawn price join.
   const aliases = new Map<string, Set<string>>();
+  const aliasDocuments = new Map<string, { url: string; body: string }[]>();
   for (const table of tables(owned(bundle.index.body)).filter(
     ({ headers }) => headers[0] === "Feature",
   )) {
@@ -1912,7 +2001,17 @@ function inferencePrices(
       const values = aliases.get(id) ?? new Set<string>();
       values.add(alias);
       aliases.set(id, values);
+      aliasDocuments.set(`${id}\0${alias}`, [bundle.index]);
     }
+  }
+  for (const { model, document } of cards) {
+    const values = aliases.get(model.model_id) ?? new Set<string>();
+    for (const alias of model.aliases) {
+      values.add(alias);
+      const key = `${model.model_id}\0${alias}`;
+      aliasDocuments.set(key, [...(aliasDocuments.get(key) ?? []), document]);
+    }
+    aliases.set(model.model_id, values);
   }
   return models.flatMap((model) => {
     const owners = identityDocuments
@@ -1929,7 +2028,9 @@ function inferencePrices(
         offer_key,
         fixed_selectors: [],
         evidence: [
-          ...(model_id === model.model_id ? owners : [bundle.index]),
+          ...(model_id === model.model_id
+            ? owners
+            : (aliasDocuments.get(`${model.model_id}\0${model_id}`) ?? [])),
           identity,
           ...(offer_key === "batch" ? [guide] : []),
         ]
@@ -1941,6 +2042,130 @@ function inferencePrices(
       })),
     );
   });
+}
+
+interface AnthropicModelCard {
+  model: ProviderModel;
+  document: { url: string; body: string };
+}
+
+export function parseAnthropicModelCards(input: Input): SourceParseResult {
+  const bundle = linkedBundleSchema.parse(json(input.body));
+  const cards: AnthropicModelCard[] = [];
+  const models = new Map<string, ProviderModel>();
+  const observed = new Set<string>();
+  const observeLimit = limitObserver(input);
+  for (const document of bundle.documents) {
+    if (!/^\/docs\/en\/models\/[a-z0-9-]+\/overview\.md$/.test(new URL(document.url).pathname))
+      continue;
+    const body = markdownProse(document.body)
+      .split(/\r?\n/)
+      .filter((line) => !/^(?: {4}|\t| *>)/.test(line))
+      .join("\n");
+    const ids = [...body.matchAll(/^Model ID: `([^`]+)`[ \t]*$/gm)].map((match) => match[1]);
+    const id = ids[0];
+    const idTables = tables(sectionProse(body, 3, "Model IDs")).filter(
+      ({ headers }) => headers.join("|") === "Platform|Model ID",
+    );
+    const apiRows = idTables
+      .flatMap(({ rows, irregular }) => [...rows, ...irregular])
+      .filter(([label]) => label === "Claude API");
+    if (
+      ids.length !== 1 ||
+      id === undefined ||
+      !modelIdSchema.safeParse(id).success ||
+      apiRows.length !== 1 ||
+      apiRows[0]?.[1] !== id ||
+      observed.has(id)
+    ) {
+      contractFinding(input, "model_card_identity_drift", document.url);
+      if (id !== undefined && observed.has(id)) {
+        models.delete(id);
+        const previous = cards.findIndex(({ model }) => model.model_id === id);
+        if (previous >= 0) cards.splice(previous, 1);
+      }
+      continue;
+    }
+    observed.add(id);
+    const item = model(models, input, id);
+    const aliasRows = idTables
+      .flatMap(({ rows, irregular }) => [...rows, ...irregular])
+      .filter(([label]) => label === "Claude API alias");
+    const alias = aliasRows[0]?.[1];
+    if (aliasRows.length > 1 || (alias !== undefined && !modelIdSchema.safeParse(alias).success))
+      contractFinding(input, "model_card_alias_drift", document.url);
+    else if (alias !== undefined && alias !== id && alias !== "N/A") item.aliases.push(alias);
+    const capabilities = tables(sectionProse(body, 3, "Capabilities")).filter(
+      ({ headers }) => headers.join("|") === "Feature|Value",
+    );
+    for (const [label, field] of [
+      ["Context window", "context_tokens"],
+      ["Max output", "max_output_tokens"],
+    ] as const) {
+      const rows = capabilities
+        .flatMap(({ rows, irregular }) => [...rows, ...irregular])
+        .filter(([name]) => name === label);
+      let invalid = false;
+      for (const row of rows) {
+        const value =
+          row.length === 2 && /^(?:\d+(?:\.\d+)?)[kKmM]? tokens$/.test(row[1] ?? "")
+            ? tokenCount(row[1])
+            : undefined;
+        if (value === undefined || !Number.isSafeInteger(value)) {
+          invalid = true;
+          contractFinding(input, "model_card_limit_drift", `${id}/${label}`);
+        } else observeLimit(item, field, value);
+      }
+      if (invalid) delete item.limits[field];
+    }
+    const availability = tables(sectionProse(body, 3, "Availability")).filter(
+      ({ headers }) => headers.join("|") === "Feature|Value",
+    );
+    const releases = availability
+      .flatMap(({ rows, irregular }) => [...rows, ...irregular])
+      .filter(([label]) => label === "Released")
+      .map((row) => (row.length === 2 ? date(row[1] ?? "") : undefined));
+    const release = releases[0];
+    if (release !== undefined && releases.every((value) => value === release))
+      item.release_date = release;
+    else if (releases.length > 0) contractFinding(input, "model_card_release_drift", id);
+    const statuses = availability
+      .flatMap(({ rows, irregular }) => [...rows, ...irregular])
+      .filter(([label]) => label === "Status")
+      .map((row) => {
+        const value = row[1];
+        if (
+          row.length === 2 &&
+          (value === "Active" ||
+            value === "Active (latest)" ||
+            value === "Active (legacy)" ||
+            value === "Active (verification required)")
+        )
+          return "active";
+        if (row.length === 2 && value === "Deprecated") return "deprecated";
+        if (row.length === 2 && value === "Retired") return "retired";
+        return undefined;
+      });
+    const status = statuses[0];
+    if (status !== undefined && statuses.every((value) => value === status)) item.status = status;
+    else if (statuses.length > 0) contractFinding(input, "model_card_status_drift", id);
+    cards.push({ model: item, document });
+  }
+  if (cards.length === 0) throw new Error("Anthropic model cards contained no owned identities");
+  return {
+    models: [...models.values()],
+    inference_prices: inferencePrices(
+      input,
+      bundle,
+      cards.map(({ model }) => ({
+        ...model,
+        status:
+          input.catalogModels?.find(({ uid, status }) => uid === model.uid && status !== "unknown")
+            ?.status ?? model.status,
+      })),
+      cards,
+    ),
+  };
 }
 
 export function parseAnthropicCatalog(input: Input): SourceParseResult {
@@ -2045,6 +2270,10 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
       "max_input_tokens",
       "max_tokens",
       "capabilities",
+      "lifecycle",
+      "deprecated_at",
+      "retires_at",
+      "line",
     ],
     skipInvalidItems: true,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
@@ -2053,6 +2282,12 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
     const inputModalities: Modality[] = ["text"];
     if (item.capabilities.image_input.supported) inputModalities.push("image");
     if (item.capabilities.pdf_input.supported) inputModalities.push("pdf");
+    const lifecycle = z.enum(["active", "deprecated", "retired"]).safeParse(item.lifecycle);
+    const deprecation = z.iso.datetime({ offset: true }).safeParse(item.deprecated_at);
+    if (item.lifecycle != null && !lifecycle.success)
+      contractFinding(input, "api_lifecycle_drift", item.id);
+    if (item.deprecated_at != null && !deprecation.success)
+      contractFinding(input, "api_deprecation_date_drift", item.id);
     return {
       ...baseModel({
         providerId: input.provider.id,
@@ -2062,6 +2297,10 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       tasks: ["text_generation"],
+      ...(lifecycle.success ? { status: lifecycle.data } : {}),
+      ...(lifecycle.success && lifecycle.data !== "active" && deprecation.success
+        ? { deprecated_at: deprecation.data }
+        : {}),
       modalities: { input: inputModalities, output: ["text"] },
       capabilities: {
         ...unknownCapabilities(),
@@ -2074,12 +2313,14 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
         effort_control: item.capabilities.effort.supported,
       },
       limits: {
-        ...(item.max_input_tokens > 0
+        ...(item.max_input_tokens !== null && item.max_input_tokens > 0
           ? { context_tokens: item.max_input_tokens, max_input_tokens: item.max_input_tokens }
           : {}),
-        ...(item.max_tokens > 0 ? { max_output_tokens: item.max_tokens } : {}),
+        ...(item.max_tokens !== null && item.max_tokens > 0
+          ? { max_output_tokens: item.max_tokens }
+          : {}),
       },
-      release_date: item.created_at.slice(0, 10),
+      ...(Date.parse(item.created_at) === 0 ? {} : { release_date: item.created_at.slice(0, 10) }),
     } satisfies ProviderModel;
   });
 }

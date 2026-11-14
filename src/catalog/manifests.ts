@@ -26,6 +26,7 @@ export type Extractor =
   | { kind: "openai-pricing" }
   | { kind: "openai-accounting" }
   | { kind: "anthropic-catalog" }
+  | { kind: "anthropic-model-cards" }
   | { kind: "anthropic-api" }
   | { kind: "vercel-catalog"; minModels: number; maxModels: number }
   | { kind: "cerebras-public"; minModels: number; maxModels: number }
@@ -1069,7 +1070,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v33",
+        extractorVersion: "anthropic-catalog-v34",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -1102,7 +1103,7 @@ export const manifests = [
           concurrency: 6,
           optionalDocuments: true,
           maxDocumentBytes: mebibytes(2),
-          documents: fixedDocuments([
+          documents: optionalFixedDocuments([
             ["pricing", "https://platform.claude.com/docs/en/about-claude/pricing.md", 2],
             [
               "model-deprecations",
@@ -1186,15 +1187,69 @@ export const manifests = [
         },
       },
       {
+        id: "anthropic-model-cards",
+        url: "https://platform.claude.com/docs/en/models/overview.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "anthropic-model-cards" },
+        extractorVersion: "anthropic-model-cards-v1",
+        fields: ["model_id", "aliases", "limits", "release_date", "status"],
+        allowedHosts: ["platform.claude.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "supplement",
+        optional: true,
+        fillOnly: true,
+        retainOmittedFacts: true,
+        linkedDocuments: {
+          path: /^\/docs\/en\/models\/[a-z0-9-]+\/overview(?:\.md)?$/,
+          requestSuffix: ".md",
+          minDocuments: 1,
+          maxDocuments: 96,
+          concurrency: 6,
+          optionalDocuments: true,
+          maxDocumentBytes: mebibytes(2),
+          documents: fixedDocuments([
+            [
+              "model-ids",
+              "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+            [
+              "batch-processing",
+              "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
+        },
+      },
+      {
         id: "anthropic-api",
-        url: "https://api.anthropic.com/v1/models?limit=1000",
+        url: "https://api.anthropic.com/v1/models?limit=1000&lifecycle%5B%5D=active&lifecycle%5B%5D=deprecated&lifecycle%5B%5D=retired",
         type: "api",
         access: "authenticated",
         format: "json",
         stability: "documented",
         extractor: { kind: "anthropic-api" },
-        extractorVersion: "anthropic-api-v1",
-        fields: ["name", "release_date", "modalities", "capabilities", "limits"],
+        extractorVersion: "anthropic-api-v2",
+        fields: [
+          "name",
+          "release_date",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "deprecated_at",
+        ],
         allowedHosts: ["api.anthropic.com"],
         maxResponseBytes: mebibytes(4),
         scope: "account",
