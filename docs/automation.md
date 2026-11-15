@@ -193,7 +193,10 @@ Status: implemented
   keeping recompilation reproducible with the stable compiler.
   The same lock records the currently adopted explicit artifact-action refs. Framework-injected
   actions follow the pinned compiler's bundled versions; regenerate rather than editing their
-  emitted pins independently of the manifest.
+  emitted pins independently of the manifest. Renovate excludes generated workflow lock files:
+  upgrading their setup runtime without the compiler can reject activation before inference.
+  Compiler/runtime upgrades must regenerate the complete workflow together; the workflow regression
+  checks the emitted setup refs against the reviewed action lock as well as the frontmatter hash.
 - Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
   `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
   stays outside the framework's log-redaction and artifact directories.

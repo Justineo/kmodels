@@ -5,6 +5,22 @@ import { z } from "zod";
 const source = new URL("../.github/workflows/catalog-repair.md", import.meta.url);
 const compiled = new URL("../.github/workflows/catalog-repair.lock.yml", import.meta.url);
 
+it("keeps the generated setup action on the reviewed compiler-compatible pin", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const pins = z
+    .object({ entries: z.record(z.string(), z.object({ sha: z.string(), version: z.string() })) })
+    .parse(
+      JSON.parse(
+        await readFile(new URL("../.github/aw/actions-lock.json", import.meta.url), "utf8"),
+      ),
+    );
+  const setup = pins.entries["github/gh-aw-actions/setup@v0.91.6"];
+  if (setup === undefined) throw new Error("Missing reviewed repair setup pin");
+  const refs = [...workflow.matchAll(/uses: github\/gh-aw-actions\/setup@([^\n]+)/g)];
+  expect(refs.length).toBeGreaterThan(0);
+  for (const ref of refs) expect(ref[1]).toBe(`${setup.sha} # ${setup.version}`);
+});
+
 it("routes repair and threat detection to DeepSeek without exposing the inference key to their agents", async () => {
   const workflow = await readFile(compiled, "utf8");
   for (const name of ["agent", "detection"]) {
