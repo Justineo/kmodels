@@ -47,11 +47,15 @@ async function main() {
     return;
   }
   if (command === "merge" && second !== undefined) {
-    const collected = await readCollectionShards(resolve(second), plan);
-    const catalog = await collect({ now: new Date(plan.observed_at), collected });
-    console.log(
-      `Assembled ${catalog.models.length} models from ${collected.results.length} providers`,
+    const providerCount = plan.shards.reduce(
+      (count, shard) => count + shard.provider_ids.length,
+      0,
     );
+    const catalog = await collect({
+      now: new Date(plan.observed_at),
+      collected: await readCollectionShards(resolve(second), plan),
+    });
+    console.log(`Assembled ${catalog.models.length} models from ${providerCount} providers`);
     return;
   }
   throw new Error(

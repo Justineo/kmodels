@@ -1395,7 +1395,16 @@ export async function collectProviders(
   };
 }
 
-export async function collect(options: CollectionOptions = {}): Promise<Catalog> {
+export function collect(options: CollectionOptions = {}): Promise<Catalog> {
+  // End ownership of the old pair and collection replay inputs before projection.
+  return prepareCollection(options).then(async ({ candidate, catalog, summary }) => {
+    await commitCatalogPair(candidate);
+    await writeJson(join(rootDirectory, "data/refresh-summary.json"), summary);
+    return catalog;
+  });
+}
+
+async function prepareCollection(options: CollectionOptions) {
   if (options.collected !== undefined && (options.rebuild || options.rebuildProvider !== undefined))
     throw new Error("Sharded collection cannot be combined with a rebuild");
   const observedAt = (options.now ?? new Date()).toISOString();
@@ -1534,9 +1543,7 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       },
     });
   await writePricingCompilationSnapshot(pricingCompilation);
-  await commitCatalogPair(candidate);
-  await writeJson(join(rootDirectory, "data/refresh-summary.json"), summary);
-  return composed.catalog;
+  return { candidate, catalog: composed.catalog, summary };
 }
 
 async function loadPreviousPricingCompilation(

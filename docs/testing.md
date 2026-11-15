@@ -233,6 +233,14 @@ semantic validation and mapping schema cloning. Count the selection records subm
 all provider lookups rather than treating one small provider as representative. Partitioning
 internal validation inputs must retain global negative controls for selections belonging to
 providers without mapping rules, plus complete-output and caller-mutation checks.
+For refresh-merge capacity, replay the failed run's complete shard set and plan in a disposable
+checkout at its recorded revision and accepted snapshot. Reset the snapshot before each sample;
+an interrupted merge can already have written replay or fetch-state files. Exercise the actual
+`collect-shards.ts merge` command through projection and commit, at the original heap limit.
+A passing accepted-pair publication benchmark alone does not cover simultaneously owned fresh
+collection inputs. Keep phase instrumentation out of final samples, compare every generated
+snapshot member against an unchanged-code reference, and distinguish capacity recovery from a
+timing or process-RSS improvement. Do not collect live sources or adopt replay output into `data/`.
 Mirror and worker validation must agree on valid inputs and on global duplicate/I-JSON
 failures, provider identity failures and foreign evidence ownership, including error context.
 Cover failures in either execution path and both together, including a remote task selected

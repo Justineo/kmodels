@@ -175,6 +175,12 @@ Status: implemented
   path as ordinary `collect`. Provider failures retain their normal typed fallback; a missing or
   malformed shard prevents publication. Optional scoped inventories never become shard-level
   completeness requirements. Provider request bounds and manifest-order application are unchanged.
+- Collection preparation owns the old accepted pair and parsed replay inputs in a separate
+  asynchronous scope. After composition, validation, ID mapping and replay persistence finish,
+  only the prepared candidate, result catalog and summary pass to projection and atomic commit.
+  The shard CLI likewise does not retain its full batch while awaiting publication. This prevents
+  obsolete price graphs and replay inputs from overlapping the website/export projection peak;
+  caller-owned collection inputs remain unchanged. Worker, cache and admission limits are unchanged.
 - Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
   save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
   public repair source, fixed companion, or bounded raw discovery index (`--index`), to temporary
