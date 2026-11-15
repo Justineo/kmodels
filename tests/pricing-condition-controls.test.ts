@@ -193,12 +193,11 @@ it("distinguishes the original native domain from a dependent singleton", () => 
   ).toMatchObject([standard]);
 });
 
-it("disables native-incompatible commercial alternatives without making a dependent singleton readonly", async () => {
+it("keeps commercial alternatives selectable so conflicting native inputs can be reset", async () => {
   const choices = [normal, optimized].map((choice) => ({ ...choice, offer_refs: ["plan"] }));
   const props = {
     prefix: "scope",
     choices,
-    available: choices.slice(0, 1),
     selected: [],
     inferred: [normal],
     selectors: [],
@@ -206,9 +205,10 @@ it("disables native-incompatible commercial alternatives without making a depend
   };
   const html = await renderComponent(PricingControls, props);
   expect(html).toContain("<select");
-  expect(html).toMatch(/<option\b[^>]*disabled[^>]*>[\s\S]*?Latency optimized/);
+  expect(html).toContain("Latency optimized");
+  expect(html).not.toContain("disabled");
   expect(html).not.toContain("<output");
-  const absent = await renderComponent(PricingControls, { ...props, available: [] });
+  const absent = await renderComponent(PricingControls, { ...props, choices: [] });
   expect(absent).not.toContain("<select");
 });
 

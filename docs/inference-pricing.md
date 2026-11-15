@@ -235,10 +235,12 @@ one value by other choices. Only the former becomes fixed scope. The latter can 
 but keeps its original alternatives in an editable control. Editing that control replaces
 incompatible explicit choices; inferred values are never copied into the explicit-choice state.
 The same effective tier/speed combination must have the same controls regardless of selection order.
-Commercial alternatives are additionally constrained by explicit native inputs such as Region,
-independently of other commercial choices. Alternatives excluded by those native inputs are disabled;
-a dimension with no applicable alternative is hidden. Editing a commercial field can replace an
-incompatible commercial choice, but must not silently clear a selected native Region. Native option
+Commercial alternatives remain selectable within the selected subject even when native inputs such
+as Region conflict. A commercial edit takes precedence: retain compatible commercial choices first,
+then retain native inputs in selector order only while their joint scope still has price evidence.
+Clear conflicting inputs instead of disabling the edited alternative; keep compatible Regions and
+other conditions unchanged. Never replace a cleared condition with an arbitrary alternative.
+Fields outside the remaining commercial context can still disappear. Native option
 domains use the intersection of price evidence and the selected commercial scope, so a selectable
 Region cannot lead to an empty match just because a sibling cache tariff omits Speed.
 Fixed scope uses descriptive text without form-control borders or dropdown arrows. Multiple scoped

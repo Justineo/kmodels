@@ -140,20 +140,6 @@ const commercialMatch = computed(() => {
     commercialChoices.value,
   );
 });
-// Native inputs constrain which commercial alternatives can be selected. Keep this
-// independent of the projected controls so a selection cannot erase its own domain.
-const nativeSelections = computed(() =>
-  (selectedPrice.value?.pricing_options ?? []).flatMap(
-    (option) => pricingSelection(option, inputs.value[option.key] ?? "") ?? [],
-  ),
-);
-const availableCommercialChoices = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
-  if (matching === undefined || nativeSelections.value.length === 0)
-    return unselectedMatch.value?.available_choices ?? [];
-  return matchInferencePrices(matching, nativeSelections.value, evaluatedAt.value)
-    .available_choices;
-});
 const commercialOptions = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   if (matching === undefined) return [];
@@ -334,6 +320,9 @@ const compatibleIds = computed(() =>
 );
 function setInput(key: string, value: string): void {
   inputs.value = { ...inputs.value, [key]: value };
+  reconcileId();
+}
+function reconcileId(): void {
   if (idDomains.value.size === 0) return;
   const current = selectedPrice.value?.model_id;
   const compatible = compatibleIds.value;
@@ -504,18 +493,17 @@ function selectCommercial(choices: CommercialChoice[]): void {
     (next) =>
       matching === undefined ||
       !excludesPrices(
-        matchInferencePrices(
-          matching,
-          nativeSelections.value,
-          evaluatedAt.value,
-          undefined,
-          undefined,
-          next,
-        ),
+        matchInferencePrices(matching, [], evaluatedAt.value, undefined, undefined, next),
       ),
   );
   if (selectedOffer.value && excludesPrices(initialMatch.value)) selectedOffer.value = "";
-  retainInputs(previous);
+  inputs.value = retainPricingInputs(
+    previous,
+    availableConditionOptions.value.map(({ option }) => option),
+    inputs.value,
+    (selections) => !excludesPrices(matchConditions(selections)),
+  );
+  reconcileId();
 }
 function resetCopyFeedback(): void {
   copiedId.value = "";
@@ -608,7 +596,6 @@ async function copyId(id: string): Promise<void> {
     <PricingControls
       prefix="inference-price"
       :choices="commercialOptions"
-      :available="availableCommercialChoices"
       :inferred="fixedChoices"
       :selected="commercialChoices"
       :selectors="conditionOptions"

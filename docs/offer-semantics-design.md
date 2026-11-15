@@ -133,9 +133,11 @@ Automatic selection and fixed presentation are separate decisions. A commercial 
 alternatives for the selected subject keeps an edit control even if another choice temporarily
 leaves one applicable value. Inferred values fill that control without entering explicit-choice
 state. Both selection orders must preserve the same editing paths in inference and resource views.
-Explicit native inputs constrain commercial availability without narrowing the native control's
-own domain. Incompatible commercial alternatives are disabled, and dimensions with no applicable
-alternative disappear. Resource projections preserve the intersection of each retained row and its
+Commercial alternatives remain editable when native inputs conflict. An edit takes priority over
+previous selections: keep compatible commercial choices, then retain native inputs in selector order
+only while the combined scope still has price evidence. Clear conflicts, including Region when
+necessary, and preserve compatible inputs. Dimensions outside the remaining commercial context can
+disappear. Resource projections preserve the intersection of each retained row and its
 commercial scope; retaining an unqualified cache row must not widen a Speed's regional coverage.
 The shared `optimized` speed value displays as **Latency optimized** in canonical controls,
 native selectors, fixed scope and condition annotations. Raw identifiers and source evidence retain

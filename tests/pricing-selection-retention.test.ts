@@ -6,6 +6,8 @@ import {
 } from "../src/catalog/pricing-selector-input.ts";
 import type { CommercialChoice } from "../src/catalog/pricing-schema.ts";
 import type { WebsitePricingSelector } from "../src/catalog/website-schema.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
+import type { PriceApplicability } from "../src/catalog/pricing-schema.ts";
 
 const choice = (dimension: CommercialChoice["dimension"], value: string): CommercialChoice => ({
   dimension,
@@ -98,4 +100,45 @@ it("retains TTL and geography across a rate change and drops only an invalid val
     ],
   };
   expect(retainPricingInputs([ttl, geo], [ttl, changedMeaning], inputs)).toEqual({ ttl: "3600" });
+});
+
+it("checks retained native inputs together and clears only the conflicting condition", () => {
+  const selectors = (["region", "endpoint", "quality"] as const).map(
+    (dimension): WebsitePricingSelector => ({
+      key: dimension,
+      label: dimension,
+      dimension: { namespace: "kmodels", value: dimension },
+      kind: "categorical",
+      values: ["a", "b"].map((value) => ({
+        key: value,
+        label: value,
+        value: { namespace: "kmodels", value },
+      })),
+    }),
+  );
+  const scope: PriceApplicability = {
+    any_of: ["a", "b"].map((value) => ({
+      all_of: (["region", "endpoint"] as const).map((dimension) => ({
+        kind: "categorical",
+        dimension: { namespace: "kmodels", value: dimension },
+        values: [{ namespace: "kmodels", value }],
+      })),
+    })),
+  };
+  expect(
+    retainPricingInputs(
+      selectors,
+      selectors,
+      { region: "a", endpoint: "b", quality: "b" },
+      (selections) => evaluateApplicability(scope, selections).state !== "false",
+    ),
+  ).toEqual({ region: "a", quality: "b" });
+  expect(
+    retainPricingInputs(
+      selectors,
+      selectors,
+      { region: "a", endpoint: "a", quality: "b" },
+      (selections) => evaluateApplicability(scope, selections).state !== "false",
+    ),
+  ).toEqual({ region: "a", endpoint: "a", quality: "b" });
 });

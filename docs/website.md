@@ -30,7 +30,11 @@ descriptive text in **Price scope**, outside the editable **Usage conditions** f
 regional or tier restriction is still visible.
 For mapped commercial fields, determine fixedness from the unselected subject's domain, not the
 values left after another commercial selection. A dependent singleton fills its editable control
-while preserving alternatives; editing it removes only incompatible explicit selections. Derived
+while preserving alternatives; editing it removes only incompatible explicit selections. Commercial
+alternatives stay selectable even when a native input such as Region conflicts. Give the edited
+choice priority, retain compatible commercial choices, and then retain native inputs in selector
+order while their joint scope still has price evidence. Clear conflicting native inputs and prompt
+for the missing conditions before showing rates; preserve every compatible input. Derived
 values never become explicit selections just because another control changes. Selection order must
 not decide whether a field is editable. Fields with no remaining applicability can still disappear.
 This ordering applies to model-ID, ordinary and provider-resource pricing.

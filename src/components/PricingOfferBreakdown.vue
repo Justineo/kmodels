@@ -111,9 +111,14 @@ function automaticNativeSelections(
   );
 }
 function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
-  const selected = unfilteredOffer.value.selectors.flatMap(
-    (option) => pricingSelection(option, values[option.key] ?? "") ?? [],
+  return querySelections(
+    choices,
+    unfilteredOffer.value.selectors.flatMap(
+      (option) => pricingSelection(option, values[option.key] ?? "") ?? [],
+    ),
   );
+}
+function querySelections(choices: CommercialChoice[], selected: readonly PricingSelection[]) {
   return queryWebsiteCommercialOffer(
     unfilteredOffer.value,
     uniqueCanonicalValues([
@@ -137,7 +142,6 @@ function queryCommercial(choices: CommercialChoice[], values = inputs.value) {
   );
 }
 const commercialContext = computed(() => queryCommercial(commercialChoices.value));
-const availableCommercialChoices = computed(() => queryCommercial([]).available_choices);
 const commercialOptions = computed(() => {
   const fixed = automaticNativeSelections(commercialChoices.value, boundSelections.value);
   return commercialControlChoices(
@@ -169,7 +173,7 @@ const displayOffer = computed(() =>
 );
 function selectCommercial(choices: CommercialChoice[]): void {
   commercialChoices.value = retainCommercialChoices(commercialChoices.value, choices, (next) => {
-    const result = queryCommercial(next);
+    const result = queryCommercial(next, {});
     return (
       result.offer.rates.length > 0 ||
       result.offer.states.length > 0 ||
@@ -177,23 +181,14 @@ function selectCommercial(choices: CommercialChoice[]): void {
     );
   });
   const next = queryCommercial(commercialChoices.value, {}).offer;
-  const scopes = [...next.rates, ...next.states, ...next.allowances, ...next.contributions].map(
-    ({ applicability }) => applicability,
-  );
   inputs.value = retainPricingInputs(
     unfilteredOffer.value.selectors,
     next.selectors,
     inputs.value,
-    (selection) =>
-      next.unnormalized.length > 0 ||
-      scopes.some(
-        (scope) =>
-          scope.any_of.some(({ all_of }) =>
-            all_of.some(
-              ({ dimension }) => canonicalJson(dimension) === canonicalJson(selection.dimension),
-            ),
-          ) && evaluateApplicability(scope, [selection]).state !== "false",
-      ),
+    (selections) => {
+      const result = querySelections(commercialChoices.value, selections).offer;
+      return result.rates.length > 0 || result.states.length > 0 || result.unnormalized.length > 0;
+    },
   );
 }
 const selectors = computed(() => {
@@ -591,7 +586,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :prefix="offer.id"
       :inferred="commercialContext.fixed_choices"
       :choices="commercialOptions"
-      :available="availableCommercialChoices"
       :selected="commercialChoices"
       :selectors="rateSelectors"
       :inputs="inputs"

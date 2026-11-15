@@ -1,4 +1,7 @@
 import type { PricingPerformanceCase } from "./pricing-fixture.ts";
+import { commercialChoiceSchema } from "../../src/catalog/pricing-schema.ts";
+import { pricingSelection } from "../../src/catalog/pricing-selector-input.ts";
+import { matchInferencePrices } from "../../src/pricing/inference-matching.ts";
 
 type Benchmark = Pick<Window["pricingBenchmark"], "mount" | "select">;
 type State = Awaited<ReturnType<Benchmark["mount"]>>;
@@ -26,6 +29,14 @@ export async function pricingTransitionAudit(
   const domains = labels.map((label) => control(initial, label)?.options ?? []);
   if (domains.some((domain) => domain.length === 0))
     throw new Error("Missing regional audit domain");
+  const price = subject.prices[0];
+  const matching = price?.matching;
+  const regionOption = price?.pricing_options?.find(
+    ({ dimension }) => dimension.value === "region",
+  );
+  if (matching === undefined || regionOption === undefined)
+    throw new Error("Missing regional audit matching data");
+  const queryData = { matching, regionOption };
   const queue: Action[][] = [];
   const seen = new Set<string>();
   let paths = 0;
@@ -59,21 +70,71 @@ export async function pricingTransitionAudit(
     const region = control(state, "region");
     const next = await benchmark.select(field.id, action.value);
     transitions++;
+    if (action.label !== "region" && action.value !== "") {
+      const edited = control(next, action.label);
+      const option = field.options.find(({ value }) => value === action.value);
+      if (edited ? edited.value !== action.value : !option || !next.text.includes(option.label))
+        throw new Error(`Edited choice was lost: ${JSON.stringify({ path, action, next })}`);
+    }
     if (action.label !== "region" && region?.value) {
       const retained = control(next, "region");
       const selected = region.options.find(({ value }) => value === region.value);
-      if (
-        retained
-          ? retained.value !== region.value
-          : !selected || !next.text.includes(selected.label)
-      )
-        throw new Error(`Commercial edit lost Region: ${JSON.stringify({ path, action, next })}`);
+      const selection = pricingSelection(queryData.regionOption, region.value);
+      if (selection === undefined) throw new Error("Missing selected audit Region");
+      const choices = next.controls.flatMap((field) => {
+        const dimension =
+          field.label.toLowerCase() === "service tier"
+            ? "service_tier"
+            : field.label.toLowerCase() === "speed"
+              ? "speed"
+              : undefined;
+        return dimension === undefined || field.value === ""
+          ? []
+          : [commercialChoiceSchema.parse({ dimension, value: JSON.parse(field.value) })];
+      });
+      const result = matchInferencePrices(
+        queryData.matching,
+        [selection],
+        new Date().toISOString(),
+        undefined,
+        undefined,
+        choices,
+      );
+      const compatible =
+        result.reason !== "no_applicable_price" && result.reason !== "incompatible_conditions";
+      const preserved = retained
+        ? retained.value === region.value
+        : selected !== undefined && next.text.includes(selected.label);
+      if (compatible !== preserved || (!compatible && retained?.value))
+        throw new Error(
+          `Commercial edit must retain compatible Regions and reset conflicts: ${JSON.stringify({ path, action, next })}`,
+        );
     }
     accept(next, path);
     return next;
   }
   accept(initial, []);
   const [regions = [], tiers = [], speeds = []] = domains;
+  // A Priority-only Region must not disable Standard; the edit clears Region and keeps the tier.
+  let regression = await mount();
+  for (const [label, text] of [
+    ["service tier", "Priority"],
+    ["region", "region-3"],
+    ["service tier", "Standard"],
+  ] as const) {
+    const field = control(regression, label);
+    const option = field?.options.find(({ label }) => label === text);
+    if (!field || !option || option.disabled)
+      throw new Error(`Missing selectable regression option ${label}: ${text}`);
+    regression = await benchmark.select(field.id, option.value);
+  }
+  if (control(regression, "region")?.value !== "" || regression.rates.length > 0)
+    throw new Error(
+      `Conflicting Region must reset before rates appear: ${JSON.stringify(regression)}`,
+    );
+  const selectedTier = control(regression, "service tier");
+  if (selectedTier?.options.find(({ value }) => value === selectedTier.value)?.label !== "Standard")
+    throw new Error("Resetting Region lost the selected Standard tier");
   for (const region of regions)
     for (const tier of tiers)
       for (const speed of [...speeds, undefined])

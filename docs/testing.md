@@ -155,8 +155,10 @@ not the controls needed to change them. A declared singleton still renders as fi
 A second four-region fixture varies commercial coverage: both speeds, Standard speed only,
 unmapped speed, and no Standard tier. Cache rows omit Speed to exercise commercial/price scope
 intersection. Both components run all 216 initial selection paths (including unset Speed) and all
-enabled edits and clears from the reachable rendered states. Assertions reject empty price matches
-and commercial edits that discard Region. This deterministic graph complements the fixed performance
+enabled edits and clears from the reachable rendered states. Assertions reject empty price matches,
+preserve the edited commercial choice, retain compatible Regions and clear conflicting Regions.
+An explicit Priority-only Region regression switches to Standard and requires Region to reset
+before any rates appear. This deterministic graph complements the fixed performance
 workload; uniform regional tariffs alone cannot detect availability regressions.
 
 Browser budgets are 750 ms for cold mount, 150 ms for first selection, and 50 ms median / 100 ms

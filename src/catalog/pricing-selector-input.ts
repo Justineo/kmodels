@@ -115,30 +115,35 @@ export function pricingSelection(
   return { dimension: selector.dimension, kind: "decimal", value, unit: selector.unit };
 }
 
+/** Preserve native values only while the retained combination remains compatible. */
 export function retainPricingInputs(
   previous: readonly WebsitePricingSelector[],
   next: readonly WebsitePricingSelector[],
   inputs: Readonly<Record<string, string>>,
-  accepts: (selection: PricingSelection) => boolean = () => true,
+  accepts: (selections: readonly PricingSelection[]) => boolean = () => true,
 ): Record<string, string> {
   const oldByDimension = new Map(
     previous.map((selector) => [canonicalJsonKey(selector.dimension), selector]),
   );
-  return Object.fromEntries(
-    next.flatMap((selector) => {
-      const old = oldByDimension.get(canonicalJsonKey(selector.dimension));
-      if (old === undefined) return [];
-      const input = inputs[old.key] ?? "";
-      const before = pricingSelection(old, input);
-      const after = pricingSelection(selector, input);
-      return before !== undefined &&
-        after !== undefined &&
-        canonicalJsonKey(before) === canonicalJsonKey(after) &&
-        accepts(after)
-        ? [[selector.key, input]]
-        : [];
-    }),
-  );
+  const retained: PricingSelection[] = [];
+  const values: Record<string, string> = {};
+  for (const selector of next) {
+    const old = oldByDimension.get(canonicalJsonKey(selector.dimension));
+    if (old === undefined) continue;
+    const input = inputs[old.key] ?? "";
+    const before = pricingSelection(old, input);
+    const after = pricingSelection(selector, input);
+    if (
+      before !== undefined &&
+      after !== undefined &&
+      canonicalJsonKey(before) === canonicalJsonKey(after) &&
+      accepts([...retained, after])
+    ) {
+      retained.push(after);
+      values[selector.key] = input;
+    }
+  }
+  return values;
 }
 
 export function filterPricingSelectorValues<
