@@ -348,7 +348,7 @@ it("renders the direct ID and applicable rates without adding configuration cont
     offers,
   });
   expect(html).toContain("gpt-oss-120b");
-  expect(html).toContain("Applicable prices");
+  expect(html).toContain('class="exact-rate"');
   expect(html).not.toContain("<select");
   expect(html).not.toContain("content_hash");
 });

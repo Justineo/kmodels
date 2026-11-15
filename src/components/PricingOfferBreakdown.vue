@@ -59,6 +59,7 @@ const props = defineProps<{
   shareContext?: boolean;
   pricingContext?: WebsitePricingContext | undefined;
   preferredRegion?: PricingRegion | undefined;
+  scope?: readonly { label: string; value: string }[] | undefined;
 }>();
 const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 
@@ -595,6 +596,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :selectors="rateSelectors"
       :inputs="inputs"
       :follow-region="followedRegion"
+      :scope
       @change="selectCommercial"
       @input="setInput"
     />
@@ -635,6 +637,15 @@ function showNoteScope(scope: ScopeCopy): boolean {
         No rates match the selected context.
       </p>
     </section>
+    <p
+      v-else-if="!hideConditions && unresolvedRateDimensions.length > 0"
+      class="context-prompt"
+      role="status"
+    >
+      Choose
+      {{ unresolvedRateDimensions.map((dimension) => formatDimension(dimension)).join(", ") }} to
+      see rates.
+    </p>
 
     <div v-if="showPublishedStatus" class="published-status">
       <small>Status</small>

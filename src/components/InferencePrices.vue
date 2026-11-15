@@ -1,6 +1,10 @@
 <script setup lang="ts" vapor>
 import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
-import type { WebsiteInferencePrice, WebsitePricingOffer } from "../catalog/website-schema.ts";
+import type {
+  WebsiteInferencePrice,
+  WebsitePricingOffer,
+  WebsitePricingSelector,
+} from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
@@ -16,9 +20,12 @@ import {
 import type { PricingSelection } from "../catalog/pricing-applicability.ts";
 import { presentWebsiteInferencePrice } from "../catalog/inference-price-presentation.ts";
 import {
+  compatibleInferenceIds,
+  inferenceIdConditionDomains,
   inferencePriceOptions,
   fixedInferenceCommercialChoices,
   fixedInferenceSelections,
+  linkedConditionValues,
 } from "../catalog/inference-price-options.ts";
 import {
   inferencePricingContext,
@@ -43,6 +50,8 @@ const props = defineProps<{
 const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 const selectedId = ref("");
 const selectedOffer = ref("");
+// A condition value can exclude the selected ID while several compatible IDs remain.
+const idPending = ref(false);
 const commercialChoices = ref<CommercialChoice[]>([]);
 const copiedId = ref("");
 let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -74,7 +83,7 @@ const selectedGroup = computed(() => {
   return price && priceGroups.value.find((group) => group.includes(price));
 });
 const idOptions = computed(() =>
-  props.prices.map(({ model_id }) => ({ value: model_id, label: model_id })),
+  compatibleIds.value.map((model_id) => ({ value: model_id, label: model_id })),
 );
 const evidenceUrls = computed(() => [
   ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
@@ -260,7 +269,9 @@ watch(
   () =>
     inferencePricingContext(
       props.modelRef,
-      excludesPrices(activeMatch.value) ? [] : (selected.value?.candidates ?? []),
+      excludesPrices(activeMatch.value) || idPending.value
+        ? []
+        : (selected.value?.candidates ?? []),
       chosenSelections.value,
     ),
   (context) => emit("pricingContext", context),
@@ -275,7 +286,7 @@ const conditionOptions = computed(() => {
       selections.value.some((value) => canonicalJson(value) === canonicalJson(fixed))) ||
     (inputs.value[option.key] ?? "") !== "" ||
     missing.has(canonicalJson(option.dimension))
-      ? [option]
+      ? [fixed === undefined ? withLinkedValues(option) : option]
       : [],
   );
 });
@@ -292,8 +303,47 @@ const hasPricingControls = computed(
     commercialOptions.value.length > 0 ||
     (selected.value?.requires_offer_choice === true && offerOptions.value.length > 1),
 );
+// With several ID groups, a categorical value published by any ID stays selectable and narrows the
+// ID picker to the IDs that admit it.
+const idDomains = computed(() =>
+  priceGroups.value.length < 2
+    ? new Map<string, WebsitePricingSelector[]>()
+    : inferenceIdConditionDomains(props.prices, evaluatedAt.value, commercialChoices.value),
+);
+function withLinkedValues(option: WebsitePricingSelector): WebsitePricingSelector {
+  const source = selectedPrice.value?.pricing_options?.find(
+    ({ dimension }) => canonicalJson(dimension) === canonicalJson(option.dimension),
+  );
+  return source === undefined || idDomains.value.size === 0
+    ? option
+    : linkedConditionValues(source, option, idDomains.value);
+}
+const linkedSelections = computed(() =>
+  conditionOptions.value.flatMap((option) => {
+    const selection =
+      option.kind === "categorical"
+        ? pricingSelection(option, inputs.value[option.key] ?? "")
+        : undefined;
+    return selection === undefined ? [] : [selection];
+  }),
+);
+const compatibleIds = computed(() =>
+  idDomains.value.size === 0
+    ? props.prices.map(({ model_id }) => model_id)
+    : compatibleInferenceIds(props.prices, idDomains.value, linkedSelections.value),
+);
 function setInput(key: string, value: string): void {
   inputs.value = { ...inputs.value, [key]: value };
+  if (idDomains.value.size === 0) return;
+  const current = selectedPrice.value?.model_id;
+  const compatible = compatibleIds.value;
+  if (current !== undefined && compatible.includes(current)) {
+    idPending.value = false;
+    return;
+  }
+  const [only, ...others] = compatible;
+  if (only !== undefined && others.length === 0) selectId(only);
+  else idPending.value = true;
 }
 let clock: ReturnType<typeof setTimeout> | undefined;
 function scheduleClock(): void {
@@ -327,11 +377,14 @@ onBeforeUnmount(() => {
   if (clock !== undefined) clearTimeout(clock);
   resetCopyFeedback();
 });
-function conditionLabel(selector: Exclude<PricingSelection, { kind: "decimal_range" }>): string {
+function conditionItem(selector: Exclude<PricingSelection, { kind: "decimal_range" }>): {
+  label: string;
+  value: string;
+} {
   const label = formatDimension(selector.dimension);
   if (selector.kind === "decimal")
-    return `${label}: ${selector.value} ${formatUnitExpression(selector.unit)}`;
-  if (selector.kind === "boolean") return `${label}: ${selector.value}`;
+    return { label, value: `${selector.value} ${formatUnitExpression(selector.unit)}` };
+  if (selector.kind === "boolean") return { label, value: String(selector.value) };
 
   const fixed = availableConditionOptions.value.find(
     ({ fixed }) => fixed !== undefined && canonicalJson(fixed) === canonicalJson(selector),
@@ -339,40 +392,74 @@ function conditionLabel(selector: Exclude<PricingSelection, { kind: "decimal_ran
   const value = fixed?.kind === "categorical" ? fixed.values[0] : undefined;
   const schedule = value?.schedule;
   const name = formatConditionValue(selector.dimension, selector.value, value?.label);
-  return schedule === undefined
-    ? `${label}: ${name}`
-    : `${label}: ${name} (${formatRecurringTimeSchedule(schedule)} · ${schedule.time_zone})`;
+  return {
+    label,
+    value:
+      schedule === undefined
+        ? name
+        : `${name} (${formatRecurringTimeSchedule(schedule)} · ${schedule.time_zone})`,
+  };
+}
+// Conditions already shown as a control or a fixed commercial value are not repeated in the scope.
+function scopeConditions(selectors: readonly PricingSelection[]) {
+  return selectors
+    .filter(
+      ({ dimension }) =>
+        !(dimension.namespace === "kmodels" && dimension.value === "model") &&
+        fixedPricingDetailVisible(dimension.value) &&
+        !effectiveCommercialChoices.value.some(
+          (choice) =>
+            dimension.namespace === "kmodels" &&
+            commercialConditionDimension(choice.dimension) === dimension.value,
+        ) &&
+        !selections.value.some(
+          (selection) => canonicalJson(selection.dimension) === canonicalJson(dimension),
+        ),
+    )
+    .flatMap((selector) => (selector.kind === "decimal_range" ? [] : [selector]));
 }
 const candidates = computed(() => {
-  if (needsPricingSelection.value) return [];
+  if (needsPricingSelection.value || idPending.value) return [];
   return (
     selected.value?.candidates.map((candidate) => ({
       ...candidate,
-      conditions: candidate.selectors
-        .filter(
-          ({ dimension }) =>
-            !(dimension.namespace === "kmodels" && dimension.value === "model") &&
-            fixedPricingDetailVisible(dimension.value) &&
-            !commercialChoices.value.some(
-              (choice) =>
-                dimension.namespace === "kmodels" &&
-                commercialConditionDimension(choice.dimension) === dimension.value,
-            ) &&
-            !chosenSelections.value.some(
-              (selection) => canonicalJson(selection.dimension) === canonicalJson(dimension),
-            ),
-        )
-        .flatMap((selector) =>
-          selector.kind === "decimal_range" ? [] : [conditionLabel(selector)],
-        ),
+      conditions: scopeConditions(candidate.selectors).map((selector) => {
+        const { label, value } = conditionItem(selector);
+        return `${label}: ${value}`;
+      }),
       offer: props.offers.find(({ id }) => id === candidate.offer_ref),
     })) ?? []
   );
+});
+// The scope names the pricing offer and fixed conditions shared by every remaining candidate, so it is
+// stable before and after the required selections are complete.
+const scopeItems = computed(() => {
+  const [first, ...rest] = selected.value?.candidates ?? [];
+  if (first === undefined) return [];
+  const items: { label: string; value: string }[] = [];
+  const offer = props.offers.find(({ id }) => id === first.offer_ref);
+  if (offer !== undefined && rest.every(({ offer_ref }) => offer_ref === first.offer_ref))
+    items.push({ label: "Pricing offer", value: offer.title });
+  for (const selector of scopeConditions(first.selectors))
+    if (
+      rest.every(({ selectors }) =>
+        selectors.some((other) => canonicalJson(other) === canonicalJson(selector)),
+      )
+    )
+      items.push(conditionItem(selector));
+  return items;
+});
+const selectionPrompt = computed(() => {
+  const missing = selected.value?.missing_conditions ?? [];
+  return missing.length > 0
+    ? `Choose ${missing.join(", ")} to see rates.`
+    : "Choose the pricing options above to see rates.";
 });
 watch(
   () => props.modelRef,
   () => {
     selectedId.value = "";
+    idPending.value = false;
     selectedOffer.value = "";
     commercialChoices.value = [];
     resetCopyFeedback();
@@ -380,8 +467,10 @@ watch(
   },
 );
 function selectId(id: string): void {
+  if (id === "") return;
+  idPending.value = false;
   if (id === selectedPrice.value?.model_id) return;
-  const previous = availableConditionOptions.value.map(({ option }) => option);
+  const previous = conditionOptions.value;
   selectedId.value = id;
   resetCopyFeedback();
   scheduleClock();
@@ -456,12 +545,14 @@ async function copyId(id: string): Promise<void> {
         <UiSelect
           id="inference-model-id"
           class="id-select"
-          :title="selected.model_id"
-          :model-value="selected.model_id"
+          :title="idPending ? undefined : selected.model_id"
+          :model-value="idPending ? '' : selected.model_id"
           :options="idOptions"
+          v-bind="idPending ? { placeholder: 'Choose…' } : {}"
           @update:model-value="selectId"
         />
         <button
+          v-if="!idPending"
           class="identifier-copy id-copy"
           type="button"
           :data-copied="copiedId === selected.model_id || undefined"
@@ -500,7 +591,7 @@ async function copyId(id: string): Promise<void> {
       "
       class="plan-control"
     >
-      <legend>Pricing plan</legend>
+      <legend>Pricing offer</legend>
       <div class="offer-list">
         <label v-for="option in offerOptions" :key="option.value" class="offer-choice">
           <input
@@ -522,30 +613,31 @@ async function copyId(id: string): Promise<void> {
       :selected="commercialChoices"
       :selectors="conditionOptions"
       :inputs="inputs"
+      :scope="idPending ? undefined : scopeItems"
       @change="selectCommercial"
       @input="setInput"
     />
-    <div class="match-status" role="status">
+    <p v-if="idPending" class="match-prompt" role="status">
+      Choose an inference model ID to see rates.
+    </p>
+    <p v-else-if="needsPricingSelection && hasPricingControls" class="match-prompt" role="status">
+      {{ selectionPrompt }}
+    </p>
+    <div v-else-if="selected.status !== 'matched'" class="match-status" role="status">
       <strong>{{
-        selected.status === "matched"
-          ? "Applicable prices"
-          : needsPricingSelection && hasPricingControls
-            ? "Select pricing options"
-            : selected.reason === "no_applicable_price" ||
-                selected.reason === "incompatible_conditions"
-              ? "No applicable prices"
-              : selected.status === "candidates" || selected.reason === "unresolved_price"
-                ? "Price evidence incomplete"
-                : "Price mapping unknown"
+        selected.reason === "no_applicable_price" || selected.reason === "incompatible_conditions"
+          ? "No applicable prices"
+          : selected.status === "candidates" || selected.reason === "unresolved_price"
+            ? "Price evidence incomplete"
+            : "Price mapping unknown"
       }}</strong>
-      <p v-if="needsPricingSelection">
+      <p>
         {{
-          hasPricingControls
-            ? "Complete the required selections to see applicable rates."
-            : "The published evidence does not resolve these pricing conditions."
+          needsPricingSelection
+            ? "The published evidence does not resolve these pricing conditions."
+            : selected.explanation
         }}
       </p>
-      <p v-else>{{ selected.explanation }}</p>
       <p v-if="selected.missing_conditions.length">
         Remaining conditions: {{ selected.missing_conditions.join(", ") }}.
       </p>
@@ -556,8 +648,8 @@ async function copyId(id: string): Promise<void> {
       class="candidate"
     >
       <template v-if="candidate.offer">
-        <h4>{{ candidate.offer.title }}</h4>
-        <p v-if="candidate.conditions.length" class="fixed-conditions">
+        <h4 v-if="candidates.length > 1">{{ candidate.offer.title }}</h4>
+        <p v-if="candidates.length > 1 && candidate.conditions.length" class="fixed-conditions">
           {{ candidate.conditions.join(" · ") }}
         </p>
         <PricingOfferBreakdown
@@ -651,6 +743,11 @@ async function copyId(id: string): Promise<void> {
 }
 .match-status {
   margin-block: var(--space-2);
+}
+.match-prompt {
+  margin: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
 }
 .match-status p {
   margin: var(--space-1) 0 0;

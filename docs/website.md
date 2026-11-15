@@ -9,7 +9,7 @@ When the accepted snapshot includes inference ID mappings, model pricing identif
 the same compact ID and copy icon control as in the header when all IDs share one group. With
 multiple groups, show a single picker with an option for each exact ID and an adjacent copy icon
 for the selection. Preserve the pricing inputs that remain applicable after changing the ID or
-pricing plan. When the
+Pricing offer. When the
 only inference ID equals the header's catalog ID, show that exact value with the same copy control
 in Pricing.
 Use associations for the selected catalog entry. When mapping is unknown,
@@ -62,8 +62,9 @@ Served fields are labeled as observed outcomes or explicit planning estimates. O
 correlations; selecting Batch does not invent Fast support. Provider-specific residuals remain
 readable and unresolved coverage is explicit. Resource and fallback offer controls use the same
 canonical-to-native resolver. Services and capacity retain their existing groups and composition.
-When multiple offers remain without a canonical account-plan control, a **Pricing plan** radio
-group uses their existing names and starts unselected. Do not duplicate account-plan selection
+When multiple offers remain without a canonical account-plan control, a **Pricing offer** radio
+group uses their existing names and starts unselected. The label names a published price list such as `Public rates`;
+it is not a mode and must not compete with **Request mode**, the canonical execution choice. Do not duplicate account-plan selection
 with another offer picker or native account-eligibility control. Selecting an offer retains compatible condition inputs
 and limits the displayed conditions and rates to that offer. Publication runs the
 same `createInferencePriceLookup` used by external consumers and stores compact candidate references
@@ -71,11 +72,22 @@ and audit-free matching conditions in optional `inference_prices` detail metadat
 chunks remain the price source. Interactive conditions execute the same matching function as the
 public lookup, updating status, missing conditions and visible price rows together. Published menu
 values remain scoped to the selected ID, commercial choices, plan and evaluation time. Prompt for the
-required pricing plan and conditions before showing rates. Once those inputs are complete, show
-applicable rates or explain unresolved evidence such as imprecise validity or conflicting prices.
-Show fixed ID conditions without claiming a complete request quote. Mapping evidence uses the
+required Pricing offer and conditions before showing rates with one line that names the missing
+conditions. Once those inputs are complete, show applicable rates without a separate status heading,
+or explain unresolved evidence such as imprecise validity or conflicting prices.
+Show fixed ID conditions without claiming a complete request quote: the Pricing offer and fixed
+conditions shared by every remaining candidate appear in **Price scope**, so the scope is stable
+before and after the required selections.
+When the ID picker has several groups, each ID's condition domain links back to the ID. A
+categorical condition offers the values published by any ID, in the source option order, and a
+chosen value narrows the picker to IDs whose published prices or fixed ID scope admit it. When
+the selected ID no longer admits the value, a sole compatible ID replaces it as a dependent
+singleton; with several compatible IDs the picker returns to an unselected state and rates wait
+for an explicit ID. Linking never picks among compatible IDs, because each remains a distinct
+request value with its own price. A Bedrock source Region therefore narrows Geo and Global profile
+IDs without merging Region into the ID: the ID stays explicit and copyable. Mapping evidence uses the
 shared detail disclosure and evidence link list. Unknown mappings preserve ordinary catalog prices
-with an explicit unverified-ID notice; known exclusions do not fall back to unfiltered rates.
+with an explicit unverified-ID notice in the Inference model ID position; known exclusions do not fall back to unfiltered rates.
 Snapshots without mappings retain the
 catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
 messages and rate annotations; namespace-qualified machine identifiers remain in structured data.
@@ -183,18 +195,19 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   secondary flat-price data source. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `[capacity charges when linked] → [Run mode when selectable] → model rates
-  → collapsed related services → pricing notes`. The first mechanism in
+- Mapped and catalog pricing share one detail flow: `Inference model ID (or its unverified-mapping
+  notice) → [capacity charges when linked] → [Pricing offer when selectable] → Price scope and Usage
+  conditions → rates or a one-line selection prompt → mapping evidence → collapsed related
+  services → refresh status`. Neither path adds its own status banner or rate-block heading. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
-  recommendation, or cheapest-offer choice. A sole mechanism is named as the Run mode in the model
-  rate block so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
+  recommendation, or cheapest-offer choice. A sole mechanism is named as the Pricing offer in Price scope so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
   from the rates.
   The selected mechanism remains the context for its request-cost breakdown; exact mechanism
   references filter its related costs. Public running-capacity rates occupy a separate block and
   are never converted to per-request prices. Capacity books with the same offer identity and
   charge signal appear under one heading when each has a single fixed capacity option; the viewer
   chooses a resource before its regional rates appear. Only books exactly linked to that model are
-  offered, and the first option is not treated as a default. The model rate block is primary for request pricing. Services,
+  offered, and the first option is not treated as a default. The model rates are primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
   closed disclosure by default because they do not change the base model rates. The disclosure
   explains that these items are separate and expands them in that order. Each
@@ -207,7 +220,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   headings, use the same left-aligned label-over-value hierarchy, and keep each numeric value and
   slash-prefixed unit together. Rates are billed
   separately and never combined
-  into a total. When Run mode is selectable, the selected choice already names the active base
+  into a total. When Pricing offer is selectable, the selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
   kinds `Service charge`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
   expose the schema term `optional`. Account plans and prepaid commitments are omitted.
@@ -218,12 +231,12 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   not navigate between models. Keyboard focus is shown once on the complete choice surface rather
   than repeated around its native radio. Fresh pricing shows a localized relative verification time;
   its tooltip provides the complete timestamp in the viewer's current time zone. A retained partition
-  instead shows one provider-level status note with both the preserved
+  keeps the verification time in the header and ends the Pricing section with one muted status line with both the preserved
   verification time and the latest rejected-attempt time plus a reviewed
   explanation. For an unknown model it says that the last verified provider
   snapshot contained no pricing; it never implies that the model previously had
   a price or that model-level validation failed.
-  Selecting another Run mode resets only the outgoing mechanism's child context, and context
+  Selecting another Pricing offer resets only the outgoing mechanism's child context, and context
   filtering never hides or reorders the choices above it. Each related offer owns its local
   conditions and overrides. Categorical conditions with multiple values use the shared customizable-select
   component, with an empty choice and labels from reviewed vocabulary or projection data.

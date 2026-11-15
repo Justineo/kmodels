@@ -28,6 +28,11 @@ import { inferenceMatchData } from "../src/pricing/inference-matching-data.ts";
 import { createPricingSnapshot } from "../src/pricing/snapshot.ts";
 import { formatDimension } from "../src/catalog/pricing-presentation.ts";
 import { pricingSelection } from "../src/catalog/pricing-selector-input.ts";
+import {
+  compatibleInferenceIds,
+  inferenceIdConditionDomains,
+  linkedConditionValues,
+} from "../src/catalog/inference-price-options.ts";
 import { multiplyRationals } from "../src/catalog/pricing-rational.ts";
 import { projectCommercialSelections } from "../src/catalog/commercial-selection-compilation.ts";
 import { inferencePricingPublication } from "../src/catalog/inference-pricing.ts";
@@ -867,7 +872,7 @@ it("retains all commercial offers in lookup and prompts the inspector for a plan
   });
   expect(html).toContain('type="radio"');
   expect(html).toContain("Alternative plan");
-  expect(html).toContain("Select pricing options");
+  expect(html).toContain("to see rates.");
   expect(html).not.toContain('class="exact-rate"');
 });
 it("does not turn an expired tariff into a matched price", () => {
@@ -941,7 +946,7 @@ it("keeps date-only rates visible as evidence without prompting for a pricing in
   expect(html).toContain("Price evidence incomplete");
   expect(html).toContain("Price validity is not fully established");
   expect(html).toContain('class="exact-rate"');
-  expect(html).not.toContain("Select pricing options");
+  expect(html).not.toContain("to see rates.");
 });
 it("isolates reusable lookup inputs and results from caller mutation", () => {
   const data = structuredClone(typesafe);
@@ -1250,8 +1255,7 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(html).toContain('aria-label="Copy inference model ID us.openai.gpt-6-astra"');
   expect(html).toContain("#ui-copy");
   expect(html).not.toContain(">Copy<");
-  expect(html).toContain("Select pricing options");
-  expect(html).toContain("Remaining conditions");
+  expect(html).toContain("to see rates.");
   expect(html).not.toContain("$66");
   expect(html).not.toContain('class="exact-rate"');
   expect(html).toContain('class="detail-disclosure"');
@@ -1280,7 +1284,7 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
     "a".repeat(64),
   ).offers.flatMap(({ offers }) => offers);
   const pending = await renderComponent(InferencePrices, { modelRef, prices: [price], offers });
-  expect(pending).toContain("Select pricing options");
+  expect(pending).toContain("to see rates.");
   expect(pending).toMatch(/<label[^>]*>Service tier/);
   expect(pending).toMatch(/<output\b[^>]*>Responses<\/output>/);
   expect(pending).toContain("Cache TTL");
@@ -1308,8 +1312,12 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
     prices: [scopedPrice],
     offers,
   });
-  expect(resolved).toContain("Applicable prices");
-  expect(resolved).toContain("Operation: Responses");
+  expect(resolved).toContain('class="exact-rate"');
+  const resolvedScope = resolved.match(
+    /<section\b[^>]*aria-label="Price scope"[\s\S]*?<\/section>/u,
+  )?.[0];
+  expect(resolvedScope).toMatch(/Operation[\s\S]*?<output\b[^>]*>Responses<\/output>/u);
+  expect(resolved.match(/>Responses</gu)).toHaveLength(1);
   expect(resolved).toContain("Cache TTL");
   expect(resolved).toMatch(/<output\b[^>]*>1800<\/output>/);
   expect(resolved).toContain("$66");
@@ -1338,7 +1346,7 @@ it("shares pricing across equivalent inference IDs and keeps different fixed sco
   expect(equivalent).not.toContain('id="inference-model-id"');
   expect(equivalent).toContain(`Copy inference model ID ${us.model_id}`);
   expect(equivalent).toContain(`Copy inference model ID ${alias.model_id}`);
-  expect(equivalent).toContain("Select pricing options");
+  expect(equivalent).toContain("to see rates.");
   const mixed = await renderComponent(InferencePrices, {
     modelRef: us.model_ref,
     prices: prices.toReversed(),
@@ -1354,6 +1362,54 @@ it("shares pricing across equivalent inference IDs and keeps different fixed sco
   expect(mixed).not.toContain(`>${global.model_id}</code>`);
   expect(mixed).toContain("#ui-copy");
   expect(mixed).not.toContain(">Copy<");
+});
+it("links a chosen condition value back to the inference IDs that publish it", () => {
+  const pair = fixturePairs.get("amazon-bedrock");
+  if (!pair) throw new Error("Missing Bedrock fixture pair");
+  const us = profileRule("us");
+  const global = profileRule("global");
+  const prices =
+    websiteInferencePrices(pair.catalog, pair.envelope, mapping(bedrock, [us, global])).get(
+      us.model_ref,
+    ) ?? [];
+  const domains = inferenceIdConditionDomains(prices, at);
+  const regions = (modelId: string) => {
+    const option = domains.get(modelId)?.find(({ dimension }) => dimension.value === "region");
+    return option?.kind === "categorical" ? option.values : [];
+  };
+  const usRegions = regions(us.model_id);
+  const globalOnly = regions(global.model_id).find(
+    ({ key }) => !usRegions.some((region) => region.key === key),
+  );
+  const shared = usRegions.find(({ key }) =>
+    regions(global.model_id).some((region) => region.key === key),
+  );
+  if (shared === undefined || globalOnly === undefined)
+    throw new Error("Bedrock fixture lacks shared and Global-only Regions");
+  const dimension = { namespace: "kmodels", value: "region" } as const;
+  const choose = ({ value }: { value: (typeof shared)["value"] }) => [
+    { kind: "categorical" as const, dimension, value },
+  ];
+
+  expect(compatibleInferenceIds(prices, domains, [])).toEqual(
+    prices.map(({ model_id }) => model_id),
+  );
+  expect(compatibleInferenceIds(prices, domains, choose(shared)).toSorted()).toEqual(
+    [us.model_id, global.model_id].toSorted(),
+  );
+  expect(compatibleInferenceIds(prices, domains, choose(globalOnly))).toEqual([global.model_id]);
+
+  // The US ID's Region control offers every linked value so a Global-only Region stays selectable.
+  const usPrice = prices.find(({ model_id }) => model_id === us.model_id);
+  const source = usPrice?.pricing_options?.find((option) => option.dimension.value === "region");
+  const option = domains
+    .get(us.model_id)
+    ?.find((selector) => selector.dimension.value === "region");
+  if (source === undefined || option === undefined) throw new Error("Missing US Region option");
+  const linked = linkedConditionValues(source, option, domains);
+  expect(linked.kind === "categorical" && linked.values.map(({ key }) => key)).toContain(
+    globalOnly.key,
+  );
 });
 it("keeps interactive regional selection, exclusions and displayed rows aligned with public lookup", () => {
   const pair = fixturePairs.get("amazon-bedrock");

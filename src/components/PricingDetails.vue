@@ -172,31 +172,10 @@ watch(hasOtherCharges, (available) => {
   <section class="detail-section pricing-section" aria-labelledby="pricing-heading">
     <header class="pricing-section-header">
       <h3 id="pricing-heading">Pricing</h3>
-      <p v-if="detail?.snapshot?.publication === 'fresh'" class="pricing-time">
+      <p v-if="detail?.snapshot" class="pricing-time">
         Verified <RelativeTime :value="detail.snapshot.observed_at" />
       </p>
     </header>
-
-    <p
-      v-if="detail?.snapshot?.publication === 'retained'"
-      class="pricing-refresh-status"
-      role="status"
-    >
-      <span>
-        {{
-          model.pricing.outcome === "unknown"
-            ? "No pricing was available in the snapshot"
-            : "Showing prices"
-        }}
-        verified
-        <RelativeTime class="pricing-time" :value="detail.snapshot.observed_at" />.
-      </span>
-      <span>
-        A refresh
-        <RelativeTime class="pricing-time" :value="detail.snapshot.refresh_failure.attempted_at" />
-        was rejected: {{ detail.snapshot.refresh_failure.message }}
-      </span>
-    </p>
 
     <div v-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
       <strong>Not applicable</strong>
@@ -227,10 +206,17 @@ watch(hasOtherCharges, (available) => {
         @pricing-context="inferenceContext = $event"
       />
       <template v-if="!hasKnownMapping">
-        <div v-if="inferencePrices?.length" class="pricing-outcome" role="status">
-          <strong v-if="!modelInferencePrices?.length">Price mapping unknown</strong>
-          <span>The catalog prices below are not verified for an inference model ID.</span>
+        <div
+          v-if="inferencePrices?.length && !modelInferencePrices?.length"
+          class="pricing-id-status"
+          role="status"
+        >
+          <span class="pricing-label">Inference model ID</span>
+          <p>Mapping not verified. The catalog rates below are shown instead.</p>
         </div>
+        <p v-else-if="inferencePrices?.length" class="pricing-note" role="status">
+          The catalog rates below are not verified for an inference model ID.
+        </p>
         <section
           v-if="capacityGroups.length > 0"
           class="base-rates"
@@ -274,41 +260,32 @@ watch(hasOtherCharges, (available) => {
           </article>
         </section>
 
-        <section
-          v-if="modelMechanisms.length > 1"
-          class="run-mode"
-          aria-labelledby="run-mode-heading"
-        >
-          <h4 id="run-mode-heading" class="section-heading">Run mode</h4>
+        <fieldset v-if="modelMechanisms.length > 1" class="plan-control">
+          <legend>Pricing offer</legend>
+          <div class="offer-list">
+            <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
+              <input
+                type="radio"
+                :name="`pricing-mechanism-${model.uid}`"
+                :value="offer.id"
+                :checked="activeMechanism?.id === offer.id"
+                @change="selectMechanism(offer.id)"
+              />
+              <strong>{{ offer.title }}</strong>
+              <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
+            </label>
+          </div>
+        </fieldset>
 
-          <fieldset class="run-mode-options">
-            <legend class="visually-hidden">Choose a run mode</legend>
-            <div class="offer-list">
-              <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
-                <input
-                  type="radio"
-                  :name="`pricing-mechanism-${model.uid}`"
-                  :value="offer.id"
-                  :checked="activeMechanism?.id === offer.id"
-                  @change="selectMechanism(offer.id)"
-                />
-                <strong>{{ offer.title }}</strong>
-                <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
-              </label>
-            </div>
-          </fieldset>
-        </section>
-
-        <section v-if="activeMechanism" class="base-rates" aria-labelledby="base-rates-heading">
-          <header class="rate-offer-heading">
-            <h4 id="base-rates-heading" class="section-heading">Model rates</h4>
-            <small v-if="modelMechanisms.length === 1" class="offer-state">
-              Run mode · {{ activeMechanism.title }}
-            </small>
-          </header>
+        <section v-if="activeMechanism" class="base-rates" aria-label="Model rates">
           <PricingOfferBreakdown
             :offer="activeMechanism"
             :model-ref="model.uid"
+            :scope="
+              modelMechanisms.length === 1
+                ? [{ label: 'Pricing offer', value: activeMechanism.title }]
+                : undefined
+            "
             share-context
             @pricing-context="catalogContext = $event"
           />
@@ -355,6 +332,20 @@ watch(hasOtherCharges, (available) => {
         />
       </div>
     </div>
+    <p
+      v-if="detail?.snapshot?.publication === 'retained'"
+      class="pricing-refresh-status"
+      role="status"
+    >
+      {{
+        model.pricing.outcome === "unknown"
+          ? "No pricing was available in the snapshot verified"
+          : "Prices were verified"
+      }}
+      <RelativeTime :value="detail.snapshot.observed_at" />. A refresh
+      <RelativeTime :value="detail.snapshot.refresh_failure.attempted_at" />
+      was rejected: {{ detail.snapshot.refresh_failure.message }}
+    </p>
   </section>
 </template>
 
@@ -373,15 +364,35 @@ watch(hasOtherCharges, (available) => {
 }
 
 .pricing-refresh-status {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
+}
+
+.pricing-id-status {
   display: grid;
   gap: var(--space-1);
-  margin: 0 0 var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-status-warning);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-subtle);
+}
+
+.pricing-id-status p,
+.pricing-note {
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
+}
+
+.pricing-label,
+.plan-control legend {
+  padding: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plan-control {
+  min-width: 0;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border: 0;
 }
 
 .pricing-outcome,
@@ -504,13 +515,6 @@ watch(hasOtherCharges, (available) => {
   color: var(--color-text-primary);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-}
-
-.run-mode-options {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
 }
 
 .offer-state {

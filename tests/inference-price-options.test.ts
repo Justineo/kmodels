@@ -261,7 +261,7 @@ it.each(["service_tier", "speed"] as const)(
     const conditions = html.match(/<fieldset\b[\s\S]*?<\/fieldset>/gu) ?? [];
     expect(conditions.some((section) => section.includes("Region"))).toBe(true);
     for (const section of conditions) expect(section).not.toContain(">Standard<");
-    expect(html).toContain("Remaining conditions: Region.");
+    expect(html).toContain("Choose Region to see rates.");
     for (const select of html.match(/<select\b[\s\S]*?<\/select>/gu) ?? [])
       expect(select).not.toContain(">Standard<");
 

@@ -1177,17 +1177,19 @@ representative number exists, unavailable sibling cells use an em dash.
 For a converged provider, the order is:
 
 1. Capacity charges linked to the model, when present;
-2. Run mode, when more than one model invocation mechanism exists;
-3. the selected mechanism's model-rate block;
+2. Pricing offer, when more than one model invocation mechanism exists;
+3. the selected mechanism's Price scope, Usage conditions and rates;
 4. one collapsed group for related service charges, automatic charges, included features, and
    standalone services; and
 5. each expanded offer's price-changing options and plain-language pricing notes.
 
 The first mechanism in presentation order is the initial browsing focus, not a provider default.
-Alternative mechanisms use radio controls; a sole mechanism is explicitly named as the Run mode in
-its model-rate block.
+Alternative mechanisms use radio controls; a sole mechanism is explicitly named as the Pricing offer in
+its Price scope. The label is **Pricing offer**, not a mode: offer titles such as `Public rates`,
+`On-demand inference` or `paid tier` name a published price list, while **Request mode** remains
+the canonical execution choice (Request, Batch, Realtime).
 The website projection emits offers in the presentation order above and retains exact mechanism
-references so changing Run mode also filters its related costs.
+references so changing Pricing offer also filters its related costs.
 
 The model-rate block never merges meters. Related services are closed by default and use the
 user-facing kinds `Service charge`, `Included feature`, `Automatic charge`, and `Separate service`.

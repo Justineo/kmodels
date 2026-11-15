@@ -23,6 +23,7 @@ const props = defineProps<{
   selectors: readonly WebsitePricingSelector[];
   inputs: Readonly<Record<string, string>>;
   followRegion?: { key: string; label: string } | undefined;
+  scope?: readonly { label: string; value: string }[] | undefined;
 }>();
 const emit = defineEmits<{
   change: [choices: CommercialChoice[]];
@@ -102,17 +103,20 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
 
 <template>
   <div
-    v-if="sections.length || fixedGroups.length || fixedSelectors.length"
+    v-if="sections.length || fixedGroups.length || fixedSelectors.length || scope?.length"
     class="pricing-controls"
   >
     <section
-      v-if="fixedGroups.length || fixedSelectors.length"
+      v-if="fixedGroups.length || fixedSelectors.length || scope?.length"
       class="pricing-scope"
       aria-label="Price scope"
     >
       <p class="pricing-scope-title">Price scope</p>
-      <p class="pricing-scope-description">Prices shown apply within this scope.</p>
       <div class="pricing-scope-values">
+        <div v-for="item in scope" :key="item.label" class="commercial-choice">
+          <span class="pricing-scope-label">{{ item.label }}</span>
+          <output class="pricing-fixed-value">{{ item.value }}</output>
+        </div>
         <div v-for="group in fixedGroups" :key="group.dimension" class="commercial-choice">
           <span class="pricing-scope-label" :title="group.description">{{ group.label }}</span>
           <output class="pricing-fixed-value">{{ group.options[0]?.label }}</output>
@@ -169,14 +173,9 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   font-weight: var(--font-weight-semibold);
 }
 .pricing-scope-title {
-  margin: 0;
+  margin: 0 0 var(--space-2);
   font-size: var(--font-size-meta);
   font-weight: var(--font-weight-semibold);
-}
-.pricing-scope-description {
-  margin: var(--space-1) 0 var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
 }
 .commercial-choice {
   display: grid;

@@ -376,11 +376,11 @@ it("still matches hidden singleton modes without repeating them beside inference
     ],
     offers: [{ ...offer, rates: [{ ...rate, key: "input:rate:0", applicability }] }],
   });
-  expect(html).toContain("Applicable prices");
+  expect(html).toContain('class="exact-rate"');
   expect(html).toContain("$1");
   expect(html).not.toContain("Request mode");
   expect(html).not.toContain("Cache mode");
-  expect(html).not.toContain("Price scope");
+  expect(html).toContain(">Pricing offer<");
   expect(
     matchInferencePrices(
       matching,

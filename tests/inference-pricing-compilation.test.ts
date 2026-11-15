@@ -164,7 +164,7 @@ describe("direct inference price source-to-consumer compilation", () => {
       prices: detail?.inference_prices ?? [],
       offers,
     });
-    expect(html).toContain("Applicable prices");
+    expect(html).toContain('class="exact-rate"');
     expect(html).toContain("Copy inference model ID jev-1.14.0");
     expect(html).toContain("$0.042");
     expect(html).not.toContain("Pricing options");

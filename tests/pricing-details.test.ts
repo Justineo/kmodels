@@ -256,7 +256,7 @@ describe("model pricing details", () => {
     expect(html).toContain("Copy inference model ID model");
     expect(html).toMatch(/<code\b[^>]*>model<\/code>/);
     expect(html).not.toContain("$2");
-    expect(html).not.toContain("The catalog prices below");
+    expect(html).not.toContain("The catalog rates below");
   });
 
   it("preserves catalog prices when inference ID associations are unknown", async () => {
@@ -275,10 +275,9 @@ describe("model pricing details", () => {
         },
       ],
     });
-    expect(html).toContain("Price mapping unknown");
-    expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
+    expect(html).toContain("Mapping not verified. The catalog rates below are shown instead.");
     expect(html).not.toContain("Catalog ID");
-    expect(html).not.toContain("Inference model ID");
+    expect(html).not.toContain("Copy inference model ID");
     expect(html).toContain("$2");
     expect(html).not.toContain("Applicable prices");
   });
@@ -312,9 +311,9 @@ describe("model pricing details", () => {
         },
       ],
     });
-    expect(html).toContain("Price mapping unknown");
+    expect(html).toContain("Mapping not verified. The catalog rates below are shown instead.");
     expect(html).toContain("$2");
-    expect(html).not.toContain("Inference model ID");
+    expect(html).not.toContain("Copy inference model ID");
     expect(html).not.toContain("Same as Catalog ID");
   });
 
@@ -329,7 +328,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("<table");
     expect(html).not.toContain("<thead");
     expect(html).not.toContain("Region");
-    expect(html).toContain("Run mode");
+    expect(html).toContain("Pricing offer");
     expect(html).toContain("On-demand inference");
   });
 
@@ -539,7 +538,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("Unsupported structure");
   });
 
-  it("shows only costs related to the selected run mode", async () => {
+  it("shows only costs related to the selected pricing offer", async () => {
     const interactive = offer([{ amount: "$2", scope: region("us", "eu") }], {
       title: "Interactive",
     });
@@ -556,7 +555,7 @@ describe("model pricing details", () => {
 
     const html = await render([interactive, batch, service]);
 
-    expect(html).toContain("Run mode");
+    expect(html).toContain("Pricing offer");
     expect(html).toContain("Interactive");
     expect(html).toContain("Batch");
     expect(html.match(/>Interactive</g)).toEqual([">Interactive<"]);
@@ -580,7 +579,6 @@ describe("model pricing details", () => {
     expect(html).not.toContain("<select");
     expect(html).not.toContain("Billing details");
     expect(html).toContain('aria-label="Price scope"');
-    expect(html).toContain("Prices shown apply within this scope.");
     expect(html).not.toContain("Usage conditions");
   });
 

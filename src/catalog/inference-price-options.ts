@@ -28,7 +28,7 @@ import {
   type AvailableCommercialChoice,
 } from "../pricing/commercial-matching.ts";
 import { publishedValidityStatus } from "./pricing-time.ts";
-import type { WebsitePricingSelector } from "./website-schema.ts";
+import type { WebsiteInferencePrice, WebsitePricingSelector } from "./website-schema.ts";
 
 interface ChoiceDomain {
   clauses: number;
@@ -248,4 +248,86 @@ function indexOfferChoices(
           (condition) => evaluatePricingCondition(condition, selection) !== "false",
         );
   };
+}
+
+/**
+ * Each inference ID publishes its own condition domain. Linking IDs through those domains lets a
+ * caller start from a condition such as Region: the chosen value narrows the IDs to those whose
+ * published prices or fixed ID scope admit it.
+ */
+export function inferenceIdConditionDomains(
+  prices: readonly Pick<WebsiteInferencePrice, "model_id" | "matching" | "pricing_options">[],
+  evaluatedAt: string,
+  choices: readonly CommercialChoice[] = [],
+): Map<string, WebsitePricingSelector[]> {
+  const domains = new Map<string, WebsitePricingSelector[]>();
+  for (const { model_id, matching, pricing_options } of prices) {
+    if (matching === undefined) continue;
+    const initial = matchInferencePrices(matching, [], evaluatedAt, undefined, undefined, choices);
+    domains.set(
+      model_id,
+      initial.reason === "no_applicable_price" || initial.reason === "incompatible_conditions"
+        ? []
+        : inferencePriceOptions(
+            matching,
+            initial,
+            pricing_options ?? [],
+            evaluatedAt,
+            undefined,
+            choices,
+          ),
+    );
+  }
+  return domains;
+}
+
+export function inferenceIdAdmits(
+  price: Pick<WebsiteInferencePrice, "model_id" | "matching">,
+  domain: readonly WebsitePricingSelector[] | undefined,
+  selection: PricingSelection,
+): boolean {
+  if (domain === undefined) return false;
+  const dimension = canonicalJsonKey(selection.dimension);
+  const fixed = (price.matching?.rules ?? [])
+    .flatMap(({ fixed_selectors }) => fixed_selectors)
+    .filter((selector) => canonicalJsonKey(selector.dimension) === dimension);
+  if (fixed.length > 0)
+    return fixed.some((selector) => canonicalJsonKey(selector) === canonicalJsonKey(selection));
+  const option = domain.find((selector) => canonicalJsonKey(selector.dimension) === dimension);
+  if (option === undefined) return true;
+  return (
+    option.kind === "categorical" &&
+    selection.kind === "categorical" &&
+    option.values.some(({ value }) => canonicalJsonKey(value) === canonicalJsonKey(selection.value))
+  );
+}
+
+export function compatibleInferenceIds(
+  prices: readonly Pick<WebsiteInferencePrice, "model_id" | "matching">[],
+  domains: ReadonlyMap<string, readonly WebsitePricingSelector[]>,
+  selections: readonly PricingSelection[],
+): string[] {
+  return prices
+    .filter((price) =>
+      selections.every((selection) =>
+        inferenceIdAdmits(price, domains.get(price.model_id), selection),
+      ),
+    )
+    .map(({ model_id }) => model_id);
+}
+
+/** Categorical values published by any linked ID, in the source option's order. */
+export function linkedConditionValues(
+  source: WebsitePricingSelector,
+  option: WebsitePricingSelector,
+  domains: ReadonlyMap<string, readonly WebsitePricingSelector[]>,
+): WebsitePricingSelector {
+  if (option.kind !== "categorical" || source.kind !== "categorical") return option;
+  const dimension = canonicalJsonKey(option.dimension);
+  const keys = new Set(option.values.map(({ key }) => key));
+  for (const domain of domains.values())
+    for (const selector of domain)
+      if (selector.kind === "categorical" && canonicalJsonKey(selector.dimension) === dimension)
+        for (const { key } of selector.values) keys.add(key);
+  return { ...option, values: source.values.filter(({ key }) => keys.has(key)) };
 }

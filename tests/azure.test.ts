@@ -1465,8 +1465,8 @@ describe("Azure adapters", () => {
       error: undefined,
       inferencePrices,
     });
-    expect(html).toContain("The catalog prices below are not verified for an inference model ID.");
-    expect(html).toContain("Model rates");
+    expect(html).toContain("Mapping not verified. The catalog rates below are shown instead.");
+    expect(html).toContain('aria-label="Model rates"');
     expect(html).toContain("East US");
     expect(html).not.toContain("Inspect target");
   });
